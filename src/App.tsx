@@ -5,6 +5,7 @@ import { Conversation, Config, Message } from './types';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { Sidebar } from './components/Sidebar';
+import { Settings } from './components/Settings';
 import './App.css';
 
 function App() {
@@ -13,6 +14,8 @@ function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [memory, setMemory] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [memoryFilePath, setMemoryFilePath] = useState<string | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
 
   useEffect(() => {
@@ -36,6 +39,31 @@ function App() {
     initializeApp();
   }, []);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Command+N (or Ctrl+N on Windows) - New conversation
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        handleNewConversation();
+      }
+
+      // Command+, (or Ctrl+, on Windows) - Settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+
+      // Escape - Close settings
+      if (e.key === 'Escape' && showSettings) {
+        setShowSettings(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showSettings]);
+
   const loadVault = async (path: string) => {
     try {
       vaultService.setVaultPath(path);
@@ -54,6 +82,9 @@ function App() {
 
         const loadedMemory = await vaultService.loadMemory();
         setMemory(loadedMemory);
+
+        const memoryPath = await vaultService.getMemoryFilePath();
+        setMemoryFilePath(memoryPath);
       } else {
         // No config found, clear vault path and show setup
         localStorage.removeItem('vaultPath');
@@ -232,6 +263,26 @@ function App() {
     }
   };
 
+  const handleRenameConversation = async (oldId: string, newTitle: string) => {
+    try {
+      const updatedConversation = await vaultService.renameConversation(oldId, newTitle);
+      if (updatedConversation) {
+        // Update the conversations list
+        setConversations((prev) =>
+          prev.map((c) => (c.id === oldId ? updatedConversation : c))
+        );
+
+        // Update current conversation if it was renamed
+        if (currentConversation?.id === oldId) {
+          setCurrentConversation(updatedConversation);
+        }
+      }
+    } catch (error) {
+      console.error('Error renaming conversation:', error);
+      alert('Failed to rename conversation. Please try again.');
+    }
+  };
+
   if (isLoading) {
     return <div className="loading">Loading...</div>;
   }
@@ -247,6 +298,7 @@ function App() {
         currentConversationId={currentConversation?.id || null}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onRenameConversation={handleRenameConversation}
       />
       <ChatInterface
         ref={chatInterfaceRef}
@@ -256,6 +308,12 @@ function App() {
         onApiKeyUpdate={handleApiKeyUpdate}
         onModelChange={handleModelChange}
       />
+      {showSettings && (
+        <Settings
+          onClose={() => setShowSettings(false)}
+          memoryFilePath={memoryFilePath}
+        />
+      )}
     </div>
   );
 }
