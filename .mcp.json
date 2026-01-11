@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "node",
+      "args": [
+        "--loader",
+        "tsx",
+        "mcp-server/playwright-server.ts"
+      ]
+    }
+  }
+}
