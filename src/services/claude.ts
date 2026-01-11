@@ -6,7 +6,10 @@ export class ClaudeService {
   private model: string = 'claude-sonnet-4-20250514';
 
   initialize(apiKey: string, model?: string): void {
-    this.client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+    this.client = new Anthropic({
+      apiKey,
+      dangerouslyAllowBrowser: true,
+    });
     if (model) {
       this.model = model;
     }
@@ -33,21 +36,36 @@ export class ClaudeService {
       messages: anthropicMessages,
       system: systemPrompt,
       stream: true,
+      tools: [
+        {
+          type: 'web_search_20250305' as any,
+          name: 'web_search',
+          max_uses: 5,
+        } as any,
+      ],
     });
 
     let fullResponse = '';
 
-    for await (const chunk of stream) {
-      if (
-        chunk.type === 'content_block_delta' &&
-        chunk.delta.type === 'text_delta'
-      ) {
-        const text = chunk.delta.text;
-        fullResponse += text;
-        if (onChunk) {
-          onChunk(text);
+    try {
+      for await (const chunk of stream) {
+        // Handle text content
+        if (
+          chunk.type === 'content_block_delta' &&
+          chunk.delta.type === 'text_delta'
+        ) {
+          const text = chunk.delta.text;
+          fullResponse += text;
+          if (onChunk) {
+            onChunk(text);
+          }
         }
+        // Ignore tool use blocks - they're handled internally by the API
+        // and the final text response will be provided separately
       }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      throw error;
     }
 
     return fullResponse;
