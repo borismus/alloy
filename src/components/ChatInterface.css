@@ -72,7 +72,6 @@
   padding: 1rem 1.25rem;
   border-radius: 12px;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-wrap: break-word;
 }
 
@@ -253,4 +252,134 @@
 .api-key-modal-actions button:last-child {
   background: #e0e0e0;
   color: #333;
+}
+
+/* Markdown Styles */
+.message-content p {
+  margin: 0 0 1rem 0;
+}
+
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  margin: 1.5rem 0 0.75rem 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.message-content h1:first-child,
+.message-content h2:first-child,
+.message-content h3:first-child {
+  margin-top: 0;
+}
+
+.message-content h1 {
+  font-size: 1.75rem;
+}
+
+.message-content h2 {
+  font-size: 1.5rem;
+}
+
+.message-content h3 {
+  font-size: 1.25rem;
+}
+
+.message-content code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.message.user .message-content code {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.message-content pre {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow-x: auto;
+  background: #1e1e1e !important;
+}
+
+.message-content pre code {
+  display: block;
+  padding: 1rem;
+  background: transparent;
+  color: #d4d4d4;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.message-content li {
+  margin: 0.25rem 0;
+}
+
+.message-content blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid #e0e0e0;
+  color: #666;
+}
+
+.message.user .message-content blockquote {
+  border-left-color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.message-content th,
+.message-content td {
+  border: 1px solid #e0e0e0;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.message-content th {
+  background: #f8f9fa;
+  font-weight: 600;
+}
+
+.message-content a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.message-content a:hover {
+  text-decoration: underline;
+}
+
+.message.user .message-content a {
+  color: white;
+  text-decoration: underline;
+}
+
+.message-content hr {
+  margin: 1.5rem 0;
+  border: none;
+  border-top: 1px solid #e0e0e0;
+}
+
+.message.user .message-content hr {
+  border-top-color: rgba(255, 255, 255, 0.3);
 }

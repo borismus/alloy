@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { Conversation } from '../types';
 import { ModelSelector } from './ModelSelector';
 import './ChatInterface.css';
+import 'highlight.js/styles/github-dark.css';
 
 interface ChatInterfaceProps {
   conversation: Conversation | null;
@@ -160,14 +164,28 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             <div className="message-role">
               {message.role === 'user' ? 'You' : 'Claude'}
             </div>
-            <div className="message-content">{message.content}</div>
+            <div className="message-content">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </div>
           </div>
         ))}
 
         {isStreaming && streamingContent && (
           <div className="message assistant streaming">
             <div className="message-role">Claude</div>
-            <div className="message-content">{streamingContent}</div>
+            <div className="message-content">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+              >
+                {streamingContent}
+              </ReactMarkdown>
+            </div>
           </div>
         )}
 
