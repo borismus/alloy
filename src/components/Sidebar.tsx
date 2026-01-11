@@ -10,6 +10,7 @@ interface SidebarProps {
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
+  onRenameConversation: (oldId: string, newTitle: string) => void;
 }
 
 export function Sidebar({
@@ -17,8 +18,33 @@ export function Sidebar({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  onRenameConversation,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const startRename = (conversationId: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation) return;
+
+    const currentTitle = conversation.title || 'New conversation';
+    setRenamingId(conversationId);
+    setRenameValue(currentTitle);
+  };
+
+  const confirmRename = () => {
+    if (renamingId && renameValue.trim() !== '') {
+      onRenameConversation(renamingId, renameValue.trim());
+    }
+    setRenamingId(null);
+    setRenameValue('');
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameValue('');
+  };
 
   const handleContextMenu = async (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault();
@@ -29,6 +55,13 @@ export function Sidebar({
     try {
       const menu = await Menu.new({
         items: [
+          {
+            id: 'rename',
+            text: 'Rename',
+            action: () => {
+              startRename(conversationId);
+            }
+          },
           {
             id: 'reveal',
             text: 'Reveal in Finder',
@@ -145,6 +178,32 @@ export function Sidebar({
       <button onClick={onNewConversation} className="fab" title="New Conversation">
         +
       </button>
+
+      {renamingId && (
+        <div className="rename-modal" onClick={cancelRename}>
+          <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Rename Conversation</h3>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  confirmRename();
+                } else if (e.key === 'Escape') {
+                  cancelRename();
+                }
+              }}
+              autoFocus
+              className="rename-input"
+            />
+            <div className="rename-buttons">
+              <button onClick={cancelRename} className="cancel-button">Cancel</button>
+              <button onClick={confirmRename} className="confirm-button">Rename</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

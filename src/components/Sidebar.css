@@ -109,3 +109,80 @@
   font-size: 0.75rem;
   color: #999;
 }
+
+.rename-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.rename-dialog {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  min-width: 320px;
+  max-width: 400px;
+}
+
+.rename-dialog h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.rename-input {
+  width: 100%;
+  padding: 0.625rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  margin-bottom: 1rem;
+}
+
+.rename-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.rename-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.rename-buttons button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.cancel-button {
+  background: #f1f3f4;
+  color: #333;
+}
+
+.cancel-button:hover {
+  background: #e0e0e0;
+}
+
+.confirm-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.confirm-button:hover {
+  opacity: 0.9;
+}

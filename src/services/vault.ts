@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile, exists, mkdir, readDir } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, exists, mkdir, readDir, remove } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
 import { Conversation, Config } from '../types';
@@ -68,7 +68,15 @@ export class VaultService {
     const configPath = await join(this.vaultPath, 'config.yaml');
     if (await exists(configPath)) {
       const content = await readTextFile(configPath);
-      return yaml.load(content) as Config;
+      const config = yaml.load(content) as Config;
+
+      // Ensure defaultModel is set to Opus 4.5 if not present
+      if (!config.defaultModel) {
+        config.defaultModel = 'claude-opus-4-5-20251101';
+        await this.saveConfig(config);
+      }
+
+      return config;
     }
 
     return null;
@@ -159,6 +167,67 @@ export class VaultService {
 
     if (await exists(filePath)) {
       return filePath;
+    }
+
+    return null;
+  }
+
+  generateSlug(title: string): string {
+    // Convert title to URL-friendly slug
+    return title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-') // Replace non-alphanumeric with hyphens
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+      .slice(0, 50); // Max 50 chars
+  }
+
+  async renameConversation(oldId: string, newTitle: string): Promise<Conversation | null> {
+    if (!this.vaultPath) return null;
+
+    const conversationsPath = await join(this.vaultPath, 'conversations');
+    const oldFilePath = await join(conversationsPath, `${oldId}.yaml`);
+
+    if (!(await exists(oldFilePath))) {
+      return null;
+    }
+
+    // Load the existing conversation
+    const content = await readTextFile(oldFilePath);
+    const conversation = yaml.load(content) as Conversation;
+
+    // Extract the date and timestamp from the old ID
+    // Format: YYYY-MM-DD-timestamp-slug or YYYY-MM-DD-timestamp (if no slug)
+    const parts = oldId.split('-');
+    const date = `${parts[0]}-${parts[1]}-${parts[2]}`; // YYYY-MM-DD
+    const timestamp = parts[3];
+
+    // Generate new ID with the new slug
+    const slug = this.generateSlug(newTitle);
+    const newId = `${date}-${timestamp}-${slug}`;
+
+    // Update conversation with new ID and title
+    const updatedConversation = {
+      ...conversation,
+      id: newId,
+      title: newTitle,
+    };
+
+    // Save to new file
+    const newFilePath = await join(conversationsPath, `${newId}.yaml`);
+    await writeTextFile(newFilePath, yaml.dump(updatedConversation));
+
+    // Remove old file
+    await remove(oldFilePath);
+
+    return updatedConversation;
+  }
+
+  async getMemoryFilePath(): Promise<string | null> {
+    if (!this.vaultPath) return null;
+
+    const memoryPath = await join(this.vaultPath, 'memory.md');
+    if (await exists(memoryPath)) {
+      return memoryPath;
     }
 
     return null;
