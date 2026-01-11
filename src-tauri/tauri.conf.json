@@ -36,6 +36,7 @@
             "fs:allow-read-dir",
             "fs:allow-exists",
             "fs:allow-mkdir",
+            "fs:allow-remove",
             "shell:allow-execute"
           ]
         },
@@ -62,6 +63,10 @@
             },
             {
               "identifier": "fs:allow-mkdir",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-remove",
               "allow": [{"path": "$HOME/**"}]
             }
           ]
