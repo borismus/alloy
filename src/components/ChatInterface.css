@@ -1,0 +1,256 @@
+.chat-interface {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: white;
+}
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem;
+}
+
+.welcome-message,
+.no-conversation,
+.api-key-setup {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #666;
+}
+
+.welcome-message h2,
+.no-conversation h2,
+.api-key-setup h2 {
+  margin: 0 0 1rem 0;
+  color: #333;
+}
+
+.model-info {
+  text-align: center;
+  padding: 1rem 0 2rem 0;
+  font-size: 0.875rem;
+  color: #999;
+}
+
+.model-provider {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.model-separator {
+  margin: 0 0.5rem;
+}
+
+.model-name {
+  font-family: monospace;
+  color: #666;
+}
+
+.message {
+  margin-bottom: 2rem;
+  max-width: 800px;
+}
+
+.message.user {
+  margin-left: auto;
+}
+
+.message-role {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #666;
+}
+
+.message.user .message-role {
+  text-align: right;
+}
+
+.message-content {
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.message.user .message-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  margin-left: auto;
+}
+
+.message.assistant .message-content {
+  background: #f8f9fa;
+  color: #333;
+  border: 1px solid #e0e0e0;
+}
+
+.message.streaming .message-content {
+  opacity: 0.9;
+}
+
+.input-form {
+  border-top: 1px solid #e0e0e0;
+  padding: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  background: white;
+}
+
+.model-selector {
+  padding: 0.75rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  background: white;
+  cursor: pointer;
+  color: #333;
+  font-weight: 500;
+  min-width: 140px;
+  height: 48px;
+}
+
+.model-selector option {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.model-selector:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  color: #999;
+}
+
+.model-selector:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.input-form textarea {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-family: inherit;
+  resize: none;
+  max-height: 200px;
+  overflow-y: auto;
+  min-height: 48px;
+}
+
+.input-form textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.send-button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  background: #d4a89e;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.5rem;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.send-button:hover:not(:disabled) {
+  background: #c49588;
+  transform: translateY(-1px);
+}
+
+.send-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.api-key-setup {
+  max-width: 500px;
+  margin: auto;
+}
+
+.api-key-input {
+  width: 100%;
+  padding: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+.api-key-submit {
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.api-key-note {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #999;
+}
+
+.api-key-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.api-key-modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.api-key-modal-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.api-key-modal-actions button {
+  flex: 1;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.api-key-modal-actions button:first-child {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.api-key-modal-actions button:last-child {
+  background: #e0e0e0;
+  color: #333;
+}

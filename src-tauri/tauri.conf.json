@@ -1,0 +1,101 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PromptBox",
+  "version": "0.1.0",
+  "identifier": "com.promptbox.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PromptBox",
+        "width": 1200,
+        "height": 800,
+        "decorations": true,
+        "backgroundColor": "#f8f9fa"
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "main-capability",
+          "description": "Main app capability",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "core:path:default",
+            "dialog:default",
+            "fs:default",
+            "fs:allow-read-text-file",
+            "fs:allow-write-text-file",
+            "fs:allow-read-dir",
+            "fs:allow-exists",
+            "fs:allow-mkdir",
+            "shell:allow-execute"
+          ]
+        },
+        {
+          "identifier": "fs-scope",
+          "description": "File system access for vault",
+          "windows": ["main"],
+          "permissions": [
+            {
+              "identifier": "fs:allow-read-text-file",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-write-text-file",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-read-dir",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-exists",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-mkdir",
+              "allow": [{"path": "$HOME/**"}]
+            }
+          ]
+        },
+        {
+          "identifier": "shell-scope",
+          "description": "Allow opening files in Finder",
+          "windows": ["main"],
+          "permissions": [
+            {
+              "identifier": "shell:allow-execute",
+              "allow": [
+                {
+                  "name": "open",
+                  "cmd": "open",
+                  "args": ["-R", {"validator": "\\S+"}]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "plugins": {},
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
