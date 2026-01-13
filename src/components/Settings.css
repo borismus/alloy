@@ -112,3 +112,8 @@
 .settings-button:hover {
   background: #1d4ed8;
 }
+
+.settings-button-group {
+  display: flex;
+  gap: 12px;
+}

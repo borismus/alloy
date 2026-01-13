@@ -1,4 +1,4 @@
-import { Command } from '@tauri-apps/plugin-shell';
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { vaultService } from '../services/vault';
 import './Settings.css';
 
@@ -11,9 +11,20 @@ interface SettingsProps {
 }
 
 export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, onConfigReload: _onConfigReload }: SettingsProps) {
-  const handleRevealMemory = async () => {
+  const handleRevealVaultInFinder = async () => {
     try {
-      // Get the memory file path if not already available
+      if (!vaultPath) {
+        console.error('Vault path not found');
+        return;
+      }
+      await revealItemInDir(vaultPath);
+    } catch (error) {
+      console.error('Failed to reveal vault in Finder:', error);
+    }
+  };
+
+  const handleEditMemory = async () => {
+    try {
       const filePath = memoryFilePath || await vaultService.getMemoryFilePath();
 
       if (!filePath) {
@@ -21,13 +32,13 @@ export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, on
         return;
       }
 
-      await Command.create('open', ['-R', filePath]).execute();
+      await openPath(filePath);
     } catch (error) {
-      console.error('Failed to reveal memory file:', error);
+      console.error('Failed to open memory file:', error);
     }
   };
 
-  const handleRevealConfig = async () => {
+  const handleEditConfig = async () => {
     try {
       const filePath = await vaultService.getConfigFilePath();
 
@@ -36,9 +47,9 @@ export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, on
         return;
       }
 
-      await Command.create('open', ['-R', filePath]).execute();
+      await openPath(filePath);
     } catch (error) {
-      console.error('Failed to reveal config file:', error);
+      console.error('Failed to open config file:', error);
     }
   };
 
@@ -59,12 +70,20 @@ export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, on
             {vaultPath && (
               <p className="vault-path">{vaultPath}</p>
             )}
-            <button
-              onClick={onChangeVault}
-              className="settings-button"
-            >
-              Change Vault Location
-            </button>
+            <div className="settings-button-group">
+              <button
+                onClick={onChangeVault}
+                className="settings-button"
+              >
+                Change Vault Location
+              </button>
+              <button
+                onClick={handleRevealVaultInFinder}
+                className="settings-button"
+              >
+                Reveal in Finder
+              </button>
+            </div>
           </div>
 
           <div className="settings-section">
@@ -73,10 +92,10 @@ export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, on
               Your memory file stores context and preferences that are included with every conversation.
             </p>
             <button
-              onClick={handleRevealMemory}
+              onClick={handleEditMemory}
               className="settings-button"
             >
-              Reveal memory.md in Finder
+              Edit memory.md
             </button>
           </div>
 
@@ -86,10 +105,10 @@ export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, on
               Your config file stores API keys and other settings. Edit it to add or change providers.
             </p>
             <button
-              onClick={handleRevealConfig}
+              onClick={handleEditConfig}
               className="settings-button"
             >
-              Reveal config.yaml in Finder
+              Edit config.yaml
             </button>
           </div>
         </div>
