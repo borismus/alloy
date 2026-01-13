@@ -193,33 +193,37 @@
   width: 48px;
   height: 48px;
   padding: 0;
-  background: #d4a89e;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 12px;
   font-size: 1.5rem;
-  font-weight: 400;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
 .send-button:hover:not(:disabled) {
-  background: #c49588;
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .send-button:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .send-button.stop-button {
   background: #e74c3c;
   font-size: 1rem;
+  min-width: 48px;
+  min-height: 48px;
 }
 
 .send-button.stop-button:hover {
@@ -447,4 +451,297 @@
   padding: 0.25rem 0.75rem;
   background: #f5f5f5;
   border-radius: 12px;
+}
+
+/* Comparison Mode Styles */
+.chat-interface.comparison-mode .messages-container {
+  padding: 1rem;
+}
+
+.comparison-model-indicator-wrapper {
+  position: relative;
+}
+
+.comparison-model-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: white;
+  color: #333;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  height: 48px;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.comparison-model-indicator:hover {
+  border-color: #667eea;
+}
+
+.comparison-model-indicator .dropdown-arrow {
+  flex-shrink: 0;
+  color: #666;
+  transition: transform 0.2s;
+}
+
+.comparison-model-indicator .dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.comparison-models-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.comparison-model-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.comparison-model-item:last-child {
+  border-bottom: none;
+}
+
+.comparison-model-name {
+  font-weight: 500;
+  color: #333;
+  font-size: 0.85rem;
+}
+
+.comparison-model-provider {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.comparison-model-provider.provider-anthropic {
+  background: #f0e6d3;
+  color: #8b6914;
+}
+
+.comparison-model-provider.provider-openai {
+  background: #e3f2e6;
+  color: #1a7f37;
+}
+
+.comparison-model-provider.provider-ollama {
+  background: #e8e8e8;
+  color: #555;
+}
+
+.comparison-history {
+  margin-bottom: 1rem;
+}
+
+.comparison-exchange {
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.comparison-exchange:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.comparison-responses-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.response-summary {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.response-summary-header {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #667eea;
+  margin-bottom: 0.5rem;
+}
+
+.response-summary-content {
+  font-size: 0.875rem;
+  color: #333;
+  line-height: 1.6;
+}
+
+.response-summary-content p {
+  margin: 0 0 1rem 0;
+}
+
+.response-summary-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Markdown styles for comparison responses */
+.response-summary-content h1,
+.response-summary-content h2,
+.response-summary-content h3,
+.response-summary-content h4,
+.response-summary-content h5,
+.response-summary-content h6 {
+  margin: 1.25rem 0 0.5rem 0;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #333;
+}
+
+.response-summary-content h1:first-child,
+.response-summary-content h2:first-child,
+.response-summary-content h3:first-child {
+  margin-top: 0;
+}
+
+.response-summary-content h1 {
+  font-size: 1.5rem;
+}
+
+.response-summary-content h2 {
+  font-size: 1.25rem;
+}
+
+.response-summary-content h3 {
+  font-size: 1.1rem;
+}
+
+.response-summary-content h4,
+.response-summary-content h5,
+.response-summary-content h6 {
+  font-size: 1rem;
+}
+
+.response-summary-content code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.response-summary-content pre {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow-x: auto;
+  background: #1e1e1e !important;
+}
+
+.response-summary-content pre code {
+  display: block;
+  padding: 1rem;
+  background: transparent;
+  color: #d4d4d4;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.response-summary-content ul,
+.response-summary-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.response-summary-content li {
+  margin: 0.25rem 0;
+}
+
+.response-summary-content li::marker {
+  color: #666;
+}
+
+.response-summary-content blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid #e0e0e0;
+  color: #666;
+}
+
+.response-summary-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.response-summary-content th,
+.response-summary-content td {
+  border: 1px solid #e0e0e0;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.response-summary-content th {
+  background: #f0f0f0;
+  font-weight: 600;
+}
+
+.response-summary-content a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.response-summary-content a:hover {
+  text-decoration: underline;
+}
+
+.response-summary-content hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid #e0e0e0;
+}
+
+.response-summary-content strong {
+  font-weight: 600;
+  color: #333;
+}
+
+.response-summary .waiting-text {
+  color: #999;
+  font-style: italic;
+}
+
+.response-summary .error-text {
+  color: #e74c3c;
+}
+
+.response-summary .streaming-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #667eea;
+  border-radius: 50%;
+  margin-left: 0.5rem;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
 }
