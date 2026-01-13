@@ -86,7 +86,18 @@
   line-height: 1.5;
 }
 
-.reveal-button {
+.vault-path {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #374151;
+  background: #f3f4f6;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  word-break: break-all;
+}
+
+.settings-button {
   background: #2563eb;
   color: white;
   border: none;
@@ -98,6 +109,6 @@
   font-weight: 500;
 }
 
-.reveal-button:hover {
+.settings-button:hover {
   background: #1d4ed8;
 }
