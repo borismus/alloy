@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Conversation } from '../types';
 import { vaultService } from '../services/vault';
-import { Command } from '@tauri-apps/plugin-shell';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Menu } from '@tauri-apps/api/menu';
 import './Sidebar.css';
 
@@ -10,6 +10,7 @@ interface SidebarProps {
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
+  onNewComparison: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onDeleteConversation: (id: string) => void;
 }
@@ -19,6 +20,7 @@ export function Sidebar({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  onNewComparison,
   onRenameConversation,
   onDeleteConversation,
 }: SidebarProps) {
@@ -88,7 +90,7 @@ export function Sidebar({
             text: 'Reveal in Finder',
             action: async () => {
               try {
-                await Command.create('open', ['-R', filePath]).execute();
+                await revealItemInDir(filePath);
               } catch (error) {
                 console.error('Failed to reveal file in Finder:', error);
               }
@@ -100,6 +102,33 @@ export function Sidebar({
       await menu.popup();
     } catch (error) {
       console.error('Failed to show context menu:', error);
+    }
+  };
+
+  const handleFabClick = async () => {
+    try {
+      const menu = await Menu.new({
+        items: [
+          {
+            id: 'new-conversation',
+            text: 'New Conversation',
+            action: () => {
+              onNewConversation();
+            }
+          },
+          {
+            id: 'new-comparison',
+            text: 'New Comparison',
+            action: () => {
+              onNewComparison();
+            }
+          }
+        ]
+      });
+
+      await menu.popup();
+    } catch (error) {
+      console.error('Failed to show FAB menu:', error);
     }
   };
 
@@ -161,6 +190,9 @@ export function Sidebar({
           onChange={(e) => setSearchQuery(e.target.value)}
           className="search-input"
         />
+        <button onClick={handleFabClick} className="new-button" title="New">
+          +
+        </button>
       </div>
 
       <div className="conversations-list">
@@ -180,25 +212,27 @@ export function Sidebar({
               key={conversation.id}
               className={`conversation-item ${
                 conversation.id === currentConversationId ? 'active' : ''
-              }`}
+              }${conversation.comparison ? ' comparison' : ''}`}
               onClick={() => onSelectConversation(conversation.id)}
               onContextMenu={(e) => handleContextMenu(e, conversation.id)}
             >
               <div className="conversation-preview">
+                {conversation.comparison && <span className="comparison-badge">Compare</span>}
                 {getConversationTitle(conversation)}
               </div>
               <div className="conversation-meta">
                 <span className="conversation-date">{formatDate(conversation.created)}</span>
-                <span className="conversation-count">{conversation.messages.length} msgs</span>
+                <span className="conversation-count">
+                  {conversation.comparison
+                    ? `${conversation.comparison.models.length} models`
+                    : `${conversation.messages.length} msgs`
+                  }
+                </span>
               </div>
             </div>
           ))
         )}
       </div>
-
-      <button onClick={onNewConversation} className="fab" title="New Conversation">
-        +
-      </button>
 
       {renamingId && (
         <div className="rename-modal" onClick={cancelRename}>
