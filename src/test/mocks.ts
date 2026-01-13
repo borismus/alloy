@@ -5,6 +5,7 @@ import type { Conversation, Config } from '../types';
 export const createMockConversation = (overrides?: Partial<Conversation>): Conversation => ({
   id: 'test-id-123',
   created: '2024-01-10T12:00:00Z',
+  provider: 'anthropic',
   model: 'claude-opus-4-5-20251101',
   title: 'Test Conversation',
   messages: [],
@@ -13,7 +14,7 @@ export const createMockConversation = (overrides?: Partial<Conversation>): Conve
 
 export const createMockConfig = (overrides?: Partial<Config>): Config => ({
   vaultPath: '/mock/vault/path',
-  anthropicApiKey: 'sk-test-key',
+  ANTHROPIC_API_KEY: 'sk-test-key',
   defaultModel: 'claude-opus-4-5-20251101',
   ...overrides,
 });

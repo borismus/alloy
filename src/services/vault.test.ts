@@ -101,7 +101,7 @@ describe('VaultService', () => {
       );
       expect(configCall).toBeDefined();
       expect(configCall![1]).toContain('vaultPath');
-      expect(configCall![1]).toContain('anthropicApiKey');
+      expect(configCall![1]).toContain('ANTHROPIC_API_KEY');
       expect(configCall![1]).toContain('defaultModel');
     });
   });
@@ -114,7 +114,8 @@ describe('VaultService', () => {
 
     it('should load and parse config from yaml file', async () => {
       vaultService.setVaultPath('/test/vault');
-      const mockConfig = createMockConfig();
+      // Use vaultPath that matches what we set to avoid the sync logic triggering
+      const mockConfig = createMockConfig({ vaultPath: '/test/vault' });
       vi.mocked(fs.exists).mockResolvedValue(true);
       vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(mockConfig));
 
@@ -124,16 +125,18 @@ describe('VaultService', () => {
       expect(fs.readTextFile).toHaveBeenCalledWith('/test/vault/config.yaml');
     });
 
-    it('should set default model if not present in config', async () => {
+    it('should update vaultPath if it does not match the actual path', async () => {
       vaultService.setVaultPath('/test/vault');
-      const mockConfig = { ...createMockConfig(), defaultModel: undefined as any };
+      // Config has a different vaultPath than what's set
+      const mockConfig = createMockConfig({ vaultPath: '/old/vault/path' });
       vi.mocked(fs.exists).mockResolvedValue(true);
       vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(mockConfig));
       vi.mocked(fs.writeTextFile).mockResolvedValue();
 
       const result = await vaultService.loadConfig();
 
-      expect(result?.defaultModel).toBe('claude-opus-4-5-20251101');
+      // vaultPath should be updated to match actual path
+      expect(result?.vaultPath).toBe('/test/vault');
       expect(fs.writeTextFile).toHaveBeenCalled();
     });
 
@@ -209,15 +212,28 @@ describe('VaultService', () => {
 
     it('should save conversation to yaml file', async () => {
       vaultService.setVaultPath('/test/vault');
-      const mockConversation = createMockConversation({ id: 'conv-123' });
+      // Need to include messages so conversation is saved (empty messages are filtered)
+      const mockConversation = createMockConversation({
+        id: 'conv-123',
+        messages: [
+          { role: 'user', content: 'Hello', timestamp: '2024-01-01T10:00:00Z' },
+        ],
+      });
       vi.mocked(fs.writeTextFile).mockResolvedValue();
 
       await vaultService.saveConversation(mockConversation);
 
-      expect(fs.writeTextFile).toHaveBeenCalledWith(
-        '/test/vault/conversations/conv-123.yaml',
-        yaml.dump(mockConversation)
+      // Verify yaml file was written
+      const yamlCall = vi.mocked(fs.writeTextFile).mock.calls.find(
+        call => call[0] === '/test/vault/conversations/conv-123.yaml'
       );
+      expect(yamlCall).toBeDefined();
+
+      // Verify markdown preview was also written
+      const mdCall = vi.mocked(fs.writeTextFile).mock.calls.find(
+        call => call[0] === '/test/vault/conversations/conv-123.md'
+      );
+      expect(mdCall).toBeDefined();
     });
   });
 
@@ -379,7 +395,8 @@ describe('VaultService', () => {
 
     it('should rename conversation and update file', async () => {
       vaultService.setVaultPath('/test/vault');
-      const oldId = '2024-01-01-1234567890-old-slug';
+      // ID format: YYYY-MM-DD-HHMM-hash-slug (time is 4 digits, hash is index 4)
+      const oldId = '2024-01-01-1234-abcd-old-slug';
       const newTitle = 'New Amazing Title';
       const oldConversation = createMockConversation({ id: oldId, title: 'Old Title' });
 
@@ -392,21 +409,22 @@ describe('VaultService', () => {
 
       expect(result).toBeDefined();
       expect(result?.title).toBe(newTitle);
-      expect(result?.id).toBe('2024-01-01-1234567890-new-amazing-title');
+      expect(result?.id).toBe('2024-01-01-1234-abcd-new-amazing-title');
 
-      // Should have written new file
-      expect(fs.writeTextFile).toHaveBeenCalledWith(
-        '/test/vault/conversations/2024-01-01-1234567890-new-amazing-title.yaml',
-        expect.any(String)
+      // Should have written new yaml file
+      const yamlCall = vi.mocked(fs.writeTextFile).mock.calls.find(
+        call => call[0] === '/test/vault/conversations/2024-01-01-1234-abcd-new-amazing-title.yaml'
       );
+      expect(yamlCall).toBeDefined();
 
       // Should have removed old file
-      expect(fs.remove).toHaveBeenCalledWith('/test/vault/conversations/2024-01-01-1234567890-old-slug.yaml');
+      expect(fs.remove).toHaveBeenCalledWith('/test/vault/conversations/2024-01-01-1234-abcd-old-slug.yaml');
     });
 
     it('should preserve conversation data when renaming', async () => {
       vaultService.setVaultPath('/test/vault');
-      const oldId = '2024-01-01-1234567890-old-slug';
+      // ID format: YYYY-MM-DD-HHMM-hash-slug
+      const oldId = '2024-01-01-1234-abcd-old-slug';
       const oldConversation = createMockConversation({
         id: oldId,
         title: 'Old Title',

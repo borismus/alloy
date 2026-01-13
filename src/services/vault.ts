@@ -53,12 +53,16 @@ export class VaultService {
     // Create config.yaml if it doesn't exist
     const configPath = await join(path, 'config.yaml');
     if (!(await exists(configPath))) {
-      const defaultConfig: Config = {
-        vaultPath: path,
-        anthropicApiKey: '',
-        defaultModel: 'claude-opus-4-5-20251101',
-      };
-      await writeTextFile(configPath, yaml.dump(defaultConfig));
+      // Create config with commented templates for providers
+      const defaultConfigYaml = `vaultPath: ${path}
+defaultModel: claude-opus-4-5-20251101
+
+# Uncomment and fill in to enable each provider
+# ANTHROPIC_API_KEY: sk-ant-...
+# OPENAI_API_KEY: sk-...
+# OLLAMA_BASE_URL: http://localhost:11434
+`;
+      await writeTextFile(configPath, defaultConfigYaml);
     }
   }
 
@@ -70,9 +74,9 @@ export class VaultService {
       const content = await readTextFile(configPath);
       const config = yaml.load(content) as Config;
 
-      // Ensure defaultModel is set to Opus 4.5 if not present
-      if (!config.defaultModel) {
-        config.defaultModel = 'claude-opus-4-5-20251101';
+      // Ensure vaultPath matches the actual path (may have been moved)
+      if (config.vaultPath !== this.vaultPath) {
+        config.vaultPath = this.vaultPath;
         await this.saveConfig(config);
       }
 
@@ -103,11 +107,65 @@ export class VaultService {
   async saveConversation(conversation: Conversation): Promise<void> {
     if (!this.vaultPath) return;
 
+    // Filter out empty messages (can happen when aborting a streaming response)
+    const filteredMessages = conversation.messages.filter(m => m.content.trim() !== '');
+
+    // Don't save conversations with no actual messages
+    if (filteredMessages.length === 0) return;
+
+    const conversationToSave = {
+      ...conversation,
+      messages: filteredMessages,
+    };
+
     const conversationsPath = await join(this.vaultPath, 'conversations');
     const filename = `${conversation.id}.yaml`;
     const filePath = await join(conversationsPath, filename);
 
-    await writeTextFile(filePath, yaml.dump(conversation));
+    await writeTextFile(filePath, yaml.dump(conversationToSave));
+
+    // Generate markdown preview for Obsidian
+    await this.writeMarkdownPreview(conversationToSave);
+  }
+
+  private async writeMarkdownPreview(conversation: Conversation): Promise<void> {
+    if (!this.vaultPath) return;
+
+    const conversationsPath = await join(this.vaultPath, 'conversations');
+    const mdFilename = `${conversation.id}.md`;
+    const yamlFilename = `${conversation.id}.yaml`;
+    const mdFilePath = await join(conversationsPath, mdFilename);
+
+    const frontmatter = yaml.dump({
+      id: conversation.id,
+      created: conversation.created,
+      model: conversation.model,
+      title: conversation.title,
+    });
+
+    // Determine assistant name based on model
+    const getAssistantName = (model: string): string => {
+      if (model.includes('claude')) return 'Claude';
+      if (model.includes('gpt')) return 'ChatGPT';
+      if (model.includes('gemini')) return 'Gemini';
+      return 'Assistant';
+    };
+    const assistantName = getAssistantName(conversation.model);
+
+    const messages = conversation.messages
+      .filter(m => m.role !== 'log')
+      .map(m => {
+        const role = m.role === 'user' ? 'You' : assistantName;
+        return m.content
+          .split('\n')
+          .map((line, i) => i === 0 ? `> [${role}] ${line}` : `> ${line}`)
+          .join('\n');
+      })
+      .join('\n\n');
+
+    const content = `---\n${frontmatter}---\n\n<!-- Auto-generated preview. Edits will be overwritten. Source: ${yamlFilename} -->\n\n${messages}\n`;
+
+    await writeTextFile(mdFilePath, content);
   }
 
   async loadConversations(): Promise<Conversation[]> {
@@ -186,6 +244,7 @@ export class VaultService {
 
     const conversationsPath = await join(this.vaultPath, 'conversations');
     const oldFilePath = await join(conversationsPath, `${oldId}.yaml`);
+    const oldMdFilePath = await join(conversationsPath, `${oldId}.md`);
 
     if (!(await exists(oldFilePath))) {
       return null;
@@ -195,15 +254,16 @@ export class VaultService {
     const content = await readTextFile(oldFilePath);
     const conversation = yaml.load(content) as Conversation;
 
-    // Extract the date and timestamp from the old ID
-    // Format: YYYY-MM-DD-timestamp-slug or YYYY-MM-DD-timestamp (if no slug)
+    // Extract date, time, and hash from the old ID
+    // Format: YYYY-MM-DD-HHMM-hash-slug or YYYY-MM-DD-HHMM-hash (if no slug)
     const parts = oldId.split('-');
     const date = `${parts[0]}-${parts[1]}-${parts[2]}`; // YYYY-MM-DD
-    const timestamp = parts[3];
+    const time = parts[3]; // HHMM
+    const hash = parts[4]; // 4-char hex
 
     // Generate new ID with the new slug
     const slug = this.generateSlug(newTitle);
-    const newId = `${date}-${timestamp}-${slug}`;
+    const newId = `${date}-${time}-${hash}-${slug}`;
 
     // Update conversation with new ID and title
     const updatedConversation = {
@@ -212,14 +272,37 @@ export class VaultService {
       title: newTitle,
     };
 
-    // Save to new file
+    // Save to new file (this also generates the new markdown preview)
     const newFilePath = await join(conversationsPath, `${newId}.yaml`);
     await writeTextFile(newFilePath, yaml.dump(updatedConversation));
+    await this.writeMarkdownPreview(updatedConversation);
 
-    // Remove old file
+    // Remove old files
     await remove(oldFilePath);
+    if (await exists(oldMdFilePath)) {
+      await remove(oldMdFilePath);
+    }
 
     return updatedConversation;
+  }
+
+  async deleteConversation(id: string): Promise<boolean> {
+    if (!this.vaultPath) return false;
+
+    const conversationsPath = await join(this.vaultPath, 'conversations');
+    const yamlFilePath = await join(conversationsPath, `${id}.yaml`);
+    const mdFilePath = await join(conversationsPath, `${id}.md`);
+
+    if (!(await exists(yamlFilePath))) {
+      return false;
+    }
+
+    await remove(yamlFilePath);
+    if (await exists(mdFilePath)) {
+      await remove(mdFilePath);
+    }
+
+    return true;
   }
 
   async getMemoryFilePath(): Promise<string | null> {
@@ -231,6 +314,52 @@ export class VaultService {
     }
 
     return null;
+  }
+
+  async getConfigFilePath(): Promise<string | null> {
+    if (!this.vaultPath) return null;
+
+    const configPath = await join(this.vaultPath, 'config.yaml');
+    if (await exists(configPath)) {
+      return configPath;
+    }
+
+    return null;
+  }
+
+  async loadRawConfig(): Promise<string> {
+    if (!this.vaultPath) return '';
+
+    const configPath = await join(this.vaultPath, 'config.yaml');
+    if (await exists(configPath)) {
+      return await readTextFile(configPath);
+    }
+
+    return '';
+  }
+
+  async saveRawConfig(content: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.vaultPath) {
+      return { success: false, error: 'No vault path set' };
+    }
+
+    // Validate YAML syntax
+    try {
+      yaml.load(content);
+    } catch (e) {
+      return { success: false, error: `Invalid YAML: ${(e as Error).message}` };
+    }
+
+    const configPath = await join(this.vaultPath, 'config.yaml');
+    await writeTextFile(configPath, content);
+    return { success: true };
+  }
+
+  async saveMemory(content: string): Promise<void> {
+    if (!this.vaultPath) return;
+
+    const memoryPath = await join(this.vaultPath, 'memory.md');
+    await writeTextFile(memoryPath, content);
   }
 }
 
