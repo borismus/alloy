@@ -14,7 +14,10 @@
       "mcp__playwright__browser_click",
       "mcp__playwright__browser_handle_dialog",
       "mcp__playwright__browser_snapshot",
-      "mcp__playwright__browser_take_screenshot"
+      "mcp__playwright__browser_take_screenshot",
+      "Bash(npm run tauri:*)",
+      "mcp__playwright__browser_close",
+      "Bash(npx tsc:*)"
     ]
   }
 }

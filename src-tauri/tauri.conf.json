@@ -72,6 +72,21 @@
               "allow": [{"path": "$HOME/**"}]
             }
           ]
+        },
+        {
+          "identifier": "opener-scope",
+          "description": "Opener access for vault files",
+          "windows": ["main"],
+          "permissions": [
+            {
+              "identifier": "opener:allow-open-path",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "opener:allow-reveal-item-in-dir",
+              "allow": [{"path": "$HOME/**"}]
+            }
+          ]
         }
       ]
     }
