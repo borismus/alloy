@@ -40,6 +40,14 @@
   color: #666;
 }
 
+.model-selector-button .chevron {
+  transition: transform 0.2s;
+}
+
+.model-selector-button .chevron.open {
+  transform: rotate(180deg);
+}
+
 .model-selector-dropdown {
   position: absolute;
   left: 0;
