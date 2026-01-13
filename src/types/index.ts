@@ -7,12 +7,30 @@ export interface Message {
   role: 'user' | 'assistant' | 'log';
   timestamp: string;
   content: string;
+  // For comparison mode - which model generated this assistant response
+  provider?: ProviderType;
+  model?: string;
 }
 
 export interface ModelInfo {
   id: string;
   name: string;
   provider: ProviderType;
+}
+
+// Track each model's response in a comparison
+export interface ComparisonResponse {
+  provider: ProviderType;
+  model: string;
+  content: string;
+  status: 'pending' | 'streaming' | 'complete' | 'error';
+  error?: string;
+}
+
+// Metadata for comparison conversations
+export interface ComparisonMetadata {
+  isComparison: true;
+  models: Array<{ provider: ProviderType; model: string }>;
 }
 
 export interface Conversation {
@@ -23,6 +41,7 @@ export interface Conversation {
   title?: string;
   memory_version?: number;
   messages: Message[];
+  comparison?: ComparisonMetadata;
 }
 
 export interface Config {
