@@ -2,45 +2,58 @@ import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 're
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { Conversation } from '../types';
+import { Conversation, ModelInfo, ProviderType } from '../types';
 import { ModelSelector } from './ModelSelector';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
 
 interface ChatInterfaceProps {
   conversation: Conversation | null;
-  onSendMessage: (content: string, onChunk?: (text: string) => void) => Promise<void>;
-  hasApiKey: boolean;
-  onApiKeyUpdate: (apiKey: string) => void;
-  onModelChange: (model: string) => void;
+  onSendMessage: (content: string, onChunk?: (text: string) => void, signal?: AbortSignal) => Promise<void>;
+  hasProvider: boolean;
+  onModelChange: (model: string, provider: ProviderType) => void;
+  availableModels: ModelInfo[];
 }
 
 export interface ChatInterfaceHandle {
   focusInput: () => void;
 }
 
-const AVAILABLE_MODELS = [
-  { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5' },
-  { id: 'claude-sonnet-4-5-20250929', name: 'Sonnet 4.5' },
-  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5' },
-  { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4' },
-  { id: 'claude-3-7-sonnet-20250219', name: 'Sonnet 3.7' },
-];
+const PROVIDER_NAMES: Record<ProviderType, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  ollama: 'Ollama',
+};
+
+const getAssistantName = (provider: ProviderType): string => {
+  switch (provider) {
+    case 'anthropic':
+      return 'Claude';
+    case 'openai':
+      return 'ChatGPT';
+    case 'ollama':
+      return 'Assistant';
+    default:
+      return 'Assistant';
+  }
+};
 
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(({
   conversation,
   onSendMessage,
-  hasApiKey,
-  onApiKeyUpdate,
+  hasProvider,
   onModelChange,
+  availableModels,
 }, ref) => {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const assistantName = conversation ? getAssistantName(conversation.provider) : 'Assistant';
 
   useImperativeHandle(ref, () => ({
     focusInput: () => {
@@ -48,16 +61,32 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }));
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.messages, streamingContent]);
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    const threshold = 100;
+    const isNearBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
+    setShouldAutoScroll(isNearBottom);
+  };
 
-  // Auto-focus the input when a new conversation is created
+  useEffect(() => {
+    if (shouldAutoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [conversation?.messages, streamingContent, shouldAutoScroll]);
+
   useEffect(() => {
     if (conversation && conversation.messages.length === 0 && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [conversation?.id]);
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,27 +96,27 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     setInput('');
     setIsStreaming(true);
     setStreamingContent('');
+    setShouldAutoScroll(true);
+
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
 
     try {
       await onSendMessage(message, (chunk) => {
         setStreamingContent((prev) => prev + chunk);
-      });
-      // Success - streaming content will be cleared
+      }, abortControllerRef.current.signal);
       setIsStreaming(false);
       setStreamingContent('');
     } catch (error) {
-      // Error occurred - reset state and let parent handle the error
       setIsStreaming(false);
       setStreamingContent('');
-      throw error; // Re-throw to let parent show error message
-    }
-  };
-
-  const handleApiKeySubmit = () => {
-    if (apiKeyInput.trim()) {
-      onApiKeyUpdate(apiKeyInput.trim());
-      setApiKeyInput('');
-      setShowApiKeyInput(false);
+      // Don't rethrow if it was an abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        return;
+      }
+      throw error;
+    } finally {
+      abortControllerRef.current = null;
     }
   };
 
@@ -96,7 +125,24 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       e.preventDefault();
       handleSubmit(e);
     }
+    if (e.key === 'Escape' && isStreaming) {
+      e.preventDefault();
+      handleStop();
+    }
   };
+
+  // Global Escape key handler for stopping streaming
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isStreaming) {
+        e.preventDefault();
+        handleStop();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isStreaming]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -105,26 +151,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }, [input]);
 
-  if (!hasApiKey) {
+  if (!hasProvider) {
     return (
       <div className="chat-interface">
-        <div className="api-key-setup">
-          <h2>API Key Required</h2>
-          <p>Enter your Anthropic API key to start chatting with Claude.</p>
-          <input
-            type="password"
-            value={apiKeyInput}
-            onChange={(e) => setApiKeyInput(e.target.value)}
-            placeholder="sk-ant-..."
-            className="api-key-input"
-            onKeyDown={(e) => e.key === 'Enter' && handleApiKeySubmit()}
-          />
-          <button onClick={handleApiKeySubmit} className="api-key-submit">
-            Save API Key
-          </button>
-          <p className="api-key-note">
-            Your API key is stored locally in your vault's config.yaml file.
-          </p>
+        <div className="no-provider">
+          <h2>No Provider Configured</h2>
+          <p>Open Settings to configure an AI provider.</p>
         </div>
       </div>
     );
@@ -143,7 +175,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   return (
     <div className="chat-interface">
-      <div className="messages-container">
+      <div className="messages-container" onScroll={handleScroll}>
         {conversation.messages.length === 0 && !isStreaming && (
           <div className="welcome-message">
             <h2>Start a conversation</h2>
@@ -153,31 +185,50 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
         {conversation.messages.length > 0 && (
           <div className="model-info">
-            <span className="model-provider">Anthropic</span>
+            <span className="model-provider">{PROVIDER_NAMES[conversation.provider]}</span>
             <span className="model-separator">·</span>
             <span className="model-name">{conversation.model}</span>
           </div>
         )}
 
         {conversation.messages.map((message, index) => (
-          <div key={index} className={`message ${message.role}`}>
-            <div className="message-role">
-              {message.role === 'user' ? 'You' : 'Claude'}
+          message.role === 'log' ? (
+            <div key={index} className="message log">
+              <div className="log-content">{message.content}</div>
             </div>
+          ) : (
+            <div key={index} className={`message ${message.role}`}>
+              <div className="message-role">
+                {message.role === 'user' ? 'You' : assistantName}
+              </div>
+              <div className="message-content">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeHighlight]}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+            </div>
+          )
+        ))}
+
+        {isStreaming && !streamingContent && (
+          <div className="message assistant thinking">
+            <div className="message-role">{assistantName}</div>
             <div className="message-content">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-              >
-                {message.content}
-              </ReactMarkdown>
+              <div className="thinking-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             </div>
           </div>
-        ))}
+        )}
 
         {isStreaming && streamingContent && (
           <div className="message assistant streaming">
-            <div className="message-role">Claude</div>
+            <div className="message-role">{assistantName}</div>
             <div className="message-content">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -203,34 +254,21 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           rows={1}
         />
         <ModelSelector
-          value={conversation?.model || 'claude-opus-4-5-20251101'}
+          value={conversation?.model || ''}
           onChange={onModelChange}
-          disabled={isStreaming || (conversation?.messages.length ?? 0) > 0}
-          models={AVAILABLE_MODELS}
+          disabled={isStreaming}
+          models={availableModels}
         />
-        <button type="submit" disabled={isStreaming || !input.trim()} className="send-button">
-          ↑
-        </button>
+        {isStreaming ? (
+          <button type="button" onClick={handleStop} className="send-button stop-button">
+            ■
+          </button>
+        ) : (
+          <button type="submit" disabled={!input.trim()} className="send-button">
+            ↑
+          </button>
+        )}
       </form>
-
-      {showApiKeyInput && (
-        <div className="api-key-modal">
-          <div className="api-key-modal-content">
-            <h3>Update API Key</h3>
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="sk-ant-..."
-              className="api-key-input"
-            />
-            <div className="api-key-modal-actions">
-              <button onClick={handleApiKeySubmit}>Save</button>
-              <button onClick={() => setShowApiKeyInput(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 });
