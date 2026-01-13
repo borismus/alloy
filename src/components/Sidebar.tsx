@@ -11,6 +11,7 @@ interface SidebarProps {
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
+  onDeleteConversation: (id: string) => void;
 }
 
 export function Sidebar({
@@ -19,10 +20,12 @@ export function Sidebar({
   onSelectConversation,
   onNewConversation,
   onRenameConversation,
+  onDeleteConversation,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const startRename = (conversationId: string) => {
     const conversation = conversations.find(c => c.id === conversationId);
@@ -46,6 +49,17 @@ export function Sidebar({
     setRenameValue('');
   };
 
+  const confirmDelete = () => {
+    if (deletingId) {
+      onDeleteConversation(deletingId);
+    }
+    setDeletingId(null);
+  };
+
+  const cancelDelete = () => {
+    setDeletingId(null);
+  };
+
   const handleContextMenu = async (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault();
 
@@ -60,6 +74,13 @@ export function Sidebar({
             text: 'Rename',
             action: () => {
               startRename(conversationId);
+            }
+          },
+          {
+            id: 'delete',
+            text: 'Delete',
+            action: () => {
+              setDeletingId(conversationId);
             }
           },
           {
@@ -200,6 +221,19 @@ export function Sidebar({
             <div className="rename-buttons">
               <button onClick={cancelRename} className="cancel-button">Cancel</button>
               <button onClick={confirmRename} className="confirm-button">Rename</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletingId && (
+        <div className="rename-modal" onClick={cancelDelete}>
+          <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Conversation</h3>
+            <p className="delete-warning">Are you sure you want to delete this conversation? This action cannot be undone.</p>
+            <div className="rename-buttons">
+              <button onClick={cancelDelete} className="cancel-button">Cancel</button>
+              <button onClick={confirmDelete} className="delete-button">Delete</button>
             </div>
           </div>
         </div>
