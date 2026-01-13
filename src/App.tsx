@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
-import { Conversation, Config, Message, ProviderType, ModelInfo } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata } from './types';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
+import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
+import { ComparisonModelSelector } from './components/ComparisonModelSelector';
 import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import './App.css';
@@ -17,7 +19,9 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [memoryFilePath, setMemoryFilePath] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
+  const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -130,6 +134,59 @@ function App() {
       messages: [],
     };
     setCurrentConversation(newConversation);
+  };
+
+  const handleNewComparison = () => {
+    if (availableModels.length < 2) {
+      alert('You need at least 2 models available to create a comparison. Please configure additional providers in Settings.');
+      return;
+    }
+    setShowComparisonSelector(true);
+  };
+
+  const handleStartComparison = (selectedModels: ModelInfo[]) => {
+    if (selectedModels.length < 2) return;
+
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().slice(0, 5).replace(':', '');
+    const hash = Math.random().toString(16).slice(2, 6);
+
+    const comparisonMetadata: ComparisonMetadata = {
+      isComparison: true,
+      models: selectedModels.map(m => ({ provider: m.provider, model: m.id })),
+    };
+
+    const newConversation: Conversation = {
+      id: `${date}-${time}-${hash}-compare`,
+      created: now.toISOString(),
+      provider: selectedModels[0].provider,
+      model: selectedModels[0].id,
+      messages: [],
+      comparison: comparisonMetadata,
+    };
+
+    setCurrentConversation(newConversation);
+    setShowComparisonSelector(false);
+  };
+
+  const handleUpdateComparisonConversation = async (updatedConversation: Conversation) => {
+    setCurrentConversation(updatedConversation);
+
+    // Check if this is the first message (conversation needs to be added to list)
+    const existingConversation = conversations.find(c => c.id === updatedConversation.id);
+    if (!existingConversation && updatedConversation.messages.length > 0) {
+      setConversations(prev => [updatedConversation, ...prev]);
+    }
+
+    // Save to vault
+    try {
+      await vaultService.saveConversation(updatedConversation);
+      const loadedConversations = await vaultService.loadConversations();
+      setConversations(loadedConversations);
+    } catch (error) {
+      console.error('Error saving comparison conversation:', error);
+    }
   };
 
   const handleModelChange = (model: string, provider: ProviderType) => {
@@ -361,6 +418,8 @@ function App() {
     );
   }
 
+  const isComparisonConversation = currentConversation?.comparison !== undefined;
+
   return (
     <div className="app">
       <Sidebar
@@ -368,17 +427,36 @@ function App() {
         currentConversationId={currentConversation?.id || null}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onNewComparison={handleNewComparison}
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
       />
-      <ChatInterface
-        ref={chatInterfaceRef}
-        conversation={currentConversation}
-        onSendMessage={handleSendMessage}
-        hasProvider={providerRegistry.hasAnyProvider()}
-        onModelChange={handleModelChange}
-        availableModels={availableModels}
-      />
+      {showComparisonSelector ? (
+        <div className="main-content">
+          <ComparisonModelSelector
+            availableModels={availableModels}
+            onStartComparison={handleStartComparison}
+            onCancel={() => setShowComparisonSelector(false)}
+          />
+        </div>
+      ) : isComparisonConversation && currentConversation ? (
+        <ComparisonChatInterface
+          ref={comparisonChatInterfaceRef}
+          conversation={currentConversation}
+          availableModels={availableModels}
+          memory={memory}
+          onUpdateConversation={handleUpdateComparisonConversation}
+        />
+      ) : (
+        <ChatInterface
+          ref={chatInterfaceRef}
+          conversation={currentConversation}
+          onSendMessage={handleSendMessage}
+          hasProvider={providerRegistry.hasAnyProvider()}
+          onModelChange={handleModelChange}
+          availableModels={availableModels}
+        />
+      )}
       {showSettings && (
         <Settings
           onClose={() => setShowSettings(false)}

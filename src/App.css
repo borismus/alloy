@@ -26,3 +26,12 @@ body {
   font-size: 1.2rem;
   color: #666;
 }
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: white;
+  overflow-y: auto;
+}
