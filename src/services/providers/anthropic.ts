@@ -73,40 +73,71 @@ export class AnthropicService implements IProviderService {
         content: msg.content,
       }));
 
-    const stream = await this.client.messages.create({
-      model: options.model,
-      max_tokens: 8192,
-      messages: anthropicMessages,
-      system: options.systemPrompt,
-      stream: true,
-      tools: [
-        {
-          type: 'web_search_20250305' as any,
-          name: 'web_search',
-          max_uses: 5,
-        } as any,
-      ],
-    });
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-    let fullResponse = '';
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const stream = await this.client.messages.create({
+          model: options.model,
+          max_tokens: 8192,
+          messages: anthropicMessages,
+          system: options.systemPrompt,
+          stream: true,
+          tools: [
+            {
+              type: 'web_search_20250305' as any,
+              name: 'web_search',
+              max_uses: 5,
+            } as any,
+          ],
+        });
 
-    for await (const chunk of stream) {
-      // Check if aborted
-      if (options.signal?.aborted) {
-        stream.controller.abort();
-        break;
-      }
+        let fullResponse = '';
 
-      if (
-        chunk.type === 'content_block_delta' &&
-        chunk.delta.type === 'text_delta'
-      ) {
-        const text = chunk.delta.text;
-        fullResponse += text;
-        options.onChunk?.(text);
+        for await (const chunk of stream) {
+          // Check if aborted
+          if (options.signal?.aborted) {
+            stream.controller.abort();
+            break;
+          }
+
+          if (
+            chunk.type === 'content_block_delta' &&
+            chunk.delta.type === 'text_delta'
+          ) {
+            const text = chunk.delta.text;
+            fullResponse += text;
+            options.onChunk?.(text);
+          }
+        }
+
+        return fullResponse;
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Check if it's an overload error that should be retried
+        const isOverloaded =
+          lastError.message.includes('overloaded') ||
+          lastError.message.includes('Overloaded') ||
+          (error as any)?.error?.type === 'overloaded_error';
+
+        if (isOverloaded && attempt < maxRetries - 1) {
+          // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+          const delay = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // Provide user-friendly error messages
+        if (isOverloaded) {
+          throw new Error('Anthropic API is overloaded. Please try again in a moment.');
+        }
+
+        throw lastError;
       }
     }
 
-    return fullResponse;
+    throw lastError || new Error('Failed after retries');
   }
 }
