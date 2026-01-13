@@ -9,7 +9,12 @@
       "Bash(npm run build:*)",
       "Bash(npm test:*)",
       "Bash(npm run test:run:*)",
-      "Bash(npx playwright:*)"
+      "Bash(npx playwright:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_handle_dialog",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_take_screenshot"
     ]
   }
 }
