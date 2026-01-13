@@ -1,14 +1,24 @@
 // Core types for PromptBox MVP
 
+export type ProviderType = 'anthropic' | 'openai' | 'ollama';
+
 export interface Message {
-  role: 'user' | 'assistant';
+  // 'log' messages are for UI display only and are filtered out before sending to agents
+  role: 'user' | 'assistant' | 'log';
   timestamp: string;
   content: string;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: ProviderType;
 }
 
 export interface Conversation {
   id: string;
   created: string;
+  provider: ProviderType;
   model: string;
   title?: string;
   memory_version?: number;
@@ -17,8 +27,11 @@ export interface Conversation {
 
 export interface Config {
   vaultPath: string;
-  anthropicApiKey: string;
   defaultModel: string;
+  // Provider API keys - presence indicates provider is enabled
+  ANTHROPIC_API_KEY?: string;
+  OPENAI_API_KEY?: string;
+  OLLAMA_BASE_URL?: string;
 }
 
 export interface AppState {
