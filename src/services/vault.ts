@@ -136,32 +136,80 @@ defaultModel: claude-opus-4-5-20251101
     const yamlFilename = `${conversation.id}.yaml`;
     const mdFilePath = await join(conversationsPath, mdFilename);
 
-    const frontmatter = yaml.dump({
+    const frontmatterData: Record<string, unknown> = {
       id: conversation.id,
       created: conversation.created,
       model: conversation.model,
       title: conversation.title,
-    });
-
-    // Determine assistant name based on model
-    const getAssistantName = (model: string): string => {
-      if (model.includes('claude')) return 'Claude';
-      if (model.includes('gpt')) return 'ChatGPT';
-      if (model.includes('gemini')) return 'Gemini';
-      return 'Assistant';
     };
-    const assistantName = getAssistantName(conversation.model);
 
-    const messages = conversation.messages
-      .filter(m => m.role !== 'log')
-      .map(m => {
-        const role = m.role === 'user' ? 'You' : assistantName;
-        return m.content
+    // Add comparison metadata to frontmatter if this is a comparison
+    if (conversation.comparison) {
+      frontmatterData.comparison = true;
+      frontmatterData.models = conversation.comparison.models.map(m => `${m.provider}/${m.model}`);
+    }
+
+    const frontmatter = yaml.dump(frontmatterData);
+
+    let messages: string;
+
+    if (conversation.comparison) {
+      // Format comparison conversations differently
+      const modelCount = conversation.comparison.models.length;
+      const modelNames = conversation.comparison.models.map(m => `${m.provider}/${m.model}`);
+
+      // Group messages by user prompt
+      const groups: { userMessage: string; responses: string[] }[] = [];
+      let i = 0;
+      const nonLogMessages = conversation.messages.filter(m => m.role !== 'log');
+
+      while (i < nonLogMessages.length) {
+        const msg = nonLogMessages[i];
+        if (msg.role === 'user') {
+          const responses: string[] = [];
+          for (let j = 0; j < modelCount && i + 1 + j < nonLogMessages.length; j++) {
+            const nextMsg = nonLogMessages[i + 1 + j];
+            if (nextMsg.role === 'assistant') {
+              responses.push(nextMsg.content);
+            }
+          }
+          groups.push({ userMessage: msg.content, responses });
+          i += 1 + responses.length;
+        } else {
+          i++;
+        }
+      }
+
+      messages = groups.map(group => {
+        const userBlock = group.userMessage
           .split('\n')
-          .map((line, i) => i === 0 ? `> [${role}] ${line}` : `> ${line}`)
+          .map((line, i) => i === 0 ? `> [You] ${line}` : `> ${line}`)
           .join('\n');
-      })
-      .join('\n\n');
+
+        const responseBlocks = group.responses.map((response, idx) => {
+          const modelName = modelNames[idx] || `Model ${idx + 1}`;
+          return response
+            .split('\n')
+            .map((line, i) => i === 0 ? `> [${modelName}] ${line}` : `> ${line}`)
+            .join('\n');
+        }).join('\n\n');
+
+        return `${userBlock}\n\n${responseBlocks}`;
+      }).join('\n\n---\n\n');
+    } else {
+      // Standard single-model conversation
+      const assistantName = `${conversation.provider}/${conversation.model}`;
+      messages = conversation.messages
+        .filter(m => m.role !== 'log')
+        .map(m => {
+          const role = m.role === 'user' ? 'You' : assistantName;
+          return m.content
+            .split('\n')
+            .map((line, i) => i === 0 ? `> [${role}] ${line}` : `> ${line}`)
+            .join('\n');
+        })
+        .join('\n\n');
+    }
 
     const content = `---\n${frontmatter}---\n\n<!-- Auto-generated preview. Edits will be overwritten. Source: ${yamlFilename} -->\n\n${messages}\n`;
 
