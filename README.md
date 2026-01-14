@@ -78,17 +78,12 @@ messages:
 # Memory
 
 ## About me
-- Software developer based in Seattle
-- Working on a startup in the productivity space
+- Software dood based in Seattle
 - Prefer concise, direct communication
 
 ## Current projects
 - PromptBox: local-first AI conversation manager
 - Learning Rust
-
-## Preferences
-- Code examples in TypeScript unless specified
-- Prefer functional patterns over OOP
 ```
 
 ## Trust Model
@@ -159,6 +154,17 @@ See [DEV.md](DEV.md) for development notes and architecture details.
 - Node.js (v18+)
 - Rust (latest stable)
 - Anthropic API key
+
+### Installing Rust
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+After installation, restart your terminal or run:
+```bash
+source "$HOME/.cargo/env"
+```
 
 See [SETUP.md](SETUP.md) for detailed installation instructions.
 
