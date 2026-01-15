@@ -3,6 +3,7 @@ import { IProviderService } from './types';
 import { AnthropicService } from './anthropic';
 import { OpenAIService } from './openai';
 import { OllamaService } from './ollama';
+import { GeminiService } from './gemini';
 
 export class ProviderRegistry {
   private providers: Map<ProviderType, IProviderService> = new Map();
@@ -12,6 +13,7 @@ export class ProviderRegistry {
     this.providers.set('anthropic', new AnthropicService());
     this.providers.set('openai', new OpenAIService());
     this.providers.set('ollama', new OllamaService());
+    this.providers.set('gemini', new GeminiService());
   }
 
   async initializeFromConfig(config: Config): Promise<void> {
@@ -33,6 +35,12 @@ export class ProviderRegistry {
       ollama?.initialize(config.OLLAMA_BASE_URL);
       // Discover available models
       await ollama?.discoverModels();
+    }
+
+    // Initialize Gemini if key is present
+    if (config.GEMINI_API_KEY) {
+      const gemini = this.providers.get('gemini');
+      gemini?.initialize(config.GEMINI_API_KEY);
     }
   }
 
