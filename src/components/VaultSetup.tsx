@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { vaultService } from '../services/vault';
 import { ProviderType } from '../types';
 import './VaultSetup.css';
@@ -182,12 +183,12 @@ export function VaultSetup({ onVaultSelected, onExistingVault }: VaultSetupProps
               {selectedProvider !== 'ollama' && (
                 <div className="credential-help">
                   {selectedProvider === 'anthropic' && (
-                    <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">
+                    <a href="#" onClick={(e) => { e.preventDefault(); openUrl('https://console.anthropic.com/settings/keys'); }}>
                       Get your API key from Anthropic Console
                     </a>
                   )}
                   {selectedProvider === 'openai' && (
-                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
+                    <a href="#" onClick={(e) => { e.preventDefault(); openUrl('https://platform.openai.com/api-keys'); }}>
                       Get your API key from OpenAI Platform
                     </a>
                   )}
