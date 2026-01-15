@@ -60,6 +60,7 @@ defaultModel: claude-opus-4-5-20251101
 # Uncomment and fill in to enable each provider
 # ANTHROPIC_API_KEY: sk-ant-...
 # OPENAI_API_KEY: sk-...
+# GEMINI_API_KEY: ...
 # OLLAMA_BASE_URL: http://localhost:11434
 `;
       await writeTextFile(configPath, defaultConfigYaml);
@@ -116,6 +117,7 @@ defaultModel: claude-opus-4-5-20251101
     const conversationToSave = {
       ...conversation,
       messages: filteredMessages,
+      updated: new Date().toISOString(),
     };
 
     const conversationsPath = await join(this.vaultPath, 'conversations');
@@ -139,6 +141,7 @@ defaultModel: claude-opus-4-5-20251101
     const frontmatterData: Record<string, unknown> = {
       id: conversation.id,
       created: conversation.created,
+      updated: conversation.updated,
       model: conversation.model,
       title: conversation.title,
     };
@@ -237,9 +240,9 @@ defaultModel: claude-opus-4-5-20251101
       }
     }
 
-    // Sort by created date, newest first
+    // Sort by updated date, newest first (fall back to created for older conversations)
     return conversations.sort((a, b) =>
-      new Date(b.created).getTime() - new Date(a.created).getTime()
+      new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
     );
   }
 
@@ -263,6 +266,12 @@ defaultModel: claude-opus-4-5-20251101
 
   getVaultPath(): string | null {
     return this.vaultPath;
+  }
+
+  extractConversationIdFromPath(filePath: string): string | null {
+    const filename = filePath.split('/').pop() || '';
+    if (!filename.endsWith('.yaml')) return null;
+    return filename.replace('.yaml', '');
   }
 
   async getConversationFilePath(id: string): Promise<string | null> {
