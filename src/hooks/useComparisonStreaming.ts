@@ -1,8 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { ModelInfo, Message, ComparisonResponse, ProviderType } from '../types';
 import { providerRegistry } from '../services/providers/registry';
+import { useStreamingContext } from '../contexts/StreamingContext';
 
 interface UseComparisonStreamingOptions {
+  conversationId: string | null;
+  isCurrentConversation: boolean;
   systemPrompt?: string;
   existingMessages: Message[];
 }
@@ -26,6 +29,18 @@ export function useComparisonStreaming(
   const [isAnyStreaming, setIsAnyStreaming] = useState(false);
 
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const { startStreaming: startContextStreaming, completeStreaming: completeContextStreaming } = useStreamingContext();
+
+  // Sync streaming state with the global context for sidebar indicator
+  useEffect(() => {
+    if (!options.conversationId) return;
+
+    if (isAnyStreaming) {
+      startContextStreaming(options.conversationId);
+    } else {
+      completeContextStreaming(options.conversationId, options.isCurrentConversation);
+    }
+  }, [isAnyStreaming, options.conversationId, options.isCurrentConversation, startContextStreaming, completeContextStreaming]);
 
   const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
 

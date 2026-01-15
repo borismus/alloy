@@ -70,3 +70,10 @@ export interface AppState {
   memory: string;
   isLoading: boolean;
 }
+
+// Per-conversation streaming state
+export interface ConversationStreamingState {
+  isStreaming: boolean;
+  streamingContent: string;
+  error?: string;
+}

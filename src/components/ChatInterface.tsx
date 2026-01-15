@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { Conversation, ModelInfo, ProviderType, Attachment } from '../types';
+import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { ModelSelector } from './ModelSelector';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
@@ -59,8 +60,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   availableModels,
 }, ref) => {
   const [input, setInput] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingContent, setStreamingContent] = useState('');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -68,7 +67,19 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const currentConversationIdRef = useRef<string | null>(conversation?.id ?? null);
+
+  // Keep ref in sync with current conversation
+  currentConversationIdRef.current = conversation?.id ?? null;
+
+  const {
+    isStreaming,
+    streamingContent,
+    start: startStreaming,
+    stop: stopStreaming,
+    updateContent,
+    complete: completeStreaming,
+  } = useConversationStreaming(conversation?.id ?? null);
 
   const assistantName = conversation ? getAssistantName(conversation.provider) : 'Assistant';
 
@@ -92,6 +103,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }, [conversation?.messages, streamingContent, shouldAutoScroll]);
 
+  // Scroll to bottom immediately when switching conversations
+  useEffect(() => {
+    if (conversation && conversation.messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+    }
+  }, [conversation?.id]);
+
   useEffect(() => {
     if (conversation && conversation.messages.length === 0 && textareaRef.current) {
       textareaRef.current.focus();
@@ -99,10 +117,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   }, [conversation?.id]);
 
   const handleStop = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+    stopStreaming();
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
@@ -190,6 +205,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     if ((!input.trim() && pendingImages.length === 0) || isStreaming || !conversation) return;
 
     const message = input.trim();
+    // Capture the conversation ID at submission time - user may navigate away during streaming
+    const submittedConversationId = conversation.id;
 
     // Save images and collect attachments
     const attachments: Attachment[] = [];
@@ -201,29 +218,36 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     setInput('');
     setPendingImages([]);
-    setIsStreaming(true);
-    setStreamingContent('');
     setShouldAutoScroll(true);
 
-    // Create new AbortController for this request
-    abortControllerRef.current = new AbortController();
+    // Start streaming and get AbortController
+    const abortController = startStreaming();
+    if (!abortController) return;
+
+    // Helper to check if user is still viewing this conversation
+    // The conversation ID may change during first message (slug gets added),
+    // so we check if the current ID starts with the base ID (date-time-hash)
+    const checkIfStillViewing = () => {
+      const currentId = currentConversationIdRef.current;
+      if (!currentId) return false;
+      if (currentId === submittedConversationId) return true;
+      // Extract base ID (first 4 parts: date-time-hash) and check if current ID shares the same base
+      const baseId = submittedConversationId.split('-').slice(0, 4).join('-');
+      return currentId.startsWith(baseId);
+    };
 
     try {
       await onSendMessage(message, attachments, (chunk) => {
-        setStreamingContent((prev) => prev + chunk);
-      }, abortControllerRef.current.signal);
-      setIsStreaming(false);
-      setStreamingContent('');
+        updateContent(chunk);
+      }, abortController.signal);
+      completeStreaming(checkIfStillViewing());
     } catch (error) {
-      setIsStreaming(false);
-      setStreamingContent('');
+      completeStreaming(checkIfStillViewing());
       // Don't rethrow if it was an abort
       if (error instanceof Error && error.name === 'AbortError') {
         return;
       }
       throw error;
-    } finally {
-      abortControllerRef.current = null;
     }
   };
 

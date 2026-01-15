@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
+import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment } from './types';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
@@ -11,7 +12,7 @@ import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import './App.css';
 
-function App() {
+function AppContent() {
   const [config, setConfig] = useState<Config | null>(null);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -23,6 +24,7 @@ function App() {
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
+  const { transferStreaming, stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead } = useStreamingContext();
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
@@ -348,6 +350,11 @@ function App() {
 
     setCurrentConversation(updatedConversation);
 
+    // Transfer streaming state if conversation ID changed (first message adds slug to ID)
+    if (conversationId !== currentConversation.id) {
+      transferStreaming(currentConversation.id, conversationId);
+    }
+
     if (isFirstMessage) {
       setConversations((prev) => [updatedConversation, ...prev]);
     } else if (conversationId !== currentConversation.id) {
@@ -408,7 +415,10 @@ function App() {
         }
       }
 
-      setCurrentConversation(finalConversation);
+      // Only update current conversation if user is still viewing it
+      setCurrentConversation((prev) =>
+        prev?.id === finalConversation.id ? finalConversation : prev
+      );
 
       try {
         // Mark as self-write to avoid watcher triggering on our own save
@@ -445,7 +455,10 @@ function App() {
 
       alert(errorMessage);
 
-      setCurrentConversation(currentConversation);
+      // Only revert if user is still viewing this conversation
+      setCurrentConversation((prev) =>
+        prev?.id === currentConversation.id ? currentConversation : prev
+      );
       if (isFirstMessage) {
         setConversations((prev) => prev.filter(c => c.id !== currentConversation.id));
       }
@@ -453,6 +466,9 @@ function App() {
   };
 
   const handleSelectConversation = async (id: string) => {
+    // Mark as read when user selects the conversation
+    markAsRead(id);
+
     const conversation = await vaultService.loadConversation(id);
     if (conversation) {
       // Ensure conversation has provider field (migration for old conversations)
@@ -496,6 +512,9 @@ function App() {
 
   const handleDeleteConversation = async (id: string) => {
     try {
+      // Stop streaming if this conversation is streaming
+      stopStreaming(id);
+
       // Mark as self-write to avoid watcher triggering on our own delete
       if (config?.vaultPath) {
         const filePath = `${config.vaultPath}/conversations/${id}.yaml`;
@@ -541,6 +560,8 @@ function App() {
       <Sidebar
         conversations={conversations}
         currentConversationId={currentConversation?.id || null}
+        streamingConversationIds={getStreamingConversationIds()}
+        unreadConversationIds={getUnreadConversationIds()}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
         onNewComparison={handleNewComparison}
@@ -590,6 +611,14 @@ function App() {
         />
       )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <StreamingProvider>
+      <AppContent />
+    </StreamingProvider>
   );
 }
 
