@@ -5,6 +5,7 @@ import type { Conversation, Config } from '../types';
 export const createMockConversation = (overrides?: Partial<Conversation>): Conversation => ({
   id: 'test-id-123',
   created: '2024-01-10T12:00:00Z',
+  updated: '2024-01-10T12:00:00Z',
   provider: 'anthropic',
   model: 'claude-opus-4-5-20251101',
   title: 'Test Conversation',
