@@ -58,6 +58,8 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     stopAll,
     isAnyStreaming,
   } = useComparisonStreaming({
+    conversationId: conversation.id,
+    isCurrentConversation: true, // Component is only mounted when it's the current conversation
     systemPrompt,
     existingMessages: conversation.messages,
   });
@@ -296,48 +298,50 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
       </div>
 
       <form onSubmit={handleSubmit} className="input-form">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Send a message to compare..."
-          disabled={isAnyStreaming}
-          rows={1}
-        />
-        <div className="comparison-model-indicator-wrapper" ref={dropdownRef}>
-          <button
-            type="button"
-            className="comparison-model-indicator"
-            onClick={() => setShowModelsDropdown(!showModelsDropdown)}
-          >
-            {comparisonModels.length} models
-            <svg className={`dropdown-arrow ${showModelsDropdown ? 'open' : ''}`} width="12" height="8" viewBox="0 0 12 8" fill="none">
-              <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          {showModelsDropdown && (
-            <div className="comparison-models-dropdown">
-              {comparisonModels.map((model) => (
-                <div key={`${model.provider}:${model.id}`} className="comparison-model-item">
-                  <span className="comparison-model-name">{model.name}</span>
-                  <span className={`comparison-model-provider provider-${model.provider}`}>
-                    {PROVIDER_NAMES[model.provider]}
-                  </span>
-                </div>
-              ))}
-            </div>
+        <div className="input-row">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Send a message to compare..."
+            disabled={isAnyStreaming}
+            rows={1}
+          />
+          <div className="comparison-model-indicator-wrapper" ref={dropdownRef}>
+            <button
+              type="button"
+              className="comparison-model-indicator"
+              onClick={() => setShowModelsDropdown(!showModelsDropdown)}
+            >
+              {comparisonModels.length} models
+              <svg className={`dropdown-arrow ${showModelsDropdown ? 'open' : ''}`} width="12" height="8" viewBox="0 0 12 8" fill="none">
+                <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {showModelsDropdown && (
+              <div className="comparison-models-dropdown">
+                {comparisonModels.map((model) => (
+                  <div key={`${model.provider}:${model.id}`} className="comparison-model-item">
+                    <span className="comparison-model-name">{model.name}</span>
+                    <span className={`comparison-model-provider provider-${model.provider}`}>
+                      {PROVIDER_NAMES[model.provider]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {isAnyStreaming ? (
+            <button type="button" onClick={stopAll} className="send-button stop-button">
+              ■
+            </button>
+          ) : (
+            <button type="submit" disabled={!input.trim()} className="send-button">
+              ↑
+            </button>
           )}
         </div>
-        {isAnyStreaming ? (
-          <button type="button" onClick={stopAll} className="send-button stop-button">
-            ■
-          </button>
-        ) : (
-          <button type="submit" disabled={!input.trim()} className="send-button">
-            ↑
-          </button>
-        )}
       </form>
     </div>
   );
