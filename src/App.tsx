@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
+import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata } from './types';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
@@ -22,6 +23,64 @@ function App() {
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
+
+  // Vault watcher callbacks
+  const handleConversationAdded = useCallback(async (id: string) => {
+    const newConv = await vaultService.loadConversation(id);
+    if (newConv) {
+      setConversations(prev => {
+        // Avoid duplicates
+        if (prev.some(c => c.id === id)) return prev;
+        return [newConv, ...prev].sort((a, b) =>
+          new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
+        );
+      });
+    }
+  }, []);
+
+  const handleConversationRemoved = useCallback((id: string) => {
+    setConversations(prev => prev.filter(c => c.id !== id));
+    setCurrentConversation(prev => prev?.id === id ? null : prev);
+  }, []);
+
+  const handleConversationModified = useCallback(async (id: string) => {
+    const updated = await vaultService.loadConversation(id);
+    if (!updated) return;
+
+    setConversations(prev =>
+      prev.map(c => c.id === id ? updated : c)
+    );
+
+    setCurrentConversation(prev => prev?.id === id ? updated : prev);
+  }, []);
+
+  const handleMemoryChanged = useCallback(async () => {
+    const newMemory = await vaultService.loadMemory();
+    setMemory(newMemory);
+  }, []);
+
+  // Use ref to avoid circular dependency with loadVault
+  const loadVaultRef = useRef<((path: string) => Promise<void>) | null>(null);
+
+  const handleConfigChanged = useCallback(async () => {
+    if (config?.vaultPath && loadVaultRef.current) {
+      await loadVaultRef.current(config.vaultPath);
+    }
+  }, [config?.vaultPath]);
+
+  const { markSelfWrite } = useVaultWatcher(
+    {
+      vaultPath: config?.vaultPath || null,
+      enabled: !!config?.vaultPath,
+    },
+    {
+      onConversationAdded: handleConversationAdded,
+      onConversationRemoved: handleConversationRemoved,
+      onConversationModified: handleConversationModified,
+      onMemoryChanged: handleMemoryChanged,
+      onConfigChanged: handleConfigChanged,
+    }
+  );
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -96,6 +155,9 @@ function App() {
     }
   };
 
+  // Set the ref so handleConfigChanged can call loadVault
+  loadVaultRef.current = loadVault;
+
   const handleVaultSelected = async (path: string, provider: ProviderType, credential: string) => {
     // Save the provider credential to config
     const configKey = provider === 'ollama' ? 'OLLAMA_BASE_URL' :
@@ -129,6 +191,7 @@ function App() {
     const newConversation: Conversation = {
       id: `${date}-${time}-${hash}`,
       created: now.toISOString(),
+      updated: now.toISOString(),
       provider: defaultProvider,
       model: defaultModel,
       messages: [],
@@ -160,6 +223,7 @@ function App() {
     const newConversation: Conversation = {
       id: `${date}-${time}-${hash}-compare`,
       created: now.toISOString(),
+      updated: now.toISOString(),
       provider: selectedModels[0].provider,
       model: selectedModels[0].id,
       messages: [],
@@ -181,6 +245,11 @@ function App() {
 
     // Save to vault
     try {
+      // Mark as self-write to avoid watcher triggering on our own save
+      if (config?.vaultPath) {
+        const filePath = `${config.vaultPath}/conversations/${updatedConversation.id}.yaml`;
+        markSelfWrite(filePath);
+      }
       await vaultService.saveConversation(updatedConversation);
       const loadedConversations = await vaultService.loadConversations();
       setConversations(loadedConversations);
@@ -274,6 +343,17 @@ function App() {
       );
     }
 
+    // Save immediately when user sends a message (so it pops to top of list)
+    try {
+      const filePath = `${config.vaultPath}/conversations/${updatedConversation.id}.yaml`;
+      markSelfWrite(filePath);
+      await vaultService.saveConversation(updatedConversation);
+      const loadedConversations = await vaultService.loadConversations();
+      setConversations(loadedConversations);
+    } catch (saveError) {
+      console.error('Error saving conversation on user message (non-fatal):', saveError);
+    }
+
     try {
       const systemPrompt = memory ? `Here is my memory/context:\n\n${memory}` : undefined;
 
@@ -313,6 +393,9 @@ function App() {
       setCurrentConversation(finalConversation);
 
       try {
+        // Mark as self-write to avoid watcher triggering on our own save
+        const filePath = `${config.vaultPath}/conversations/${finalConversation.id}.yaml`;
+        markSelfWrite(filePath);
         await vaultService.saveConversation(finalConversation);
       } catch (saveError) {
         console.error('Error saving conversation (non-fatal):', saveError);
@@ -367,8 +450,18 @@ function App() {
 
   const handleRenameConversation = async (oldId: string, newTitle: string) => {
     try {
+      // Mark both old and new paths as self-writes
+      if (config?.vaultPath) {
+        const oldFilePath = `${config.vaultPath}/conversations/${oldId}.yaml`;
+        markSelfWrite(oldFilePath);
+      }
       const updatedConversation = await vaultService.renameConversation(oldId, newTitle);
       if (updatedConversation) {
+        // Mark the new file path too
+        if (config?.vaultPath) {
+          const newFilePath = `${config.vaultPath}/conversations/${updatedConversation.id}.yaml`;
+          markSelfWrite(newFilePath);
+        }
         setConversations((prev) =>
           prev.map((c) => (c.id === oldId ? updatedConversation : c))
         );
@@ -385,6 +478,11 @@ function App() {
 
   const handleDeleteConversation = async (id: string) => {
     try {
+      // Mark as self-write to avoid watcher triggering on our own delete
+      if (config?.vaultPath) {
+        const filePath = `${config.vaultPath}/conversations/${id}.yaml`;
+        markSelfWrite(filePath);
+      }
       const deleted = await vaultService.deleteConversation(id);
       if (deleted) {
         setConversations((prev) => prev.filter((c) => c.id !== id));
