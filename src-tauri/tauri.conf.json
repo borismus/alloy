@@ -16,11 +16,16 @@
         "width": 1200,
         "height": 800,
         "decorations": true,
-        "backgroundColor": "#f8f9fa"
+        "backgroundColor": "#f8f9fa",
+        "dragDropEnabled": false
       }
     ],
     "security": {
       "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/**"]
+      },
       "capabilities": [
         {
           "identifier": "main-capability",
@@ -33,6 +38,8 @@
             "fs:default",
             "fs:allow-read-text-file",
             "fs:allow-write-text-file",
+            "fs:allow-read-file",
+            "fs:allow-write-file",
             "fs:allow-read-dir",
             "fs:allow-exists",
             "fs:allow-mkdir",
@@ -53,6 +60,14 @@
             },
             {
               "identifier": "fs:allow-write-text-file",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-read-file",
+              "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-write-file",
               "allow": [{"path": "$HOME/**"}]
             },
             {
