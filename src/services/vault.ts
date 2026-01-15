@@ -1,8 +1,8 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile, exists, mkdir, readDir, remove } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Conversation, Config } from '../types';
+import { Conversation, Config, Attachment } from '../types';
 
 export class VaultService {
   private vaultPath: string | null = null;
@@ -34,6 +34,12 @@ export class VaultService {
 
     if (!(await exists(topicsPath))) {
       await mkdir(topicsPath, { recursive: true });
+    }
+
+    // Create attachments directory for images
+    const attachmentsPath = await join(path, 'conversations', 'attachments');
+    if (!(await exists(attachmentsPath))) {
+      await mkdir(attachmentsPath, { recursive: true });
     }
 
     // Create memory.md if it doesn't exist
@@ -203,10 +209,27 @@ defaultModel: claude-opus-4-5-20251101
         .filter(m => m.role !== 'log')
         .map(m => {
           const role = m.role === 'user' ? 'You' : assistantName;
-          return m.content
+          let content = m.content
             .split('\n')
             .map((line, i) => i === 0 ? `> [${role}] ${line}` : `> ${line}`)
             .join('\n');
+
+          // Add image embeds for Obsidian
+          if (m.attachments?.length) {
+            const imageEmbeds = m.attachments
+              .filter(a => a.type === 'image')
+              .map(a => {
+                // Convert attachments/convid-img-001.png to ![[convid-img-001.png]]
+                const filename = a.path.split('/').pop();
+                return `![[${filename}]]`;
+              })
+              .join('\n');
+            if (imageEmbeds) {
+              content = content + '\n>\n> ' + imageEmbeds.split('\n').join('\n> ');
+            }
+          }
+
+          return content;
         })
         .join('\n\n');
     }
@@ -314,11 +337,27 @@ defaultModel: claude-opus-4-5-20251101
     const newId = `${date}-${time}-${hash}-${slug}`;
 
     // Update conversation with new ID and title
+    // Also update attachment paths in messages
+    const updatedMessages = conversation.messages.map(msg => {
+      if (!msg.attachments?.length) return msg;
+      return {
+        ...msg,
+        attachments: msg.attachments.map(att => ({
+          ...att,
+          path: att.path.replace(`attachments/${oldId}-`, `attachments/${newId}-`),
+        })),
+      };
+    });
+
     const updatedConversation = {
       ...conversation,
       id: newId,
       title: newTitle,
+      messages: updatedMessages,
     };
+
+    // Rename attachment files
+    await this.renameConversationAttachments(oldId, newId);
 
     // Save to new file (this also generates the new markdown preview)
     const newFilePath = await join(conversationsPath, `${newId}.yaml`);
@@ -349,6 +388,9 @@ defaultModel: claude-opus-4-5-20251101
     if (await exists(mdFilePath)) {
       await remove(mdFilePath);
     }
+
+    // Also delete any attachments for this conversation
+    await this.deleteConversationAttachments(id);
 
     return true;
   }
@@ -408,6 +450,119 @@ defaultModel: claude-opus-4-5-20251101
 
     const memoryPath = await join(this.vaultPath, 'memory.md');
     await writeTextFile(memoryPath, content);
+  }
+
+  // Image handling methods
+
+  async getAttachmentsPath(): Promise<string | null> {
+    if (!this.vaultPath) return null;
+    return await join(this.vaultPath, 'conversations', 'attachments');
+  }
+
+  async getNextImageFilename(conversationId: string, extension: string): Promise<string> {
+    const attachmentsPath = await this.getAttachmentsPath();
+    if (!attachmentsPath) return `${conversationId}-img-001.${extension}`;
+
+    if (!(await exists(attachmentsPath))) {
+      return `${conversationId}-img-001.${extension}`;
+    }
+
+    const entries = await readDir(attachmentsPath);
+    const prefix = `${conversationId}-img-`;
+    const imageNumbers = entries
+      .filter(e => e.name?.startsWith(prefix))
+      .map(e => {
+        const match = e.name?.match(/-img-(\d+)\./);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(n => !isNaN(n));
+
+    const nextNum = imageNumbers.length > 0 ? Math.max(...imageNumbers) + 1 : 1;
+    return `${conversationId}-img-${String(nextNum).padStart(3, '0')}.${extension}`;
+  }
+
+  async saveImage(conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> {
+    const attachmentsPath = await this.getAttachmentsPath();
+    if (!attachmentsPath) {
+      throw new Error('No vault path set');
+    }
+
+    // Ensure attachments directory exists
+    if (!(await exists(attachmentsPath))) {
+      await mkdir(attachmentsPath, { recursive: true });
+    }
+
+    const extension = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png';
+    const filename = await this.getNextImageFilename(conversationId, extension);
+    const filePath = await join(attachmentsPath, filename);
+
+    await writeFile(filePath, imageData);
+
+    return {
+      type: 'image',
+      path: `attachments/${filename}`,
+      mimeType,
+    };
+  }
+
+  async loadImageAsBase64(relativePath: string): Promise<string> {
+    if (!this.vaultPath) {
+      throw new Error('No vault path set');
+    }
+
+    const conversationsPath = await join(this.vaultPath, 'conversations');
+    const fullPath = await join(conversationsPath, relativePath);
+
+    const data = await readFile(fullPath);
+    // Convert Uint8Array to base64
+    let binary = '';
+    const bytes = new Uint8Array(data);
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  async getImageAbsolutePath(relativePath: string): Promise<string | null> {
+    if (!this.vaultPath) return null;
+    const conversationsPath = await join(this.vaultPath, 'conversations');
+    return await join(conversationsPath, relativePath);
+  }
+
+  async deleteConversationAttachments(conversationId: string): Promise<void> {
+    const attachmentsPath = await this.getAttachmentsPath();
+    if (!attachmentsPath || !(await exists(attachmentsPath))) return;
+
+    const entries = await readDir(attachmentsPath);
+    const prefix = `${conversationId}-`;
+
+    for (const entry of entries) {
+      if (entry.name?.startsWith(prefix)) {
+        const filePath = await join(attachmentsPath, entry.name);
+        await remove(filePath);
+      }
+    }
+  }
+
+  async renameConversationAttachments(oldId: string, newId: string): Promise<void> {
+    const attachmentsPath = await this.getAttachmentsPath();
+    if (!attachmentsPath || !(await exists(attachmentsPath))) return;
+
+    const entries = await readDir(attachmentsPath);
+    const prefix = `${oldId}-`;
+
+    for (const entry of entries) {
+      if (entry.name?.startsWith(prefix)) {
+        const oldPath = await join(attachmentsPath, entry.name);
+        const newFilename = entry.name.replace(prefix, `${newId}-`);
+        const newPath = await join(attachmentsPath, newFilename);
+
+        // Read and write to new location, then delete old
+        const data = await readFile(oldPath);
+        await writeFile(newPath, data);
+        await remove(oldPath);
+      }
+    }
   }
 }
 
