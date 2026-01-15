@@ -2,6 +2,12 @@
 
 export type ProviderType = 'anthropic' | 'openai' | 'ollama';
 
+export interface Attachment {
+  type: 'image';
+  path: string;          // Relative path: attachments/{convId}-img-001.png
+  mimeType: string;      // image/png, image/jpeg, image/gif, image/webp
+}
+
 export interface Message {
   // 'log' messages are for UI display only and are filtered out before sending to agents
   role: 'user' | 'assistant' | 'log';
@@ -10,6 +16,8 @@ export interface Message {
   // For comparison mode - which model generated this assistant response
   provider?: ProviderType;
   model?: string;
+  // Attachments (images, etc.)
+  attachments?: Attachment[];
 }
 
 export interface ModelInfo {

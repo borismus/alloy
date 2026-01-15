@@ -5,6 +5,7 @@ export interface ChatOptions {
   systemPrompt?: string;
   onChunk?: (text: string) => void;
   signal?: AbortSignal;
+  imageLoader?: (relativePath: string) => Promise<string>;  // Load image as base64
 }
 
 export interface IProviderService {
