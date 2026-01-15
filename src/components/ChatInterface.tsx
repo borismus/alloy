@@ -23,6 +23,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ollama: 'Ollama',
+  gemini: 'Google Gemini',
 };
 
 const getAssistantName = (provider: ProviderType): string => {
@@ -31,6 +32,8 @@ const getAssistantName = (provider: ProviderType): string => {
       return 'Claude';
     case 'openai':
       return 'ChatGPT';
+    case 'gemini':
+      return 'Gemini';
     case 'ollama':
       return 'Assistant';
     default:

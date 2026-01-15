@@ -1,9 +1,101 @@
-import { useState } from 'react';
+import { useState, useRef, useLayoutEffect } from 'react';
 import { Conversation } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Menu } from '@tauri-apps/api/menu';
 import './Sidebar.css';
+
+// FLIP animation helper - stores previous positions of items
+function useFLIPAnimation(items: Conversation[]) {
+  const positionsRef = useRef<Map<string, DOMRect>>(new Map());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const prevItemsRef = useRef<string[]>([]);
+
+  // Capture positions before render (using the previous items order)
+  useLayoutEffect(() => {
+    // This runs synchronously after DOM mutations but before paint
+    // We need to capture positions BEFORE this effect runs, so we do it
+    // at the end of the previous effect cycle
+  }, []);
+
+  // After DOM update, animate from old to new positions
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+
+    const currentIds = items.map(i => i.id);
+    const prevIds = prevItemsRef.current;
+
+    // Only animate if the order actually changed (not just content)
+    const orderChanged = currentIds.some((id, idx) => prevIds[idx] !== id);
+
+    if (orderChanged && positionsRef.current.size > 0) {
+      const elements = containerRef.current.querySelectorAll('[data-conversation-id]');
+      elements.forEach((el) => {
+        const id = el.getAttribute('data-conversation-id');
+        if (!id) return;
+
+        const oldRect = positionsRef.current.get(id);
+        const newRect = el.getBoundingClientRect();
+
+        if (oldRect) {
+          const deltaY = oldRect.top - newRect.top;
+
+          if (Math.abs(deltaY) > 1) {
+            // Apply inverse transform to start from old position
+            (el as HTMLElement).style.transform = `translateY(${deltaY}px)`;
+            (el as HTMLElement).style.transition = 'none';
+
+            // Force reflow
+            el.getBoundingClientRect();
+
+            // Animate to new position
+            requestAnimationFrame(() => {
+              (el as HTMLElement).style.transform = '';
+              (el as HTMLElement).style.transition = 'transform 0.3s ease-out';
+            });
+          }
+        }
+      });
+
+      // Clean up transitions after animation
+      const cleanup = setTimeout(() => {
+        elements.forEach((el) => {
+          (el as HTMLElement).style.transition = '';
+        });
+      }, 350);
+
+      // Capture new positions for next animation
+      captureCurrentPositions();
+      prevItemsRef.current = currentIds;
+
+      return () => clearTimeout(cleanup);
+    }
+
+    // Always update positions and prev items after render
+    captureCurrentPositions();
+    prevItemsRef.current = currentIds;
+  }, [items]);
+
+  const captureCurrentPositions = () => {
+    if (!containerRef.current) return;
+    const newPositions = new Map<string, DOMRect>();
+    const elements = containerRef.current.querySelectorAll('[data-conversation-id]');
+    elements.forEach((el) => {
+      const id = el.getAttribute('data-conversation-id');
+      if (id) {
+        newPositions.set(id, el.getBoundingClientRect());
+      }
+    });
+    positionsRef.current = newPositions;
+  };
+
+  // Capture positions synchronously before state updates
+  const capturePositions = () => {
+    captureCurrentPositions();
+  };
+
+  return { containerRef, capturePositions };
+}
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -28,6 +120,15 @@ export function Sidebar({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // FLIP animation for smooth list reordering
+  const { containerRef, capturePositions } = useFLIPAnimation(conversations);
+
+  // Capture positions before any state update that might reorder
+  const handleSelectConversation = (id: string) => {
+    capturePositions();
+    onSelectConversation(id);
+  };
 
   const startRename = (conversationId: string) => {
     const conversation = conversations.find(c => c.id === conversationId);
@@ -195,7 +296,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="conversations-list">
+      <div className="conversations-list" ref={containerRef}>
         {filteredConversations.length === 0 && conversations.length === 0 ? (
           <div className="no-conversations">
             <p>No conversations yet</p>
@@ -210,10 +311,11 @@ export function Sidebar({
           filteredConversations.map((conversation) => (
             <div
               key={conversation.id}
+              data-conversation-id={conversation.id}
               className={`conversation-item ${
                 conversation.id === currentConversationId ? 'active' : ''
               }${conversation.comparison ? ' comparison' : ''}`}
-              onClick={() => onSelectConversation(conversation.id)}
+              onClick={() => handleSelectConversation(conversation.id)}
               onContextMenu={(e) => handleContextMenu(e, conversation.id)}
             >
               <div className="conversation-preview">
@@ -221,7 +323,7 @@ export function Sidebar({
                 {getConversationTitle(conversation)}
               </div>
               <div className="conversation-meta">
-                <span className="conversation-date">{formatDate(conversation.created)}</span>
+                <span className="conversation-date">{formatDate(conversation.updated || conversation.created)}</span>
                 <span className="conversation-count">
                   {conversation.comparison
                     ? `${conversation.comparison.models.length} models`
