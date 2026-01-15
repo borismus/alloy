@@ -220,3 +220,19 @@
   font-size: 0.9rem;
   line-height: 1.4;
 }
+
+.streaming-indicator {
+  color: #4caf50;
+  margin-right: 0.35rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.unread-indicator {
+  color: #2196f3;
+  margin-right: 0.35rem;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

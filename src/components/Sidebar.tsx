@@ -100,6 +100,8 @@ function useFLIPAnimation(items: Conversation[]) {
 interface SidebarProps {
   conversations: Conversation[];
   currentConversationId: string | null;
+  streamingConversationIds: string[];
+  unreadConversationIds: string[];
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onNewComparison: () => void;
@@ -110,6 +112,8 @@ interface SidebarProps {
 export function Sidebar({
   conversations,
   currentConversationId,
+  streamingConversationIds,
+  unreadConversationIds,
   onSelectConversation,
   onNewConversation,
   onNewComparison,
@@ -314,11 +318,19 @@ export function Sidebar({
               data-conversation-id={conversation.id}
               className={`conversation-item ${
                 conversation.id === currentConversationId ? 'active' : ''
-              }${conversation.comparison ? ' comparison' : ''}`}
+              }${conversation.comparison ? ' comparison' : ''}${
+                streamingConversationIds.includes(conversation.id) ? ' streaming' : ''
+              }`}
               onClick={() => handleSelectConversation(conversation.id)}
               onContextMenu={(e) => handleContextMenu(e, conversation.id)}
             >
               <div className="conversation-preview">
+                {streamingConversationIds.includes(conversation.id) && (
+                  <span className="streaming-indicator" title="Streaming...">●</span>
+                )}
+                {!streamingConversationIds.includes(conversation.id) && unreadConversationIds.includes(conversation.id) && (
+                  <span className="unread-indicator" title="New response">●</span>
+                )}
                 {conversation.comparison && <span className="comparison-badge">Compare</span>}
                 {getConversationTitle(conversation)}
               </div>
