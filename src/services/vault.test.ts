@@ -254,8 +254,8 @@ describe('VaultService', () => {
 
     it('should load and parse all conversation files', async () => {
       vaultService.setVaultPath('/test/vault');
-      const conv1 = createMockConversation({ id: 'conv-1', created: '2024-01-01T10:00:00Z' });
-      const conv2 = createMockConversation({ id: 'conv-2', created: '2024-01-02T10:00:00Z' });
+      const conv1 = createMockConversation({ id: 'conv-1', created: '2024-01-01T10:00:00Z', updated: '2024-01-01T10:00:00Z' });
+      const conv2 = createMockConversation({ id: 'conv-2', created: '2024-01-02T10:00:00Z', updated: '2024-01-02T10:00:00Z' });
 
       vi.mocked(fs.exists).mockResolvedValue(true);
       vi.mocked(fs.readDir).mockResolvedValue([
@@ -269,7 +269,7 @@ describe('VaultService', () => {
       const result = await vaultService.loadConversations();
 
       expect(result).toHaveLength(2);
-      // Should be sorted by created date, newest first
+      // Should be sorted by updated date, newest first
       expect(result[0].id).toBe('conv-2');
       expect(result[1].id).toBe('conv-1');
     });

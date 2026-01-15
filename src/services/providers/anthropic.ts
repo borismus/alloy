@@ -7,7 +7,6 @@ const ANTHROPIC_MODELS: ModelInfo[] = [
   { id: 'claude-sonnet-4-5-20250929', name: 'Sonnet 4.5', provider: 'anthropic' },
   { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', provider: 'anthropic' },
   { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4', provider: 'anthropic' },
-  { id: 'claude-3-7-sonnet-20250219', name: 'Sonnet 3.7', provider: 'anthropic' },
 ];
 
 export class AnthropicService implements IProviderService {
