@@ -127,10 +127,21 @@ defaultModel: claude-opus-4-5-20251101
     };
 
     const conversationsPath = await join(this.vaultPath, 'conversations');
-    const filename = `${conversation.id}.yaml`;
-    const filePath = await join(conversationsPath, filename);
+    const newFilename = this.generateFilename(conversation.id, conversation.title);
+    const newFilePath = await join(conversationsPath, newFilename);
 
-    await writeTextFile(filePath, yaml.dump(conversationToSave));
+    // Check if there's an existing file with a different name (title changed)
+    const existingFile = await this.findConversationFile(conversation.id);
+    if (existingFile && existingFile !== newFilePath) {
+      // Remove old yaml and md files
+      await remove(existingFile);
+      const oldMdFile = existingFile.replace(/\.yaml$/, '.md');
+      if (await exists(oldMdFile)) {
+        await remove(oldMdFile);
+      }
+    }
+
+    await writeTextFile(newFilePath, yaml.dump(conversationToSave));
 
     // Generate markdown preview for Obsidian
     await this.writeMarkdownPreview(conversationToSave);
@@ -140,8 +151,9 @@ defaultModel: claude-opus-4-5-20251101
     if (!this.vaultPath) return;
 
     const conversationsPath = await join(this.vaultPath, 'conversations');
-    const mdFilename = `${conversation.id}.md`;
-    const yamlFilename = `${conversation.id}.yaml`;
+    const baseFilename = this.generateFilename(conversation.id, conversation.title).replace(/\.yaml$/, '');
+    const mdFilename = `${baseFilename}.md`;
+    const yamlFilename = `${baseFilename}.yaml`;
     const mdFilePath = await join(conversationsPath, mdFilename);
 
     const frontmatterData: Record<string, unknown> = {
@@ -272,10 +284,10 @@ defaultModel: claude-opus-4-5-20251101
   async loadConversation(id: string): Promise<Conversation | null> {
     if (!this.vaultPath) return null;
 
-    const conversationsPath = await join(this.vaultPath, 'conversations');
-    const filePath = await join(conversationsPath, `${id}.yaml`);
+    // Find file by core ID (handles files with slugs)
+    const filePath = await this.findConversationFile(id);
 
-    if (await exists(filePath)) {
+    if (filePath && await exists(filePath)) {
       const content = await readTextFile(filePath);
       return yaml.load(content) as Conversation;
     }
@@ -294,20 +306,13 @@ defaultModel: claude-opus-4-5-20251101
   extractConversationIdFromPath(filePath: string): string | null {
     const filename = filePath.split('/').pop() || '';
     if (!filename.endsWith('.yaml')) return null;
-    return filename.replace('.yaml', '');
+    // Extract core ID (date-time-hash) from filename
+    return this.extractCoreId(filename);
   }
 
   async getConversationFilePath(id: string): Promise<string | null> {
-    if (!this.vaultPath) return null;
-
-    const conversationsPath = await join(this.vaultPath, 'conversations');
-    const filePath = await join(conversationsPath, `${id}.yaml`);
-
-    if (await exists(filePath)) {
-      return filePath;
-    }
-
-    return null;
+    // Find file by core ID (handles files with slugs)
+    return await this.findConversationFile(id);
   }
 
   generateSlug(title: string): string {
@@ -319,64 +324,85 @@ defaultModel: claude-opus-4-5-20251101
       .slice(0, 50); // Max 50 chars
   }
 
-  async renameConversation(oldId: string, newTitle: string): Promise<Conversation | null> {
+  // Extract the core ID (date-time-hash) from a filename or full ID
+  // Input: "2025-01-14-1430-a1b2-my-topic.yaml" or "2025-01-14-1430-a1b2-my-topic" or "2025-01-14-1430-a1b2"
+  // Output: "2025-01-14-1430-a1b2"
+  extractCoreId(filenameOrId: string): string {
+    // Remove .yaml extension if present
+    const name = filenameOrId.replace(/\.yaml$/, '');
+    // Split by dash and take first 5 parts: YYYY-MM-DD-HHMM-hash
+    const parts = name.split('-');
+    if (parts.length >= 5) {
+      return parts.slice(0, 5).join('-');
+    }
+    return name; // Return as-is if doesn't match expected format
+  }
+
+  // Generate filename with optional slug
+  generateFilename(id: string, title?: string): string {
+    if (title) {
+      const slug = this.generateSlug(title);
+      return slug ? `${id}-${slug}.yaml` : `${id}.yaml`;
+    }
+    return `${id}.yaml`;
+  }
+
+  // Find conversation file by core ID (searches for files starting with the ID)
+  async findConversationFile(id: string): Promise<string | null> {
     if (!this.vaultPath) return null;
 
     const conversationsPath = await join(this.vaultPath, 'conversations');
-    const oldFilePath = await join(conversationsPath, `${oldId}.yaml`);
-    const oldMdFilePath = await join(conversationsPath, `${oldId}.md`);
+    if (!(await exists(conversationsPath))) return null;
 
-    if (!(await exists(oldFilePath))) {
+    const entries = await readDir(conversationsPath);
+
+    // Look for exact match first, then prefix match
+    for (const entry of entries) {
+      if (entry.name?.endsWith('.yaml')) {
+        const filename = entry.name;
+        // Check if this file's core ID matches
+        if (filename === `${id}.yaml` || filename.startsWith(`${id}-`)) {
+          return await join(conversationsPath, filename);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  async renameConversation(id: string, newTitle: string): Promise<Conversation | null> {
+    if (!this.vaultPath) return null;
+
+    // Find existing file by core ID
+    const oldFilePath = await this.findConversationFile(id);
+    if (!oldFilePath) {
       return null;
     }
+
+    const oldMdFilePath = oldFilePath.replace(/\.yaml$/, '.md');
 
     // Load the existing conversation
     const content = await readTextFile(oldFilePath);
     const conversation = yaml.load(content) as Conversation;
 
-    // Extract date, time, and hash from the old ID
-    // Format: YYYY-MM-DD-HHMM-hash-slug or YYYY-MM-DD-HHMM-hash (if no slug)
-    const parts = oldId.split('-');
-    const date = `${parts[0]}-${parts[1]}-${parts[2]}`; // YYYY-MM-DD
-    const time = parts[3]; // HHMM
-    const hash = parts[4]; // 4-char hex
-
-    // Generate new ID with the new slug
-    const slug = this.generateSlug(newTitle);
-    const newId = `${date}-${time}-${hash}-${slug}`;
-
-    // Update conversation with new ID and title
-    // Also update attachment paths in messages
-    const updatedMessages = conversation.messages.map(msg => {
-      if (!msg.attachments?.length) return msg;
-      return {
-        ...msg,
-        attachments: msg.attachments.map(att => ({
-          ...att,
-          path: att.path.replace(`attachments/${oldId}-`, `attachments/${newId}-`),
-        })),
-      };
-    });
-
+    // ID stays the same - only title and filename change
     const updatedConversation = {
       ...conversation,
-      id: newId,
       title: newTitle,
-      messages: updatedMessages,
     };
 
-    // Rename attachment files
-    await this.renameConversationAttachments(oldId, newId);
+    // Save with new filename (saveConversation handles file rename)
+    await this.saveConversation(updatedConversation);
 
-    // Save to new file (this also generates the new markdown preview)
-    const newFilePath = await join(conversationsPath, `${newId}.yaml`);
-    await writeTextFile(newFilePath, yaml.dump(updatedConversation));
-    await this.writeMarkdownPreview(updatedConversation);
-
-    // Remove old files
-    await remove(oldFilePath);
+    // Remove old md file if it exists (yaml is handled by saveConversation)
     if (await exists(oldMdFilePath)) {
-      await remove(oldMdFilePath);
+      const newMdFilePath = oldFilePath.replace(/\.yaml$/, '.md').replace(
+        oldFilePath.split('/').pop()!.replace('.yaml', ''),
+        this.generateFilename(id, newTitle).replace('.yaml', '')
+      );
+      if (oldMdFilePath !== newMdFilePath && await exists(oldMdFilePath)) {
+        await remove(oldMdFilePath);
+      }
     }
 
     return updatedConversation;
@@ -385,13 +411,15 @@ defaultModel: claude-opus-4-5-20251101
   async deleteConversation(id: string): Promise<boolean> {
     if (!this.vaultPath) return false;
 
-    const conversationsPath = await join(this.vaultPath, 'conversations');
-    const yamlFilePath = await join(conversationsPath, `${id}.yaml`);
-    const mdFilePath = await join(conversationsPath, `${id}.md`);
+    // Find file by core ID (handles files with slugs)
+    const yamlFilePath = await this.findConversationFile(id);
 
-    if (!(await exists(yamlFilePath))) {
+    if (!yamlFilePath) {
       return false;
     }
+
+    // Derive md file path from yaml path
+    const mdFilePath = yamlFilePath.replace(/\.yaml$/, '.md');
 
     await remove(yamlFilePath);
     if (await exists(mdFilePath)) {

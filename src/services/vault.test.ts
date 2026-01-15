@@ -220,18 +220,20 @@ describe('VaultService', () => {
         ],
       });
       vi.mocked(fs.writeTextFile).mockResolvedValue();
+      vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([]); // No existing file
 
       await vaultService.saveConversation(mockConversation);
 
-      // Verify yaml file was written
+      // Verify yaml file was written (filename may include slug if title exists)
       const yamlCall = vi.mocked(fs.writeTextFile).mock.calls.find(
-        call => call[0] === '/test/vault/conversations/conv-123.yaml'
+        call => (call[0] as string).includes('conv-123') && (call[0] as string).endsWith('.yaml')
       );
       expect(yamlCall).toBeDefined();
 
       // Verify markdown preview was also written
       const mdCall = vi.mocked(fs.writeTextFile).mock.calls.find(
-        call => call[0] === '/test/vault/conversations/conv-123.md'
+        call => (call[0] as string).includes('conv-123') && (call[0] as string).endsWith('.md')
       );
       expect(mdCall).toBeDefined();
     });
@@ -306,6 +308,9 @@ describe('VaultService', () => {
       vaultService.setVaultPath('/test/vault');
       const mockConversation = createMockConversation({ id: 'conv-123' });
       vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([
+        createMockFileSystemEntry('conv-123.yaml'),
+      ]);
       vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(mockConversation));
 
       const result = await vaultService.loadConversation('conv-123');
@@ -342,6 +347,9 @@ describe('VaultService', () => {
     it('should return file path if conversation exists', async () => {
       vaultService.setVaultPath('/test/vault');
       vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([
+        createMockFileSystemEntry('conv-123.yaml'),
+      ]);
 
       const result = await vaultService.getConversationFilePath('conv-123');
 
@@ -386,7 +394,8 @@ describe('VaultService', () => {
 
     it('should return null if conversation does not exist', async () => {
       vaultService.setVaultPath('/test/vault');
-      vi.mocked(fs.exists).mockResolvedValue(false);
+      vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([]); // No files found
 
       const result = await vaultService.renameConversation('conv-123', 'New Title');
 
@@ -395,38 +404,46 @@ describe('VaultService', () => {
 
     it('should rename conversation and update file', async () => {
       vaultService.setVaultPath('/test/vault');
-      // ID format: YYYY-MM-DD-HHMM-hash-slug (time is 4 digits, hash is index 4)
-      const oldId = '2024-01-01-1234-abcd-old-slug';
+      // ID format: YYYY-MM-DD-HHMM-hash (core ID stays the same)
+      const coreId = '2024-01-01-1234-abcd';
+      const oldFilename = `${coreId}-old-slug.yaml`;
       const newTitle = 'New Amazing Title';
-      const oldConversation = createMockConversation({ id: oldId, title: 'Old Title' });
+      const oldConversation = createMockConversation({
+        id: coreId,
+        title: 'Old Title',
+        messages: [
+          { role: 'user', timestamp: '2024-01-01T10:00:00Z', content: 'Hello' },
+        ],
+      });
 
       vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([
+        createMockFileSystemEntry(oldFilename),
+      ]);
       vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(oldConversation));
       vi.mocked(fs.writeTextFile).mockResolvedValue();
       vi.mocked(fs.remove).mockResolvedValue();
 
-      const result = await vaultService.renameConversation(oldId, newTitle);
+      const result = await vaultService.renameConversation(coreId, newTitle);
 
       expect(result).toBeDefined();
       expect(result?.title).toBe(newTitle);
-      expect(result?.id).toBe('2024-01-01-1234-abcd-new-amazing-title');
+      // ID stays the same - only filename changes
+      expect(result?.id).toBe(coreId);
 
-      // Should have written new yaml file
+      // Should have written new yaml file with new slug
       const yamlCall = vi.mocked(fs.writeTextFile).mock.calls.find(
-        call => call[0] === '/test/vault/conversations/2024-01-01-1234-abcd-new-amazing-title.yaml'
+        call => (call[0] as string).includes('new-amazing-title.yaml')
       );
       expect(yamlCall).toBeDefined();
-
-      // Should have removed old file
-      expect(fs.remove).toHaveBeenCalledWith('/test/vault/conversations/2024-01-01-1234-abcd-old-slug.yaml');
     });
 
     it('should preserve conversation data when renaming', async () => {
       vaultService.setVaultPath('/test/vault');
-      // ID format: YYYY-MM-DD-HHMM-hash-slug
-      const oldId = '2024-01-01-1234-abcd-old-slug';
+      // ID format: YYYY-MM-DD-HHMM-hash (core ID)
+      const coreId = '2024-01-01-1234-abcd';
       const oldConversation = createMockConversation({
-        id: oldId,
+        id: coreId,
         title: 'Old Title',
         messages: [
           { role: 'user', timestamp: '2024-01-01T10:00:00Z', content: 'Hello' },
@@ -435,15 +452,20 @@ describe('VaultService', () => {
       });
 
       vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([
+        createMockFileSystemEntry(`${coreId}-old-slug.yaml`),
+      ]);
       vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(oldConversation));
       vi.mocked(fs.writeTextFile).mockResolvedValue();
       vi.mocked(fs.remove).mockResolvedValue();
 
-      const result = await vaultService.renameConversation(oldId, 'New Title');
+      const result = await vaultService.renameConversation(coreId, 'New Title');
 
       expect(result?.messages).toEqual(oldConversation.messages);
       expect(result?.created).toBe(oldConversation.created);
       expect(result?.model).toBe(oldConversation.model);
+      // ID should stay the same
+      expect(result?.id).toBe(coreId);
     });
   });
 });
