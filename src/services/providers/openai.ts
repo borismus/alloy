@@ -81,10 +81,42 @@ export class OpenAIService implements IProviderService {
     // Add conversation messages
     for (const msg of messages) {
       if (msg.role === 'log') continue;
-      openaiMessages.push({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      });
+
+      // Check if message has image attachments (only user messages can have images in OpenAI)
+      const hasImages = msg.role === 'user' && msg.attachments?.some(a => a.type === 'image') && options.imageLoader;
+
+      if (hasImages) {
+        // Build multimodal content array for OpenAI user message
+        const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
+
+        // Add images
+        for (const attachment of msg.attachments || []) {
+          if (attachment.type === 'image' && options.imageLoader) {
+            const base64 = await options.imageLoader(attachment.path);
+            content.push({
+              type: 'image_url',
+              image_url: {
+                url: `data:${attachment.mimeType};base64,${base64}`,
+              },
+            });
+          }
+        }
+
+        // Add text content if present
+        if (msg.content) {
+          content.push({ type: 'text', text: msg.content });
+        }
+
+        openaiMessages.push({
+          role: 'user',
+          content,
+        });
+      } else {
+        openaiMessages.push({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+        });
+      }
     }
 
     const stream = await this.client.chat.completions.create({

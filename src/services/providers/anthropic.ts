@@ -66,12 +66,50 @@ export class AnthropicService implements IProviderService {
     }
 
     // Filter out log messages and convert to Anthropic format
-    const anthropicMessages = messages
-      .filter((msg) => msg.role !== 'log')
-      .map((msg) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      }));
+    const anthropicMessages = await Promise.all(
+      messages
+        .filter((msg) => msg.role !== 'log')
+        .map(async (msg) => {
+          // Check if message has image attachments
+          const hasImages = msg.attachments?.some(a => a.type === 'image') && options.imageLoader;
+
+          if (hasImages) {
+            // Build multimodal content array
+            const content: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [];
+
+            // Add images first (Anthropic prefers images before text)
+            for (const attachment of msg.attachments || []) {
+              if (attachment.type === 'image' && options.imageLoader) {
+                const base64 = await options.imageLoader(attachment.path);
+                content.push({
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: attachment.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                    data: base64,
+                  },
+                });
+              }
+            }
+
+            // Add text content if present
+            if (msg.content) {
+              content.push({ type: 'text', text: msg.content });
+            }
+
+            return {
+              role: msg.role as 'user' | 'assistant',
+              content,
+            };
+          }
+
+          // Simple text-only message
+          return {
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          };
+        })
+    );
 
     const maxRetries = 3;
     let lastError: Error | null = null;
