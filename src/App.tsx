@@ -24,7 +24,7 @@ function AppContent() {
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
-  const { transferStreaming, stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead } = useStreamingContext();
+  const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead } = useStreamingContext();
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
@@ -249,7 +249,8 @@ function AppContent() {
     try {
       // Mark as self-write to avoid watcher triggering on our own save
       if (config?.vaultPath) {
-        const filePath = `${config.vaultPath}/conversations/${updatedConversation.id}.yaml`;
+        const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
+        const filePath = `${config.vaultPath}/conversations/${filename}`;
         markSelfWrite(filePath);
       }
       await vaultService.saveConversation(updatedConversation);
@@ -290,23 +291,6 @@ function AppContent() {
     return lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated;
   };
 
-  const generateSlug = (title: string): string => {
-    return title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 50);
-  };
-
-  const generateConversationId = (title: string): string => {
-    const now = new Date();
-    const date = now.toISOString().split('T')[0];
-    const time = now.toTimeString().slice(0, 5).replace(':', '');
-    const hash = Math.random().toString(16).slice(2, 6);
-    const slug = generateSlug(title);
-    return `${date}-${time}-${hash}-${slug}`;
-  };
-
   const handleSaveImage = async (conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> => {
     return await vaultService.saveImage(conversationId, imageData, mimeType);
   };
@@ -339,33 +323,25 @@ function AppContent() {
 
     const isFirstMessage = currentConversation.messages.filter(m => m.role !== 'log').length === 0;
     const title = isFirstMessage ? generateFallbackTitle(content) : currentConversation.title;
-    const conversationId = isFirstMessage && title ? generateConversationId(title) : currentConversation.id;
 
+    // ID stays stable - no regeneration needed
     const updatedConversation: Conversation = {
       ...currentConversation,
-      id: conversationId,
       title,
       messages: updatedMessages,
     };
 
     setCurrentConversation(updatedConversation);
 
-    // Transfer streaming state if conversation ID changed (first message adds slug to ID)
-    if (conversationId !== currentConversation.id) {
-      transferStreaming(currentConversation.id, conversationId);
-    }
-
     if (isFirstMessage) {
       setConversations((prev) => [updatedConversation, ...prev]);
-    } else if (conversationId !== currentConversation.id) {
-      setConversations((prev) =>
-        prev.map(c => c.id === currentConversation.id ? updatedConversation : c)
-      );
     }
 
     // Save immediately when user sends a message (so it pops to top of list)
     try {
-      const filePath = `${config.vaultPath}/conversations/${updatedConversation.id}.yaml`;
+      // Use the actual filename that will be generated (includes slug if title exists)
+      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
+      const filePath = `${config.vaultPath}/conversations/${filename}`;
       markSelfWrite(filePath);
       await vaultService.saveConversation(updatedConversation);
       const loadedConversations = await vaultService.loadConversations();
@@ -422,7 +398,8 @@ function AppContent() {
 
       try {
         // Mark as self-write to avoid watcher triggering on our own save
-        const filePath = `${config.vaultPath}/conversations/${finalConversation.id}.yaml`;
+        const filename = vaultService.generateFilename(finalConversation.id, finalConversation.title);
+        const filePath = `${config.vaultPath}/conversations/${filename}`;
         markSelfWrite(filePath);
         await vaultService.saveConversation(finalConversation);
       } catch (saveError) {
@@ -484,18 +461,22 @@ function AppContent() {
 
   const handleRenameConversation = async (oldId: string, newTitle: string) => {
     try {
-      // Mark both old and new paths as self-writes
+      // Find the old file path and mark it for self-write
       if (config?.vaultPath) {
-        const oldFilePath = `${config.vaultPath}/conversations/${oldId}.yaml`;
-        markSelfWrite(oldFilePath);
+        const oldFilePath = await vaultService.getConversationFilePath(oldId);
+        if (oldFilePath) {
+          markSelfWrite(oldFilePath);
+          // Also mark the old .md file
+          markSelfWrite(oldFilePath.replace(/\.yaml$/, '.md'));
+        }
+        // Mark the new file path that will be created
+        const newFilename = vaultService.generateFilename(oldId, newTitle);
+        const newFilePath = `${config.vaultPath}/conversations/${newFilename}`;
+        markSelfWrite(newFilePath);
+        markSelfWrite(newFilePath.replace(/\.yaml$/, '.md'));
       }
       const updatedConversation = await vaultService.renameConversation(oldId, newTitle);
       if (updatedConversation) {
-        // Mark the new file path too
-        if (config?.vaultPath) {
-          const newFilePath = `${config.vaultPath}/conversations/${updatedConversation.id}.yaml`;
-          markSelfWrite(newFilePath);
-        }
         setConversations((prev) =>
           prev.map((c) => (c.id === oldId ? updatedConversation : c))
         );
@@ -517,8 +498,11 @@ function AppContent() {
 
       // Mark as self-write to avoid watcher triggering on our own delete
       if (config?.vaultPath) {
-        const filePath = `${config.vaultPath}/conversations/${id}.yaml`;
-        markSelfWrite(filePath);
+        const filePath = await vaultService.getConversationFilePath(id);
+        if (filePath) {
+          markSelfWrite(filePath);
+          markSelfWrite(filePath.replace(/\.yaml$/, '.md'));
+        }
       }
       const deleted = await vaultService.deleteConversation(id);
       if (deleted) {

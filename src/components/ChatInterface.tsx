@@ -225,15 +225,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     if (!abortController) return;
 
     // Helper to check if user is still viewing this conversation
-    // The conversation ID may change during first message (slug gets added),
-    // so we check if the current ID starts with the base ID (date-time-hash)
     const checkIfStillViewing = () => {
-      const currentId = currentConversationIdRef.current;
-      if (!currentId) return false;
-      if (currentId === submittedConversationId) return true;
-      // Extract base ID (first 4 parts: date-time-hash) and check if current ID shares the same base
-      const baseId = submittedConversationId.split('-').slice(0, 4).join('-');
-      return currentId.startsWith(baseId);
+      return currentConversationIdRef.current === submittedConversationId;
     };
 
     try {
