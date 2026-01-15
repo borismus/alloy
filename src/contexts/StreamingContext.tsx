@@ -9,7 +9,6 @@ interface StreamingContextValue {
   updateStreamingContent: (id: string, chunk: string) => void;
   stopStreaming: (id: string) => void;
   completeStreaming: (id: string, isCurrentConversation?: boolean) => void;
-  transferStreaming: (oldId: string, newId: string) => void;
   markAsRead: (id: string) => void;
 }
 
@@ -114,24 +113,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const transferStreaming = useCallback((oldId: string, newId: string) => {
-    const controller = abortControllersRef.current.get(oldId);
-    if (controller) {
-      abortControllersRef.current.delete(oldId);
-      abortControllersRef.current.set(newId, controller);
-    }
-
-    setStreamingStates((prev) => {
-      const existing = prev.get(oldId);
-      if (!existing) return prev;
-
-      const next = new Map(prev);
-      next.delete(oldId);
-      next.set(newId, existing);
-      return next;
-    });
-  }, []);
-
   const value = useMemo<StreamingContextValue>(
     () => ({
       getStreamingState,
@@ -141,7 +122,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       updateStreamingContent,
       stopStreaming,
       completeStreaming,
-      transferStreaming,
       markAsRead,
     }),
     [
@@ -152,7 +132,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       updateStreamingContent,
       stopStreaming,
       completeStreaming,
-      transferStreaming,
       markAsRead,
     ]
   );
