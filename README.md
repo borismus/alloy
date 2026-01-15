@@ -116,7 +116,6 @@ messages:
 ### v0.3
 - Skills stored in $VAULT/skills
 
-
 ### v0.4
 - Topics / standing queries
 - Daily digest generation
