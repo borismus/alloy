@@ -110,6 +110,8 @@ messages:
 - Multi-provider support (GPT, Gemini, Ollama)
 - Provider switching within app
 - Side-by-side model comparison
+- Processing images
+- Allow threads to continue in the background
 
 ### v0.3
 - Topics / standing queries
