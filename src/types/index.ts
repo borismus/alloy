@@ -1,6 +1,6 @@
 // Core types for PromptBox MVP
 
-export type ProviderType = 'anthropic' | 'openai' | 'ollama';
+export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini';
 
 export interface Message {
   // 'log' messages are for UI display only and are filtered out before sending to agents
@@ -36,6 +36,7 @@ export interface ComparisonMetadata {
 export interface Conversation {
   id: string;
   created: string;
+  updated: string;
   provider: ProviderType;
   model: string;
   title?: string;
@@ -51,6 +52,7 @@ export interface Config {
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
   OLLAMA_BASE_URL?: string;
+  GEMINI_API_KEY?: string;
 }
 
 export interface AppState {
