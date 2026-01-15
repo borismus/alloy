@@ -1,12 +1,52 @@
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { Conversation, ModelInfo, ProviderType, Attachment } from '../types';
+import { Conversation, Message, ModelInfo, ProviderType, Attachment } from '../types';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { ModelSelector } from './ModelSelector';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
+
+// Hoist plugin arrays to avoid recreation on each render
+const remarkPlugins = [remarkGfm];
+const rehypePlugins = [rehypeHighlight];
+
+interface MessageItemProps {
+  message: Message;
+  assistantName: string;
+  imageUrls: Record<string, string>;
+}
+
+const MessageItem = React.memo(({ message, assistantName, imageUrls }: MessageItemProps) => {
+  if (message.role === 'log') {
+    return (
+      <div className="message log">
+        <div className="log-content">{message.content}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`message ${message.role}`}>
+      <div className="message-role">
+        {message.role === 'user' ? 'You' : assistantName}
+      </div>
+      <div className="message-content">
+        {message.attachments?.filter(a => a.type === 'image').map((attachment) => (
+          <div key={attachment.path} className="message-image">
+            {imageUrls[attachment.path] && (
+              <img src={imageUrls[attachment.path]} alt="Attachment" />
+            )}
+          </div>
+        ))}
+        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>
+          {message.content}
+        </ReactMarkdown>
+      </div>
+    </div>
+  );
+});
 
 export interface PendingImage {
   data: Uint8Array;
@@ -351,32 +391,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         )}
 
         {conversation.messages.map((message, index) => (
-          message.role === 'log' ? (
-            <div key={index} className="message log">
-              <div className="log-content">{message.content}</div>
-            </div>
-          ) : (
-            <div key={index} className={`message ${message.role}`}>
-              <div className="message-role">
-                {message.role === 'user' ? 'You' : assistantName}
-              </div>
-              <div className="message-content">
-                {message.attachments?.filter(a => a.type === 'image').map((attachment, imgIndex) => (
-                  <div key={imgIndex} className="message-image">
-                    {imageUrls[attachment.path] && (
-                      <img src={imageUrls[attachment.path]} alt={`Attachment ${imgIndex + 1}`} />
-                    )}
-                  </div>
-                ))}
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeHighlight]}
-                >
-                  {message.content}
-                </ReactMarkdown>
-              </div>
-            </div>
-          )
+          <MessageItem
+            key={`${conversation.id}-${index}`}
+            message={message}
+            assistantName={assistantName}
+            imageUrls={imageUrls}
+          />
         ))}
 
         {isStreaming && !streamingContent && (
@@ -396,10 +416,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           <div className="message assistant streaming">
             <div className="message-role">{assistantName}</div>
             <div className="message-content">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-              >
+              <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>
                 {streamingContent}
               </ReactMarkdown>
             </div>
