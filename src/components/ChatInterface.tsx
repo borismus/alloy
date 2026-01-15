@@ -2,14 +2,22 @@ import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 're
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { Conversation, ModelInfo, ProviderType } from '../types';
+import { Conversation, ModelInfo, ProviderType, Attachment } from '../types';
 import { ModelSelector } from './ModelSelector';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
 
+export interface PendingImage {
+  data: Uint8Array;
+  mimeType: string;
+  preview: string; // Data URL for preview
+}
+
 interface ChatInterfaceProps {
   conversation: Conversation | null;
-  onSendMessage: (content: string, onChunk?: (text: string) => void, signal?: AbortSignal) => Promise<void>;
+  onSendMessage: (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal) => Promise<void>;
+  onSaveImage: (conversationId: string, imageData: Uint8Array, mimeType: string) => Promise<Attachment>;
+  loadImageAsBase64: (relativePath: string) => Promise<{ base64: string; mimeType: string }>;
   hasProvider: boolean;
   onModelChange: (model: string, provider: ProviderType) => void;
   availableModels: ModelInfo[];
@@ -41,6 +49,8 @@ const getAssistantName = (provider: ProviderType): string => {
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(({
   conversation,
   onSendMessage,
+  onSaveImage,
+  loadImageAsBase64,
   hasProvider,
   onModelChange,
   availableModels,
@@ -49,6 +59,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -88,12 +102,102 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   };
 
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (!blob) continue;
+
+        const arrayBuffer = await blob.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+        const preview = URL.createObjectURL(blob);
+
+        setPendingImages(prev => [...prev, {
+          data,
+          mimeType: item.type,
+          preview
+        }]);
+      }
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setPendingImages(prev => {
+      const removed = prev[index];
+      if (removed) {
+        URL.revokeObjectURL(removed.preview);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    for (const file of Array.from(files)) {
+      if (file.type.startsWith('image/')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+        const preview = URL.createObjectURL(file);
+
+        setPendingImages(prev => [...prev, {
+          data,
+          mimeType: file.type,
+          preview
+        }]);
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isStreaming || !conversation) return;
+    if ((!input.trim() && pendingImages.length === 0) || isStreaming || !conversation) return;
 
     const message = input.trim();
+
+    // Save images and collect attachments
+    const attachments: Attachment[] = [];
+    for (const img of pendingImages) {
+      const attachment = await onSaveImage(conversation.id, img.data, img.mimeType);
+      attachments.push(attachment);
+      URL.revokeObjectURL(img.preview);
+    }
+
     setInput('');
+    setPendingImages([]);
     setIsStreaming(true);
     setStreamingContent('');
     setShouldAutoScroll(true);
@@ -102,7 +206,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     abortControllerRef.current = new AbortController();
 
     try {
-      await onSendMessage(message, (chunk) => {
+      await onSendMessage(message, attachments, (chunk) => {
         setStreamingContent((prev) => prev + chunk);
       }, abortControllerRef.current.signal);
       setIsStreaming(false);
@@ -151,6 +255,35 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }, [input]);
 
+  // Load image URLs for displaying in messages
+  useEffect(() => {
+    const loadImages = async () => {
+      if (!conversation) return;
+
+      const attachments = conversation.messages
+        .flatMap(m => m.attachments || [])
+        .filter(a => a.type === 'image');
+
+      const newUrls: Record<string, string> = {};
+      for (const attachment of attachments) {
+        if (!imageUrls[attachment.path]) {
+          try {
+            const { base64, mimeType } = await loadImageAsBase64(attachment.path);
+            newUrls[attachment.path] = `data:${mimeType};base64,${base64}`;
+          } catch (e) {
+            console.error('Failed to load image:', attachment.path, e);
+          }
+        }
+      }
+
+      if (Object.keys(newUrls).length > 0) {
+        setImageUrls(prev => ({ ...prev, ...newUrls }));
+      }
+    };
+
+    loadImages();
+  }, [conversation?.messages, loadImageAsBase64]);
+
   if (!hasProvider) {
     return (
       <div className="chat-interface">
@@ -174,7 +307,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   }
 
   return (
-    <div className="chat-interface">
+    <div
+      className={`chat-interface ${isDragging ? 'drag-over' : ''}`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <div className="messages-container" onScroll={handleScroll}>
         {conversation.messages.length === 0 && !isStreaming && (
           <div className="welcome-message">
@@ -202,6 +341,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 {message.role === 'user' ? 'You' : assistantName}
               </div>
               <div className="message-content">
+                {message.attachments?.filter(a => a.type === 'image').map((attachment, imgIndex) => (
+                  <div key={imgIndex} className="message-image">
+                    {imageUrls[attachment.path] && (
+                      <img src={imageUrls[attachment.path]} alt={`Attachment ${imgIndex + 1}`} />
+                    )}
+                  </div>
+                ))}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeHighlight]}
@@ -244,30 +390,49 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       </div>
 
       <form onSubmit={handleSubmit} className="input-form">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Send a message..."
-          disabled={isStreaming}
-          rows={1}
-        />
-        <ModelSelector
-          value={conversation?.model || ''}
-          onChange={onModelChange}
-          disabled={isStreaming}
-          models={availableModels}
-        />
-        {isStreaming ? (
-          <button type="button" onClick={handleStop} className="send-button stop-button">
-            ■
-          </button>
-        ) : (
-          <button type="submit" disabled={!input.trim()} className="send-button">
-            ↑
-          </button>
+        {pendingImages.length > 0 && (
+          <div className="pending-images">
+            {pendingImages.map((img, idx) => (
+              <div key={idx} className="pending-image">
+                <img src={img.preview} alt={`Pending ${idx + 1}`} />
+                <button
+                  type="button"
+                  className="remove-image"
+                  onClick={() => handleRemoveImage(idx)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         )}
+        <div className="input-row">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder="Send a message... (drop or paste images)"
+            disabled={isStreaming}
+            rows={1}
+          />
+          <ModelSelector
+            value={conversation?.model || ''}
+            onChange={onModelChange}
+            disabled={isStreaming}
+            models={availableModels}
+          />
+          {isStreaming ? (
+            <button type="button" onClick={handleStop} className="send-button stop-button">
+              ■
+            </button>
+          ) : (
+            <button type="submit" disabled={!input.trim() && pendingImages.length === 0} className="send-button">
+              ↑
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );

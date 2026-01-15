@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
-import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment } from './types';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
@@ -236,7 +236,19 @@ function App() {
     return `${date}-${time}-${hash}-${slug}`;
   };
 
-  const handleSendMessage = async (content: string, onChunk?: (text: string) => void, signal?: AbortSignal): Promise<void> => {
+  const handleSaveImage = async (conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> => {
+    return await vaultService.saveImage(conversationId, imageData, mimeType);
+  };
+
+  const handleLoadImageAsBase64 = async (relativePath: string): Promise<{ base64: string; mimeType: string }> => {
+    const base64 = await vaultService.loadImageAsBase64(relativePath);
+    // Extract mimeType from path extension
+    const ext = relativePath.split('.').pop()?.toLowerCase() || 'png';
+    const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    return { base64, mimeType };
+  };
+
+  const handleSendMessage = async (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<void> => {
     if (!currentConversation || !config) return;
 
     const provider = providerRegistry.getProvider(currentConversation.provider);
@@ -249,6 +261,7 @@ function App() {
       role: 'user',
       timestamp: new Date().toISOString(),
       content,
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
 
     const updatedMessages = [...currentConversation.messages, userMessage];
@@ -277,11 +290,16 @@ function App() {
     try {
       const systemPrompt = memory ? `Here is my memory/context:\n\n${memory}` : undefined;
 
+      const imageLoader = async (relativePath: string) => {
+        return await vaultService.loadImageAsBase64(relativePath);
+      };
+
       const response = await provider.sendMessage(updatedMessages, {
         model: currentConversation.model,
         systemPrompt,
         onChunk,
         signal,
+        imageLoader,
       });
 
       const assistantMessage: Message = {
@@ -452,6 +470,8 @@ function App() {
           ref={chatInterfaceRef}
           conversation={currentConversation}
           onSendMessage={handleSendMessage}
+          onSaveImage={handleSaveImage}
+          loadImageAsBase64={handleLoadImageAsBase64}
           hasProvider={providerRegistry.hasAnyProvider()}
           onModelChange={handleModelChange}
           availableModels={availableModels}
