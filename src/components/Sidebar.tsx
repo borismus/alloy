@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
 import { Conversation } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -109,7 +109,11 @@ interface SidebarProps {
   onDeleteConversation: (id: string) => void;
 }
 
-export function Sidebar({
+export interface SidebarHandle {
+  focusSearch: () => void;
+}
+
+export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar({
   conversations,
   currentConversationId,
   streamingConversationIds,
@@ -119,11 +123,19 @@ export function Sidebar({
   onNewComparison,
   onRenameConversation,
   onDeleteConversation,
-}: SidebarProps) {
+}, ref) {
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focusSearch: () => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    },
+  }));
 
   // FLIP animation for smooth list reordering
   const { containerRef, capturePositions } = useFLIPAnimation(conversations);
@@ -288,13 +300,26 @@ export function Sidebar({
   return (
     <div className="sidebar">
       <div className="search-box" data-tauri-drag-region>
-        <input
-          type="text"
-          placeholder="Search conversations..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="search-input"
-        />
+        <div className="search-input-wrapper">
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+            autoComplete="off"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="clear-search-button"
+              title="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
         <button onClick={handleFabClick} className="new-button" title="New">
           +
         </button>
@@ -388,4 +413,4 @@ export function Sidebar({
       )}
     </div>
   );
-}
+});

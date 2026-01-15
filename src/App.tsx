@@ -8,7 +8,7 @@ import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
 import { ComparisonModelSelector } from './components/ComparisonModelSelector';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import './App.css';
 
@@ -24,6 +24,7 @@ function AppContent() {
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
+  const sidebarRef = useRef<SidebarHandle>(null);
   const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead } = useStreamingContext();
 
   // Vault watcher callbacks
@@ -114,6 +115,11 @@ function AppContent() {
       if ((e.metaKey || e.ctrlKey) && e.key === ',') {
         e.preventDefault();
         setShowSettings(true);
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        sidebarRef.current?.focusSearch();
       }
 
       if (e.key === 'Escape' && showSettings) {
@@ -542,6 +548,7 @@ function AppContent() {
   return (
     <div className="app">
       <Sidebar
+        ref={sidebarRef}
         conversations={conversations}
         currentConversationId={currentConversation?.id || null}
         streamingConversationIds={getStreamingConversationIds()}
