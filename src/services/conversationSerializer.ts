@@ -158,6 +158,7 @@ export function createComparisonConversation(
   return {
     id: `${date}-${time}-${hash}-compare`,
     created: now.toISOString(),
+    updated: now.toISOString(),
     provider: models[0].provider,
     model: models[0].model,
     messages: [],

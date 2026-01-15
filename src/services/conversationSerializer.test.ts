@@ -16,6 +16,7 @@ describe('conversationSerializer', () => {
       const conversation: Conversation = {
         id: '2024-01-15-1430-abcd-test',
         created: '2024-01-15T14:30:00.000Z',
+        updated: '2024-01-15T14:30:05.000Z',
         provider: 'anthropic',
         model: 'claude-opus-4-5-20251101',
         title: 'Test Conversation',
@@ -40,6 +41,7 @@ describe('conversationSerializer', () => {
       const conversation: Conversation = {
         id: '2024-01-15-1430-abcd-compare',
         created: '2024-01-15T14:30:00.000Z',
+        updated: '2024-01-15T14:30:05.000Z',
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
         messages: [
@@ -84,6 +86,7 @@ describe('conversationSerializer', () => {
       const conversation: Conversation = {
         id: '2024-01-15-1430-abcd-test',
         created: '2024-01-15T14:30:00.000Z',
+        updated: '2024-01-15T14:30:10.000Z',
         provider: 'anthropic',
         model: 'claude-opus-4-5-20251101',
         messages: [
@@ -108,6 +111,7 @@ describe('conversationSerializer', () => {
       const conversation: Conversation = {
         id: '2024-01-15-1430-abcd-compare',
         created: '2024-01-15T14:30:00.000Z',
+        updated: '2024-01-15T14:30:05.000Z',
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
         messages: [
@@ -145,6 +149,7 @@ describe('conversationSerializer', () => {
       const conversation: Conversation = {
         id: '2024-01-15-1430-abcd-test',
         created: '2024-01-15T14:30:00.000Z',
+        updated: '2024-01-15T14:30:00.000Z',
         provider: 'anthropic',
         model: 'claude-opus-4-5-20251101',
         messages: [],
@@ -159,6 +164,7 @@ describe('conversationSerializer', () => {
       const conversation: Conversation = {
         id: '2024-01-15-1430-abcd-compare',
         created: '2024-01-15T14:30:00.000Z',
+        updated: '2024-01-15T14:30:05.000Z',
         provider: 'anthropic',
         model: 'claude-haiku-4-5-20251001',
         messages: [
