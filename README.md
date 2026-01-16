@@ -114,12 +114,12 @@ messages:
 - Allow threads to continue in the background
 
 ### v0.3
-- Skills stored in $VAULT/skills
-
-### v0.4
 - Topics / standing queries
 - Daily digest generation
 - Topic query interface
+
+### v0.4
+- Skills stored in $VAULT/skills
 
 ### v0.5
 - Privacy boundaries configuration
