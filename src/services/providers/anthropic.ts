@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Message, ModelInfo, ToolUse } from '../../types';
-import { IProviderService, ChatOptions, ChatResult } from './types';
+import { ToolCall } from '../../types/tools';
+import { IProviderService, ChatOptions, ChatResult, StopReason } from './types';
+import { anthropicToolAdapter } from './tool-adapters/anthropic';
 
 const ANTHROPIC_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', provider: 'anthropic' },
@@ -110,6 +112,11 @@ export class AnthropicService implements IProviderService {
         })
     );
 
+    // Convert tools to Anthropic format if provided
+    const anthropicTools = options.tools
+      ? anthropicToolAdapter.toProviderFormat(options.tools)
+      : undefined;
+
     const maxRetries = 3;
     let lastError: Error | null = null;
 
@@ -121,17 +128,16 @@ export class AnthropicService implements IProviderService {
           messages: anthropicMessages,
           system: options.systemPrompt,
           stream: true,
-          tools: [
-            {
-              type: 'web_search_20250305' as any,
-              name: 'web_search',
-              max_uses: 5,
-            } as any,
-          ],
+          tools: anthropicTools,
         });
 
         let fullResponse = '';
         const toolUseList: ToolUse[] = [];
+        const toolCalls: ToolCall[] = [];
+        let stopReason: StopReason = 'end_turn';
+
+        // Track current tool use block for streaming
+        let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
 
         for await (const chunk of stream) {
           // Check if aborted
@@ -140,29 +146,86 @@ export class AnthropicService implements IProviderService {
             break;
           }
 
-          // Detect tool use start (web_search uses 'server_tool_use' type)
+          // Handle message stop to get stop reason
+          if (chunk.type === 'message_delta') {
+            const messageDelta = chunk as Anthropic.MessageDeltaEvent;
+            if (messageDelta.delta.stop_reason) {
+              stopReason = messageDelta.delta.stop_reason as StopReason;
+            }
+          }
+
+          // Detect tool use start
           if (chunk.type === 'content_block_start') {
-            const block = (chunk as any).content_block;
-            if (block?.type === 'server_tool_use' && block.name === 'web_search') {
-              const toolUse: ToolUse = { type: 'web_search' };
+            const block = (chunk as Anthropic.ContentBlockStartEvent).content_block;
+
+            // Handle our custom tools
+            if (block.type === 'tool_use') {
+              currentToolUse = {
+                id: block.id,
+                name: block.name,
+                inputJson: '',
+              };
+
+              const toolUse: ToolUse = {
+                type: block.name,
+                input: {},
+              };
+              toolUseList.push(toolUse);
+              options.onToolUse?.(toolUse);
+            }
+
+            // Handle Anthropic's built-in server tools (like web_search)
+            if ((block as any).type === 'server_tool_use') {
+              const toolUse: ToolUse = { type: (block as any).name };
               toolUseList.push(toolUse);
               options.onToolUse?.(toolUse);
             }
           }
 
-          if (
-            chunk.type === 'content_block_delta' &&
-            chunk.delta.type === 'text_delta'
-          ) {
-            const text = chunk.delta.text;
-            fullResponse += text;
-            options.onChunk?.(text);
+          // Accumulate tool input JSON
+          if (chunk.type === 'content_block_delta') {
+            const delta = (chunk as Anthropic.ContentBlockDeltaEvent).delta;
+
+            if (delta.type === 'input_json_delta' && currentToolUse) {
+              currentToolUse.inputJson += delta.partial_json;
+            }
+
+            if (delta.type === 'text_delta') {
+              const text = delta.text;
+              fullResponse += text;
+              options.onChunk?.(text);
+            }
+          }
+
+          // Tool use block complete
+          if (chunk.type === 'content_block_stop' && currentToolUse) {
+            try {
+              const input = currentToolUse.inputJson
+                ? JSON.parse(currentToolUse.inputJson)
+                : {};
+
+              toolCalls.push({
+                id: currentToolUse.id,
+                name: currentToolUse.name,
+                input,
+              });
+
+              // Update the last tool use entry with parsed input
+              if (toolUseList.length > 0) {
+                toolUseList[toolUseList.length - 1].input = input;
+              }
+            } catch (e) {
+              console.error('Failed to parse tool input JSON:', e);
+            }
+            currentToolUse = null;
           }
         }
 
         return {
           content: fullResponse,
           toolUse: toolUseList.length > 0 ? toolUseList : undefined,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+          stopReason,
         };
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -190,5 +253,134 @@ export class AnthropicService implements IProviderService {
     }
 
     throw lastError || new Error('Failed after retries');
+  }
+
+  // Send a message with tool results (for tool execution loop)
+  async sendMessageWithToolResults(
+    messages: Message[],
+    toolResults: { tool_use_id: string; content: string; is_error?: boolean }[],
+    assistantToolCalls: ToolCall[],  // The tool_use blocks from the assistant's previous response
+    options: ChatOptions
+  ): Promise<ChatResult> {
+    if (!this.client) {
+      throw new Error('Anthropic client not initialized. Please provide an API key.');
+    }
+
+    // Build the messages including tool results
+    const anthropicMessages: Anthropic.MessageParam[] = [];
+
+    // Convert existing messages
+    for (const msg of messages.filter((m) => m.role !== 'log')) {
+      if (msg.role === 'user') {
+        anthropicMessages.push({
+          role: 'user',
+          content: msg.content,
+        });
+      } else if (msg.role === 'assistant') {
+        anthropicMessages.push({
+          role: 'assistant',
+          content: msg.content,
+        });
+      }
+    }
+
+    // Add the assistant message with tool_use blocks
+    // This is required by Anthropic API - tool_result must follow a message with matching tool_use
+    const assistantContent: Anthropic.ContentBlockParam[] = assistantToolCalls.map((tc) => ({
+      type: 'tool_use' as const,
+      id: tc.id,
+      name: tc.name,
+      input: tc.input,
+    }));
+    anthropicMessages.push({
+      role: 'assistant',
+      content: assistantContent,
+    });
+
+    // Add tool results as a user message
+    anthropicMessages.push({
+      role: 'user',
+      content: toolResults.map((r) => ({
+        type: 'tool_result' as const,
+        tool_use_id: r.tool_use_id,
+        content: r.content,
+        is_error: r.is_error,
+      })),
+    });
+
+    // Convert tools to Anthropic format
+    const anthropicTools = options.tools
+      ? anthropicToolAdapter.toProviderFormat(options.tools)
+      : undefined;
+
+    const stream = await this.client.messages.create({
+      model: options.model,
+      max_tokens: 8192,
+      messages: anthropicMessages,
+      system: options.systemPrompt,
+      stream: true,
+      tools: anthropicTools,
+    });
+
+    let fullResponse = '';
+    const toolUseList: ToolUse[] = [];
+    const toolCalls: ToolCall[] = [];
+    let stopReason: StopReason = 'end_turn';
+    let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
+
+    for await (const chunk of stream) {
+      if (options.signal?.aborted) {
+        stream.controller.abort();
+        break;
+      }
+
+      if (chunk.type === 'message_delta') {
+        const messageDelta = chunk as Anthropic.MessageDeltaEvent;
+        if (messageDelta.delta.stop_reason) {
+          stopReason = messageDelta.delta.stop_reason as StopReason;
+        }
+      }
+
+      if (chunk.type === 'content_block_start') {
+        const block = (chunk as Anthropic.ContentBlockStartEvent).content_block;
+        if (block.type === 'tool_use') {
+          currentToolUse = { id: block.id, name: block.name, inputJson: '' };
+          const toolUse: ToolUse = { type: block.name, input: {} };
+          toolUseList.push(toolUse);
+          options.onToolUse?.(toolUse);
+        }
+      }
+
+      if (chunk.type === 'content_block_delta') {
+        const delta = (chunk as Anthropic.ContentBlockDeltaEvent).delta;
+        if (delta.type === 'input_json_delta' && currentToolUse) {
+          currentToolUse.inputJson += delta.partial_json;
+        }
+        if (delta.type === 'text_delta') {
+          fullResponse += delta.text;
+          options.onChunk?.(delta.text);
+        }
+      }
+
+      if (chunk.type === 'content_block_stop' && currentToolUse) {
+        try {
+          const input = currentToolUse.inputJson ? JSON.parse(currentToolUse.inputJson) : {};
+          toolCalls.push({ id: currentToolUse.id, name: currentToolUse.name, input });
+          if (toolUseList.length > 0) {
+            toolUseList[toolUseList.length - 1].input = input;
+          }
+        } catch (e) {
+          console.error('Failed to parse tool input JSON:', e);
+        }
+        currentToolUse = null;
+      }
+    }
+
+    return {
+      content: fullResponse,
+      toolUse: toolUseList.length > 0 ? toolUseList : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      stopReason,
+    };
   }
 }

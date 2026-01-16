@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
-import { Message, ModelInfo } from '../../types';
-import { IProviderService, ChatOptions, ChatResult } from './types';
+import { Message, ModelInfo, ToolUse } from '../../types';
+import { ToolCall } from '../../types/tools';
+import { IProviderService, ChatOptions, ChatResult, StopReason } from './types';
+import { openaiToolAdapter } from './tool-adapters/openai';
 
 const OPENAI_MODELS: ModelInfo[] = [
   { id: 'gpt-5.2', name: 'GPT-5.2', provider: 'openai' },
@@ -119,13 +121,25 @@ export class OpenAIService implements IProviderService {
       }
     }
 
+    // Convert tools to OpenAI format if provided
+    const openaiTools = options.tools
+      ? openaiToolAdapter.toProviderFormat(options.tools)
+      : undefined;
+
     const stream = await this.client.chat.completions.create({
       model: options.model,
       messages: openaiMessages,
       stream: true,
+      tools: openaiTools,
     });
 
     let fullResponse = '';
+    const toolUseList: ToolUse[] = [];
+    const toolCalls: ToolCall[] = [];
+    let stopReason: StopReason = 'end_turn';
+
+    // Track tool calls being built from stream
+    const toolCallBuilders: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
     for await (const chunk of stream) {
       // Check if aborted
@@ -134,13 +148,219 @@ export class OpenAIService implements IProviderService {
         break;
       }
 
-      const content = chunk.choices[0]?.delta?.content;
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+
+      // Handle finish reason
+      if (choice.finish_reason) {
+        if (choice.finish_reason === 'tool_calls') {
+          stopReason = 'tool_use';
+        } else if (choice.finish_reason === 'stop') {
+          stopReason = 'end_turn';
+        } else if (choice.finish_reason === 'length') {
+          stopReason = 'max_tokens';
+        }
+      }
+
+      // Handle content delta
+      const content = choice.delta?.content;
       if (content) {
         fullResponse += content;
         options.onChunk?.(content);
       }
+
+      // Handle tool call deltas
+      const deltaToolCalls = choice.delta?.tool_calls;
+      if (deltaToolCalls) {
+        for (const toolCallDelta of deltaToolCalls) {
+          const index = toolCallDelta.index;
+
+          if (!toolCallBuilders.has(index)) {
+            // New tool call starting
+            toolCallBuilders.set(index, {
+              id: toolCallDelta.id || '',
+              name: toolCallDelta.function?.name || '',
+              arguments: '',
+            });
+
+            // Notify UI about new tool use
+            const toolUse: ToolUse = {
+              type: toolCallDelta.function?.name || 'unknown',
+              input: {},
+            };
+            toolUseList.push(toolUse);
+            options.onToolUse?.(toolUse);
+          }
+
+          const builder = toolCallBuilders.get(index)!;
+
+          // Accumulate ID if provided
+          if (toolCallDelta.id) {
+            builder.id = toolCallDelta.id;
+          }
+
+          // Accumulate function name if provided
+          if (toolCallDelta.function?.name) {
+            builder.name = toolCallDelta.function.name;
+          }
+
+          // Accumulate arguments
+          if (toolCallDelta.function?.arguments) {
+            builder.arguments += toolCallDelta.function.arguments;
+          }
+        }
+      }
     }
 
-    return { content: fullResponse };
+    // Finalize tool calls
+    for (const [index, builder] of toolCallBuilders) {
+      try {
+        const input = builder.arguments ? JSON.parse(builder.arguments) : {};
+        toolCalls.push({
+          id: builder.id,
+          name: builder.name,
+          input,
+        });
+
+        // Update the tool use entry with parsed input
+        if (toolUseList[index]) {
+          toolUseList[index].input = input;
+        }
+      } catch (e) {
+        console.error('Failed to parse tool arguments:', e);
+      }
+    }
+
+    return {
+      content: fullResponse,
+      toolUse: toolUseList.length > 0 ? toolUseList : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      stopReason,
+    };
+  }
+
+  // Send a message with tool results (for tool execution loop)
+  async sendMessageWithToolResults(
+    messages: Message[],
+    toolResults: { tool_use_id: string; content: string; is_error?: boolean }[],
+    options: ChatOptions
+  ): Promise<ChatResult> {
+    if (!this.client) {
+      throw new Error('OpenAI client not initialized. Please provide an API key.');
+    }
+
+    // Build the messages including tool results
+    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+
+    // Add system prompt if provided
+    if (options.systemPrompt) {
+      openaiMessages.push({
+        role: 'system',
+        content: options.systemPrompt,
+      });
+    }
+
+    // Convert existing messages
+    for (const msg of messages.filter((m) => m.role !== 'log')) {
+      openaiMessages.push({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      });
+    }
+
+    // Add tool results using OpenAI's format
+    const formattedResults = openaiToolAdapter.formatToolResults(toolResults);
+    openaiMessages.push(...formattedResults);
+
+    // Convert tools to OpenAI format
+    const openaiTools = options.tools
+      ? openaiToolAdapter.toProviderFormat(options.tools)
+      : undefined;
+
+    const stream = await this.client.chat.completions.create({
+      model: options.model,
+      messages: openaiMessages,
+      stream: true,
+      tools: openaiTools,
+    });
+
+    let fullResponse = '';
+    const toolUseList: ToolUse[] = [];
+    const toolCalls: ToolCall[] = [];
+    let stopReason: StopReason = 'end_turn';
+    const toolCallBuilders: Map<number, { id: string; name: string; arguments: string }> = new Map();
+
+    for await (const chunk of stream) {
+      if (options.signal?.aborted) {
+        stream.controller.abort();
+        break;
+      }
+
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+
+      if (choice.finish_reason) {
+        if (choice.finish_reason === 'tool_calls') {
+          stopReason = 'tool_use';
+        } else if (choice.finish_reason === 'stop') {
+          stopReason = 'end_turn';
+        } else if (choice.finish_reason === 'length') {
+          stopReason = 'max_tokens';
+        }
+      }
+
+      const content = choice.delta?.content;
+      if (content) {
+        fullResponse += content;
+        options.onChunk?.(content);
+      }
+
+      const deltaToolCalls = choice.delta?.tool_calls;
+      if (deltaToolCalls) {
+        for (const toolCallDelta of deltaToolCalls) {
+          const index = toolCallDelta.index;
+
+          if (!toolCallBuilders.has(index)) {
+            toolCallBuilders.set(index, {
+              id: toolCallDelta.id || '',
+              name: toolCallDelta.function?.name || '',
+              arguments: '',
+            });
+
+            const toolUse: ToolUse = {
+              type: toolCallDelta.function?.name || 'unknown',
+              input: {},
+            };
+            toolUseList.push(toolUse);
+            options.onToolUse?.(toolUse);
+          }
+
+          const builder = toolCallBuilders.get(index)!;
+          if (toolCallDelta.id) builder.id = toolCallDelta.id;
+          if (toolCallDelta.function?.name) builder.name = toolCallDelta.function.name;
+          if (toolCallDelta.function?.arguments) builder.arguments += toolCallDelta.function.arguments;
+        }
+      }
+    }
+
+    // Finalize tool calls
+    for (const [index, builder] of toolCallBuilders) {
+      try {
+        const input = builder.arguments ? JSON.parse(builder.arguments) : {};
+        toolCalls.push({ id: builder.id, name: builder.name, input });
+        if (toolUseList[index]) {
+          toolUseList[index].input = input;
+        }
+      } catch (e) {
+        console.error('Failed to parse tool arguments:', e);
+      }
+    }
+
+    return {
+      content: fullResponse,
+      toolUse: toolUseList.length > 0 ? toolUseList : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      stopReason,
+    };
   }
 }
