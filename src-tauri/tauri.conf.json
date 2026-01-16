@@ -16,6 +16,7 @@
         "width": 1200,
         "height": 800,
         "decorations": true,
+        "titleBarStyle": "Transparent",
         "backgroundColor": "#f8f9fa",
         "dragDropEnabled": false
       }
@@ -96,16 +97,20 @@
         },
         {
           "identifier": "opener-scope",
-          "description": "Opener access for vault files",
+          "description": "Opener access for vault files and external URLs",
           "windows": ["main"],
           "permissions": [
             {
               "identifier": "opener:allow-open-path",
               "allow": [{"path": "$HOME/**"}]
             },
-            {
+          {
               "identifier": "opener:allow-reveal-item-in-dir",
               "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "opener:allow-open-url",
+              "allow": [{"url": "https://**"}, {"url": "http://**"}]
             }
           ]
         }
