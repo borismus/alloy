@@ -1,11 +1,29 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { Conversation, ModelInfo, ComparisonResponse, ProviderType } from '../types';
 import { useComparisonStreaming } from '../hooks/useComparisonStreaming';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
+
+// Custom link renderer that opens URLs in system browser
+const markdownComponents: Components = {
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href) {
+          openUrl(href);
+        }
+      }}
+    >
+      {children}
+    </a>
+  ),
+};
 
 const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
@@ -211,6 +229,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       rehypePlugins={[rehypeHighlight]}
+                      components={markdownComponents}
                     >
                       {group.userMessage}
                     </ReactMarkdown>
@@ -226,6 +245,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeHighlight]}
+                          components={markdownComponents}
                         >
                           {response.content}
                         </ReactMarkdown>
@@ -245,6 +265,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       rehypePlugins={[rehypeHighlight]}
+                      components={markdownComponents}
                     >
                       {currentUserMessage}
                     </ReactMarkdown>
@@ -278,6 +299,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
                               rehypePlugins={[rehypeHighlight]}
+                              components={markdownComponents}
                             >
                               {content}
                             </ReactMarkdown>

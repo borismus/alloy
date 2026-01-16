@@ -1,8 +1,26 @@
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { ModelInfo, ComparisonResponse, ProviderType } from '../types';
 import './ComparisonView.css';
+
+// Custom link renderer that opens URLs in system browser
+const markdownComponents: Components = {
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href) {
+          openUrl(href);
+        }
+      }}
+    >
+      {children}
+    </a>
+  ),
+};
 
 interface ComparisonViewProps {
   models: ModelInfo[];
@@ -73,6 +91,7 @@ export function ComparisonView({
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       rehypePlugins={[rehypeHighlight]}
+                      components={markdownComponents}
                     >
                       {content}
                     </ReactMarkdown>
