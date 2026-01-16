@@ -8,6 +8,10 @@ export interface Attachment {
   mimeType: string;      // image/png, image/jpeg, image/gif, image/webp
 }
 
+export interface ToolUse {
+  type: 'web_search';
+}
+
 export interface Message {
   // 'log' messages are for UI display only and are filtered out before sending to agents
   role: 'user' | 'assistant' | 'log';
@@ -18,6 +22,8 @@ export interface Message {
   model?: string;
   // Attachments (images, etc.)
   attachments?: Attachment[];
+  // Tools used in this message (e.g., web search)
+  toolUse?: ToolUse[];
 }
 
 export interface ModelInfo {
@@ -41,6 +47,19 @@ export interface ComparisonMetadata {
   models: Array<{ provider: ProviderType; model: string }>;
 }
 
+// Topic metadata - makes a conversation a "standing query"
+export interface TopicMetadata {
+  label: string;    // Short name for pill display (e.g., "Iran", "SF Trip")
+  prompt: string;   // The standing query to re-ask when clicking the topic
+  lastSent?: string; // ISO timestamp of last auto-send (for cooldown)
+}
+
+// Pending topic prompt with target conversation ID
+export interface PendingTopicPrompt {
+  prompt: string;
+  targetId: string;
+}
+
 export interface Conversation {
   id: string;
   created: string;
@@ -51,6 +70,7 @@ export interface Conversation {
   memory_version?: number;
   messages: Message[];
   comparison?: ComparisonMetadata;
+  topic?: TopicMetadata;  // If set, conversation appears as a topic pill instead of in sidebar list
 }
 
 export interface Config {
@@ -75,5 +95,6 @@ export interface AppState {
 export interface ConversationStreamingState {
   isStreaming: boolean;
   streamingContent: string;
+  streamingToolUse?: ToolUse[];
   error?: string;
 }

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useStreamingContext } from '../contexts/StreamingContext';
+import { ToolUse } from '../types';
 
 export function useConversationStreaming(conversationId: string | null) {
   const ctx = useStreamingContext();
@@ -8,6 +9,7 @@ export function useConversationStreaming(conversationId: string | null) {
 
   const isStreaming = streamingState?.isStreaming ?? false;
   const streamingContent = streamingState?.streamingContent ?? '';
+  const streamingToolUse = streamingState?.streamingToolUse ?? [];
   const error = streamingState?.error ?? null;
 
   const start = useCallback(() => {
@@ -33,13 +35,29 @@ export function useConversationStreaming(conversationId: string | null) {
     ctx.completeStreaming(conversationId, isCurrentConversation);
   }, [conversationId, ctx]);
 
+  const clear = useCallback(() => {
+    if (!conversationId) return;
+    ctx.clearStreamingContent(conversationId);
+  }, [conversationId, ctx]);
+
+  const addToolUse = useCallback(
+    (toolUse: ToolUse) => {
+      if (!conversationId) return;
+      ctx.addToolUse(conversationId, toolUse);
+    },
+    [conversationId, ctx]
+  );
+
   return {
     isStreaming,
     streamingContent,
+    streamingToolUse,
     error,
     start,
     stop,
     updateContent,
+    addToolUse,
     complete,
+    clear,
   };
 }

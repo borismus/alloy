@@ -1,5 +1,5 @@
 import { Message, ModelInfo } from '../../types';
-import { IProviderService, ChatOptions } from './types';
+import { IProviderService, ChatOptions, ChatResult } from './types';
 
 export class OllamaService implements IProviderService {
   readonly providerType = 'ollama' as const;
@@ -77,7 +77,7 @@ export class OllamaService implements IProviderService {
     }
   }
 
-  async sendMessage(messages: Message[], options: ChatOptions): Promise<string> {
+  async sendMessage(messages: Message[], options: ChatOptions): Promise<ChatResult> {
     if (!this.baseUrl) {
       throw new Error('Ollama not initialized. Please provide a base URL.');
     }
@@ -154,12 +154,12 @@ export class OllamaService implements IProviderService {
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         // Aborted, return what we have so far
-        return fullResponse;
+        return { content: fullResponse };
       }
       throw error;
     }
 
-    return fullResponse;
+    return { content: fullResponse };
   }
 
   private formatModelName(name: string): string {

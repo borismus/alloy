@@ -126,7 +126,7 @@ export function useComparisonStreaming(
       try {
         updateStatus(modelKey, 'streaming');
 
-        const response = await provider.sendMessage(messages, {
+        const result = await provider.sendMessage(messages, {
           model: model.id,
           systemPrompt: options.systemPrompt,
           onChunk: (text) => updateContent(modelKey, text),
@@ -139,7 +139,7 @@ export function useComparisonStreaming(
         return {
           provider: model.provider,
           model: model.id,
-          content: response,
+          content: result.content,
           status: 'complete',
         };
       } catch (error: unknown) {

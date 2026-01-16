@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, GenerativeModel, Content } from '@google/generative-ai';
 import { Message, ModelInfo } from '../../types';
-import { IProviderService, ChatOptions } from './types';
+import { IProviderService, ChatOptions, ChatResult } from './types';
 
 const GEMINI_MODELS: ModelInfo[] = [
   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini' },
@@ -54,7 +54,7 @@ export class GeminiService implements IProviderService {
     return userMessage.slice(0, 50);
   }
 
-  async sendMessage(messages: Message[], options: ChatOptions): Promise<string> {
+  async sendMessage(messages: Message[], options: ChatOptions): Promise<ChatResult> {
     if (!this.client) {
       throw new Error('Gemini client not initialized. Please provide an API key.');
     }
@@ -105,6 +105,6 @@ export class GeminiService implements IProviderService {
       }
     }
 
-    return fullResponse;
+    return { content: fullResponse };
   }
 }

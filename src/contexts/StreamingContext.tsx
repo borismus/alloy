@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useMemo } from 'react';
-import type { ConversationStreamingState } from '../types';
+import type { ConversationStreamingState, ToolUse } from '../types';
 
 interface StreamingContextValue {
   getStreamingState: (id: string) => ConversationStreamingState | null;
@@ -7,8 +7,10 @@ interface StreamingContextValue {
   getUnreadConversationIds: () => string[];
   startStreaming: (id: string) => AbortController;
   updateStreamingContent: (id: string, chunk: string) => void;
+  addToolUse: (id: string, toolUse: ToolUse) => void;
   stopStreaming: (id: string) => void;
   completeStreaming: (id: string, isCurrentConversation?: boolean) => void;
+  clearStreamingContent: (id: string) => void;
   markAsRead: (id: string) => void;
 }
 
@@ -71,6 +73,20 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const addToolUse = useCallback((id: string, toolUse: ToolUse) => {
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing) return prev;
+
+      const next = new Map(prev);
+      next.set(id, {
+        ...existing,
+        streamingToolUse: [...(existing.streamingToolUse || []), toolUse],
+      });
+      return next;
+    });
+  }, []);
+
   const stopStreaming = useCallback((id: string) => {
     const controller = abortControllersRef.current.get(id);
     if (controller) {
@@ -97,6 +113,17 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
+    // Mark as not streaming but keep content visible until clearStreamingContent is called
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing) return prev;
+      const next = new Map(prev);
+      next.set(id, { ...existing, isStreaming: false });
+      return next;
+    });
+  }, []);
+
+  const clearStreamingContent = useCallback((id: string) => {
     setStreamingStates((prev) => {
       const next = new Map(prev);
       next.delete(id);
@@ -120,8 +147,10 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       getUnreadConversationIds,
       startStreaming,
       updateStreamingContent,
+      addToolUse,
       stopStreaming,
       completeStreaming,
+      clearStreamingContent,
       markAsRead,
     }),
     [
@@ -130,8 +159,10 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       getUnreadConversationIds,
       startStreaming,
       updateStreamingContent,
+      addToolUse,
       stopStreaming,
       completeStreaming,
+      clearStreamingContent,
       markAsRead,
     ]
   );

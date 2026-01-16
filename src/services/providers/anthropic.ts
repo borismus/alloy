@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { Message, ModelInfo } from '../../types';
-import { IProviderService, ChatOptions } from './types';
+import { Message, ModelInfo, ToolUse } from '../../types';
+import { IProviderService, ChatOptions, ChatResult } from './types';
 
 const ANTHROPIC_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-5-20251101', name: 'Opus 4.5', provider: 'anthropic' },
@@ -59,7 +59,7 @@ export class AnthropicService implements IProviderService {
     return userMessage.slice(0, 50);
   }
 
-  async sendMessage(messages: Message[], options: ChatOptions): Promise<string> {
+  async sendMessage(messages: Message[], options: ChatOptions): Promise<ChatResult> {
     if (!this.client) {
       throw new Error('Anthropic client not initialized. Please provide an API key.');
     }
@@ -131,12 +131,23 @@ export class AnthropicService implements IProviderService {
         });
 
         let fullResponse = '';
+        const toolUseList: ToolUse[] = [];
 
         for await (const chunk of stream) {
           // Check if aborted
           if (options.signal?.aborted) {
             stream.controller.abort();
             break;
+          }
+
+          // Detect tool use start (web_search uses 'server_tool_use' type)
+          if (chunk.type === 'content_block_start') {
+            const block = (chunk as any).content_block;
+            if (block?.type === 'server_tool_use' && block.name === 'web_search') {
+              const toolUse: ToolUse = { type: 'web_search' };
+              toolUseList.push(toolUse);
+              options.onToolUse?.(toolUse);
+            }
           }
 
           if (
@@ -149,7 +160,10 @@ export class AnthropicService implements IProviderService {
           }
         }
 
-        return fullResponse;
+        return {
+          content: fullResponse,
+          toolUse: toolUseList.length > 0 ? toolUseList : undefined,
+        };
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
 

@@ -120,7 +120,7 @@ describe('AnthropicService', () => {
         model: 'claude-sonnet-4-20250514',
       });
 
-      expect(result).toBe('Hello there!');
+      expect(result.content).toBe('Hello there!');
       expect(mockClient.messages.create).toHaveBeenCalledWith({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 8192,
@@ -198,7 +198,7 @@ describe('AnthropicService', () => {
         onChunk,
       });
 
-      expect(result).toBe('First second third');
+      expect(result.content).toBe('First second third');
       expect(onChunk).toHaveBeenCalledTimes(3);
       expect(onChunk).toHaveBeenNthCalledWith(1, 'First ');
       expect(onChunk).toHaveBeenNthCalledWith(2, 'second ');
@@ -234,7 +234,7 @@ describe('AnthropicService', () => {
         model: 'claude-sonnet-4-20250514',
       });
 
-      expect(result).toBe('Text');
+      expect(result.content).toBe('Text');
     });
 
     it('should filter out log messages', async () => {
@@ -382,7 +382,7 @@ describe('AnthropicService', () => {
         signal: abortController.signal,
       });
 
-      expect(result).toBe('First ');
+      expect(result.content).toBe('First ');
       expect(mockAbort).toHaveBeenCalled();
     });
   });

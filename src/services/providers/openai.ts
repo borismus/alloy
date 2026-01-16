@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { Message, ModelInfo } from '../../types';
-import { IProviderService, ChatOptions } from './types';
+import { IProviderService, ChatOptions, ChatResult } from './types';
 
 const OPENAI_MODELS: ModelInfo[] = [
   { id: 'gpt-5.2', name: 'GPT-5.2', provider: 'openai' },
@@ -62,7 +62,7 @@ export class OpenAIService implements IProviderService {
     return userMessage.slice(0, 50);
   }
 
-  async sendMessage(messages: Message[], options: ChatOptions): Promise<string> {
+  async sendMessage(messages: Message[], options: ChatOptions): Promise<ChatResult> {
     if (!this.client) {
       throw new Error('OpenAI client not initialized. Please provide an API key.');
     }
@@ -141,6 +141,6 @@ export class OpenAIService implements IProviderService {
       }
     }
 
-    return fullResponse;
+    return { content: fullResponse };
   }
 }
