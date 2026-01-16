@@ -28,6 +28,24 @@
   font-weight: 500;
 }
 
+.tool-use-path {
+  color: #888;
+  font-size: 0.75rem;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-use-indicator.error {
+  background: #fff0f0;
+  border-color: #ffcdd2;
+}
+
+.tool-use-indicator.error .tool-use-icon {
+  color: #e53935;
+}
+
 .tool-use-spinner {
   width: 10px;
   height: 10px;
