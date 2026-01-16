@@ -5,6 +5,7 @@ import rehypeHighlight from 'rehype-highlight';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Conversation, ModelInfo, ComparisonResponse, ProviderType } from '../types';
 import { useComparisonStreaming } from '../hooks/useComparisonStreaming';
+import { skillRegistry } from '../services/skills';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
 
@@ -35,7 +36,6 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
 interface ComparisonChatInterfaceProps {
   conversation: Conversation;
   availableModels: ModelInfo[];
-  memory: string;
   onUpdateConversation: (conversation: Conversation) => void;
 }
 
@@ -48,7 +48,6 @@ const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
 export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle, ComparisonChatInterfaceProps>(({
   conversation,
   availableModels,
-  memory,
   onUpdateConversation,
 }, ref) => {
   const [input, setInput] = useState('');
@@ -66,7 +65,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     availableModels.find(am => am.id === m.model && am.provider === m.provider)
   ).filter((m): m is ModelInfo => m !== undefined) || [];
 
-  const systemPrompt = memory ? `Here is my memory/context:\n\n${memory}` : undefined;
+  const systemPrompt = skillRegistry.buildSystemPrompt();
 
   const {
     streamingContents,

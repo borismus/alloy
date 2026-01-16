@@ -5,7 +5,7 @@ export interface VaultWatcherCallbacks {
   onConversationAdded: (id: string) => void;
   onConversationRemoved: (id: string) => void;
   onConversationModified: (id: string) => void;
-  onMemoryChanged: () => void;
+  onMemoryChanged?: () => void;
   onConfigChanged: () => void;
 }
 
@@ -149,7 +149,7 @@ export function useVaultWatcher(
           }
         } else if (isMemoryFile) {
           if (eventType === 'modify' || eventType === 'create') {
-            callbacksRef.current.onMemoryChanged();
+            callbacksRef.current.onMemoryChanged?.();
           }
         } else if (isConfigFile) {
           if (eventType === 'modify' || eventType === 'create') {

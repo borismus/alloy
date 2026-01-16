@@ -27,6 +27,7 @@ export class VaultService {
     // Create necessary directories
     const conversationsPath = await join(path, 'conversations');
     const topicsPath = await join(path, 'topics');
+    const skillsPath = await join(path, 'skills');
 
     if (!(await exists(conversationsPath))) {
       await mkdir(conversationsPath, { recursive: true });
@@ -34,6 +35,10 @@ export class VaultService {
 
     if (!(await exists(topicsPath))) {
       await mkdir(topicsPath, { recursive: true });
+    }
+
+    if (!(await exists(skillsPath))) {
+      await mkdir(skillsPath, { recursive: true });
     }
 
     // Create attachments directory for images
@@ -68,9 +73,93 @@ defaultModel: claude-opus-4-5-20251101
 # OPENAI_API_KEY: sk-...
 # GEMINI_API_KEY: ...
 # OLLAMA_BASE_URL: http://localhost:11434
+
+# API keys for skills
+# SERPER_API_KEY: ...
 `;
       await writeTextFile(configPath, defaultConfigYaml);
     }
+
+    // Create default skills if they don't exist
+    await this.initializeDefaultSkills(path);
+  }
+
+  async initializeDefaultSkills(vaultPath: string): Promise<void> {
+    const skillsPath = await join(vaultPath, 'skills');
+
+    // Memory skill
+    const memorySkillPath = await join(skillsPath, 'memory');
+    if (!(await exists(memorySkillPath))) {
+      await mkdir(memorySkillPath, { recursive: true });
+      const memorySkillMd = `---
+name: memory
+description: Read memory.md at conversation start. Save new memories to the SAME file.
+---
+
+# Memory Skill
+
+## Reading (do this FIRST in every conversation)
+
+Call \`read_file\` with path \`memory.md\` before responding to the user's first message.
+
+## Saving (when user asks to remember something)
+
+1. First read the current \`memory.md\`
+2. Then call \`write_file\` with path \`memory.md\` and the COMPLETE updated content
+
+**CRITICAL:** Only use the file \`memory.md\`. Never create other files like \`notes/\`, \`preferences.md\`, etc. All memories go in \`memory.md\`.
+`;
+      await writeTextFile(await join(memorySkillPath, 'SKILL.md'), memorySkillMd);
+    }
+
+    // Web search skill
+    const webSearchSkillPath = await join(skillsPath, 'web-search');
+    if (!(await exists(webSearchSkillPath))) {
+      await mkdir(webSearchSkillPath, { recursive: true });
+      const webSearchSkillMd = `---
+name: web-search
+description: Search the web for current information, news, or real-time data.
+---
+
+# Web Search Skill
+
+When the user asks about current events, recent news, or information that may have
+changed since your knowledge cutoff:
+
+1. Use \`get_secret\` with key "SERPER_API_KEY" to get the API key
+2. Use \`http_post\` to search:
+   - url: "https://google.serper.dev/search"
+   - body: {"q": "your search query"}
+   - headers: {"X-API-KEY": "[key from step 1]"}
+
+Parse the JSON response and summarize the top results. Cite sources when relevant.
+`;
+      await writeTextFile(await join(webSearchSkillPath, 'SKILL.md'), webSearchSkillMd);
+    }
+
+    // Read URL skill
+    const readUrlSkillPath = await join(skillsPath, 'read-url');
+    if (!(await exists(readUrlSkillPath))) {
+      await mkdir(readUrlSkillPath, { recursive: true });
+      const readUrlSkillMd = `---
+name: read-url
+description: Read and summarize content from URLs the user shares.
+---
+
+# URL Reader Skill
+
+When the user shares a URL or asks you to read a webpage, use \`http_get\` to fetch it.
+
+Extract the main content and provide a summary. If the page is very long, focus on
+the most relevant sections based on the user's question.
+`;
+      await writeTextFile(await join(readUrlSkillPath, 'SKILL.md'), readUrlSkillMd);
+    }
+  }
+
+  async getSkillsPath(): Promise<string | null> {
+    if (!this.vaultPath) return null;
+    return await join(this.vaultPath, 'skills');
   }
 
   async loadConfig(): Promise<Config | null> {
@@ -98,17 +187,6 @@ defaultModel: claude-opus-4-5-20251101
 
     const configPath = await join(this.vaultPath, 'config.yaml');
     await writeTextFile(configPath, yaml.dump(config));
-  }
-
-  async loadMemory(): Promise<string> {
-    if (!this.vaultPath) return '';
-
-    const memoryPath = await join(this.vaultPath, 'memory.md');
-    if (await exists(memoryPath)) {
-      return await readTextFile(memoryPath);
-    }
-
-    return '';
   }
 
   async saveConversation(conversation: Conversation): Promise<void> {
@@ -480,13 +558,6 @@ defaultModel: claude-opus-4-5-20251101
     const configPath = await join(this.vaultPath, 'config.yaml');
     await writeTextFile(configPath, content);
     return { success: true };
-  }
-
-  async saveMemory(content: string): Promise<void> {
-    if (!this.vaultPath) return;
-
-    const memoryPath = await join(this.vaultPath, 'memory.md');
-    await writeTextFile(memoryPath, content);
   }
 
   // Image handling methods

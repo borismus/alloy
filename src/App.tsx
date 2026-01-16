@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
+import { toolRegistry } from './services/tools';
+import { skillRegistry } from './services/skills';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment, TopicMetadata, PendingTopicPrompt, ToolUse } from './types';
+import { BUILTIN_TOOLS } from './types/tools';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
@@ -17,10 +20,8 @@ function AppContent() {
   const [config, setConfig] = useState<Config | null>(null);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [memory, setMemory] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [memoryFilePath, setMemoryFilePath] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const [pendingTopicPrompt, setPendingTopicPrompt] = useState<PendingTopicPrompt | null>(null);
@@ -59,10 +60,6 @@ function AppContent() {
     setCurrentConversation(prev => prev?.id === id ? updated : prev);
   }, []);
 
-  const handleMemoryChanged = useCallback(async () => {
-    const newMemory = await vaultService.loadMemory();
-    setMemory(newMemory);
-  }, []);
 
   // Use ref to avoid circular dependency with loadVault
   const loadVaultRef = useRef<((path: string) => Promise<void>) | null>(null);
@@ -82,7 +79,6 @@ function AppContent() {
       onConversationAdded: handleConversationAdded,
       onConversationRemoved: handleConversationRemoved,
       onConversationModified: handleConversationModified,
-      onMemoryChanged: handleMemoryChanged,
       onConfigChanged: handleConfigChanged,
     }
   );
@@ -149,11 +145,9 @@ function AppContent() {
         const loadedConversations = await vaultService.loadConversations();
         setConversations(loadedConversations);
 
-        const loadedMemory = await vaultService.loadMemory();
-        setMemory(loadedMemory);
-
-        const memoryPath = await vaultService.getMemoryFilePath();
-        setMemoryFilePath(memoryPath);
+        // Load skills from vault
+        skillRegistry.setVaultPath(path);
+        await skillRegistry.loadSkills();
       } else {
         localStorage.removeItem('vaultPath');
       }
@@ -359,28 +353,112 @@ function AppContent() {
     }
 
     try {
-      const systemPrompt = memory ? `Here is my memory/context:\n\n${memory}` : undefined;
+      // Build system prompt with skill descriptions (memory is loaded via skill)
+      const systemPrompt = skillRegistry.buildSystemPrompt();
 
       const imageLoader = async (relativePath: string) => {
         return await vaultService.loadImageAsBase64(relativePath);
       };
 
-      const result = await provider.sendMessage(updatedMessages, {
-        model: currentConversation.model,
-        systemPrompt,
-        onChunk,
-        onToolUse: (toolUse: ToolUse) => {
-          addToolUse(currentConversation.id, toolUse);
-        },
-        signal,
-        imageLoader,
-      });
+      // Tool execution loop
+      const MAX_TOOL_ITERATIONS = 10;
+      let currentMessages = updatedMessages;
+      let allToolUses: ToolUse[] = [];
+      let finalContent = '';
+      let iteration = 0;
+
+      while (iteration < MAX_TOOL_ITERATIONS) {
+        iteration++;
+
+        const result = await provider.sendMessage(currentMessages, {
+          model: currentConversation.model,
+          systemPrompt,
+          tools: BUILTIN_TOOLS,
+          onChunk,
+          onToolUse: (toolUse: ToolUse) => {
+            addToolUse(currentConversation.id, toolUse);
+          },
+          signal,
+          imageLoader,
+        });
+
+        finalContent = result.content;
+        if (result.toolUse) {
+          allToolUses = [...allToolUses, ...result.toolUse];
+        }
+
+        // Check if we need to execute tools
+        if (result.stopReason === 'tool_use' && result.toolCalls && result.toolCalls.length > 0) {
+          // Execute each tool call
+          const toolResults = await Promise.all(
+            result.toolCalls.map(async (toolCall) => {
+              const toolResult = await toolRegistry.executeTool(toolCall);
+
+              // Update the tool use entry with result
+              const toolUseEntry = allToolUses.find(
+                (t) => t.type === toolCall.name && !t.result
+              );
+              if (toolUseEntry) {
+                toolUseEntry.result = toolResult.content.slice(0, 500); // Truncate for display
+                toolUseEntry.isError = toolResult.is_error;
+              }
+
+              return toolResult;
+            })
+          );
+
+          // Send tool results back to the provider
+          const providerWithTools = provider as any;
+          if (providerWithTools.sendMessageWithToolResults) {
+            const nextResult = await providerWithTools.sendMessageWithToolResults(
+              currentMessages,
+              toolResults,
+              result.toolCalls,  // Pass the tool_use blocks from assistant's response
+              {
+                model: currentConversation.model,
+                systemPrompt,
+                tools: BUILTIN_TOOLS,
+                onChunk,
+                onToolUse: (toolUse: ToolUse) => {
+                  addToolUse(currentConversation.id, toolUse);
+                },
+                signal,
+                imageLoader,
+              }
+            );
+
+            finalContent = nextResult.content;
+            if (nextResult.toolUse) {
+              allToolUses = [...allToolUses, ...nextResult.toolUse];
+            }
+
+            // If more tool calls, continue the loop
+            if (nextResult.stopReason === 'tool_use' && nextResult.toolCalls?.length) {
+              // Add assistant message with tool calls and tool results to messages
+              currentMessages = [
+                ...currentMessages,
+                {
+                  role: 'assistant' as const,
+                  timestamp: new Date().toISOString(),
+                  content: result.content,
+                },
+              ];
+              continue;
+            }
+          }
+
+          break;
+        } else {
+          // No more tool calls, we're done
+          break;
+        }
+      }
 
       const assistantMessage: Message = {
         role: 'assistant',
         timestamp: new Date().toISOString(),
-        content: result.content,
-        toolUse: result.toolUse,
+        content: finalContent,
+        toolUse: allToolUses.length > 0 ? allToolUses : undefined,
       };
 
       let finalConversation: Conversation = {
@@ -391,7 +469,7 @@ function AppContent() {
       // Generate better title using LLM for first message
       if (isFirstMessage) {
         try {
-          const betterTitle = await provider.generateTitle(content, result.content);
+          const betterTitle = await provider.generateTitle(content, finalContent);
           if (betterTitle && betterTitle !== finalConversation.title) {
             finalConversation = {
               ...finalConversation,
@@ -729,7 +807,6 @@ function AppContent() {
             ref={comparisonChatInterfaceRef}
             conversation={currentConversation}
             availableModels={availableModels}
-            memory={memory}
             onUpdateConversation={handleUpdateComparisonConversation}
           />
         ) : (
@@ -751,7 +828,6 @@ function AppContent() {
       {showSettings && (
         <Settings
           onClose={() => setShowSettings(false)}
-          memoryFilePath={memoryFilePath}
           vaultPath={config?.vaultPath || null}
           onChangeVault={async () => {
             const newPath = await vaultService.selectVaultFolder();

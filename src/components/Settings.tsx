@@ -4,13 +4,12 @@ import './Settings.css';
 
 interface SettingsProps {
   onClose: () => void;
-  memoryFilePath: string | null;
   vaultPath: string | null;
   onChangeVault: () => Promise<void>;
   onConfigReload?: () => Promise<void>;
 }
 
-export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, onConfigReload: _onConfigReload }: SettingsProps) {
+export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _onConfigReload }: SettingsProps) {
   const handleRevealVaultInFinder = async () => {
     try {
       if (!vaultPath) {
@@ -25,7 +24,7 @@ export function Settings({ onClose, memoryFilePath, vaultPath, onChangeVault, on
 
   const handleEditMemory = async () => {
     try {
-      const filePath = memoryFilePath || await vaultService.getMemoryFilePath();
+      const filePath = await vaultService.getMemoryFilePath();
 
       if (!filePath) {
         console.error('Memory file path not found');
