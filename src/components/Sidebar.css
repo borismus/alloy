@@ -267,3 +267,49 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
+/* Topic dialog styles */
+.topic-dialog {
+  min-width: 380px;
+}
+
+.topic-hint {
+  margin: 0 0 1rem 0;
+  color: #666;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.topic-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 1rem;
+}
+
+.topic-label input,
+.topic-label textarea {
+  margin-top: 0.5rem;
+}
+
+.topic-prompt-input {
+  width: 100%;
+  padding: 0.625rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.topic-prompt-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.confirm-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

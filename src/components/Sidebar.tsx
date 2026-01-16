@@ -107,6 +107,7 @@ interface SidebarProps {
   onNewComparison: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onDeleteConversation: (id: string) => void;
+  onMakeTopic?: (conversationId: string, label: string, prompt: string) => void;
 }
 
 export interface SidebarHandle {
@@ -123,11 +124,15 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onNewComparison,
   onRenameConversation,
   onDeleteConversation,
+  onMakeTopic,
 }, ref) {
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [topicDialogId, setTopicDialogId] = useState<string | null>(null);
+  const [topicLabel, setTopicLabel] = useState('');
+  const [topicPrompt, setTopicPrompt] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -179,6 +184,21 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     setDeletingId(null);
   };
 
+  const confirmMakeTopic = () => {
+    if (topicDialogId && topicLabel.trim() && topicPrompt.trim() && onMakeTopic) {
+      onMakeTopic(topicDialogId, topicLabel.trim(), topicPrompt.trim());
+    }
+    setTopicDialogId(null);
+    setTopicLabel('');
+    setTopicPrompt('');
+  };
+
+  const cancelMakeTopic = () => {
+    setTopicDialogId(null);
+    setTopicLabel('');
+    setTopicPrompt('');
+  };
+
   const handleContextMenu = async (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault();
 
@@ -186,36 +206,47 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     if (!filePath) return;
 
     try {
-      const menu = await Menu.new({
-        items: [
-          {
-            id: 'rename',
-            text: 'Rename',
-            action: () => {
-              startRename(conversationId);
-            }
-          },
-          {
-            id: 'delete',
-            text: 'Delete',
-            action: () => {
-              setDeletingId(conversationId);
-            }
-          },
-          {
-            id: 'reveal',
-            text: 'Reveal in Finder',
-            action: async () => {
-              try {
-                await revealItemInDir(filePath);
-              } catch (error) {
-                console.error('Failed to reveal file in Finder:', error);
-              }
+      const menuItems = [
+        {
+          id: 'rename',
+          text: 'Rename',
+          action: () => {
+            startRename(conversationId);
+          }
+        },
+        {
+          id: 'make-topic',
+          text: 'Make Topic...',
+          action: () => {
+            const conversation = conversations.find(c => c.id === conversationId);
+            // Pre-fill with first user message as suggested prompt
+            const firstUserMessage = conversation?.messages.find(m => m.role === 'user');
+            setTopicLabel(conversation?.title?.slice(0, 20) || '');
+            setTopicPrompt(firstUserMessage?.content || '');
+            setTopicDialogId(conversationId);
+          }
+        },
+        {
+          id: 'delete',
+          text: 'Delete',
+          action: () => {
+            setDeletingId(conversationId);
+          }
+        },
+        {
+          id: 'reveal',
+          text: 'Reveal in Finder',
+          action: async () => {
+            try {
+              await revealItemInDir(filePath);
+            } catch (error) {
+              console.error('Failed to reveal file in Finder:', error);
             }
           }
-        ]
-      });
+        }
+      ];
 
+      const menu = await Menu.new({ items: menuItems });
       await menu.popup();
     } catch (error) {
       console.error('Failed to show context menu:', error);
@@ -407,6 +438,59 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             <div className="rename-buttons">
               <button onClick={cancelDelete} className="cancel-button">Cancel</button>
               <button onClick={confirmDelete} className="delete-button">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {topicDialogId && (
+        <div className="rename-modal" onClick={cancelMakeTopic}>
+          <div className="rename-dialog topic-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Make Topic</h3>
+            <p className="topic-hint">Topics appear as pills above your conversations. Clicking a topic re-asks the standing prompt.</p>
+            <label className="topic-label">
+              Label (short name for the pill)
+              <input
+                type="text"
+                value={topicLabel}
+                onChange={(e) => setTopicLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    confirmMakeTopic();
+                  } else if (e.key === 'Escape') {
+                    cancelMakeTopic();
+                  }
+                }}
+                placeholder="e.g., AI News, SF Trip"
+                autoFocus
+                className="rename-input"
+              />
+            </label>
+            <label className="topic-label">
+              Standing prompt (sent when you click the topic)
+              <textarea
+                value={topicPrompt}
+                onChange={(e) => setTopicPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    cancelMakeTopic();
+                  }
+                }}
+                placeholder="e.g., What's new in AI since we last talked?"
+                className="topic-prompt-input"
+                rows={3}
+              />
+            </label>
+            <div className="rename-buttons">
+              <button onClick={cancelMakeTopic} className="cancel-button">Cancel</button>
+              <button
+                onClick={confirmMakeTopic}
+                className="confirm-button"
+                disabled={!topicLabel.trim() || !topicPrompt.trim()}
+              >
+                Create Topic
+              </button>
             </div>
           </div>
         </div>

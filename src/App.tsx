@@ -3,13 +3,14 @@ import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment, TopicMetadata, PendingTopicPrompt, ToolUse } from './types';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
 import { ComparisonModelSelector } from './components/ComparisonModelSelector';
 import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
+import { Menu } from '@tauri-apps/api/menu';
 import './App.css';
 
 function AppContent() {
@@ -22,10 +23,11 @@ function AppContent() {
   const [memoryFilePath, setMemoryFilePath] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
+  const [pendingTopicPrompt, setPendingTopicPrompt] = useState<PendingTopicPrompt | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
-  const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead } = useStreamingContext();
+  const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse } = useStreamingContext();
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
@@ -363,10 +365,13 @@ function AppContent() {
         return await vaultService.loadImageAsBase64(relativePath);
       };
 
-      const response = await provider.sendMessage(updatedMessages, {
+      const result = await provider.sendMessage(updatedMessages, {
         model: currentConversation.model,
         systemPrompt,
         onChunk,
+        onToolUse: (toolUse: ToolUse) => {
+          addToolUse(currentConversation.id, toolUse);
+        },
         signal,
         imageLoader,
       });
@@ -374,7 +379,8 @@ function AppContent() {
       const assistantMessage: Message = {
         role: 'assistant',
         timestamp: new Date().toISOString(),
-        content: response,
+        content: result.content,
+        toolUse: result.toolUse,
       };
 
       let finalConversation: Conversation = {
@@ -385,7 +391,7 @@ function AppContent() {
       // Generate better title using LLM for first message
       if (isFirstMessage) {
         try {
-          const betterTitle = await provider.generateTitle(content, response);
+          const betterTitle = await provider.generateTitle(content, result.content);
           if (betterTitle && betterTitle !== finalConversation.title) {
             finalConversation = {
               ...finalConversation,
@@ -545,11 +551,145 @@ function AppContent() {
 
   const isComparisonConversation = currentConversation?.comparison !== undefined;
 
+  // Separate topics from regular conversations
+  const topics = conversations.filter(c => c.topic !== undefined);
+  const regularConversations = conversations.filter(c => c.topic === undefined);
+
+  // Handle topic pill click - select the topic conversation and queue the prompt
+  const handleTopicClick = (topic: Conversation) => {
+    if (!topic.topic) return;
+
+    // Select the topic conversation
+    markAsRead(topic.id);
+    setCurrentConversation(topic);
+
+    // Queue the prompt to be sent once the conversation is active
+    // Include targetId so ChatInterface can verify it's the right conversation
+    setPendingTopicPrompt({
+      prompt: topic.topic.prompt,
+      targetId: topic.id,
+    });
+  };
+
+  // Clear the pending prompt (called by ChatInterface after sending)
+  const clearPendingTopicPrompt = () => {
+    setPendingTopicPrompt(null);
+  };
+
+  // Update the lastSent timestamp for a topic (called after auto-send)
+  const handleUpdateTopicLastSent = async (conversationId: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation?.topic || !config) return;
+
+    const updatedConversation: Conversation = {
+      ...conversation,
+      topic: {
+        ...conversation.topic,
+        lastSent: new Date().toISOString(),
+      },
+    };
+
+    // Update state
+    setConversations(prev => prev.map(c => c.id === conversationId ? updatedConversation : c));
+    if (currentConversation?.id === conversationId) {
+      setCurrentConversation(updatedConversation);
+    }
+
+    // Save to vault
+    try {
+      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
+      const filePath = `${config.vaultPath}/conversations/${filename}`;
+      markSelfWrite(filePath);
+      await vaultService.saveConversation(updatedConversation);
+    } catch (error) {
+      console.error('Error updating topic lastSent:', error);
+    }
+  };
+
+  // Handle unpinning a topic (convert back to regular conversation)
+  const handleUnpinTopic = async (conversationId: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation || !config) return;
+
+    // Remove the topic field
+    const { topic: _, ...conversationWithoutTopic } = conversation;
+    const updatedConversation: Conversation = conversationWithoutTopic;
+
+    // Update state
+    setConversations(prev => prev.map(c => c.id === conversationId ? updatedConversation : c));
+    if (currentConversation?.id === conversationId) {
+      setCurrentConversation(updatedConversation);
+    }
+
+    // Save to vault
+    try {
+      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
+      const filePath = `${config.vaultPath}/conversations/${filename}`;
+      markSelfWrite(filePath);
+      await vaultService.saveConversation(updatedConversation);
+    } catch (error) {
+      console.error('Error unpinning topic:', error);
+    }
+  };
+
+  // Handle making a conversation into a topic
+  const handleMakeTopic = async (conversationId: string, label: string, prompt: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation || !config) return;
+
+    const topicMetadata: TopicMetadata = {
+      label,
+      prompt,
+    };
+
+    const updatedConversation: Conversation = {
+      ...conversation,
+      topic: topicMetadata,
+    };
+
+    // Update state
+    setConversations(prev => prev.map(c => c.id === conversationId ? updatedConversation : c));
+    if (currentConversation?.id === conversationId) {
+      setCurrentConversation(updatedConversation);
+    }
+
+    // Save to vault
+    try {
+      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
+      const filePath = `${config.vaultPath}/conversations/${filename}`;
+      markSelfWrite(filePath);
+      await vaultService.saveConversation(updatedConversation);
+    } catch (error) {
+      console.error('Error saving topic:', error);
+    }
+  };
+
+  // Handle right-click on topic pill
+  const handleTopicContextMenu = async (e: React.MouseEvent, topicId: string) => {
+    e.preventDefault();
+    try {
+      const menu = await Menu.new({
+        items: [
+          {
+            id: 'unpin',
+            text: 'Unpin Topic',
+            action: () => {
+              handleUnpinTopic(topicId);
+            }
+          }
+        ]
+      });
+      await menu.popup();
+    } catch (error) {
+      console.error('Failed to show topic context menu:', error);
+    }
+  };
+
   return (
     <div className="app">
       <Sidebar
         ref={sidebarRef}
-        conversations={conversations}
+        conversations={regularConversations}
         currentConversationId={currentConversation?.id || null}
         streamingConversationIds={getStreamingConversationIds()}
         unreadConversationIds={getUnreadConversationIds()}
@@ -558,35 +698,56 @@ function AppContent() {
         onNewComparison={handleNewComparison}
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
+        onMakeTopic={handleMakeTopic}
       />
-      {showComparisonSelector ? (
-        <div className="main-content">
-          <ComparisonModelSelector
+      <div className="main-panel">
+        {topics.length > 0 && (
+          <div className="topics-bar">
+            {topics.map((topic) => (
+              <button
+                key={topic.id}
+                className={`topic-pill ${currentConversation?.id === topic.id ? 'active' : ''}`}
+                onClick={() => handleTopicClick(topic)}
+                onContextMenu={(e) => handleTopicContextMenu(e, topic.id)}
+                title={topic.topic?.prompt}
+              >
+                {topic.topic?.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {showComparisonSelector ? (
+          <div className="main-content">
+            <ComparisonModelSelector
+              availableModels={availableModels}
+              onStartComparison={handleStartComparison}
+              onCancel={() => setShowComparisonSelector(false)}
+            />
+          </div>
+        ) : isComparisonConversation && currentConversation ? (
+          <ComparisonChatInterface
+            ref={comparisonChatInterfaceRef}
+            conversation={currentConversation}
             availableModels={availableModels}
-            onStartComparison={handleStartComparison}
-            onCancel={() => setShowComparisonSelector(false)}
+            memory={memory}
+            onUpdateConversation={handleUpdateComparisonConversation}
           />
-        </div>
-      ) : isComparisonConversation && currentConversation ? (
-        <ComparisonChatInterface
-          ref={comparisonChatInterfaceRef}
-          conversation={currentConversation}
-          availableModels={availableModels}
-          memory={memory}
-          onUpdateConversation={handleUpdateComparisonConversation}
-        />
-      ) : (
-        <ChatInterface
-          ref={chatInterfaceRef}
-          conversation={currentConversation}
-          onSendMessage={handleSendMessage}
-          onSaveImage={handleSaveImage}
-          loadImageAsBase64={handleLoadImageAsBase64}
-          hasProvider={providerRegistry.hasAnyProvider()}
-          onModelChange={handleModelChange}
-          availableModels={availableModels}
-        />
-      )}
+        ) : (
+          <ChatInterface
+            ref={chatInterfaceRef}
+            conversation={currentConversation}
+            onSendMessage={handleSendMessage}
+            onSaveImage={handleSaveImage}
+            loadImageAsBase64={handleLoadImageAsBase64}
+            hasProvider={providerRegistry.hasAnyProvider()}
+            onModelChange={handleModelChange}
+            availableModels={availableModels}
+            pendingTopicPrompt={pendingTopicPrompt}
+            onClearPendingTopicPrompt={clearPendingTopicPrompt}
+            onUpdateTopicLastSent={handleUpdateTopicLastSent}
+          />
+        )}
+      </div>
       {showSettings && (
         <Settings
           onClose={() => setShowSettings(false)}

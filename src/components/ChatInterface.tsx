@@ -1,16 +1,35 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { Conversation, Message, ModelInfo, ProviderType, Attachment } from '../types';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { Conversation, Message, ModelInfo, ProviderType, Attachment, PendingTopicPrompt } from '../types';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { ModelSelector } from './ModelSelector';
+import { ToolUseIndicator } from './ToolUseIndicator';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
 
 // Hoist plugin arrays to avoid recreation on each render
 const remarkPlugins = [remarkGfm];
 const rehypePlugins = [rehypeHighlight];
+
+// Custom link renderer that opens URLs in system browser
+const markdownComponents: Components = {
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href) {
+          openUrl(href);
+        }
+      }}
+    >
+      {children}
+    </a>
+  ),
+};
 
 interface MessageItemProps {
   message: Message;
@@ -33,6 +52,9 @@ const MessageItem = React.memo(({ message, assistantName, imageUrls }: MessageIt
         {message.role === 'user' ? 'You' : assistantName}
       </div>
       <div className="message-content">
+        {message.toolUse && message.toolUse.length > 0 && (
+          <ToolUseIndicator toolUse={message.toolUse} isStreaming={false} />
+        )}
         {message.attachments?.filter(a => a.type === 'image').map((attachment) => (
           <div key={attachment.path} className="message-image">
             {imageUrls[attachment.path] && (
@@ -40,7 +62,7 @@ const MessageItem = React.memo(({ message, assistantName, imageUrls }: MessageIt
             )}
           </div>
         ))}
-        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>
+        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
           {message.content}
         </ReactMarkdown>
       </div>
@@ -62,6 +84,9 @@ interface ChatInterfaceProps {
   hasProvider: boolean;
   onModelChange: (model: string, provider: ProviderType) => void;
   availableModels: ModelInfo[];
+  pendingTopicPrompt?: PendingTopicPrompt | null;  // Prompt to auto-send when topic is selected
+  onClearPendingTopicPrompt?: () => void;  // Clear the pending prompt after sending
+  onUpdateTopicLastSent?: (conversationId: string) => void;  // Update lastSent timestamp after auto-send
 }
 
 export interface ChatInterfaceHandle {
@@ -90,6 +115,9 @@ const getAssistantName = (provider: ProviderType): string => {
   }
 };
 
+// Cooldown period before allowing another auto-send on a topic (5 minutes)
+const TOPIC_COOLDOWN_MS = 5 * 60 * 1000;
+
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(({
   conversation,
   onSendMessage,
@@ -98,6 +126,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   hasProvider,
   onModelChange,
   availableModels,
+  pendingTopicPrompt,
+  onClearPendingTopicPrompt,
+  onUpdateTopicLastSent,
 }, ref) => {
   const [input, setInput] = useState('');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -115,11 +146,23 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const {
     isStreaming,
     streamingContent,
+    streamingToolUse,
     start: startStreaming,
     stop: stopStreaming,
     updateContent,
     complete: completeStreaming,
+    clear: clearStreaming,
   } = useConversationStreaming(conversation?.id ?? null);
+
+  // Clear streaming content once the assistant message appears in the conversation
+  const lastMessage = conversation?.messages[conversation.messages.length - 1];
+  const hasCompletedContent = !isStreaming && !!streamingContent;
+  if (hasCompletedContent && lastMessage?.role === 'assistant') {
+    clearStreaming();
+  }
+
+  // Show streaming message if actively streaming OR if we have completed content waiting to be replaced
+  const showStreamingMessage = isStreaming || hasCompletedContent;
 
   const assistantName = conversation ? getAssistantName(conversation.provider) : 'Assistant';
 
@@ -155,6 +198,48 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       textareaRef.current.focus();
     }
   }, [conversation?.id]);
+
+  // Handle pending topic prompt - auto-send when conversation is ready
+  // Only send if conversation.id matches the target AND cooldown has elapsed
+  useEffect(() => {
+    if (!pendingTopicPrompt || !conversation || isStreaming) {
+      return;
+    }
+
+    // Verify this is the correct conversation by ID (not just prompt text)
+    if (conversation.id !== pendingTopicPrompt.targetId) {
+      // Wrong conversation - don't send yet, wait for the right one
+      return;
+    }
+
+    // Check cooldown - don't spam if clicked repeatedly
+    const lastSent = conversation.topic?.lastSent;
+    if (lastSent) {
+      const timeSinceLastSend = Date.now() - new Date(lastSent).getTime();
+      if (timeSinceLastSend < TOPIC_COOLDOWN_MS) {
+        // Cooldown not elapsed - just show the conversation, don't re-send
+        onClearPendingTopicPrompt?.();
+        return;
+      }
+    }
+
+    // Clear the pending prompt first to prevent re-triggering
+    onClearPendingTopicPrompt?.();
+
+    // Send the prompt
+    const abortController = startStreaming();
+    if (abortController) {
+      onSendMessage(pendingTopicPrompt.prompt, [], (chunk) => {
+        updateContent(chunk);
+      }, abortController.signal)
+        .then(() => {
+          completeStreaming(true);
+          // Update the lastSent timestamp
+          onUpdateTopicLastSent?.(conversation.id);
+        })
+        .catch(() => completeStreaming(true));
+    }
+  }, [pendingTopicPrompt, conversation?.id]);
 
   const handleStop = () => {
     stopStreaming();
@@ -375,7 +460,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       onDrop={handleDrop}
     >
       <div className="messages-container" onScroll={handleScroll}>
-        {conversation.messages.length === 0 && !isStreaming && (
+        {conversation.messages.length === 0 && !showStreamingMessage && (
           <div className="welcome-message">
             <h2>Start a conversation</h2>
             <p>Ask me anything. Your conversation will be saved as a YAML file in your vault.</p>
@@ -399,7 +484,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           />
         ))}
 
-        {isStreaming && !streamingContent && (
+        {showStreamingMessage && !streamingContent && (
           <div className="message assistant thinking">
             <div className="message-role">{assistantName}</div>
             <div className="message-content">
@@ -412,11 +497,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </div>
         )}
 
-        {isStreaming && streamingContent && (
+        {showStreamingMessage && streamingContent && (
           <div className="message assistant streaming">
             <div className="message-role">{assistantName}</div>
             <div className="message-content">
-              <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins}>
+              {streamingToolUse.length > 0 && (
+                <ToolUseIndicator toolUse={streamingToolUse} isStreaming={true} />
+              )}
+              <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
                 {streamingContent}
               </ReactMarkdown>
             </div>
