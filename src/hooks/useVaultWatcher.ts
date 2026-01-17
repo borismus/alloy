@@ -81,7 +81,15 @@ export function useVaultWatcher(
   const extractConversationId = useCallback((filePath: string): string | null => {
     const filename = filePath.split('/').pop() || '';
     if (!filename.endsWith('.yaml')) return null;
-    return filename.replace('.yaml', '');
+    // Extract core ID (YYYY-MM-DD-HHMM-hash) from filename
+    // Input: "2025-01-14-1430-a1b2-my-topic.yaml"
+    // Output: "2025-01-14-1430-a1b2"
+    const name = filename.replace(/\.yaml$/, '');
+    const parts = name.split('-');
+    if (parts.length >= 5) {
+      return parts.slice(0, 5).join('-');
+    }
+    return name; // Return as-is if doesn't match expected format
   }, []);
 
   useEffect(() => {
