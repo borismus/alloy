@@ -475,14 +475,22 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </div>
         )}
 
-        {conversation.messages.map((message, index) => (
-          <MessageItem
-            key={`${conversation.id}-${index}`}
-            message={message}
-            assistantName={assistantName}
-            imageUrls={imageUrls}
-          />
-        ))}
+        {conversation.messages.map((message, index) => {
+          // Skip rendering the last assistant message if we still have streaming content
+          // This prevents a flash when the final message replaces the streaming one
+          const isLastMessage = index === conversation.messages.length - 1;
+          if (isLastMessage && message.role === 'assistant' && streamingContent) {
+            return null;
+          }
+          return (
+            <MessageItem
+              key={`${conversation.id}-${index}`}
+              message={message}
+              assistantName={assistantName}
+              imageUrls={imageUrls}
+            />
+          );
+        })}
 
         {showStreamingMessage && !streamingContent && (
           <div className="message assistant thinking">
