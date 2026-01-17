@@ -27,13 +27,30 @@ npm install
 
 **First time?** See [LAUNCH.md](LAUNCH.md) for detailed setup instructions including Rust installation.
 
-## Features (MVP 0.1)
+## Features
 
+### Core
 - ✅ **Pick your vault folder** on first run
-- ✅ **Chat with Claude** (streaming responses)
 - ✅ **Conversations saved as YAML files** (human-readable, plain text)
 - ✅ **Basic search** across all conversations
 - ✅ **`memory.md` injected as context** in every conversation
+
+### Multi-Provider Support
+- ✅ **Anthropic** (Claude models with streaming)
+- ✅ **OpenAI** (GPT-4o, GPT-4, etc.)
+- ✅ **Google Gemini** (2.5 Pro, 2.5 Flash)
+- ✅ **Ollama** (local models)
+- ✅ **Side-by-side model comparison** mode
+- ✅ **Image attachments** (drag & drop or paste)
+
+### Skills System
+- ✅ **Skills loaded from `$VAULT/skills/`** as markdown files
+- ✅ **On-demand skill loading** via `use_skill` tool
+- ✅ **Built-in tools** for skills: `read_file`, `write_file`, `append_file`, `http_get`, `http_post`, `get_secret`
+
+### Topics
+- ✅ **Pin conversations as topics** with recurring prompts
+- ✅ **Topic scheduling** (manual trigger for now)
 
 ## File Structure
 
@@ -43,7 +60,8 @@ npm install
 │   ├── 2025-01-10-1736547123-how-to-setup-tauri.yaml
 │   ├── 2025-01-09-1736460789-project-brainstorm.yaml
 │   └── ...
-├── topics/                     # For future standing queries
+├── skills/                     # Custom skills (markdown files)
+│   └── web-search.md           # Example skill with instructions
 ├── memory.md                   # Your personal context
 └── config.yaml                 # App settings
 ```
@@ -86,6 +104,32 @@ messages:
 - Learning Rust
 ```
 
+## Skills
+
+Skills are markdown files in `$VAULT/skills/` that extend the AI's capabilities. Each skill is a `.md` file with YAML frontmatter:
+
+```markdown
+---
+name: web-search
+description: Search the web and summarize results
+---
+
+# Web Search Skill
+
+When the user asks you to search the web, use the `http_get` tool to fetch...
+```
+
+The AI loads skills on-demand via the `use_skill` tool. Available built-in tools for skills:
+
+| Tool | Description |
+|------|-------------|
+| `read_file` | Read files from the vault |
+| `write_file` | Write/create files in the vault |
+| `append_file` | Append to existing files |
+| `http_get` | Fetch content from URLs |
+| `http_post` | Send POST requests |
+| `get_secret` | Access API keys from config |
+
 ## Trust Model
 
 | What PromptBox does | What PromptBox doesn't do |
@@ -95,38 +139,39 @@ messages:
 | Lets you edit/delete anything | Make decisions without you |
 | Works offline (with local models*) | Lock you in |
 
-*Offline mode coming in v0.4 with Ollama support
+*Ollama support already available for local models
 
 ## Roadmap
 
-### ✅ MVP (v0.1) - DONE
+### ✅ v0.1 - MVP
 - Pick your vault folder on first run
 - Chat with Claude (single provider)
 - Conversations saved as YAML files
 - Basic search across conversations
 - `memory.md` injected as context
 
-### v0.2
-- Multi-provider support (GPT, Gemini, Ollama)
+### ✅ v0.2 - Multi-Provider & Images
+- Multi-provider support (Claude, GPT, Gemini, Ollama)
 - Provider switching within app
 - Side-by-side model comparison
-- Processing images
-- Allow threads to continue in the background
+- Image attachments
 
-### v0.3
-- Topics / standing queries
-- Daily digest generation
-- Topic query interface
+### ✅ v0.3 - Topics & Skills
+- Topics / standing queries with recurring prompts
+- Skills system with on-demand loading
+- Built-in tools (file ops, HTTP, secrets)
 
-### v0.4
-- Skills stored in $VAULT/skills
+### v0.4 - Polish
+- Improved topic scheduling (auto-trigger)
+- Better skill discovery and management
+- UI refinements
 
-### v0.5
+### v0.5 - Privacy & Local
 - Privacy boundaries configuration
 - Selective file/folder sharing
 - Local LLM summarization layer
 
-### v1.0
+### v1.0 - Production Ready
 - Polished UI
 - Sync service (optional, paid)
 - Browser extension
@@ -137,7 +182,7 @@ messages:
 - **Framework:** Tauri 2 (Rust backend, React frontend)
 - **Frontend:** React 19 + TypeScript + Vite
 - **Storage:** YAML/Markdown files in user-chosen directory
-- **AI:** Anthropic SDK (Claude)
+- **AI Providers:** Anthropic, OpenAI, Google Gemini, Ollama
 
 ## Development
 
@@ -158,7 +203,7 @@ See [DEV.md](DEV.md) for development notes and architecture details.
 
 - Node.js (v18+)
 - Rust (latest stable)
-- Anthropic API key
+- At least one AI provider API key (Anthropic, OpenAI, or Google), or Ollama running locally
 
 ### Installing Rust
 
