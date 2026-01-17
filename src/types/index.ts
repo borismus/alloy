@@ -9,7 +9,7 @@ export interface Attachment {
 }
 
 export interface ToolUse {
-  type: string;           // tool name: 'read_file', 'http_post', 'web_search', etc.
+  type: string;           // tool name: 'read_file', 'http_post', etc.
   input?: Record<string, unknown>;  // tool inputs (for debugging)
   result?: string;        // truncated result (for display)
   isError?: boolean;

@@ -8,7 +8,6 @@ interface ToolUseIndicatorProps {
 }
 
 const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: string }> = {
-  web_search: { active: 'Searching the web', complete: 'Searched the web', icon: 'globe' },
   read_file: { active: 'Reading file', complete: 'Read file', icon: 'file' },
   write_file: { active: 'Writing file', complete: 'Wrote file', icon: 'file' },
   append_file: { active: 'Appending to file', complete: 'Appended to file', icon: 'file' },

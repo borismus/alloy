@@ -127,13 +127,7 @@ describe('AnthropicService', () => {
         messages: [{ role: 'user', content: 'Hello' }],
         system: undefined,
         stream: true,
-        tools: [
-          {
-            type: 'web_search_20250305',
-            name: 'web_search',
-            max_uses: 5,
-          },
-        ],
+        tools: undefined,
       });
     });
 
@@ -216,6 +210,7 @@ describe('AnthropicService', () => {
           yield {
             type: 'content_block_start',
             index: 0,
+            content_block: { type: 'text', text: '' },
           };
           yield {
             type: 'content_block_delta',
