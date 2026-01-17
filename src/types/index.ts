@@ -15,6 +15,11 @@ export interface ToolUse {
   isError?: boolean;
 }
 
+export interface SkillUse {
+  name: string;           // skill name: 'critique-writing', 'web-search', etc.
+  description?: string;   // skill description for display
+}
+
 export interface Message {
   // 'log' messages are for UI display only and are filtered out before sending to agents
   role: 'user' | 'assistant' | 'log';
@@ -27,6 +32,8 @@ export interface Message {
   attachments?: Attachment[];
   // Tools used in this message (e.g., web search)
   toolUse?: ToolUse[];
+  // Skills applied in this message
+  skillUse?: SkillUse[];
 }
 
 export interface ModelInfo {
@@ -77,7 +84,6 @@ export interface Conversation {
 }
 
 export interface Config {
-  vaultPath: string;
   defaultModel: string;
   // Provider API keys - presence indicates provider is enabled
   ANTHROPIC_API_KEY?: string;

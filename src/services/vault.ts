@@ -65,8 +65,7 @@ export class VaultService {
     const configPath = await join(path, 'config.yaml');
     if (!(await exists(configPath))) {
       // Create config with commented templates for providers
-      const defaultConfigYaml = `vaultPath: ${path}
-defaultModel: claude-opus-4-5-20251101
+      const defaultConfigYaml = `defaultModel: claude-opus-4-5-20251101
 
 # Uncomment and fill in to enable each provider
 # ANTHROPIC_API_KEY: sk-ant-...
@@ -169,13 +168,6 @@ the most relevant sections based on the user's question.
     if (await exists(configPath)) {
       const content = await readTextFile(configPath);
       const config = yaml.load(content) as Config;
-
-      // Ensure vaultPath matches the actual path (may have been moved)
-      if (config.vaultPath !== this.vaultPath) {
-        config.vaultPath = this.vaultPath;
-        await this.saveConfig(config);
-      }
-
       return config;
     }
 

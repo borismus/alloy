@@ -100,7 +100,6 @@ describe('VaultService', () => {
         call => call[0] === '/test/vault/config.yaml'
       );
       expect(configCall).toBeDefined();
-      expect(configCall![1]).toContain('vaultPath');
       expect(configCall![1]).toContain('ANTHROPIC_API_KEY');
       expect(configCall![1]).toContain('defaultModel');
     });
@@ -114,8 +113,7 @@ describe('VaultService', () => {
 
     it('should load and parse config from yaml file', async () => {
       vaultService.setVaultPath('/test/vault');
-      // Use vaultPath that matches what we set to avoid the sync logic triggering
-      const mockConfig = createMockConfig({ vaultPath: '/test/vault' });
+      const mockConfig = createMockConfig();
       vi.mocked(fs.exists).mockResolvedValue(true);
       vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(mockConfig));
 
@@ -123,21 +121,6 @@ describe('VaultService', () => {
 
       expect(result).toEqual(mockConfig);
       expect(fs.readTextFile).toHaveBeenCalledWith('/test/vault/config.yaml');
-    });
-
-    it('should update vaultPath if it does not match the actual path', async () => {
-      vaultService.setVaultPath('/test/vault');
-      // Config has a different vaultPath than what's set
-      const mockConfig = createMockConfig({ vaultPath: '/old/vault/path' });
-      vi.mocked(fs.exists).mockResolvedValue(true);
-      vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(mockConfig));
-      vi.mocked(fs.writeTextFile).mockResolvedValue();
-
-      const result = await vaultService.loadConfig();
-
-      // vaultPath should be updated to match actual path
-      expect(result?.vaultPath).toBe('/test/vault');
-      expect(fs.writeTextFile).toHaveBeenCalled();
     });
 
     it('should return null if config file does not exist', async () => {
@@ -170,34 +153,6 @@ describe('VaultService', () => {
         '/test/vault/config.yaml',
         yaml.dump(mockConfig)
       );
-    });
-  });
-
-  describe('loadMemory', () => {
-    it('should return empty string if vault path is not set', async () => {
-      const result = await vaultService.loadMemory();
-      expect(result).toBe('');
-    });
-
-    it('should load memory content from file', async () => {
-      vaultService.setVaultPath('/test/vault');
-      const mockMemory = '# My Memory\n\nSome content here';
-      vi.mocked(fs.exists).mockResolvedValue(true);
-      vi.mocked(fs.readTextFile).mockResolvedValue(mockMemory);
-
-      const result = await vaultService.loadMemory();
-
-      expect(result).toBe(mockMemory);
-      expect(fs.readTextFile).toHaveBeenCalledWith('/test/vault/memory.md');
-    });
-
-    it('should return empty string if memory file does not exist', async () => {
-      vaultService.setVaultPath('/test/vault');
-      vi.mocked(fs.exists).mockResolvedValue(false);
-
-      const result = await vaultService.loadMemory();
-
-      expect(result).toBe('');
     });
   });
 

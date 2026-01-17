@@ -14,7 +14,6 @@ export const createMockConversation = (overrides?: Partial<Conversation>): Conve
 });
 
 export const createMockConfig = (overrides?: Partial<Config>): Config => ({
-  vaultPath: '/mock/vault/path',
   ANTHROPIC_API_KEY: 'sk-test-key',
   defaultModel: 'claude-opus-4-5-20251101',
   ...overrides,
