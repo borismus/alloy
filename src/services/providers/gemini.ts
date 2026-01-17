@@ -1,14 +1,13 @@
 import { GoogleGenerativeAI, GenerativeModel, Content, Part, FunctionCall as GeminiFunctionCall } from '@google/generative-ai';
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
-import { IProviderService, ChatOptions, ChatResult, StopReason } from './types';
+import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
 import { geminiToolAdapter } from './tool-adapters/gemini';
 
 const GEMINI_MODELS: ModelInfo[] = [
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini' },
-  { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', provider: 'gemini' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'gemini' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'gemini' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'gemini' },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'gemini' },
 ];
 
 export class GeminiService implements IProviderService {
@@ -41,7 +40,7 @@ export class GeminiService implements IProviderService {
         'Assistant: ' + assistantResponse.slice(0, 500),
       ].join('\n');
 
-      const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+      const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
       const result = await model.generateContent(prompt);
       const response = result.response;
       const text = response.text();
@@ -167,9 +166,10 @@ export class GeminiService implements IProviderService {
   }
 
   // Send a message with tool results (for tool execution loop)
+  // toolHistory contains all previous tool rounds, allowing multi-turn tool use
   async sendMessageWithToolResults(
     messages: Message[],
-    toolResults: { tool_use_id: string; content: string; is_error?: boolean }[],
+    toolHistory: ToolRound[],
     options: ChatOptions
   ): Promise<ChatResult> {
     if (!this.client) {
@@ -189,9 +189,37 @@ export class GeminiService implements IProviderService {
       });
     }
 
-    // Add function response parts as a user message
-    // Gemini expects function responses to be in a special format
-    const functionResponseParts: Part[] = toolResults.map((result) => ({
+    // Add all tool rounds to the history (except the last one which we'll send as the message)
+    for (let i = 0; i < toolHistory.length - 1; i++) {
+      const round = toolHistory[i];
+      // Add model's function calls
+      geminiHistory.push({
+        role: 'model',
+        parts: round.toolCalls.map((tc) => ({
+          functionCall: {
+            name: tc.name,
+            args: tc.input,
+          },
+        })),
+      });
+
+      // Add function responses
+      geminiHistory.push({
+        role: 'user',
+        parts: round.toolResults.map((result) => ({
+          functionResponse: {
+            name: result.tool_use_id,
+            response: {
+              content: result.content,
+            },
+          },
+        })),
+      });
+    }
+
+    // Get the last round's function responses to send as the message
+    const lastRound = toolHistory[toolHistory.length - 1];
+    const functionResponseParts: Part[] = lastRound.toolResults.map((result) => ({
       functionResponse: {
         name: result.tool_use_id,
         response: {
@@ -199,6 +227,19 @@ export class GeminiService implements IProviderService {
         },
       },
     }));
+
+    // Also need to add the model's function calls for the last round to history
+    if (lastRound.toolCalls.length > 0) {
+      geminiHistory.push({
+        role: 'model',
+        parts: lastRound.toolCalls.map((tc) => ({
+          functionCall: {
+            name: tc.name,
+            args: tc.input,
+          },
+        })),
+      });
+    }
 
     // Convert tools to Gemini format
     const geminiTools = options.tools
