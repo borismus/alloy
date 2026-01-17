@@ -6,7 +6,8 @@ import { skillRegistry } from './services/skills';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment, TopicMetadata, PendingTopicPrompt, ToolUse } from './types';
-import { BUILTIN_TOOLS } from './types/tools';
+import { BUILTIN_TOOLS, ToolCall } from './types/tools';
+import { ToolRound } from './services/providers/types';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
@@ -362,95 +363,80 @@ function AppContent() {
 
       // Tool execution loop
       const MAX_TOOL_ITERATIONS = 10;
-      let currentMessages = updatedMessages;
+      const currentMessages = updatedMessages;
       let allToolUses: ToolUse[] = [];
       let finalContent = '';
-      let iteration = 0;
+      const toolHistory: ToolRound[] = [];
 
-      while (iteration < MAX_TOOL_ITERATIONS) {
+      const chatOptions = {
+        model: currentConversation.model,
+        systemPrompt,
+        tools: BUILTIN_TOOLS,
+        onChunk,
+        onToolUse: (toolUse: ToolUse) => {
+          addToolUse(currentConversation.id, toolUse);
+        },
+        signal,
+        imageLoader,
+      };
+
+      // Initial request
+      let result = await provider.sendMessage(currentMessages, chatOptions);
+      finalContent = result.content;
+      if (result.toolUse) {
+        allToolUses = [...allToolUses, ...result.toolUse];
+      }
+
+      // Tool execution loop - keep going while model wants to use tools
+      let iteration = 0;
+      const providerWithTools = provider as any;
+
+      while (
+        iteration < MAX_TOOL_ITERATIONS &&
+        result.stopReason === 'tool_use' &&
+        result.toolCalls &&
+        result.toolCalls.length > 0 &&
+        providerWithTools.sendMessageWithToolResults
+      ) {
         iteration++;
 
-        const result = await provider.sendMessage(currentMessages, {
-          model: currentConversation.model,
-          systemPrompt,
-          tools: BUILTIN_TOOLS,
-          onChunk,
-          onToolUse: (toolUse: ToolUse) => {
-            addToolUse(currentConversation.id, toolUse);
-          },
-          signal,
-          imageLoader,
+        // Execute each tool call
+        const toolResults = await Promise.all(
+          result.toolCalls.map(async (toolCall: ToolCall) => {
+            const toolResult = await toolRegistry.executeTool(toolCall);
+
+            // Update the tool use entry with result
+            const toolUseEntry = allToolUses.find(
+              (t) => t.type === toolCall.name && !t.result
+            );
+            if (toolUseEntry) {
+              toolUseEntry.result = toolResult.content.slice(0, 500); // Truncate for display
+              toolUseEntry.isError = toolResult.is_error;
+            }
+
+            return toolResult;
+          })
+        );
+
+        // Add this round to the tool history
+        toolHistory.push({
+          toolCalls: result.toolCalls,
+          toolResults,
         });
+
+        // Add space separator between tool call thoughts
+        onChunk?.(' ');
+
+        // Send tool results back to the provider with full history
+        result = await providerWithTools.sendMessageWithToolResults(
+          currentMessages,
+          toolHistory,
+          chatOptions
+        );
 
         finalContent = result.content;
         if (result.toolUse) {
           allToolUses = [...allToolUses, ...result.toolUse];
-        }
-
-        // Check if we need to execute tools
-        if (result.stopReason === 'tool_use' && result.toolCalls && result.toolCalls.length > 0) {
-          // Execute each tool call
-          const toolResults = await Promise.all(
-            result.toolCalls.map(async (toolCall) => {
-              const toolResult = await toolRegistry.executeTool(toolCall);
-
-              // Update the tool use entry with result
-              const toolUseEntry = allToolUses.find(
-                (t) => t.type === toolCall.name && !t.result
-              );
-              if (toolUseEntry) {
-                toolUseEntry.result = toolResult.content.slice(0, 500); // Truncate for display
-                toolUseEntry.isError = toolResult.is_error;
-              }
-
-              return toolResult;
-            })
-          );
-
-          // Send tool results back to the provider
-          const providerWithTools = provider as any;
-          if (providerWithTools.sendMessageWithToolResults) {
-            const nextResult = await providerWithTools.sendMessageWithToolResults(
-              currentMessages,
-              toolResults,
-              result.toolCalls,  // Pass the tool_use blocks from assistant's response
-              {
-                model: currentConversation.model,
-                systemPrompt,
-                tools: BUILTIN_TOOLS,
-                onChunk,
-                onToolUse: (toolUse: ToolUse) => {
-                  addToolUse(currentConversation.id, toolUse);
-                },
-                signal,
-                imageLoader,
-              }
-            );
-
-            finalContent = nextResult.content;
-            if (nextResult.toolUse) {
-              allToolUses = [...allToolUses, ...nextResult.toolUse];
-            }
-
-            // If more tool calls, continue the loop
-            if (nextResult.stopReason === 'tool_use' && nextResult.toolCalls?.length) {
-              // Add assistant message with tool calls and tool results to messages
-              currentMessages = [
-                ...currentMessages,
-                {
-                  role: 'assistant' as const,
-                  timestamp: new Date().toISOString(),
-                  content: result.content,
-                },
-              ];
-              continue;
-            }
-          }
-
-          break;
-        } else {
-          // No more tool calls, we're done
-          break;
         }
       }
 
