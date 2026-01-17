@@ -1,6 +1,12 @@
 import { Message, ModelInfo, ProviderType, ToolUse } from '../../types';
 import { ToolDefinition, ToolCall } from '../../types/tools';
 
+// Represents one round of tool use: assistant's tool calls + the results
+export interface ToolRound {
+  toolCalls: ToolCall[];
+  toolResults: { tool_use_id: string; content: string; is_error?: boolean }[];
+}
+
 export interface ChatOptions {
   model: string;
   systemPrompt?: string;

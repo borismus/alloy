@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
-import { IProviderService, ChatOptions, ChatResult, StopReason } from './types';
+import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
 import { openaiToolAdapter } from './tool-adapters/openai';
 
 const OPENAI_MODELS: ModelInfo[] = [
@@ -240,16 +240,17 @@ export class OpenAIService implements IProviderService {
   }
 
   // Send a message with tool results (for tool execution loop)
+  // toolHistory contains all previous tool rounds, allowing multi-turn tool use
   async sendMessageWithToolResults(
     messages: Message[],
-    toolResults: { tool_use_id: string; content: string; is_error?: boolean }[],
+    toolHistory: ToolRound[],
     options: ChatOptions
   ): Promise<ChatResult> {
     if (!this.client) {
       throw new Error('OpenAI client not initialized. Please provide an API key.');
     }
 
-    // Build the messages including tool results
+    // Build the messages including all tool rounds
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
 
     // Add system prompt if provided
@@ -268,9 +269,26 @@ export class OpenAIService implements IProviderService {
       });
     }
 
-    // Add tool results using OpenAI's format
-    const formattedResults = openaiToolAdapter.formatToolResults(toolResults);
-    openaiMessages.push(...formattedResults);
+    // Add all tool rounds to the message history
+    for (const round of toolHistory) {
+      // Add assistant message with tool_calls
+      openaiMessages.push({
+        role: 'assistant',
+        content: null,
+        tool_calls: round.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.input),
+          },
+        })),
+      });
+
+      // Add tool results
+      const formattedResults = openaiToolAdapter.formatToolResults(round.toolResults);
+      openaiMessages.push(...formattedResults);
+    }
 
     // Convert tools to OpenAI format
     const openaiTools = options.tools

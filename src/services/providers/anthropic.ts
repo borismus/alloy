@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
-import { IProviderService, ChatOptions, ChatResult, StopReason } from './types';
+import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
 import { anthropicToolAdapter } from './tool-adapters/anthropic';
 
 const ANTHROPIC_MODELS: ModelInfo[] = [
@@ -158,7 +158,6 @@ export class AnthropicService implements IProviderService {
           if (chunk.type === 'content_block_start') {
             const block = (chunk as Anthropic.ContentBlockStartEvent).content_block;
 
-            // Handle our custom tools
             if (block.type === 'tool_use') {
               currentToolUse = {
                 id: block.id,
@@ -170,13 +169,6 @@ export class AnthropicService implements IProviderService {
                 type: block.name,
                 input: {},
               };
-              toolUseList.push(toolUse);
-              options.onToolUse?.(toolUse);
-            }
-
-            // Handle Anthropic's built-in server tools (like web_search)
-            if ((block as any).type === 'server_tool_use') {
-              const toolUse: ToolUse = { type: (block as any).name };
               toolUseList.push(toolUse);
               options.onToolUse?.(toolUse);
             }
@@ -256,17 +248,17 @@ export class AnthropicService implements IProviderService {
   }
 
   // Send a message with tool results (for tool execution loop)
+  // toolHistory contains all previous tool rounds, allowing multi-turn tool use
   async sendMessageWithToolResults(
     messages: Message[],
-    toolResults: { tool_use_id: string; content: string; is_error?: boolean }[],
-    assistantToolCalls: ToolCall[],  // The tool_use blocks from the assistant's previous response
+    toolHistory: ToolRound[],
     options: ChatOptions
   ): Promise<ChatResult> {
     if (!this.client) {
       throw new Error('Anthropic client not initialized. Please provide an API key.');
     }
 
-    // Build the messages including tool results
+    // Build the messages including all tool rounds
     const anthropicMessages: Anthropic.MessageParam[] = [];
 
     // Convert existing messages
@@ -284,29 +276,31 @@ export class AnthropicService implements IProviderService {
       }
     }
 
-    // Add the assistant message with tool_use blocks
-    // This is required by Anthropic API - tool_result must follow a message with matching tool_use
-    const assistantContent: Anthropic.ContentBlockParam[] = assistantToolCalls.map((tc) => ({
-      type: 'tool_use' as const,
-      id: tc.id,
-      name: tc.name,
-      input: tc.input,
-    }));
-    anthropicMessages.push({
-      role: 'assistant',
-      content: assistantContent,
-    });
+    // Add all tool rounds to the message history
+    for (const round of toolHistory) {
+      // Add the assistant message with tool_use blocks
+      const assistantContent: Anthropic.ContentBlockParam[] = round.toolCalls.map((tc) => ({
+        type: 'tool_use' as const,
+        id: tc.id,
+        name: tc.name,
+        input: tc.input,
+      }));
+      anthropicMessages.push({
+        role: 'assistant',
+        content: assistantContent,
+      });
 
-    // Add tool results as a user message
-    anthropicMessages.push({
-      role: 'user',
-      content: toolResults.map((r) => ({
-        type: 'tool_result' as const,
-        tool_use_id: r.tool_use_id,
-        content: r.content,
-        is_error: r.is_error,
-      })),
-    });
+      // Add tool results as a user message
+      anthropicMessages.push({
+        role: 'user',
+        content: round.toolResults.map((r) => ({
+          type: 'tool_result' as const,
+          tool_use_id: r.tool_use_id,
+          content: r.content,
+          is_error: r.is_error,
+        })),
+      });
+    }
 
     // Convert tools to Anthropic format
     const anthropicTools = options.tools

@@ -1,6 +1,6 @@
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolDefinition, ToolCall } from '../../types/tools';
-import { IProviderService, ChatOptions, ChatResult, StopReason } from './types';
+import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
 
 // Build tool instructions for system prompt injection
 function buildToolInstructions(tools: ToolDefinition[]): string {
@@ -262,9 +262,10 @@ export class OllamaService implements IProviderService {
   }
 
   // Send a message with tool results (for tool execution loop)
+  // toolHistory contains all previous tool rounds, allowing multi-turn tool use
   async sendMessageWithToolResults(
     messages: Message[],
-    toolResults: { tool_use_id: string; content: string; is_error?: boolean }[],
+    toolHistory: ToolRound[],
     options: ChatOptions
   ): Promise<ChatResult> {
     if (!this.baseUrl) {
@@ -295,18 +296,29 @@ export class OllamaService implements IProviderService {
       });
     }
 
-    // Format tool results as a user message
-    const toolResultsText = toolResults
-      .map((r) => {
-        const status = r.is_error ? 'Error' : 'Success';
-        return `Tool result (${status}):\n${r.content}`;
-      })
-      .join('\n\n');
+    // Add all tool rounds as assistant/user message pairs
+    for (const round of toolHistory) {
+      // Add assistant message describing the tool calls
+      const toolCallsText = round.toolCalls
+        .map((tc) => `<tool_call>\n<name>${tc.name}</name>\n<arguments>${JSON.stringify(tc.input)}</arguments>\n</tool_call>`)
+        .join('\n');
+      ollamaMessages.push({
+        role: 'assistant',
+        content: toolCallsText,
+      });
 
-    ollamaMessages.push({
-      role: 'user',
-      content: `Here are the results from the tool calls:\n\n${toolResultsText}\n\nPlease continue based on these results.`,
-    });
+      // Add user message with tool results
+      const toolResultsText = round.toolResults
+        .map((r) => {
+          const status = r.is_error ? 'Error' : 'Success';
+          return `Tool result (${status}):\n${r.content}`;
+        })
+        .join('\n\n');
+      ollamaMessages.push({
+        role: 'user',
+        content: `Here are the results from the tool calls:\n\n${toolResultsText}\n\nPlease continue based on these results.`,
+      });
+    }
 
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
