@@ -7,6 +7,8 @@ import { Conversation, Message, ModelInfo, ProviderType, Attachment, PendingTopi
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { ModelSelector } from './ModelSelector';
 import { ToolUseIndicator } from './ToolUseIndicator';
+import { SkillUseIndicator } from './SkillUseIndicator';
+import { SkillUse } from '../types';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
 
@@ -52,6 +54,9 @@ const MessageItem = React.memo(({ message, assistantName, imageUrls }: MessageIt
         {message.role === 'user' ? 'You' : assistantName}
       </div>
       <div className="message-content">
+        {message.skillUse && message.skillUse.length > 0 && (
+          <SkillUseIndicator skillUse={message.skillUse} />
+        )}
         {message.toolUse && message.toolUse.length > 0 && (
           <ToolUseIndicator toolUse={message.toolUse} isStreaming={false} />
         )}
@@ -157,9 +162,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Clear streaming content once the assistant message appears in the conversation
   const lastMessage = conversation?.messages[conversation.messages.length - 1];
   const hasCompletedContent = !isStreaming && !!streamingContent;
-  if (hasCompletedContent && lastMessage?.role === 'assistant') {
-    clearStreaming();
-  }
+
+  useEffect(() => {
+    if (hasCompletedContent && lastMessage?.role === 'assistant') {
+      clearStreaming();
+    }
+  }, [hasCompletedContent, lastMessage?.role, clearStreaming]);
 
   // Show streaming message if actively streaming OR if we have completed content waiting to be replaced
   const showStreamingMessage = isStreaming || hasCompletedContent;
@@ -505,19 +513,30 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </div>
         )}
 
-        {showStreamingMessage && streamingContent && (
-          <div className="message assistant streaming">
-            <div className="message-role">{assistantName}</div>
-            <div className="message-content">
-              {streamingToolUse.length > 0 && (
-                <ToolUseIndicator toolUse={streamingToolUse} isStreaming={true} />
-              )}
-              <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
-                {streamingContent}
-              </ReactMarkdown>
+        {showStreamingMessage && streamingContent && (() => {
+          // Derive skill use from use_skill tool calls
+          const streamingSkillUse: SkillUse[] = streamingToolUse
+            .filter(t => t.type === 'use_skill')
+            .map(t => ({ name: (t.input?.name as string) || 'skill' }));
+          // Filter out use_skill from displayed tools
+          const displayedStreamingToolUse = streamingToolUse.filter(t => t.type !== 'use_skill');
+          return (
+            <div className="message assistant streaming">
+              <div className="message-role">{assistantName}</div>
+              <div className="message-content">
+                {streamingSkillUse.length > 0 && (
+                  <SkillUseIndicator skillUse={streamingSkillUse} />
+                )}
+                {displayedStreamingToolUse.length > 0 && (
+                  <ToolUseIndicator toolUse={displayedStreamingToolUse} isStreaming={true} />
+                )}
+                <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
+                  {streamingContent}
+                </ReactMarkdown>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div ref={messagesEndRef} />
       </div>

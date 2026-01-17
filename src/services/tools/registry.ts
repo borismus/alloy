@@ -2,6 +2,7 @@ import { ToolDefinition, ToolCall, ToolResult, BUILTIN_TOOLS } from '../../types
 import { executeFileTools } from './builtin/files';
 import { executeHttpTools } from './builtin/http';
 import { executeSecretTools } from './builtin/secrets';
+import { executeSkillTools } from './builtin/skills';
 
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition> = new Map();
@@ -50,6 +51,9 @@ export class ToolRegistry {
           break;
         case 'get_secret':
           result = await executeSecretTools(toolCall.name, toolCall.input);
+          break;
+        case 'use_skill':
+          result = await executeSkillTools(toolCall.name, toolCall.input);
           break;
         default:
           return {

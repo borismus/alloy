@@ -5,7 +5,7 @@ import { toolRegistry } from './services/tools';
 import { skillRegistry } from './services/skills';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment, TopicMetadata, PendingTopicPrompt, ToolUse } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, Attachment, TopicMetadata, PendingTopicPrompt, ToolUse, SkillUse } from './types';
 import { BUILTIN_TOOLS, ToolCall } from './types/tools';
 import { ToolRound } from './services/providers/types';
 import { VaultSetup } from './components/VaultSetup';
@@ -66,15 +66,17 @@ function AppContent() {
   const loadVaultRef = useRef<((path: string) => Promise<void>) | null>(null);
 
   const handleConfigChanged = useCallback(async () => {
-    if (config?.vaultPath && loadVaultRef.current) {
-      await loadVaultRef.current(config.vaultPath);
+    const vaultPath = vaultService.getVaultPath();
+    if (vaultPath && loadVaultRef.current) {
+      await loadVaultRef.current(vaultPath);
     }
-  }, [config?.vaultPath]);
+  }, []);
 
+  const vaultPath = vaultService.getVaultPath();
   const { markSelfWrite } = useVaultWatcher(
     {
-      vaultPath: config?.vaultPath || null,
-      enabled: !!config?.vaultPath,
+      vaultPath,
+      enabled: !!vaultPath,
     },
     {
       onConversationAdded: handleConversationAdded,
@@ -169,12 +171,12 @@ function AppContent() {
                       provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
 
     const newConfig: Config = {
-      vaultPath: path,
       defaultModel: provider === 'anthropic' ? 'claude-opus-4-5-20251101' :
                     provider === 'openai' ? 'gpt-4o' : '',
       [configKey]: credential,
     };
 
+    vaultService.setVaultPath(path);
     await vaultService.saveConfig(newConfig);
     await loadVault(path);
   };
@@ -251,9 +253,10 @@ function AppContent() {
     // Save to vault
     try {
       // Mark as self-write to avoid watcher triggering on our own save
-      if (config?.vaultPath) {
+      const vaultPathForSave = vaultService.getVaultPath();
+      if (vaultPathForSave) {
         const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-        const filePath = `${config.vaultPath}/conversations/${filename}`;
+        const filePath = `${vaultPathForSave}/conversations/${filename}`;
         markSelfWrite(filePath);
       }
       await vaultService.saveConversation(updatedConversation);
@@ -343,9 +346,12 @@ function AppContent() {
     // Save immediately when user sends a message (so it pops to top of list)
     try {
       // Use the actual filename that will be generated (includes slug if title exists)
+      const vaultPathForSave = vaultService.getVaultPath();
       const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      const filePath = `${config.vaultPath}/conversations/${filename}`;
-      markSelfWrite(filePath);
+      if (vaultPathForSave) {
+        const filePath = `${vaultPathForSave}/conversations/${filename}`;
+        markSelfWrite(filePath);
+      }
       await vaultService.saveConversation(updatedConversation);
       const loadedConversations = await vaultService.loadConversations();
       setConversations(loadedConversations);
@@ -387,6 +393,9 @@ function AppContent() {
         allToolUses = [...allToolUses, ...result.toolUse];
       }
 
+      // Track skills used via the use_skill tool
+      const skillUse: SkillUse[] = [];
+
       // Tool execution loop - keep going while model wants to use tools
       let iteration = 0;
       const providerWithTools = provider as any;
@@ -400,18 +409,30 @@ function AppContent() {
       ) {
         iteration++;
 
+        // Check for use_skill tool calls and track them
+        for (const toolCall of result.toolCalls) {
+          if (toolCall.name === 'use_skill') {
+            const skillName = toolCall.input.name as string;
+            if (skillName && !skillUse.find(s => s.name === skillName)) {
+              skillUse.push({ name: skillName });
+            }
+          }
+        }
+
         // Execute each tool call
         const toolResults = await Promise.all(
           result.toolCalls.map(async (toolCall: ToolCall) => {
             const toolResult = await toolRegistry.executeTool(toolCall);
 
-            // Update the tool use entry with result
-            const toolUseEntry = allToolUses.find(
-              (t) => t.type === toolCall.name && !t.result
-            );
-            if (toolUseEntry) {
-              toolUseEntry.result = toolResult.content.slice(0, 500); // Truncate for display
-              toolUseEntry.isError = toolResult.is_error;
+            // Update the tool use entry with result (but not for use_skill - we don't show instructions)
+            if (toolCall.name !== 'use_skill') {
+              const toolUseEntry = allToolUses.find(
+                (t) => t.type === toolCall.name && !t.result
+              );
+              if (toolUseEntry) {
+                toolUseEntry.result = toolResult.content.slice(0, 500); // Truncate for display
+                toolUseEntry.isError = toolResult.is_error;
+              }
             }
 
             return toolResult;
@@ -440,11 +461,15 @@ function AppContent() {
         }
       }
 
+      // Filter out use_skill from displayed tool uses (it's shown via skillUse instead)
+      const displayedToolUses = allToolUses.filter(t => t.type !== 'use_skill');
+
       const assistantMessage: Message = {
         role: 'assistant',
         timestamp: new Date().toISOString(),
         content: finalContent,
-        toolUse: allToolUses.length > 0 ? allToolUses : undefined,
+        toolUse: displayedToolUses.length > 0 ? displayedToolUses : undefined,
+        skillUse: skillUse.length > 0 ? skillUse : undefined,
       };
 
       let finalConversation: Conversation = {
@@ -474,9 +499,12 @@ function AppContent() {
 
       try {
         // Mark as self-write to avoid watcher triggering on our own save
+        const vaultPathForFinal = vaultService.getVaultPath();
         const filename = vaultService.generateFilename(finalConversation.id, finalConversation.title);
-        const filePath = `${config.vaultPath}/conversations/${filename}`;
-        markSelfWrite(filePath);
+        if (vaultPathForFinal) {
+          const filePath = `${vaultPathForFinal}/conversations/${filename}`;
+          markSelfWrite(filePath);
+        }
         await vaultService.saveConversation(finalConversation);
       } catch (saveError) {
         console.error('Error saving conversation (non-fatal):', saveError);
@@ -538,7 +566,8 @@ function AppContent() {
   const handleRenameConversation = async (oldId: string, newTitle: string) => {
     try {
       // Find the old file path and mark it for self-write
-      if (config?.vaultPath) {
+      const vaultPathForRename = vaultService.getVaultPath();
+      if (vaultPathForRename) {
         const oldFilePath = await vaultService.getConversationFilePath(oldId);
         if (oldFilePath) {
           markSelfWrite(oldFilePath);
@@ -547,7 +576,7 @@ function AppContent() {
         }
         // Mark the new file path that will be created
         const newFilename = vaultService.generateFilename(oldId, newTitle);
-        const newFilePath = `${config.vaultPath}/conversations/${newFilename}`;
+        const newFilePath = `${vaultPathForRename}/conversations/${newFilename}`;
         markSelfWrite(newFilePath);
         markSelfWrite(newFilePath.replace(/\.yaml$/, '.md'));
       }
@@ -573,7 +602,8 @@ function AppContent() {
       stopStreaming(id);
 
       // Mark as self-write to avoid watcher triggering on our own delete
-      if (config?.vaultPath) {
+      const vaultPathForDelete = vaultService.getVaultPath();
+      if (vaultPathForDelete) {
         const filePath = await vaultService.getConversationFilePath(id);
         if (filePath) {
           markSelfWrite(filePath);
@@ -595,8 +625,9 @@ function AppContent() {
   };
 
   const handleConfigReload = async () => {
-    if (config?.vaultPath) {
-      await loadVault(config.vaultPath);
+    const vaultPathForReload = vaultService.getVaultPath();
+    if (vaultPathForReload) {
+      await loadVault(vaultPathForReload);
     }
   };
 
@@ -643,7 +674,8 @@ function AppContent() {
   // Update the lastSent timestamp for a topic (called after auto-send)
   const handleUpdateTopicLastSent = async (conversationId: string) => {
     const conversation = conversations.find(c => c.id === conversationId);
-    if (!conversation?.topic || !config) return;
+    const vaultPathForTopic = vaultService.getVaultPath();
+    if (!conversation?.topic || !vaultPathForTopic) return;
 
     const updatedConversation: Conversation = {
       ...conversation,
@@ -662,7 +694,7 @@ function AppContent() {
     // Save to vault
     try {
       const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      const filePath = `${config.vaultPath}/conversations/${filename}`;
+      const filePath = `${vaultPathForTopic}/conversations/${filename}`;
       markSelfWrite(filePath);
       await vaultService.saveConversation(updatedConversation);
     } catch (error) {
@@ -673,7 +705,8 @@ function AppContent() {
   // Handle unpinning a topic (convert back to regular conversation)
   const handleUnpinTopic = async (conversationId: string) => {
     const conversation = conversations.find(c => c.id === conversationId);
-    if (!conversation || !config) return;
+    const vaultPathForUnpin = vaultService.getVaultPath();
+    if (!conversation || !vaultPathForUnpin) return;
 
     // Remove the topic field
     const { topic: _, ...conversationWithoutTopic } = conversation;
@@ -688,7 +721,7 @@ function AppContent() {
     // Save to vault
     try {
       const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      const filePath = `${config.vaultPath}/conversations/${filename}`;
+      const filePath = `${vaultPathForUnpin}/conversations/${filename}`;
       markSelfWrite(filePath);
       await vaultService.saveConversation(updatedConversation);
     } catch (error) {
@@ -699,7 +732,8 @@ function AppContent() {
   // Handle making a conversation into a topic
   const handleMakeTopic = async (conversationId: string, label: string, prompt: string) => {
     const conversation = conversations.find(c => c.id === conversationId);
-    if (!conversation || !config) return;
+    const vaultPathForMakeTopic = vaultService.getVaultPath();
+    if (!conversation || !vaultPathForMakeTopic) return;
 
     const topicMetadata: TopicMetadata = {
       label,
@@ -720,7 +754,7 @@ function AppContent() {
     // Save to vault
     try {
       const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      const filePath = `${config.vaultPath}/conversations/${filename}`;
+      const filePath = `${vaultPathForMakeTopic}/conversations/${filename}`;
       markSelfWrite(filePath);
       await vaultService.saveConversation(updatedConversation);
     } catch (error) {
@@ -814,7 +848,7 @@ function AppContent() {
       {showSettings && (
         <Settings
           onClose={() => setShowSettings(false)}
-          vaultPath={config?.vaultPath || null}
+          vaultPath={vaultService.getVaultPath()}
           onChangeVault={async () => {
             const newPath = await vaultService.selectVaultFolder();
             if (newPath) {

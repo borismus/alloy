@@ -1,0 +1,29 @@
+.skill-use-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.skill-use-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: #f0f7ff;
+  border: 1px solid #b3d4fc;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  color: #1a5fb4;
+}
+
+.skill-use-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1a5fb4;
+}
+
+.skill-use-label {
+  font-weight: 500;
+}

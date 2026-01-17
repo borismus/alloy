@@ -94,4 +94,15 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       required: ['key'],
     },
   },
+  {
+    name: 'use_skill',
+    description: 'Load and use a skill. Call this tool when you want to use one of the available skills. The skill instructions will be returned and you should follow them to complete the task.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name of the skill to use' },
+      },
+      required: ['name'],
+    },
+  },
 ];

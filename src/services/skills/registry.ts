@@ -33,9 +33,11 @@ export class SkillRegistry {
     return this.skills.get(name);
   }
 
-  // Build system prompt with skill descriptions
+  // Build system prompt with skill summaries (frontmatter only)
+  // Full instructions are loaded on-demand when a skill is used via use_skill tool
   buildSystemPrompt(basePrompt?: string): string {
     const skills = this.getSkills();
+    console.log('[buildSystemPrompt] skills count:', skills.length, 'names:', skills.map(s => s.name));
     let prompt = '';
 
     // Add base prompt if provided
@@ -43,17 +45,25 @@ export class SkillRegistry {
       prompt += basePrompt + '\n\n';
     }
 
-    // Add skill instructions directly (no need for model to read SKILL.md)
+    // Add skill summaries (name + description only)
     if (skills.length > 0) {
-      prompt += '# Skills\n\n';
+      prompt += '# Available Skills\n\n';
+      prompt += 'You have access to the following skills. To use a skill, call the `use_skill` tool with the skill name. ';
+      prompt += 'The tool will return detailed instructions that you should follow to complete the task.\n\n';
 
       for (const skill of skills) {
-        prompt += `## ${skill.name}\n\n`;
-        prompt += skill.instructions + '\n\n';
+        prompt += `- **${skill.name}**: ${skill.description}\n`;
       }
+      prompt += '\n';
     }
 
     return prompt;
+  }
+
+  // Get full instructions for a skill by name
+  getSkillInstructions(name: string): string | null {
+    const skill = this.skills.get(name);
+    return skill ? skill.instructions : null;
   }
 }
 
