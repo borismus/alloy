@@ -178,6 +178,10 @@ export function VaultSetup({ onVaultSelected, onExistingVault }: VaultSetupProps
                 onChange={(e) => setCredential(e.target.value)}
                 placeholder={getPlaceholder()}
                 className="credential-input"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
 
               {selectedProvider !== 'ollama' && (

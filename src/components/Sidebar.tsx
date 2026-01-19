@@ -340,6 +340,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
           {searchQuery && (
             <button
@@ -421,6 +424,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               }}
               autoFocus
               className="rename-input"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
             <div className="rename-buttons">
               <button onClick={cancelRename} className="cancel-button">Cancel</button>
@@ -465,6 +472,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 placeholder="e.g., AI News, SF Trip"
                 autoFocus
                 className="rename-input"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
             </label>
             <label className="topic-label">
@@ -480,6 +491,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 placeholder="e.g., What's new in AI since we last talked?"
                 className="topic-prompt-input"
                 rows={3}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
             </label>
             <div className="rename-buttons">

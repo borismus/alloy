@@ -328,6 +328,10 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
             placeholder="Send a message to compare..."
             disabled={isAnyStreaming}
             rows={1}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
           <div className="comparison-model-indicator-wrapper" ref={dropdownRef}>
             <button
