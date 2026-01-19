@@ -41,6 +41,12 @@ export class VaultService {
       await mkdir(skillsPath, { recursive: true });
     }
 
+    // Create notes directory for AI-managed notes
+    const notesPath = await join(path, 'notes');
+    if (!(await exists(notesPath))) {
+      await mkdir(notesPath, { recursive: true });
+    }
+
     // Create attachments directory for images
     const attachmentsPath = await join(path, 'conversations', 'attachments');
     if (!(await exists(attachmentsPath))) {

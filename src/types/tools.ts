@@ -26,22 +26,22 @@ export interface ToolResult {
 export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
     name: 'read_file',
-    description: 'Read a file from the vault',
+    description: 'Read a file from allowed vault directories (notes/, skills/) or root files like memory.md. Cannot access conversations/.',
     input_schema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Relative path within vault' },
+        path: { type: 'string', description: 'Relative path within vault (e.g., "memory.md", "notes/todo.md", "skills/my-skill/SKILL.md")' },
       },
       required: ['path'],
     },
   },
   {
     name: 'write_file',
-    description: 'Write content to a file in the vault (creates or overwrites)',
+    description: 'Write content to a file in allowed vault directories (notes/, skills/) or root files like memory.md. Cannot access conversations/.',
     input_schema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Relative path within vault' },
+        path: { type: 'string', description: 'Relative path within vault (e.g., "memory.md", "notes/todo.md")' },
         content: { type: 'string', description: 'Content to write' },
       },
       required: ['path', 'content'],
@@ -49,11 +49,11 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'append_file',
-    description: 'Append content to a file in the vault',
+    description: 'Append content to a file in allowed vault directories (notes/, skills/) or root files like memory.md. Cannot access conversations/.',
     input_schema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Relative path within vault' },
+        path: { type: 'string', description: 'Relative path within vault (e.g., "memory.md", "notes/todo.md")' },
         content: { type: 'string', description: 'Content to append' },
       },
       required: ['path', 'content'],
@@ -61,7 +61,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'http_get',
-    description: 'Fetch content from a URL',
+    description: 'Fetch content from a URL. Supports secret tokens like ${{SECRET_NAME}} in the url which are resolved before the request is made.',
     input_schema: {
       type: 'object',
       properties: {
@@ -72,7 +72,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'http_post',
-    description: 'Send POST request to a URL',
+    description: 'Send POST request to a URL. Supports secret tokens like ${{SECRET_NAME}} in url, body, and headers which are resolved before the request is made.',
     input_schema: {
       type: 'object',
       properties: {
@@ -85,7 +85,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'get_secret',
-    description: 'Get an API key or secret from config',
+    description: 'Get a reference token for an API key or secret. Returns ${{SECRET_NAME}} which can be used in http_post headers/body and will be resolved to the actual value.',
     input_schema: {
       type: 'object',
       properties: {

@@ -4,6 +4,45 @@ import { ToolRegistry } from '../registry';
 import { readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 
+// Directory permission configuration
+// Defines which directories the AI can read from and write to
+interface DirectoryPermission {
+  path: string;
+  read: boolean;
+  write: boolean;
+}
+
+const DIRECTORY_PERMISSIONS: DirectoryPermission[] = [
+  { path: 'notes/', read: true, write: true },
+  { path: 'skills/', read: true, write: true },
+  { path: 'conversations/', read: false, write: false },
+];
+
+/**
+ * Check if a path is allowed for the given operation.
+ * - Root-level files (e.g., memory.md) are always allowed
+ * - Directories must be explicitly listed in DIRECTORY_PERMISSIONS
+ * - Unlisted directories are denied by default
+ */
+function checkPathPermission(relativePath: string, operation: 'read' | 'write'): boolean {
+  const normalized = relativePath.replace(/\\/g, '/');
+
+  // Check against configured directory permissions
+  for (const perm of DIRECTORY_PERMISSIONS) {
+    if (normalized.startsWith(perm.path) || normalized === perm.path.slice(0, -1)) {
+      return operation === 'read' ? perm.read : perm.write;
+    }
+  }
+
+  // Allow root-level files (no directory in path)
+  if (!normalized.includes('/')) {
+    return true;
+  }
+
+  // Deny by default for unlisted directories
+  return false;
+}
+
 export async function executeFileTools(
   toolName: string,
   input: Record<string, unknown>
@@ -32,6 +71,16 @@ export async function executeFileTools(
     return {
       tool_use_id: '',
       content: 'Invalid path: must be relative and cannot contain ".."',
+      is_error: true,
+    };
+  }
+
+  // Check directory permissions
+  const requiredPermission = toolName === 'read_file' ? 'read' : 'write';
+  if (!checkPathPermission(path, requiredPermission)) {
+    return {
+      tool_use_id: '',
+      content: `Access denied: ${requiredPermission} permission not allowed for path "${path}"`,
       is_error: true,
     };
   }
