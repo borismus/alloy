@@ -118,9 +118,17 @@ function AppContent() {
         setShowSettings(true);
       }
 
-      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      // Cmd+Shift+F: Focus sidebar search (search all conversations)
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         sidebarRef.current?.focusSearch();
+        return;
+      }
+
+      // Cmd+F: Find in current conversation
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        chatInterfaceRef.current?.openFind();
       }
 
       if (e.key === 'Escape' && showSettings) {
@@ -258,6 +266,11 @@ function AppContent() {
         const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
         const filePath = `${vaultPathForSave}/conversations/${filename}`;
         markSelfWrite(filePath);
+        // Also mark old file path if it exists (title change causes old file deletion)
+        const oldFilePath = await vaultService.getConversationFilePath(updatedConversation.id);
+        if (oldFilePath) {
+          markSelfWrite(oldFilePath);
+        }
       }
       await vaultService.saveConversation(updatedConversation);
       const loadedConversations = await vaultService.loadConversations();
@@ -351,6 +364,11 @@ function AppContent() {
       if (vaultPathForSave) {
         const filePath = `${vaultPathForSave}/conversations/${filename}`;
         markSelfWrite(filePath);
+        // Also mark old file path if it exists (title change causes old file deletion)
+        const oldFilePath = await vaultService.getConversationFilePath(updatedConversation.id);
+        if (oldFilePath) {
+          markSelfWrite(oldFilePath);
+        }
       }
       await vaultService.saveConversation(updatedConversation);
       const loadedConversations = await vaultService.loadConversations();
@@ -504,6 +522,11 @@ function AppContent() {
         if (vaultPathForFinal) {
           const filePath = `${vaultPathForFinal}/conversations/${filename}`;
           markSelfWrite(filePath);
+          // Also mark old file path if it exists (title change causes old file deletion)
+          const oldFilePath = await vaultService.getConversationFilePath(finalConversation.id);
+          if (oldFilePath) {
+            markSelfWrite(oldFilePath);
+          }
         }
         await vaultService.saveConversation(finalConversation);
       } catch (saveError) {
