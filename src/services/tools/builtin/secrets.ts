@@ -58,9 +58,11 @@ export async function executeSecretTools(
       };
     }
 
+    // Return a reference token instead of the actual value
+    // http_post will resolve this token when making requests
     return {
       tool_use_id: '',
-      content: value,
+      content: `\${{${key}}}`,
     };
   } catch (error) {
     return {

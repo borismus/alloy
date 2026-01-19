@@ -1,6 +1,32 @@
 import { ToolResult } from '../../../types/tools';
+import { vaultService } from '../../vault';
 
 const HTTP_TIMEOUT = 30000; // 30 seconds
+
+// Resolve secret tokens like ${{SERPER_API_KEY}} to their actual values
+async function resolveSecretTokens(text: string): Promise<string> {
+  const pattern = /\$\{\{([A-Z_]+)\}\}/g;
+  const matches = [...text.matchAll(pattern)];
+
+  if (matches.length === 0) {
+    return text;
+  }
+
+  const config = await vaultService.loadConfig();
+  if (!config) {
+    return text;
+  }
+
+  let result = text;
+  for (const match of matches) {
+    const [token, keyName] = match;
+    const value = (config as unknown as Record<string, unknown>)[keyName] as string | undefined;
+    if (value) {
+      result = result.replace(token, value);
+    }
+  }
+  return result;
+}
 
 export async function executeHttpTools(
   toolName: string,
@@ -34,10 +60,13 @@ async function httpGet(url: string): Promise<ToolResult> {
   }
 
   try {
+    // Resolve any secret tokens in the URL
+    const resolvedUrl = await resolveSecretTokens(url);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), HTTP_TIMEOUT);
 
-    const response = await fetch(url, {
+    const response = await fetch(resolvedUrl, {
       method: 'GET',
       signal: controller.signal,
     });
@@ -110,6 +139,10 @@ async function httpPost(
   }
 
   try {
+    // Resolve any secret tokens in URL and body
+    const resolvedUrl = await resolveSecretTokens(url);
+    const resolvedBody = await resolveSecretTokens(body);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), HTTP_TIMEOUT);
 
@@ -120,7 +153,9 @@ async function httpPost(
 
     if (headersJson) {
       try {
-        const customHeaders = JSON.parse(headersJson);
+        // Resolve secret tokens in headers before parsing
+        const resolvedHeadersJson = await resolveSecretTokens(headersJson);
+        const customHeaders = JSON.parse(resolvedHeadersJson);
         Object.assign(headers, customHeaders);
       } catch {
         return {
@@ -131,10 +166,10 @@ async function httpPost(
       }
     }
 
-    const response = await fetch(url, {
+    const response = await fetch(resolvedUrl, {
       method: 'POST',
       headers,
-      body,
+      body: resolvedBody,
       signal: controller.signal,
     });
 
