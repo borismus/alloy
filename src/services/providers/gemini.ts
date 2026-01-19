@@ -206,27 +206,35 @@ export class GeminiService implements IProviderService {
       // Add function responses
       geminiHistory.push({
         role: 'user',
-        parts: round.toolResults.map((result) => ({
-          functionResponse: {
-            name: result.tool_use_id,
-            response: {
-              content: result.content,
+        parts: round.toolResults.map((result) => {
+          // Find the tool call to get the actual function name
+          const toolCall = round.toolCalls.find((tc) => tc.id === result.tool_use_id);
+          return {
+            functionResponse: {
+              name: toolCall?.name || 'unknown',
+              response: {
+                content: result.content,
+              },
             },
-          },
-        })),
+          };
+        }),
       });
     }
 
     // Get the last round's function responses to send as the message
     const lastRound = toolHistory[toolHistory.length - 1];
-    const functionResponseParts: Part[] = lastRound.toolResults.map((result) => ({
-      functionResponse: {
-        name: result.tool_use_id,
-        response: {
-          content: result.content,
+    const functionResponseParts: Part[] = lastRound.toolResults.map((result) => {
+      // Find the tool call to get the actual function name
+      const toolCall = lastRound.toolCalls.find((tc) => tc.id === result.tool_use_id);
+      return {
+        functionResponse: {
+          name: toolCall?.name || 'unknown',
+          response: {
+            content: result.content,
+          },
         },
-      },
-    }));
+      };
+    });
 
     // Also need to add the model's function calls for the last round to history
     if (lastRound.toolCalls.length > 0) {
