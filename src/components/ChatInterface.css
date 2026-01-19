@@ -7,6 +7,12 @@
   position: relative;
 }
 
+/* CSS Custom Highlight API for find-in-conversation */
+::highlight(search) {
+  background-color: #fef08a;
+  color: inherit;
+}
+
 /* Topics pill bar */
 .topics-bar {
   display: flex;

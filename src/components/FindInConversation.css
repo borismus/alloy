@@ -1,0 +1,59 @@
+.find-in-conversation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+}
+
+.find-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: #fff;
+  color: #333;
+  outline: none;
+  min-width: 0;
+}
+
+.find-input:focus {
+  border-color: #667eea;
+}
+
+.find-input::placeholder {
+  color: #999;
+}
+
+.match-count {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+}
+
+.find-close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.find-close-button:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #333;
+}

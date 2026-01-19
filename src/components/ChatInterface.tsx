@@ -8,6 +8,7 @@ import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { ModelSelector } from './ModelSelector';
 import { ToolUseIndicator } from './ToolUseIndicator';
 import { SkillUseIndicator } from './SkillUseIndicator';
+import { FindInConversation, FindInConversationHandle } from './FindInConversation';
 import { SkillUse } from '../types';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
@@ -96,6 +97,7 @@ interface ChatInterfaceProps {
 
 export interface ChatInterfaceHandle {
   focusInput: () => void;
+  openFind: () => void;
 }
 
 const PROVIDER_NAMES: Record<ProviderType, string> = {
@@ -140,9 +142,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
+  const [showFind, setShowFind] = useState(false);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const findRef = useRef<FindInConversationHandle>(null);
   const currentConversationIdRef = useRef<string | null>(conversation?.id ?? null);
 
   // Keep ref in sync with current conversation
@@ -177,12 +182,20 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   useImperativeHandle(ref, () => ({
     focusInput: () => {
       textareaRef.current?.focus();
+    },
+    openFind: () => {
+      if (showFind) {
+        // Already open, just focus the input
+        findRef.current?.focus();
+      } else {
+        setShowFind(true);
+      }
     }
   }));
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const element = e.currentTarget;
-    const threshold = 100;
+    const threshold = 200;
     const isNearBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
     setShouldAutoScroll(isNearBottom);
@@ -467,7 +480,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div className="messages-container" onScroll={handleScroll}>
+      <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
+        {showFind && (
+          <FindInConversation
+            ref={findRef}
+            containerRef={messagesContainerRef}
+            onClose={() => setShowFind(false)}
+          />
+        )}
         {conversation.messages.length === 0 && !showStreamingMessage && (
           <div className="welcome-message">
             <h2>Start a conversation</h2>
@@ -568,6 +588,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             placeholder="Send a message... (drop or paste images)"
             disabled={isStreaming}
             rows={1}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
           <ModelSelector
             value={conversation?.model || ''}
