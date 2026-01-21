@@ -30,7 +30,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ollama: 'Ollama',
-  gemini: 'Google Gemini',
+  gemini: 'Gemini',
 };
 
 interface ComparisonChatInterfaceProps {
@@ -65,7 +65,10 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     availableModels.find(am => am.id === m.model && am.provider === m.provider)
   ).filter((m): m is ModelInfo => m !== undefined) || [];
 
-  const systemPrompt = skillRegistry.buildSystemPrompt();
+  const systemPrompt = skillRegistry.buildSystemPrompt({
+    id: conversation.id,
+    title: conversation.title,
+  });
 
   const {
     streamingContents,
@@ -137,7 +140,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
   // Handle scroll to detect if user scrolled away from bottom
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const element = e.currentTarget;
-    const threshold = 100;
+    const threshold = 50;
     const isNearBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
     setShouldAutoScroll(isNearBottom);

@@ -104,7 +104,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ollama: 'Ollama',
-  gemini: 'Google Gemini',
+  gemini: 'Gemini',
 };
 
 const getAssistantName = (provider: ProviderType): string => {
@@ -195,7 +195,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const element = e.currentTarget;
-    const threshold = 200;
+    const threshold = 50;
     const isNearBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
     setShouldAutoScroll(isNearBottom);

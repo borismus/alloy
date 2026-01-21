@@ -34,7 +34,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ollama: 'Ollama',
-  gemini: 'Google Gemini',
+  gemini: 'Gemini',
 };
 
 const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
