@@ -271,10 +271,10 @@ export class OpenAIService implements IProviderService {
 
     // Add all tool rounds to the message history
     for (const round of toolHistory) {
-      // Add assistant message with tool_calls
+      // Add assistant message with optional text + tool_calls
       openaiMessages.push({
         role: 'assistant',
-        content: null,
+        content: round.textContent || null,
         tool_calls: round.toolCalls.map((tc) => ({
           id: tc.id,
           type: 'function' as const,

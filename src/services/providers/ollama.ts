@@ -298,13 +298,16 @@ export class OllamaService implements IProviderService {
 
     // Add all tool rounds as assistant/user message pairs
     for (const round of toolHistory) {
-      // Add assistant message describing the tool calls
+      // Add assistant message describing the tool calls (include any text content)
       const toolCallsText = round.toolCalls
         .map((tc) => `<tool_call>\n<name>${tc.name}</name>\n<arguments>${JSON.stringify(tc.input)}</arguments>\n</tool_call>`)
         .join('\n');
+      const assistantContent = round.textContent
+        ? `${round.textContent}\n\n${toolCallsText}`
+        : toolCallsText;
       ollamaMessages.push({
         role: 'assistant',
-        content: toolCallsText,
+        content: assistantContent,
       });
 
       // Add user message with tool results

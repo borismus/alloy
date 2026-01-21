@@ -192,15 +192,22 @@ export class GeminiService implements IProviderService {
     // Add all tool rounds to the history (except the last one which we'll send as the message)
     for (let i = 0; i < toolHistory.length - 1; i++) {
       const round = toolHistory[i];
-      // Add model's function calls
-      geminiHistory.push({
-        role: 'model',
-        parts: round.toolCalls.map((tc) => ({
+      // Add model's function calls (and any text content)
+      const modelParts: Part[] = [];
+      if (round.textContent) {
+        modelParts.push({ text: round.textContent });
+      }
+      for (const tc of round.toolCalls) {
+        modelParts.push({
           functionCall: {
             name: tc.name,
             args: tc.input,
           },
-        })),
+        });
+      }
+      geminiHistory.push({
+        role: 'model',
+        parts: modelParts,
       });
 
       // Add function responses
@@ -236,16 +243,23 @@ export class GeminiService implements IProviderService {
       };
     });
 
-    // Also need to add the model's function calls for the last round to history
+    // Also need to add the model's function calls for the last round to history (with any text content)
     if (lastRound.toolCalls.length > 0) {
-      geminiHistory.push({
-        role: 'model',
-        parts: lastRound.toolCalls.map((tc) => ({
+      const lastRoundParts: Part[] = [];
+      if (lastRound.textContent) {
+        lastRoundParts.push({ text: lastRound.textContent });
+      }
+      for (const tc of lastRound.toolCalls) {
+        lastRoundParts.push({
           functionCall: {
             name: tc.name,
             args: tc.input,
           },
-        })),
+        });
+      }
+      geminiHistory.push({
+        role: 'model',
+        parts: lastRoundParts,
       });
     }
 
