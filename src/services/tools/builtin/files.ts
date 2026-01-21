@@ -1,7 +1,7 @@
 import { ToolResult } from '../../../types/tools';
 import { vaultService } from '../../vault';
 import { ToolRegistry } from '../registry';
-import { readTextFile, writeTextFile, exists } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, exists, readDir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 
 // Directory permission configuration
@@ -15,7 +15,7 @@ interface DirectoryPermission {
 const DIRECTORY_PERMISSIONS: DirectoryPermission[] = [
   { path: 'notes/', read: true, write: true },
   { path: 'skills/', read: true, write: true },
-  { path: 'conversations/', read: false, write: false },
+  { path: 'conversations/', read: true, write: false },
 ];
 
 /**
@@ -94,6 +94,8 @@ export async function executeFileTools(
       return await writeFile(fullPath, path, input.content as string);
     case 'append_file':
       return await appendFile(fullPath, path, input.content as string);
+    case 'list_directory':
+      return await listDirectory(fullPath, path);
     default:
       return {
         tool_use_id: '',
@@ -183,6 +185,43 @@ async function appendFile(
     return {
       tool_use_id: '',
       content: `Error appending to file: ${error instanceof Error ? error.message : String(error)}`,
+      is_error: true,
+    };
+  }
+}
+
+async function listDirectory(fullPath: string, relativePath: string): Promise<ToolResult> {
+  try {
+    if (!(await exists(fullPath))) {
+      return {
+        tool_use_id: '',
+        content: `Directory not found: ${relativePath}`,
+        is_error: true,
+      };
+    }
+
+    const entries = await readDir(fullPath);
+    const files = entries
+      .filter(entry => entry.name && !entry.name.startsWith('.'))
+      .map(entry => ({
+        name: entry.name,
+        isDirectory: entry.isDirectory,
+      }))
+      .sort((a, b) => {
+        // Directories first, then alphabetically
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+    return {
+      tool_use_id: '',
+      content: JSON.stringify({ directory: relativePath, files }, null, 2),
+    };
+  } catch (error) {
+    return {
+      tool_use_id: '',
+      content: `Error listing directory: ${error instanceof Error ? error.message : String(error)}`,
       is_error: true,
     };
   }
