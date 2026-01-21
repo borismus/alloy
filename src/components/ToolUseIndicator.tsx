@@ -1,4 +1,5 @@
 import React from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { ToolUse } from '../types';
 import './ToolUseIndicator.css';
 
@@ -14,6 +15,7 @@ const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: str
   http_get: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
   http_post: { active: 'Sending request', complete: 'Sent request', icon: 'globe' },
   get_secret: { active: 'Getting secret', complete: 'Got secret', icon: 'key' },
+  web_search: { active: 'Searching', complete: 'Searched', icon: 'search' },
 };
 
 const ToolIcon: React.FC<{ type: string }> = ({ type }) => {
@@ -39,6 +41,13 @@ const ToolIcon: React.FC<{ type: string }> = ({ type }) => {
       return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+        </svg>
+      );
+    case 'search':
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       );
     default:
@@ -69,7 +78,18 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
             </span>
             <span className="tool-use-label">{label}</span>
             {typeof tool.input?.path === 'string' && <span className="tool-use-path">{tool.input.path}</span>}
-            {typeof tool.input?.url === 'string' && <span className="tool-use-path">{tool.input.url.slice(0, 50)}</span>}
+            {typeof tool.input?.url === 'string' && (
+              <span
+                className="tool-use-url"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openUrl(tool.input!.url as string);
+                }}
+              >
+                {tool.input.url.slice(0, 50)}
+              </span>
+            )}
+            {typeof tool.input?.query === 'string' && <span className="tool-use-path">{tool.input.query.slice(0, 50)}</span>}
             {isStreaming && <span className="tool-use-spinner" />}
           </div>
         );

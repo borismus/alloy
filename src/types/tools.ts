@@ -105,4 +105,42 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       required: ['name'],
     },
   },
+  {
+    name: 'list_directory',
+    description: 'List files in a vault directory (notes/, skills/, conversations/). Returns file names with basic metadata.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Directory to list (e.g., "notes", "skills", "conversations")' },
+      },
+      required: ['directory'],
+    },
+  },
+  {
+    name: 'search_directory',
+    description: 'Search for files and content within vault directories (notes/, skills/, conversations/). Returns matching file paths and content snippets.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Directory to search (e.g., "notes", "skills", "conversations")' },
+        query: { type: 'string', description: 'Search query - text to find in file names or content' },
+        search_content: { type: 'string', description: 'Search file content ("true") or just names ("false"). Default: "true"' },
+        max_results: { type: 'string', description: 'Max results to return (default: "20", max: "50")' },
+        file_extension: { type: 'string', description: 'Filter by file extension (e.g., "md", "yaml")' },
+      },
+      required: ['directory', 'query'],
+    },
+  },
+  {
+    name: 'web_search',
+    description: 'Search the web using Serper API. Returns search results with titles, links, and snippets. Requires SERPER_API_KEY to be configured.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+        num_results: { type: 'string', description: 'Number of results to return (default: "10", max: "20")' },
+      },
+      required: ['query'],
+    },
+  },
 ];

@@ -3,6 +3,8 @@ import { executeFileTools } from './builtin/files';
 import { executeHttpTools } from './builtin/http';
 import { executeSecretTools } from './builtin/secrets';
 import { executeSkillTools } from './builtin/skills';
+import { executeSearchTools } from './builtin/search';
+import { executeWebSearchTools } from './builtin/websearch';
 
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition> = new Map();
@@ -43,6 +45,7 @@ export class ToolRegistry {
         case 'read_file':
         case 'write_file':
         case 'append_file':
+        case 'list_directory':
           result = await executeFileTools(toolCall.name, toolCall.input);
           break;
         case 'http_get':
@@ -54,6 +57,12 @@ export class ToolRegistry {
           break;
         case 'use_skill':
           result = await executeSkillTools(toolCall.name, toolCall.input);
+          break;
+        case 'search_directory':
+          result = await executeSearchTools(toolCall.name, toolCall.input);
+          break;
+        case 'web_search':
+          result = await executeWebSearchTools(toolCall.name, toolCall.input);
           break;
         default:
           return {

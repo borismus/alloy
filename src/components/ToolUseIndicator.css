@@ -37,6 +37,21 @@
   white-space: nowrap;
 }
 
+.tool-use-url {
+  color: #667eea;
+  font-size: 0.75rem;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tool-use-url:hover {
+  text-decoration: underline;
+}
+
 .tool-use-indicator.error {
   background: #fff0f0;
   border-color: #ffcdd2;
