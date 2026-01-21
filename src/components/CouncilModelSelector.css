@@ -1,0 +1,223 @@
+.council-model-selector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 2rem;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.council-model-selector .selector-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.council-model-selector .selector-header h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.council-model-selector .selector-header p {
+  margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.council-sections {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+}
+
+.council-section {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.section-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chairman-icon {
+  font-size: 1.1rem;
+}
+
+.council-section .models-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.council-section .provider-group {
+  margin-bottom: 1rem;
+}
+
+.council-section .provider-group:last-child {
+  margin-bottom: 0;
+}
+
+.council-section .provider-name {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #666;
+  margin-bottom: 0.5rem;
+  padding-left: 0.25rem;
+}
+
+.council-section .provider-models {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.council-section .model-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  background: white;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.council-section .model-option:hover:not(.disabled) {
+  background: #f0f0f0;
+}
+
+.council-section .model-option.selected {
+  border-color: #667eea;
+}
+
+.council-section .model-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.council-section .model-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #667eea;
+  cursor: inherit;
+}
+
+.council-section .model-option .model-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #333;
+}
+
+.council-section .model-option .local-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: #e9ecef;
+  color: #666;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.council-section .selection-count {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 0.75rem;
+  padding-left: 0.25rem;
+}
+
+/* Chairman section */
+.chairman-section {
+  background: linear-gradient(135deg, #fef9e7 0%, #fff8e1 100%);
+  border: 2px solid #f1c40f;
+}
+
+.chairman-description {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0 0 1rem 0;
+}
+
+.chairman-select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.chairman-select:focus {
+  outline: none;
+  border-color: #f1c40f;
+}
+
+.chairman-select:hover {
+  border-color: #ccc;
+}
+
+/* Footer */
+.council-model-selector .selector-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e0e0e0;
+  margin-top: 1rem;
+}
+
+.selection-summary {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.council-model-selector .selector-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.council-model-selector .selector-actions button {
+  padding: 0.625rem 1.25rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.council-model-selector .cancel-button {
+  background: #f1f3f4;
+  color: #333;
+}
+
+.council-model-selector .cancel-button:hover {
+  background: #e0e0e0;
+}
+
+.council-model-selector .start-button {
+  background: linear-gradient(135deg, #f1c40f 0%, #f39c12 100%);
+  color: #333;
+}
+
+.council-model-selector .start-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.council-model-selector .start-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

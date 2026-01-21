@@ -34,6 +34,9 @@ export interface Message {
   toolUse?: ToolUse[];
   // Skills applied in this message
   skillUse?: SkillUse[];
+  // Council mode - marks message role in council deliberation
+  councilMember?: boolean;  // True if this is a council member response
+  chairman?: boolean;       // True if this is the chairman synthesis
 }
 
 export interface ModelInfo {
@@ -55,6 +58,13 @@ export interface ComparisonResponse {
 export interface ComparisonMetadata {
   isComparison: true;
   models: Array<{ provider: ProviderType; model: string }>;
+}
+
+// Metadata for council conversations
+export interface CouncilMetadata {
+  isCouncil: true;
+  councilMembers: Array<{ provider: ProviderType; model: string }>;
+  chairman: { provider: ProviderType; model: string };
 }
 
 // Topic metadata - makes a conversation a "standing query"
@@ -80,6 +90,7 @@ export interface Conversation {
   memory_version?: number;
   messages: Message[];
   comparison?: ComparisonMetadata;
+  council?: CouncilMetadata;
   topic?: TopicMetadata;  // If set, conversation appears as a topic pill instead of in sidebar list
 }
 

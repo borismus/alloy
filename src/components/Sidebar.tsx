@@ -105,6 +105,7 @@ interface SidebarProps {
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onNewComparison: () => void;
+  onNewCouncil: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onDeleteConversation: (id: string) => void;
   onMakeTopic?: (conversationId: string, label: string, prompt: string) => void;
@@ -122,6 +123,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onSelectConversation,
   onNewConversation,
   onNewComparison,
+  onNewCouncil,
   onRenameConversation,
   onDeleteConversation,
   onMakeTopic,
@@ -270,6 +272,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             action: () => {
               onNewComparison();
             }
+          },
+          {
+            id: 'new-council',
+            text: 'New Council',
+            action: () => {
+              onNewCouncil();
+            }
           }
         ]
       });
@@ -377,7 +386,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               data-conversation-id={conversation.id}
               className={`conversation-item ${
                 conversation.id === currentConversationId ? 'active' : ''
-              }${conversation.comparison ? ' comparison' : ''}${
+              }${conversation.comparison ? ' comparison' : ''}${conversation.council ? ' council' : ''}${
                 streamingConversationIds.includes(conversation.id) ? ' streaming' : ''
               }`}
               onClick={() => handleSelectConversation(conversation.id)}
@@ -391,6 +400,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                   <span className="unread-indicator" title="New response">●</span>
                 )}
                 {conversation.comparison && <span className="comparison-badge">Compare</span>}
+                {conversation.council && <span className="council-badge">Council</span>}
                 {getConversationTitle(conversation)}
               </div>
               <div className="conversation-meta">
@@ -398,6 +408,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 <span className="conversation-count">
                   {conversation.comparison
                     ? `${conversation.comparison.models.length} models`
+                    : conversation.council
+                    ? `${conversation.council.councilMembers.length}+1`
                     : `${conversation.messages.length} msgs`
                   }
                 </span>
