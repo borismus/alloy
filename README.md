@@ -2,18 +2,40 @@
 
 **Own your AI conversations**
 
-A local-first, privacy-respecting app for managing your AI conversations. Radical transparency — everything is plain text files you control.
+ChatGPT, Claude.ai, Gemini — they all trap your conversations in their cloud. PromptBox gives them back to you. Every conversation is a plain text file on your computer that you fully control.
 
-## Philosophy
+## Why PromptBox?
 
-PromptBox has your back. No analytics, no cloud dependency, no tricks. It does one thing well: manages your relationship with AI on *your* terms.
+**Your conversations are valuable.** They contain your ideas, your decisions, your learning journey. But when you use ChatGPT or Claude.ai:
+- You can't search across all your conversations effectively
+- You can't edit or annotate past conversations
+- You can't back them up or sync them your way
+- You can't switch providers without losing everything
+- You can't run queries offline
 
-**The Obsidian test:**
-- Can you find your data in Finder/Explorer? ✅
-- Can you read it without the app? ✅
-- Can you edit it with any text editor? ✅
-- Can you sync it with your own tools? ✅
-- Can you delete the app and keep everything? ✅
+PromptBox fixes all of this. It's a desktop app that stores conversations as simple YAML files in a folder you choose. Use any AI provider. Switch anytime. Keep everything forever.
+
+## The Obsidian Test
+
+PromptBox passes the same data ownership test as Obsidian:
+
+| Question | Answer |
+|----------|--------|
+| Can you find your data in Finder/Explorer? | ✅ Yes |
+| Can you read it without the app? | ✅ Yes |
+| Can you edit it with any text editor? | ✅ Yes |
+| Can you sync it with your own tools? | ✅ Yes |
+| Can you delete the app and keep everything? | ✅ Yes |
+
+No cloud lock-in. No proprietary formats. No tricks.
+
+## Where PromptBox Shines
+
+### Compare Models Side-by-Side
+Not sure if Claude or GPT is better for your use case? PromptBox's comparison mode sends the same prompt to multiple models simultaneously. See their responses side-by-side and pick the best one.
+
+### Automate with Skills
+Skills are plain-text instructions that teach your AI new capabilities. A skill can search the web, fetch APIs, read and write files in your vault, and chain these together into powerful workflows. Create a "daily digest" skill that pulls news and summarizes it. Or a "research" skill that searches, saves findings, and updates your notes. Your AI workflows, version-controlled alongside your data.
 
 ## Quick Start
 
@@ -32,8 +54,7 @@ npm install
 ### Core
 - ✅ **Pick your vault folder** on first run
 - ✅ **Conversations saved as YAML files** (human-readable, plain text)
-- ✅ **Basic search** across all conversations
-- ✅ **`memory.md` injected as context** in every conversation
+- ✅ **Full-text search** across all conversations
 
 ### Multi-Provider Support
 - ✅ **Anthropic** (Claude models with streaming)
@@ -43,10 +64,10 @@ npm install
 - ✅ **Side-by-side model comparison** mode
 - ✅ **Image attachments** (drag & drop or paste)
 
-### Skills System
-- ✅ **Skills loaded from `$VAULT/skills/`** as markdown files
-- ✅ **On-demand skill loading** via `use_skill` tool
-- ✅ **Built-in tools** for skills: `read_file`, `write_file`, `append_file`, `http_get`, `http_post`, `get_secret`
+### Skills & Tools
+- ✅ **Custom skills** as markdown files with built-in tool access
+- ✅ **Read/write files**, call APIs, chain actions together
+- See [Skills & Tools](#skills--tools) section below for details
 
 ### Topics
 - ✅ **Pin conversations as topics** with recurring prompts
@@ -61,9 +82,8 @@ npm install
 │   ├── 2025-01-09-1736460789-project-brainstorm.yaml
 │   └── ...
 ├── skills/                     # Custom skills (markdown files)
-│   └── web-search.md           # Example skill with instructions
-├── memory.md                   # Your personal context
-└── config.yaml                 # App settings
+│   └── web-search.md
+└── config.yaml                 # API keys and settings
 ```
 
 ## Conversation Format
@@ -88,58 +108,60 @@ messages:
       I'd recommend starting with the core resources...
 ```
 
-## Memory Format
+## Skills & Tools
 
-`memory.md` is plain Markdown:
+Skills turn PromptBox into a programmable AI platform. Each skill is a markdown file with instructions that teach the AI new behaviors — and give it access to tools that can take action.
 
-```markdown
-# Memory
+### How It Works
 
-## About me
-- Software dood based in Seattle
-- Prefer concise, direct communication
+1. You create a skill file in `$VAULT/skills/` (e.g., `web-search.md`)
+2. The AI sees your available skills and loads them on-demand
+3. Skills can use built-in tools to read files, call APIs, and save results
 
-## Current projects
-- PromptBox: local-first AI conversation manager
-- Learning Rust
-```
-
-## Skills
-
-Skills are markdown files in `$VAULT/skills/` that extend the AI's capabilities. Each skill is a `.md` file with YAML frontmatter:
+### Example: Web Search Skill
 
 ```markdown
 ---
 name: web-search
-description: Search the web and summarize results
+description: Search the web using Serper API
 ---
 
-# Web Search Skill
+# Web Search
 
-When the user asks you to search the web, use the `http_get` tool to fetch...
+When asked to search, use `get_secret` to get the SERPER_API_KEY,
+then `http_post` to query the Serper API. Summarize the top results
+and offer to save them to the user's notes.
 ```
 
-The AI loads skills on-demand via the `use_skill` tool. Available built-in tools for skills:
+When you ask "search for recent news about AI," the AI loads this skill, calls the API, and can save findings to your vault — all transparently.
 
-| Tool | Description |
-|------|-------------|
-| `read_file` | Read files from the vault |
-| `write_file` | Write/create files in the vault |
-| `append_file` | Append to existing files |
-| `http_get` | Fetch content from URLs |
-| `http_post` | Send POST requests |
-| `get_secret` | Access API keys from config |
+### Built-in Tools
 
-## Trust Model
+| Tool | What it does |
+|------|--------------|
+| `read_file` | Read files from your vault |
+| `write_file` | Create or update files |
+| `append_file` | Add to existing files |
+| `search_directory` | Search files and content in vault directories |
+| `http_get` | Fetch data from URLs |
+| `http_post` | Send POST requests to APIs |
+| `get_secret` | Securely access API keys from config |
+| `use_skill` | Load another skill on-demand |
+
+Skills are just text files. Edit them, version control them, share them. Your AI capabilities live in your vault, not locked in someone else's platform.
+
+## Privacy & Trust
+
+PromptBox is radically transparent:
 
 | What PromptBox does | What PromptBox doesn't do |
 |---------------------|---------------------------|
 | Stores files in a folder you choose | Phone home |
 | Shows you exactly what's sent to LLMs | Collect analytics |
 | Lets you edit/delete anything | Make decisions without you |
-| Works offline (with local models*) | Lock you in |
+| Works offline (with Ollama) | Lock you in |
 
-*Ollama support already available for local models
+**No accounts. No telemetry. No cloud.** Your API keys stay on your machine. Your conversations never touch our servers (we don't have any).
 
 ## Roadmap
 
@@ -148,7 +170,6 @@ The AI loads skills on-demand via the `use_skill` tool. Available built-in tools
 - Chat with Claude (single provider)
 - Conversations saved as YAML files
 - Basic search across conversations
-- `memory.md` injected as context
 
 ### ✅ v0.2 - Multi-Provider & Images
 - Multi-provider support (Claude, GPT, Gemini, Ollama)
@@ -170,6 +191,11 @@ The AI loads skills on-demand via the `use_skill` tool. Available built-in tools
 - Privacy boundaries configuration
 - Selective file/folder sharing
 - Local LLM summarization layer
+
+### v0.6 - AI-Managed Notes
+- AI that proactively organizes and maintains your knowledge base
+- Automatic summarization and linking of related conversations
+- Your notes, enhanced by AI — but still plain text you control
 
 ### v1.0 - Production Ready
 - Polished UI
@@ -228,6 +254,4 @@ MIT (TBD - update as needed)
 
 ---
 
-*PromptBox: Your AI conversations. Your files. Your control.*
-
-**Built with lateral thinking & withered technology** 🚀
+*Your AI conversations. Your files. Your control.*
