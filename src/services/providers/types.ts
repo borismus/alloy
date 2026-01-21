@@ -3,6 +3,7 @@ import { ToolDefinition, ToolCall } from '../../types/tools';
 
 // Represents one round of tool use: assistant's tool calls + the results
 export interface ToolRound {
+  textContent?: string;  // Any text the assistant said alongside tool calls
   toolCalls: ToolCall[];
   toolResults: { tool_use_id: string; content: string; is_error?: boolean }[];
 }
