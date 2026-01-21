@@ -35,14 +35,20 @@ export class SkillRegistry {
 
   // Build system prompt with skill summaries (frontmatter only)
   // Full instructions are loaded on-demand when a skill is used via use_skill tool
-  buildSystemPrompt(basePrompt?: string): string {
+  buildSystemPrompt(conversationContext?: { id: string; title?: string }): string {
     const skills = this.getSkills();
     console.log('[buildSystemPrompt] skills count:', skills.length, 'names:', skills.map(s => s.name));
     let prompt = '';
 
-    // Add base prompt if provided
-    if (basePrompt) {
-      prompt += basePrompt + '\n\n';
+    // Add conversation context for provenance markers
+    if (conversationContext) {
+      const slug = conversationContext.title ? this.generateSlug(conversationContext.title) : '';
+      const conversationPath = slug
+        ? `conversations/${conversationContext.id}-${slug}`
+        : `conversations/${conversationContext.id}`;
+      prompt += '# Current Conversation\n\n';
+      prompt += `This conversation's path is: \`${conversationPath}\`\n`;
+      prompt += `When writing notes with provenance markers, use: \`&[[${conversationPath}]]\`\n\n`;
     }
 
     // Add skill summaries (name + description only)
@@ -58,6 +64,15 @@ export class SkillRegistry {
     }
 
     return prompt;
+  }
+
+  // Helper to generate slug from title (matches vault service)
+  private generateSlug(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50);
   }
 
   // Get full instructions for a skill by name
