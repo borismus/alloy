@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Conversation, Config, Attachment } from '../types';
+import { Conversation, Config, Attachment, ProviderType, formatModelId } from '../types';
 
 export class VaultService {
   private vaultPath: string | null = null;
@@ -11,7 +11,7 @@ export class VaultService {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select PromptBox Vault Folder',
+      title: 'Select Orchestra Vault Folder',
     });
 
     if (selected && typeof selected === 'string') {
@@ -26,15 +26,10 @@ export class VaultService {
   async initializeVault(path: string): Promise<void> {
     // Create necessary directories
     const conversationsPath = await join(path, 'conversations');
-    const topicsPath = await join(path, 'topics');
     const skillsPath = await join(path, 'skills');
 
     if (!(await exists(conversationsPath))) {
       await mkdir(conversationsPath, { recursive: true });
-    }
-
-    if (!(await exists(topicsPath))) {
-      await mkdir(topicsPath, { recursive: true });
     }
 
     if (!(await exists(skillsPath))) {
@@ -45,6 +40,12 @@ export class VaultService {
     const notesPath = await join(path, 'notes');
     if (!(await exists(notesPath))) {
       await mkdir(notesPath, { recursive: true });
+    }
+
+    // Create triggers directory for trigger logs
+    const triggersPath = await join(path, 'triggers');
+    if (!(await exists(triggersPath))) {
+      await mkdir(triggersPath, { recursive: true });
     }
 
     // Create attachments directory for images
@@ -71,7 +72,7 @@ export class VaultService {
     const configPath = await join(path, 'config.yaml');
     if (!(await exists(configPath))) {
       // Create config with commented templates for providers
-      const defaultConfigYaml = `defaultModel: claude-opus-4-5-20251101
+      const defaultConfigYaml = `defaultModel: anthropic/claude-opus-4-5-20251101
 
 # Uncomment and fill in to enable each provider
 # ANTHROPIC_API_KEY: sk-ant-...
@@ -115,31 +116,6 @@ Call \`read_file\` with path \`memory.md\` before responding to the user's first
 **CRITICAL:** Only use the file \`memory.md\`. Never create other files like \`notes/\`, \`preferences.md\`, etc. All memories go in \`memory.md\`.
 `;
       await writeTextFile(await join(memorySkillPath, 'SKILL.md'), memorySkillMd);
-    }
-
-    // Web search skill
-    const webSearchSkillPath = await join(skillsPath, 'web-search');
-    if (!(await exists(webSearchSkillPath))) {
-      await mkdir(webSearchSkillPath, { recursive: true });
-      const webSearchSkillMd = `---
-name: web-search
-description: Search the web for current information, news, or real-time data.
----
-
-# Web Search Skill
-
-When the user asks about current events, recent news, or information that may have
-changed since your knowledge cutoff:
-
-1. Use \`get_secret\` with key "SERPER_API_KEY" to get the API key
-2. Use \`http_post\` to search:
-   - url: "https://google.serper.dev/search"
-   - body: {"q": "your search query"}
-   - headers: {"X-API-KEY": "[key from step 1]"}
-
-Parse the JSON response and summarize the top results. Cite sources when relevant.
-`;
-      await writeTextFile(await join(webSearchSkillPath, 'SKILL.md'), webSearchSkillMd);
     }
 
     // Read URL skill
@@ -290,19 +266,46 @@ When the user asks to organize or consolidate their notes:
     await writeTextFile(configPath, yaml.dump(config));
   }
 
+  /**
+   * Atomically update a conversation: load fresh from disk, apply update function, save back.
+   * This prevents race conditions where stale in-memory state overwrites fresher disk state.
+   *
+   * @param id - The conversation ID
+   * @param updateFn - Function that receives the fresh conversation and returns the updated version.
+   *                   The function is responsible for merging - it can preserve or overwrite fields as needed.
+   * @returns The updated conversation, or null if not found
+   */
+  async updateConversation(
+    id: string,
+    updateFn: (fresh: Conversation) => Conversation
+  ): Promise<Conversation | null> {
+    if (!this.vaultPath) return null;
+
+    // Load fresh from disk
+    const fresh = await this.loadConversation(id);
+    if (!fresh) return null;
+
+    // Apply the update
+    const updated = updateFn(fresh);
+
+    // Save back to disk
+    await this.saveConversation(updated);
+
+    return updated;
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     if (!this.vaultPath) return;
 
-    // Filter out empty messages (can happen when aborting a streaming response)
-    const filteredMessages = conversation.messages.filter(m => m.content.trim() !== '');
+    // Filter out empty or undefined messages (can happen when aborting a streaming response)
+    const filteredMessages = conversation.messages.filter(m => m && m.content?.trim() !== '');
 
-    // Don't save conversations with no actual messages
-    if (filteredMessages.length === 0) return;
+    // Don't save conversations with no actual messages (unless it's a trigger conversation)
+    if (filteredMessages.length === 0 && !conversation.trigger) return;
 
     const conversationToSave = {
       ...conversation,
       messages: filteredMessages,
-      updated: new Date().toISOString(),
     };
 
     const conversationsPath = await join(this.vaultPath, 'conversations');
@@ -346,7 +349,7 @@ When the user asks to organize or consolidate their notes:
     // Add comparison metadata to frontmatter if this is a comparison
     if (conversation.comparison) {
       frontmatterData.comparison = true;
-      frontmatterData.models = conversation.comparison.models.map(m => `${m.provider}/${m.model}`);
+      frontmatterData.models = conversation.comparison.models;  // Already in "provider/model" format
     }
 
     const frontmatter = yaml.dump(frontmatterData);
@@ -356,7 +359,7 @@ When the user asks to organize or consolidate their notes:
     if (conversation.comparison) {
       // Format comparison conversations differently
       const modelCount = conversation.comparison.models.length;
-      const modelNames = conversation.comparison.models.map(m => `${m.provider}/${m.model}`);
+      const modelNames = conversation.comparison.models;  // Already in "provider/model" format
 
       // Group messages by user prompt
       const groups: { userMessage: string; responses: string[] }[] = [];
@@ -398,7 +401,7 @@ When the user asks to organize or consolidate their notes:
       }).join('\n\n---\n\n');
     } else {
       // Standard single-model conversation
-      const assistantName = `${conversation.provider}/${conversation.model}`;
+      const assistantName = conversation.model;  // Already in "provider/model" format
       messages = conversation.messages
         .filter(m => m.role !== 'log')
         .map(m => {
@@ -450,6 +453,8 @@ When the user asks to organize or consolidate their notes:
         const filePath = await join(conversationsPath, entry.name);
         const content = await readTextFile(filePath);
         const conversation = yaml.load(content) as Conversation;
+        // Migrate old trigger format if needed
+        this.migrateConversationFormat(conversation);
         conversations.push(conversation);
       }
     }
@@ -468,10 +473,80 @@ When the user asks to organize or consolidate their notes:
 
     if (filePath && await exists(filePath)) {
       const content = await readTextFile(filePath);
-      return yaml.load(content) as Conversation;
+      const conversation = yaml.load(content) as Conversation;
+      // Migrate old trigger format if needed
+      this.migrateConversationFormat(conversation);
+      return conversation;
     }
 
     return null;
+  }
+
+  /**
+   * Migrate old conversation format to new unified model format.
+   * Old format: { provider: "anthropic", model: "claude-sonnet-4-5-20250929" }
+   * New format: { model: "anthropic/claude-sonnet-4-5-20250929" }
+   * Modifies the conversation in place.
+   */
+  private migrateConversationFormat(conversation: Conversation): void {
+    const conv = conversation as any;
+
+    // Migrate top-level provider/model to unified model string
+    if (conv.provider && !conv.model?.includes('/')) {
+      conv.model = formatModelId(conv.provider as ProviderType, conv.model || '');
+      delete conv.provider;
+    }
+
+    // Migrate comparison metadata
+    if (conv.comparison?.models) {
+      conv.comparison.models = conv.comparison.models.map((m: any) => {
+        if (typeof m === 'object' && m.provider && m.model) {
+          return formatModelId(m.provider, m.model);
+        }
+        return m; // Already a string
+      });
+    }
+
+    // Migrate council metadata
+    if (conv.council) {
+      if (conv.council.councilMembers) {
+        conv.council.councilMembers = conv.council.councilMembers.map((m: any) => {
+          if (typeof m === 'object' && m.provider && m.model) {
+            return formatModelId(m.provider, m.model);
+          }
+          return m;
+        });
+      }
+      if (conv.council.chairman && typeof conv.council.chairman === 'object') {
+        const chairman = conv.council.chairman as any;
+        if (chairman.provider && chairman.model) {
+          conv.council.chairman = formatModelId(chairman.provider, chairman.model);
+        }
+      }
+    }
+
+    // Migrate message-level provider/model (for comparison/council messages)
+    if (conv.messages) {
+      for (const msg of conv.messages) {
+        if (msg.provider && msg.model && !msg.model.includes('/')) {
+          msg.model = formatModelId(msg.provider, msg.model);
+          delete msg.provider;
+        }
+      }
+    }
+
+    // Migrate trigger format
+    const trigger = conv.trigger;
+    if (trigger) {
+      if (trigger.triggerProvider && !trigger.triggerModel?.includes('/')) {
+        trigger.triggerModel = formatModelId(trigger.triggerProvider, trigger.triggerModel);
+        delete trigger.triggerProvider;
+      }
+      if (trigger.mainProvider && !trigger.mainModel?.includes('/')) {
+        trigger.mainModel = formatModelId(trigger.mainProvider, trigger.mainModel);
+        delete trigger.mainProvider;
+      }
+    }
   }
 
   setVaultPath(path: string): void {

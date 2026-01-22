@@ -1,23 +1,22 @@
-# PromptBox
+# Orchestra
 
-**Own your AI conversations**
+**Conduct your AI.**
 
-ChatGPT, Claude.ai, Gemini — they all trap your conversations in their cloud. PromptBox gives them back to you. Every conversation is a plain text file on your computer that you fully control.
+ChatGPT, Claude, Gemini — most apps give you one model at a time. Orchestra lets you conduct them all. Run models in parallel, let them deliberate, or cascade from fast to powerful. Every major AI, performing in concert.
 
-## Why PromptBox?
+## Why Orchestra?
 
-**Your conversations are valuable.** They contain your ideas, your decisions, your learning journey. But when you use ChatGPT or Claude.ai:
-- You can't search across all your conversations effectively
-- You can't edit or annotate past conversations
-- You can't back them up or sync them your way
-- You can't switch providers without losing everything
-- You can't run queries offline
+**AI models are commoditizing fast.** The real power isn't in any single model — it's in orchestrating them:
 
-PromptBox fixes all of this. It's a desktop app that stores conversations as simple YAML files in a folder you choose. Use any AI provider. Switch anytime. Keep everything forever.
+- **Council mode**: Query multiple models at once. A chairman model synthesizes the best answer from all responses.
+- **Comparison mode**: See every model's response side-by-side. Pick the winner yourself.
+- **Triggers**: A fast, cheap model monitors your conversation and brings in reinforcements when needed.
 
-## The Obsidian Test
+No other chat app does this. They lock you into one provider. Orchestra sits above them all — you're the conductor.
 
-PromptBox passes the same data ownership test as Obsidian:
+## Plus: You Own Everything
+
+Orchestra stores every conversation as a plain YAML file in a folder you choose. Like Obsidian for notes, but for AI conversations.
 
 | Question | Answer |
 |----------|--------|
@@ -27,15 +26,18 @@ PromptBox passes the same data ownership test as Obsidian:
 | Can you sync it with your own tools? | ✅ Yes |
 | Can you delete the app and keep everything? | ✅ Yes |
 
-No cloud lock-in. No proprietary formats. No tricks.
+No cloud lock-in. No proprietary formats. Your conversations stay yours.
 
-## Where PromptBox Shines
+## Where Orchestra Shines
 
-### Compare Models Side-by-Side
-Not sure if Claude or GPT is better for your use case? PromptBox's comparison mode sends the same prompt to multiple models simultaneously. See their responses side-by-side and pick the best one.
+### Multi-Model Intelligence
+Use the right model for the job — or all of them at once. Council mode queries multiple models in parallel, then synthesizes a superior answer. Comparison mode shows you each response so you can judge for yourself.
 
-### Automate with Skills
-Skills are plain-text instructions that teach your AI new capabilities. A skill can search the web, fetch APIs, read and write files in your vault, and chain these together into powerful workflows. Create a "daily digest" skill that pulls news and summarizes it. Or a "research" skill that searches, saves findings, and updates your notes. Your AI workflows, version-controlled alongside your data.
+### Smart Triggers
+Set up rules that watch your conversation and fire automatically. A cheap model can monitor context and escalate to a powerful model when the task demands it. Or trigger a web search when current information is needed. Layers of intelligence, coordinated.
+
+### Skills & Automation
+Skills are plain-text instructions that teach your AI new capabilities. Search the web, fetch APIs, read and write files in your vault, chain actions into workflows. Your AI automation, version-controlled alongside your data.
 
 ## Quick Start
 
@@ -69,20 +71,16 @@ npm install
 - ✅ **Read/write files**, call APIs, chain actions together
 - See [Skills & Tools](#skills--tools) section below for details
 
-### Topics
-- ✅ **Pin conversations as topics** with recurring prompts
-- ✅ **Topic scheduling** (manual trigger for now)
-
 ## File Structure
 
 ```
-~/promptbox-vault/              # Your chosen vault location
+~/orchestra-vault/              # Your chosen vault location
 ├── conversations/
 │   ├── 2025-01-10-1736547123-how-to-setup-tauri.yaml
 │   ├── 2025-01-09-1736460789-project-brainstorm.yaml
 │   └── ...
 ├── skills/                     # Custom skills (markdown files)
-│   └── web-search.md
+│   └── memory/SKILL.md
 └── config.yaml                 # API keys and settings
 ```
 
@@ -110,30 +108,30 @@ messages:
 
 ## Skills & Tools
 
-Skills turn PromptBox into a programmable AI platform. Each skill is a markdown file with instructions that teach the AI new behaviors — and give it access to tools that can take action.
+Skills turn Orchestra into a programmable AI platform. Each skill is a markdown file with instructions that teach the AI new behaviors — and give it access to tools that can take action.
 
 ### How It Works
 
-1. You create a skill file in `$VAULT/skills/` (e.g., `web-search.md`)
+1. You create a skill folder in `$VAULT/skills/` (e.g., `skills/my-skill/SKILL.md`)
 2. The AI sees your available skills and loads them on-demand
 3. Skills can use built-in tools to read files, call APIs, and save results
 
-### Example: Web Search Skill
+### Example: Memory Skill
 
 ```markdown
 ---
-name: web-search
-description: Search the web using Serper API
+name: memory
+description: Remember things about the user across conversations
 ---
 
-# Web Search
+# Memory Skill
 
-When asked to search, use `get_secret` to get the SERPER_API_KEY,
-then `http_post` to query the Serper API. Summarize the top results
-and offer to save them to the user's notes.
+When you learn something important about the user (preferences, projects,
+facts they mention), save it to `memory.md` using `append_file`.
+Before answering questions, check `memory.md` for relevant context.
 ```
 
-When you ask "search for recent news about AI," the AI loads this skill, calls the API, and can save findings to your vault — all transparently.
+When you tell the AI your preferences, it saves them and remembers across sessions.
 
 ### Built-in Tools
 
@@ -146,15 +144,16 @@ When you ask "search for recent news about AI," the AI loads this skill, calls t
 | `http_get` | Fetch data from URLs |
 | `http_post` | Send POST requests to APIs |
 | `get_secret` | Securely access API keys from config |
+| `web_search` | Search the web (requires SERPER_API_KEY) |
 | `use_skill` | Load another skill on-demand |
 
 Skills are just text files. Edit them, version control them, share them. Your AI capabilities live in your vault, not locked in someone else's platform.
 
 ## Privacy & Trust
 
-PromptBox is radically transparent:
+Orchestra is radically transparent:
 
-| What PromptBox does | What PromptBox doesn't do |
+| What Orchestra does | What Orchestra doesn't do |
 |---------------------|---------------------------|
 | Stores files in a folder you choose | Phone home |
 | Shows you exactly what's sent to LLMs | Collect analytics |
@@ -177,13 +176,12 @@ PromptBox is radically transparent:
 - Side-by-side model comparison
 - Image attachments
 
-### ✅ v0.3 - Topics & Skills
-- Topics / standing queries with recurring prompts
+### ✅ v0.3 - Skills & Triggers
 - Skills system with on-demand loading
 - Built-in tools (file ops, HTTP, secrets)
+- Triggers for automated background execution
 
 ### v0.4 - Polish
-- Improved topic scheduling (auto-trigger)
 - Better skill discovery and management
 - UI refinements
 

@@ -27,7 +27,7 @@ describe('VaultService', () => {
       expect(dialog.open).toHaveBeenCalledWith({
         directory: true,
         multiple: false,
-        title: 'Select PromptBox Vault Folder',
+        title: 'Select Orchestra Vault Folder',
       });
     });
 
@@ -49,7 +49,7 @@ describe('VaultService', () => {
   });
 
   describe('initializeVault', () => {
-    it('should create conversations and topics directories if they do not exist', async () => {
+    it('should create conversations directory if it does not exist', async () => {
       const vaultPath = '/test/vault';
       vi.mocked(fs.exists).mockResolvedValue(false);
       vi.mocked(fs.mkdir).mockResolvedValue();
@@ -58,7 +58,6 @@ describe('VaultService', () => {
       await vaultService.initializeVault(vaultPath);
 
       expect(fs.mkdir).toHaveBeenCalledWith('/test/vault/conversations', { recursive: true });
-      expect(fs.mkdir).toHaveBeenCalledWith('/test/vault/topics', { recursive: true });
     });
 
     it('should not create directories if they already exist', async () => {
@@ -74,8 +73,8 @@ describe('VaultService', () => {
     it('should create default memory.md if it does not exist', async () => {
       const vaultPath = '/test/vault';
       vi.mocked(fs.exists).mockImplementation(async (p) => {
-        // Only conversations and topics exist
-        return p === '/test/vault/conversations' || p === '/test/vault/topics';
+        // Only conversations directory exists
+        return p === '/test/vault/conversations';
       });
       vi.mocked(fs.writeTextFile).mockResolvedValue();
 
