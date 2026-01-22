@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ModelInfo, ProviderType } from '../types';
+import { ModelInfo, ProviderType, getProviderFromModel } from '../types';
 import './CouncilModelSelector.css';
 
 interface CouncilModelSelectorProps {
   availableModels: ModelInfo[];
+  favoriteModels?: string[];  // Format: "provider/model-id"
   onStartCouncil: (councilMembers: ModelInfo[], chairman: ModelInfo) => void;
   onCancel: () => void;
 }
@@ -19,6 +20,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
 
 export function CouncilModelSelector({
   availableModels,
+  favoriteModels = [],
   onStartCouncil,
   onCancel,
 }: CouncilModelSelectorProps) {
@@ -26,8 +28,15 @@ export function CouncilModelSelector({
   const [selectedChairman, setSelectedChairman] = useState<ModelInfo | null>(null);
   const maxMembers = 4;
 
+  // Check if a model is in the favorites list
+  const isFavorite = (model: ModelInfo) => favoriteModels.includes(model.key);
+
+  // Get favorite models (matched from available models)
+  const favorites = availableModels.filter(isFavorite);
+
+  // Group non-favorite models by provider
   const modelsByProvider = PROVIDER_ORDER.reduce((acc, provider) => {
-    const models = availableModels.filter(m => m.provider === provider);
+    const models = availableModels.filter(m => getProviderFromModel(m.key) === provider && !isFavorite(m));
     if (models.length > 0) {
       acc.set(provider, models);
     }
@@ -35,13 +44,11 @@ export function CouncilModelSelector({
   }, new Map<ProviderType, ModelInfo[]>());
 
   const isMemberSelected = (model: ModelInfo) =>
-    selectedMembers.some(m => m.id === model.id && m.provider === model.provider);
+    selectedMembers.some(m => m.key === model.key);
 
   const toggleMember = (model: ModelInfo) => {
     if (isMemberSelected(model)) {
-      setSelectedMembers(selectedMembers.filter(
-        m => !(m.id === model.id && m.provider === model.provider)
-      ));
+      setSelectedMembers(selectedMembers.filter(m => m.key !== model.key));
     } else if (selectedMembers.length < maxMembers) {
       setSelectedMembers([...selectedMembers, model]);
     }
@@ -67,13 +74,37 @@ export function CouncilModelSelector({
         <div className="council-section">
           <div className="section-title">Council Members</div>
           <div className="models-list">
+            {favorites.length > 0 && (
+              <div className="provider-group favorites">
+                <div className="provider-name">Favorites</div>
+                <div className="provider-models">
+                  {favorites.map((model) => (
+                    <label
+                      key={`member-${model.key}`}
+                      className={`model-option ${isMemberSelected(model) ? 'selected' : ''} ${
+                        !isMemberSelected(model) && selectedMembers.length >= maxMembers ? 'disabled' : ''
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isMemberSelected(model)}
+                        onChange={() => toggleMember(model)}
+                        disabled={!isMemberSelected(model) && selectedMembers.length >= maxMembers}
+                      />
+                      <span className="model-name">{model.name}</span>
+                      {getProviderFromModel(model.key) === 'ollama' && <span className="local-badge">local</span>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
               <div key={provider} className="provider-group">
                 <div className="provider-name">{PROVIDER_NAMES[provider]}</div>
                 <div className="provider-models">
                   {models.map((model) => (
                     <label
-                      key={`member-${model.provider}-${model.id}`}
+                      key={`member-${model.key}`}
                       className={`model-option ${isMemberSelected(model) ? 'selected' : ''} ${
                         !isMemberSelected(model) && selectedMembers.length >= maxMembers ? 'disabled' : ''
                       }`}
@@ -108,14 +139,10 @@ export function CouncilModelSelector({
           </p>
           <select
             className="chairman-select"
-            value={selectedChairman ? `${selectedChairman.provider}:${selectedChairman.id}` : ''}
+            value={selectedChairman?.key || ''}
             onChange={(e) => {
               if (e.target.value) {
-                const [provider, ...idParts] = e.target.value.split(':');
-                const modelId = idParts.join(':');
-                const model = availableModels.find(
-                  m => m.provider === provider && m.id === modelId
-                );
+                const model = availableModels.find(m => m.key === e.target.value);
                 setSelectedChairman(model || null);
               } else {
                 setSelectedChairman(null);
@@ -123,13 +150,19 @@ export function CouncilModelSelector({
             }}
           >
             <option value="">Select a chairman...</option>
+            {favorites.length > 0 && (
+              <optgroup label="Favorites">
+                {favorites.map((model) => (
+                  <option key={`chairman-${model.key}`} value={model.key}>
+                    {model.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
             {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
               <optgroup key={provider} label={PROVIDER_NAMES[provider]}>
                 {models.map((model) => (
-                  <option
-                    key={`chairman-${model.provider}-${model.id}`}
-                    value={`${model.provider}:${model.id}`}
-                  >
+                  <option key={`chairman-${model.key}`} value={model.key}>
                     {model.name}
                   </option>
                 ))}

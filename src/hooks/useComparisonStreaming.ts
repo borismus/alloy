@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ModelInfo, Message, ComparisonResponse, ProviderType } from '../types';
+import { ModelInfo, Message, ComparisonResponse, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from '../services/providers/registry';
 import { useStreamingContext } from '../contexts/StreamingContext';
 
@@ -42,7 +42,7 @@ export function useComparisonStreaming(
     }
   }, [isAnyStreaming, options.conversationId, options.isCurrentConversation, startContextStreaming, completeContextStreaming]);
 
-  const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
+  // Use model.key directly for map lookups
 
   const updateStatus = useCallback((modelKey: string, status: ComparisonResponse['status']) => {
     setStatuses(prev => new Map(prev).set(modelKey, status));
@@ -89,8 +89,7 @@ export function useComparisonStreaming(
 
     // Initialize statuses
     models.forEach(model => {
-      const key = getModelKey(model);
-      updateStatus(key, 'pending');
+      updateStatus(model.key, 'pending');
     });
 
     // Create user message
@@ -104,16 +103,17 @@ export function useComparisonStreaming(
 
     // Start all streams in parallel
     const responsePromises = models.map(async (model): Promise<ComparisonResponse> => {
-      const modelKey = getModelKey(model);
-      const provider = providerRegistry.getProvider(model.provider);
+      const modelKey = model.key;
+      const providerType = getProviderFromModel(model.key);
+      const modelId = getModelIdFromModel(model.key);
+      const provider = providerRegistry.getProvider(providerType);
 
       if (!provider || !provider.isInitialized()) {
         updateStatus(modelKey, 'error');
-        const errorMsg = `Provider ${model.provider} not initialized`;
+        const errorMsg = `Provider ${providerType} not initialized`;
         updateError(modelKey, errorMsg);
         return {
-          provider: model.provider,
-          model: model.id,
+          model: model.key,
           content: '',
           status: 'error',
           error: errorMsg,
@@ -127,7 +127,7 @@ export function useComparisonStreaming(
         updateStatus(modelKey, 'streaming');
 
         const result = await provider.sendMessage(messages, {
-          model: model.id,
+          model: modelId,
           systemPrompt: options.systemPrompt,
           onChunk: (text) => updateContent(modelKey, text),
           signal: abortController.signal,
@@ -137,8 +137,7 @@ export function useComparisonStreaming(
         abortControllersRef.current.delete(modelKey);
 
         return {
-          provider: model.provider,
-          model: model.id,
+          model: model.key,
           content: result.content,
           status: 'complete',
         };
@@ -149,8 +148,7 @@ export function useComparisonStreaming(
           // User cancelled - keep partial content
           updateStatus(modelKey, 'complete');
           return {
-            provider: model.provider,
-            model: model.id,
+            model: model.key,
             content: '', // Partial content is in streamingContents
             status: 'complete',
           };
@@ -161,8 +159,7 @@ export function useComparisonStreaming(
         updateError(modelKey, errorMsg);
 
         return {
-          provider: model.provider,
-          model: model.id,
+          model: model.key,
           content: '',
           status: 'error',
           error: errorMsg,
@@ -180,8 +177,7 @@ export function useComparisonStreaming(
       }
       // This shouldn't happen since we handle errors inside, but just in case
       return {
-        provider: 'anthropic' as ProviderType,
-        model: 'unknown',
+        model: 'anthropic/unknown',
         content: '',
         status: 'error' as const,
         error: 'Unexpected error',

@@ -65,16 +65,16 @@ describe('AnthropicService', () => {
       const models = service.getAvailableModels();
 
       expect(models.length).toBeGreaterThan(0);
-      expect(models.every((m) => m.provider === 'anthropic')).toBe(true);
-      expect(models.every((m) => m.id && m.name)).toBe(true);
+      expect(models.every((m) => m.key.startsWith('anthropic/'))).toBe(true);
+      expect(models.every((m) => m.key && m.name)).toBe(true);
     });
 
-    it('should include expected model IDs', () => {
+    it('should include expected model keys', () => {
       const models = service.getAvailableModels();
-      const modelIds = models.map((m) => m.id);
+      const modelKeys = models.map((m) => m.key);
 
-      expect(modelIds).toContain('claude-opus-4-5-20251101');
-      expect(modelIds).toContain('claude-sonnet-4-20250514');
+      expect(modelKeys).toContain('anthropic/claude-opus-4-5-20251101');
+      expect(modelKeys).toContain('anthropic/claude-sonnet-4-20250514');
     });
   });
 

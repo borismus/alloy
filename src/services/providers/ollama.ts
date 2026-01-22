@@ -102,9 +102,8 @@ export class OllamaService implements IProviderService {
 
       const data = await response.json();
       this.cachedModels = (data.models || []).map((m: { name: string }) => ({
-        id: m.name,
+        key: `ollama/${m.name}`,
         name: this.formatModelName(m.name),
-        provider: 'ollama' as const,
       }));
 
       return this.cachedModels;

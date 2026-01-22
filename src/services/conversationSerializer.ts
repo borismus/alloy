@@ -3,7 +3,7 @@
  * These can be tested without Tauri dependencies.
  */
 import * as yaml from 'js-yaml';
-import { Conversation, Message, ComparisonMetadata, ProviderType } from '../types';
+import { Conversation, Message, ComparisonMetadata } from '../types';
 
 /**
  * Serialize a conversation to YAML string
@@ -49,13 +49,13 @@ export function validateComparisonConversation(conversation: Conversation): {
     errors.push('comparison.models should have at least 2 models');
   }
 
-  // Validate that assistant messages in comparison have provider/model fields
+  // Validate that assistant messages in comparison have model field
   const assistantMessages = conversation.messages.filter(m => m.role === 'assistant');
-  const modelsWithoutIdentity = assistantMessages.filter(m => !m.provider || !m.model);
+  const modelsWithoutIdentity = assistantMessages.filter(m => !m.model);
 
   if (modelsWithoutIdentity.length > 0 && assistantMessages.length > 0) {
     // This is a warning, not an error - old conversations may lack this
-    errors.push(`${modelsWithoutIdentity.length} assistant message(s) without provider/model identity`);
+    errors.push(`${modelsWithoutIdentity.length} assistant message(s) without model identity`);
   }
 
   return { valid: errors.length === 0, errors };
@@ -71,8 +71,7 @@ export interface MessageGroup {
   responses: Array<{
     content: string;
     timestamp: string;
-    provider?: ProviderType;
-    model?: string;
+    model?: string;  // Format: "provider/model-id"
   }>;
 }
 
@@ -95,7 +94,6 @@ export function groupMessagesByPrompt(
           responses.push({
             content: nextMsg.content,
             timestamp: nextMsg.timestamp,
-            provider: nextMsg.provider,
             model: nextMsg.model,
           });
         }
@@ -117,23 +115,21 @@ export function groupMessagesByPrompt(
 
 /**
  * Get display name for a model response.
- * Prioritizes the provider/model stored on the message itself,
- * falls back to positional matching with comparison metadata.
+ * Uses the model string directly since it's already in "provider/model-id" format.
  */
 export function getModelDisplayName(
-  response: { provider?: ProviderType; model?: string },
+  response: { model?: string },
   index: number,
-  comparisonModels?: Array<{ provider: ProviderType; model: string }>
+  comparisonModels?: string[]
 ): string {
-  // First try: use provider/model from the message itself
-  if (response.provider && response.model) {
-    return `${response.provider}/${response.model}`;
+  // First try: use model from the message itself
+  if (response.model) {
+    return response.model;
   }
 
   // Fallback: use positional matching with comparison metadata
   if (comparisonModels && comparisonModels[index]) {
-    const meta = comparisonModels[index];
-    return `${meta.provider}/${meta.model}`;
+    return comparisonModels[index];
   }
 
   return `Model ${index + 1}`;
@@ -143,7 +139,7 @@ export function getModelDisplayName(
  * Create a new comparison conversation
  */
 export function createComparisonConversation(
-  models: Array<{ provider: ProviderType; model: string }>
+  models: string[]  // Format: "provider/model-id"
 ): Conversation {
   const now = new Date();
   const date = now.toISOString().split('T')[0];
@@ -159,8 +155,7 @@ export function createComparisonConversation(
     id: `${date}-${time}-${hash}-compare`,
     created: now.toISOString(),
     updated: now.toISOString(),
-    provider: models[0].provider,
-    model: models[0].model,
+    model: models[0],
     messages: [],
     comparison: comparisonMetadata,
   };
@@ -170,14 +165,13 @@ export function createComparisonConversation(
  * Create assistant messages from comparison responses
  */
 export function createComparisonAssistantMessages(
-  responses: Array<{ provider: ProviderType; model: string; content: string }>
+  responses: Array<{ model: string; content: string }>  // model format: "provider/model-id"
 ): Message[] {
   const timestamp = new Date().toISOString();
   return responses.map(response => ({
     role: 'assistant' as const,
     timestamp,
     content: response.content,
-    provider: response.provider,
     model: response.model,
   }));
 }

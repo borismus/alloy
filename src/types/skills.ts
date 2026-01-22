@@ -1,4 +1,4 @@
-// Skills types for PromptBox
+// Skills types for Orchestra
 
 export interface SkillMetadata {
   name: string;

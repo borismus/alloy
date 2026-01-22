@@ -1,4 +1,4 @@
-// Built-in tool types for PromptBox Skills system
+// Built-in tool types for Orchestra Skills system
 
 export interface ToolDefinition {
   name: string;
@@ -133,12 +133,13 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'web_search',
-    description: 'Search the web using Serper API. Returns search results with titles, links, and snippets. Requires SERPER_API_KEY to be configured.',
+    description: 'Search the web using Serper API. Returns search results with titles, links, and snippets. Requires SERPER_API_KEY to be configured. When the query mentions a time frame (e.g., "last 24 hours", "this week", "recent"), use the recency parameter to filter results.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Search query' },
+        query: { type: 'string', description: 'Search query (do not include time phrases like "last 24 hours" - use recency parameter instead)' },
         num_results: { type: 'string', description: 'Number of results to return (default: "10", max: "20")' },
+        recency: { type: 'string', description: 'IMPORTANT: Use this when searching for recent content. Examples: "hour", "day", "24 hours", "3 days", "week", "month", "year"' },
       },
       required: ['query'],
     },

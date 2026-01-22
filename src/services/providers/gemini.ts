@@ -5,9 +5,9 @@ import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from
 import { geminiToolAdapter } from './tool-adapters/gemini';
 
 const GEMINI_MODELS: ModelInfo[] = [
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'gemini' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'gemini' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'gemini' },
+  { key: 'gemini/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { key: 'gemini/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  { key: 'gemini/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
 ];
 
 export class GeminiService implements IProviderService {

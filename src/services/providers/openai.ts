@@ -5,13 +5,13 @@ import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from
 import { openaiToolAdapter } from './tool-adapters/openai';
 
 const OPENAI_MODELS: ModelInfo[] = [
-  { id: 'gpt-5.2', name: 'GPT-5.2', provider: 'openai' },
-  { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai' },
-  { id: 'o3', name: 'o3', provider: 'openai' },
-  { id: 'o4-mini', name: 'o4 Mini', provider: 'openai' },
-  { id: 'gpt-4.1', name: 'GPT-4.1', provider: 'openai' },
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
+  { key: 'openai/gpt-5.2', name: 'GPT-5.2' },
+  { key: 'openai/gpt-5-mini', name: 'GPT-5 Mini' },
+  { key: 'openai/o3', name: 'o3' },
+  { key: 'openai/o4-mini', name: 'o4 Mini' },
+  { key: 'openai/gpt-4.1', name: 'GPT-4.1' },
+  { key: 'openai/gpt-4o', name: 'GPT-4o' },
+  { key: 'openai/gpt-4o-mini', name: 'GPT-4o Mini' },
 ];
 
 export class OpenAIService implements IProviderService {

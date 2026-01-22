@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ModelInfo, ProviderType } from '../types';
+import { ModelInfo, ProviderType, getProviderFromModel } from '../types';
 import './ComparisonModelSelector.css';
 
 interface ComparisonModelSelectorProps {
   availableModels: ModelInfo[];
+  favoriteModels?: string[];  // Format: "provider/model-id"
   onStartComparison: (models: ModelInfo[]) => void;
   onCancel: () => void;
 }
@@ -19,14 +20,22 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
 
 export function ComparisonModelSelector({
   availableModels,
+  favoriteModels = [],
   onStartComparison,
   onCancel,
 }: ComparisonModelSelectorProps) {
   const [selectedModels, setSelectedModels] = useState<ModelInfo[]>([]);
   const maxModels = 3;
 
+  // Check if a model is in the favorites list
+  const isFavorite = (model: ModelInfo) => favoriteModels.includes(model.key);
+
+  // Get favorite models (matched from available models)
+  const favorites = availableModels.filter(isFavorite);
+
+  // Group non-favorite models by provider
   const modelsByProvider = PROVIDER_ORDER.reduce((acc, provider) => {
-    const models = availableModels.filter(m => m.provider === provider);
+    const models = availableModels.filter(m => getProviderFromModel(m.key) === provider && !isFavorite(m));
     if (models.length > 0) {
       acc.set(provider, models);
     }
@@ -34,13 +43,11 @@ export function ComparisonModelSelector({
   }, new Map<ProviderType, ModelInfo[]>());
 
   const isSelected = (model: ModelInfo) =>
-    selectedModels.some(m => m.id === model.id && m.provider === model.provider);
+    selectedModels.some(m => m.key === model.key);
 
   const toggleModel = (model: ModelInfo) => {
     if (isSelected(model)) {
-      setSelectedModels(selectedModels.filter(
-        m => !(m.id === model.id && m.provider === model.provider)
-      ));
+      setSelectedModels(selectedModels.filter(m => m.key !== model.key));
     } else if (selectedModels.length < maxModels) {
       setSelectedModels([...selectedModels, model]);
     }
@@ -60,13 +67,37 @@ export function ComparisonModelSelector({
       </div>
 
       <div className="models-list">
+        {favorites.length > 0 && (
+          <div className="provider-group favorites">
+            <div className="provider-name">Favorites</div>
+            <div className="provider-models">
+              {favorites.map((model) => (
+                <label
+                  key={model.key}
+                  className={`model-option ${isSelected(model) ? 'selected' : ''} ${
+                    !isSelected(model) && selectedModels.length >= maxModels ? 'disabled' : ''
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected(model)}
+                    onChange={() => toggleModel(model)}
+                    disabled={!isSelected(model) && selectedModels.length >= maxModels}
+                  />
+                  <span className="model-name">{model.name}</span>
+                  {getProviderFromModel(model.key) === 'ollama' && <span className="local-badge">local</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
           <div key={provider} className="provider-group">
             <div className="provider-name">{PROVIDER_NAMES[provider]}</div>
             <div className="provider-models">
               {models.map((model) => (
                 <label
-                  key={`${model.provider}-${model.id}`}
+                  key={model.key}
                   className={`model-option ${isSelected(model) ? 'selected' : ''} ${
                     !isSelected(model) && selectedModels.length >= maxModels ? 'disabled' : ''
                   }`}

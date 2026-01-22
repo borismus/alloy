@@ -1,4 +1,4 @@
-import { ModelInfo, ProviderType, Config } from '../../types';
+import { ModelInfo, ProviderType, Config, getProviderFromModel, getModelIdFromModel } from '../../types';
 import { IProviderService } from './types';
 import { AnthropicService } from './anthropic';
 import { OpenAIService } from './openai';
@@ -7,6 +7,7 @@ import { GeminiService } from './gemini';
 
 export class ProviderRegistry {
   private providers: Map<ProviderType, IProviderService> = new Map();
+  private configDefaultModel: string | null = null;
 
   constructor() {
     // Register all provider services
@@ -17,6 +18,8 @@ export class ProviderRegistry {
   }
 
   async initializeFromConfig(config: Config): Promise<void> {
+    // Store the default model from config (format: "provider/model-id")
+    this.configDefaultModel = config.defaultModel || null;
     // Initialize Anthropic if key is present
     if (config.ANTHROPIC_API_KEY) {
       const anthropic = this.providers.get('anthropic');
@@ -76,10 +79,24 @@ export class ProviderRegistry {
     return this.getEnabledProviders().length > 0;
   }
 
+  // Parse "provider/model-id" format, returns [provider, modelId] or null
+  private parseDefaultModel(): [ProviderType, string] | null {
+    if (!this.configDefaultModel) return null;
+    if (!this.configDefaultModel.includes('/')) return null;
+    return [getProviderFromModel(this.configDefaultModel), getModelIdFromModel(this.configDefaultModel)];
+  }
+
   getDefaultProvider(): ProviderType | null {
     const enabled = this.getEnabledProviderTypes();
     if (enabled.length === 0) return null;
-    // Prefer anthropic, then openai, then ollama
+
+    // First, try to use the provider from config's defaultModel
+    const parsed = this.parseDefaultModel();
+    if (parsed && enabled.includes(parsed[0])) {
+      return parsed[0];
+    }
+
+    // Fall back: prefer anthropic, then openai, then first available
     if (enabled.includes('anthropic')) return 'anthropic';
     if (enabled.includes('openai')) return 'openai';
     return enabled[0];
@@ -89,9 +106,17 @@ export class ProviderRegistry {
     const defaultProvider = this.getDefaultProvider();
     if (!defaultProvider) return null;
 
+    // First, try to use the model from config's defaultModel if provider matches
+    const parsed = this.parseDefaultModel();
+    if (parsed && parsed[0] === defaultProvider) {
+      return parsed[1];
+    }
+
+    // Fall back to first available model for the provider
     const provider = this.providers.get(defaultProvider);
     const models = provider?.getAvailableModels() || [];
-    return models[0]?.id || null;
+    // Return just the model ID portion (after the slash) for API calls
+    return models[0] ? getModelIdFromModel(models[0].key) : null;
   }
 }
 

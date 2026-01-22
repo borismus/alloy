@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import { ModelInfo, ProviderType } from '../types';
+import { ModelInfo, ProviderType, getProviderFromModel } from '../types';
 import './ModelSelector.css';
 
 interface ModelSelectorProps {
-  value: string;
-  onChange: (modelId: string, provider: ProviderType) => void;
+  value: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
+  onChange: (modelKey: string) => void;  // Now takes the unified key
   disabled: boolean;
   models: ModelInfo[];
+  favoriteModels?: string[];  // Format: "provider/model-id"
 }
 
 const PROVIDER_NAMES: Record<ProviderType, string> = {
@@ -16,22 +17,32 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   gemini: 'Gemini',
 };
 
-export function ModelSelector({ value, onChange, disabled, models }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, disabled, models, favoriteModels = [] }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<'below' | 'above'>('below');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const selectedModel = models.find(m => m.id === value);
+  // value is now in "provider/model-id" format, same as model.key
+  const selectedModel = models.find(m => m.key === value);
 
-  // Group models by provider
-  const groupedModels = models.reduce((acc, model) => {
-    if (!acc[model.provider]) {
-      acc[model.provider] = [];
-    }
-    acc[model.provider].push(model);
-    return acc;
-  }, {} as Record<ProviderType, ModelInfo[]>);
+  // Check if a model is in the favorites list
+  const isFavorite = (model: ModelInfo) => favoriteModels.includes(model.key);
+
+  // Get favorite models (matched from available models)
+  const favorites = models.filter(isFavorite);
+
+  // Group non-favorite models by provider (extract provider from model.key)
+  const groupedModels = models
+    .filter(m => !isFavorite(m))
+    .reduce((acc, model) => {
+      const provider = getProviderFromModel(model.key);
+      if (!acc[provider]) {
+        acc[provider] = [];
+      }
+      acc[provider].push(model);
+      return acc;
+    }, {} as Record<ProviderType, ModelInfo[]>);
 
   const providerOrder: ProviderType[] = ['anthropic', 'openai', 'gemini', 'ollama'];
   const sortedProviders = providerOrder.filter(p => groupedModels[p]?.length > 0);
@@ -55,7 +66,8 @@ export function ModelSelector({ value, onChange, disabled, models }: ModelSelect
   useEffect(() => {
     if (isOpen && buttonRef.current) {
       const buttonRect = buttonRef.current.getBoundingClientRect();
-      const itemCount = models.length + sortedProviders.length; // models + group headers
+      const favoritesHeader = favorites.length > 0 ? 1 : 0;
+      const itemCount = models.length + sortedProviders.length + favoritesHeader;
       const dropdownHeight = itemCount * 40 + 16;
       const spaceBelow = window.innerHeight - buttonRect.bottom;
       const spaceAbove = buttonRect.top;
@@ -66,10 +78,10 @@ export function ModelSelector({ value, onChange, disabled, models }: ModelSelect
         setDropdownPosition('below');
       }
     }
-  }, [isOpen, models.length, sortedProviders.length]);
+  }, [isOpen, models.length, sortedProviders.length, favorites.length]);
 
   const handleSelect = (model: ModelInfo) => {
-    onChange(model.id, model.provider);
+    onChange(model.key);
     setIsOpen(false);
   };
 
@@ -90,6 +102,26 @@ export function ModelSelector({ value, onChange, disabled, models }: ModelSelect
 
       {isOpen && (
         <div className={`model-selector-dropdown ${dropdownPosition}`}>
+          {favorites.length > 0 && (
+            <div className="model-group favorites">
+              <div className="model-group-header">Favorites</div>
+              {favorites.map((model) => (
+                <button
+                  key={model.key}
+                  type="button"
+                  className={`model-option ${model.key === value ? 'selected' : ''}`}
+                  onClick={() => handleSelect(model)}
+                >
+                  {model.name}
+                  {model.key === value && (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M13 4L6 11L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
           {sortedProviders.map((provider) => (
             <div key={provider} className="model-group">
               <div className="model-group-header">
@@ -98,13 +130,13 @@ export function ModelSelector({ value, onChange, disabled, models }: ModelSelect
               </div>
               {groupedModels[provider].map((model) => (
                 <button
-                  key={model.id}
+                  key={model.key}
                   type="button"
-                  className={`model-option ${model.id === value ? 'selected' : ''}`}
+                  className={`model-option ${model.key === value ? 'selected' : ''}`}
                   onClick={() => handleSelect(model)}
                 >
                   {model.name}
-                  {model.id === value && (
+                  {model.key === value && (
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                       <path d="M13 4L6 11L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>

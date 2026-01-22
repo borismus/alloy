@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ModelInfo, Message, ComparisonResponse, ProviderType } from '../types';
+import { ModelInfo, Message, ComparisonResponse, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from '../services/providers/registry';
 import { useStreamingContext } from '../contexts/StreamingContext';
 
@@ -15,8 +15,7 @@ interface UseCouncilStreamingOptions {
 interface CouncilStreamingResult {
   memberResponses: ComparisonResponse[];
   chairmanResponse: {
-    provider: ProviderType;
-    model: string;
+    model: string;  // Format: "provider/model-id"
     content: string;
     status: 'complete' | 'error';
     error?: string;
@@ -89,7 +88,7 @@ export function useCouncilStreaming(
     }
   }, [isAnyStreaming, options.conversationId, options.isCurrentConversation, startContextStreaming, completeContextStreaming]);
 
-  const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
+  // Use model.key directly for map lookups
 
   const updateMemberStatus = useCallback((modelKey: string, status: ComparisonResponse['status']) => {
     setMemberStatuses(prev => new Map(prev).set(modelKey, status));
@@ -143,8 +142,7 @@ export function useCouncilStreaming(
 
     // Initialize member statuses
     councilMembers.forEach(model => {
-      const key = getModelKey(model);
-      updateMemberStatus(key, 'pending');
+      updateMemberStatus(model.key, 'pending');
     });
 
     // Create user message
@@ -158,16 +156,17 @@ export function useCouncilStreaming(
 
     // ========== PHASE 1: Council Members ==========
     const memberPromises = councilMembers.map(async (model): Promise<ComparisonResponse> => {
-      const modelKey = getModelKey(model);
-      const provider = providerRegistry.getProvider(model.provider);
+      const modelKey = model.key;
+      const providerType = getProviderFromModel(model.key);
+      const modelId = getModelIdFromModel(model.key);
+      const provider = providerRegistry.getProvider(providerType);
 
       if (!provider || !provider.isInitialized()) {
         updateMemberStatus(modelKey, 'error');
-        const errorMsg = `Provider ${model.provider} not initialized`;
+        const errorMsg = `Provider ${providerType} not initialized`;
         updateMemberError(modelKey, errorMsg);
         return {
-          provider: model.provider,
-          model: model.id,
+          model: model.key,
           content: '',
           status: 'error',
           error: errorMsg,
@@ -181,7 +180,7 @@ export function useCouncilStreaming(
         updateMemberStatus(modelKey, 'streaming');
 
         const result = await provider.sendMessage(messages, {
-          model: model.id,
+          model: modelId,
           systemPrompt: options.systemPrompt,
           onChunk: (text) => updateMemberContent(modelKey, text),
           signal: abortController.signal,
@@ -191,8 +190,7 @@ export function useCouncilStreaming(
         abortControllersRef.current.delete(modelKey);
 
         return {
-          provider: model.provider,
-          model: model.id,
+          model: model.key,
           content: result.content,
           status: 'complete',
         };
@@ -202,8 +200,7 @@ export function useCouncilStreaming(
         if (error instanceof Error && error.name === 'AbortError') {
           updateMemberStatus(modelKey, 'complete');
           return {
-            provider: model.provider,
-            model: model.id,
+            model: model.key,
             content: '',
             status: 'complete',
           };
@@ -214,8 +211,7 @@ export function useCouncilStreaming(
         updateMemberError(modelKey, errorMsg);
 
         return {
-          provider: model.provider,
-          model: model.id,
+          model: model.key,
           content: '',
           status: 'error',
           error: errorMsg,
@@ -230,8 +226,7 @@ export function useCouncilStreaming(
         return result.value;
       }
       return {
-        provider: 'anthropic' as ProviderType,
-        model: 'unknown',
+        model: 'anthropic/unknown',
         content: '',
         status: 'error' as const,
         error: 'Unexpected error',
@@ -243,10 +238,12 @@ export function useCouncilStreaming(
     setChairmanStatus('pending');
 
     // Build the chairman prompt with all responses
-    const chairmanProvider = providerRegistry.getProvider(chairman.provider);
+    const chairmanProviderType = getProviderFromModel(chairman.key);
+    const chairmanModelId = getModelIdFromModel(chairman.key);
+    const chairmanProvider = providerRegistry.getProvider(chairmanProviderType);
 
     if (!chairmanProvider || !chairmanProvider.isInitialized()) {
-      const errorMsg = `Chairman provider ${chairman.provider} not initialized`;
+      const errorMsg = `Chairman provider ${chairmanProviderType} not initialized`;
       setChairmanStatus('error');
       setChairmanError(errorMsg);
       setCurrentPhase('complete');
@@ -255,8 +252,7 @@ export function useCouncilStreaming(
       return {
         memberResponses,
         chairmanResponse: {
-          provider: chairman.provider,
-          model: chairman.id,
+          model: chairman.key,
           content: '',
           status: 'error',
           error: errorMsg,
@@ -269,7 +265,7 @@ export function useCouncilStreaming(
       .filter(r => r.status === 'complete' && r.content)
       .map((r, index) => {
         const modelInfo = councilMembers[index];
-        const modelName = modelInfo?.name || `${r.provider}/${r.model}`;
+        const modelName = modelInfo?.name || r.model;  // r.model is already in "provider/model-id" format
         return `=== Response from ${modelName} ===\n${r.content}`;
       })
       .join('\n\n');
@@ -297,7 +293,7 @@ Please synthesize these responses into a comprehensive final answer.`;
       setChairmanStatus('streaming');
 
       const chairmanResult = await chairmanProvider.sendMessage(chairmanMessages, {
-        model: chairman.id,
+        model: chairmanModelId,
         systemPrompt: CHAIRMAN_SYSTEM_PROMPT,
         onChunk: (text) => setChairmanContent(prev => prev + text),
         signal: chairmanAbortRef.current.signal,
@@ -311,8 +307,7 @@ Please synthesize these responses into a comprehensive final answer.`;
       return {
         memberResponses,
         chairmanResponse: {
-          provider: chairman.provider,
-          model: chairman.id,
+          model: chairman.key,
           content: chairmanResult.content,
           status: 'complete',
         },
@@ -328,8 +323,7 @@ Please synthesize these responses into a comprehensive final answer.`;
         return {
           memberResponses,
           chairmanResponse: {
-            provider: chairman.provider,
-            model: chairman.id,
+            model: chairman.key,
             content: '',
             status: 'complete',
           },
@@ -345,8 +339,7 @@ Please synthesize these responses into a comprehensive final answer.`;
       return {
         memberResponses,
         chairmanResponse: {
-          provider: chairman.provider,
-          model: chairman.id,
+          model: chairman.key,
           content: '',
           status: 'error',
           error: errorMsg,

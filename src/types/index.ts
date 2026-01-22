@@ -1,6 +1,27 @@
-// Core types for PromptBox MVP
+// Core types for Orchestra
 
 export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini';
+
+// Helper functions for unified model format: "provider/model-id"
+export function parseModelId(modelString: string): { provider: ProviderType; modelId: string } {
+  const [provider, ...rest] = modelString.split('/');
+  return {
+    provider: provider as ProviderType,
+    modelId: rest.join('/'),  // Handle model IDs that might contain '/'
+  };
+}
+
+export function formatModelId(provider: ProviderType, modelId: string): string {
+  return `${provider}/${modelId}`;
+}
+
+export function getProviderFromModel(modelString: string): ProviderType {
+  return parseModelId(modelString).provider;
+}
+
+export function getModelIdFromModel(modelString: string): string {
+  return parseModelId(modelString).modelId;
+}
 
 export interface Attachment {
   type: 'image';
@@ -25,8 +46,8 @@ export interface Message {
   role: 'user' | 'assistant' | 'log';
   timestamp: string;
   content: string;
-  // For comparison mode - which model generated this assistant response
-  provider?: ProviderType;
+  // For comparison/council mode - which model generated this assistant response
+  // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   model?: string;
   // Attachments (images, etc.)
   attachments?: Attachment[];
@@ -40,15 +61,13 @@ export interface Message {
 }
 
 export interface ModelInfo {
-  id: string;
-  name: string;
-  provider: ProviderType;
+  key: string;   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
+  name: string;  // Human-readable display name (e.g., "Sonnet 4.5")
 }
 
 // Track each model's response in a comparison
 export interface ComparisonResponse {
-  provider: ProviderType;
-  model: string;
+  model: string;  // Format: "provider/model-id"
   content: string;
   status: 'pending' | 'streaming' | 'complete' | 'error';
   error?: string;
@@ -57,45 +76,71 @@ export interface ComparisonResponse {
 // Metadata for comparison conversations
 export interface ComparisonMetadata {
   isComparison: true;
-  models: Array<{ provider: ProviderType; model: string }>;
+  models: string[];  // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
 }
 
 // Metadata for council conversations
 export interface CouncilMetadata {
   isCouncil: true;
-  councilMembers: Array<{ provider: ProviderType; model: string }>;
-  chairman: { provider: ProviderType; model: string };
+  councilMembers: string[];  // Format: "provider/model-id"
+  chairman: string;  // Format: "provider/model-id"
 }
 
-// Topic metadata - makes a conversation a "standing query"
-export interface TopicMetadata {
-  label: string;    // Short name for pill display (e.g., "Iran", "SF Trip")
-  prompt: string;   // The standing query to re-ask when clicking the topic
-  lastSent?: string; // ISO timestamp of last auto-send (for cooldown)
+// Single trigger attempt record
+export interface TriggerAttempt {
+  timestamp: string;
+  result: 'triggered' | 'skipped' | 'error';
+  reasoning: string;  // Explanation for triggered/skipped, empty for error
+  error?: string;     // Error message when result is 'error'
 }
 
-// Pending topic prompt with target conversation ID
-export interface PendingTopicPrompt {
-  prompt: string;
-  targetId: string;
+// Trigger configuration for automated background execution
+export interface TriggerConfig {
+  enabled: boolean;
+  triggerPrompt: string;           // Must return JSON: {shouldTrigger, reasoning}
+  triggerModel: string;            // Format: "provider/model-id" (e.g., "anthropic/claude-haiku-4-5-20250819")
+  mainPrompt: string;
+  mainModel: string;               // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
+  intervalMinutes: number;         // e.g., 60 for hourly
+  lastChecked?: string;            // ISO timestamp
+  lastTriggered?: string;          // ISO timestamp
+  history?: TriggerAttempt[];      // Recent trigger attempts (most recent first)
+}
+
+// Result of a trigger check
+export interface TriggerResult {
+  result: 'triggered' | 'skipped' | 'error';
+  reasoning: string;  // Explanation for triggered/skipped, empty for error
+  error?: string;     // Error message when result is 'error'
+}
+
+// Log entry for trigger execution history
+export interface TriggerLogEntry {
+  timestamp: string;
+  conversationId: string;
+  conversationTitle?: string;
+  triggered: boolean;
+  reasoning: string;
+  error?: string;
 }
 
 export interface Conversation {
   id: string;
   created: string;
   updated: string;
-  provider: ProviderType;
-  model: string;
+  model: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   title?: string;
   memory_version?: number;
   messages: Message[];
   comparison?: ComparisonMetadata;
   council?: CouncilMetadata;
-  topic?: TopicMetadata;  // If set, conversation appears as a topic pill instead of in sidebar list
+  trigger?: TriggerConfig;  // If set, conversation runs as a triggered background task
 }
 
 export interface Config {
-  defaultModel: string;
+  defaultModel: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-opus-4-5-20251101")
+  // Favorite models shown at top of selectors (e.g., "anthropic/claude-opus-4-5-20251101")
+  favoriteModels?: string[];
   // Provider API keys - presence indicates provider is enabled
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
