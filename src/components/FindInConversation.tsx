@@ -115,6 +115,14 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
     scrollToRange(ranges[nextIndex]);
   };
 
+  const goToPreviousMatch = () => {
+    const ranges = rangesRef.current;
+    if (ranges.length === 0) return;
+    const prevIndex = (currentIndex - 1 + ranges.length) % ranges.length;
+    setCurrentIndex(prevIndex);
+    scrollToRange(ranges[prevIndex]);
+  };
+
   const handleClose = () => {
     setSearchQuery('');
     highlightSearchTerm(containerRef.current, '');
@@ -153,6 +161,22 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
           {matchCount > 0 ? `${currentIndex + 1} of ${matchCount}` : 'No matches'}
         </span>
       )}
+      <button
+        onClick={goToPreviousMatch}
+        className="find-nav-button"
+        title="Previous match"
+        disabled={matchCount === 0}
+      >
+        ▲
+      </button>
+      <button
+        onClick={goToNextMatch}
+        className="find-nav-button"
+        title="Next match"
+        disabled={matchCount === 0}
+      >
+        ▼
+      </button>
       <button onClick={handleClose} className="find-close-button" title="Close (Esc)">
         ×
       </button>

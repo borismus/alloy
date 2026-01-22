@@ -1,10 +1,11 @@
 .find-in-conversation {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: #f5f5f5;
+  gap: 8px;
+  padding: 8px 12px;
+  background: white;
   border-bottom: 1px solid #e0e0e0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   position: absolute;
   top: 0;
   left: 0;
@@ -14,18 +15,20 @@
 
 .find-input {
   flex: 1;
-  padding: 6px 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
   font-size: 14px;
-  background: #fff;
+  background: #f8f9fa;
   color: #333;
   outline: none;
   min-width: 0;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 
 .find-input:focus {
   border-color: #667eea;
+  background: white;
 }
 
 .find-input::placeholder {
@@ -33,27 +36,57 @@
 }
 
 .match-count {
-  font-size: 11px;
-  color: #888;
+  font-size: 12px;
+  color: #666;
   white-space: nowrap;
+  min-width: 70px;
+  text-align: center;
+}
+
+.find-nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: #f0f0f0;
+  color: #555;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.find-nav-button:hover:not(:disabled) {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.find-nav-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .find-close-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   background: transparent;
   color: #888;
-  font-size: 16px;
+  font-size: 18px;
   cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  margin-left: 4px;
 }
 
 .find-close-button:hover {
-  background: rgba(0, 0, 0, 0.08);
-  color: #333;
+  background: #fee2e2;
+  color: #dc2626;
 }

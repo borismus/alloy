@@ -25,7 +25,8 @@ export async function executeWebSearchTools(
     case 'web_search':
       return await webSearch(
         input.query as string,
-        input.num_results as string | undefined
+        input.num_results as string | undefined,
+        input.recency as string | undefined
       );
     default:
       return {
@@ -36,9 +37,48 @@ export async function executeWebSearchTools(
   }
 }
 
+// Map time units to Serper's tbs format
+const TIME_UNIT_MAP: Record<string, string> = {
+  hour: 'h',
+  hours: 'h',
+  day: 'd',
+  days: 'd',
+  week: 'w',
+  weeks: 'w',
+  month: 'm',
+  months: 'm',
+  year: 'y',
+  years: 'y',
+};
+
+// Parse recency string like "3 days", "week", "2 hours" into tbs parameter
+function parseRecency(recency: string): string | null {
+  const trimmed = recency.trim().toLowerCase();
+
+  // Try to match pattern like "3 days" or "2 weeks"
+  const match = trimmed.match(/^(\d+)\s*(\w+)$/);
+  if (match) {
+    const count = parseInt(match[1], 10);
+    const unit = match[2];
+    const tbsUnit = TIME_UNIT_MAP[unit];
+    if (tbsUnit) {
+      return `qdr:${tbsUnit}${count > 1 ? count : ''}`;
+    }
+  }
+
+  // Try single word like "day", "week", "month"
+  const tbsUnit = TIME_UNIT_MAP[trimmed];
+  if (tbsUnit) {
+    return `qdr:${tbsUnit}`;
+  }
+
+  return null;
+}
+
 async function webSearch(
   query: string,
-  numResultsStr?: string
+  numResultsStr?: string,
+  recency?: string
 ): Promise<ToolResult> {
   if (!query) {
     return {
@@ -73,16 +113,27 @@ async function webSearch(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), HTTP_TIMEOUT);
 
+    // Build request body
+    const requestBody: Record<string, unknown> = {
+      q: query,
+      num: numResults,
+    };
+
+    // Add time filter if specified
+    if (recency) {
+      const tbs = parseRecency(recency);
+      if (tbs) {
+        requestBody.tbs = tbs;
+      }
+    }
+
     const response = await fetch('https://google.serper.dev/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-KEY': apiKey,
       },
-      body: JSON.stringify({
-        q: query,
-        num: numResults,
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
