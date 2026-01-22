@@ -1,0 +1,177 @@
+/* Trigger Management View - non-modal version */
+.trigger-management-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: white;
+}
+
+.trigger-management-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.trigger-management-view-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+}
+
+.trigger-management-view-content {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.trigger-management-view .no-triggers {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.trigger-management-view .no-triggers p {
+  margin: 0.5rem 0;
+}
+
+.trigger-management-view .no-triggers .hint {
+  font-size: 0.9rem;
+  color: #999;
+}
+
+.trigger-management-view .trigger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.trigger-management-view .trigger-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: #fafafa;
+}
+
+.trigger-management-view .trigger-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.trigger-management-view .trigger-name {
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+}
+
+.trigger-management-view .trigger-name.clickable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s ease, color 0.15s ease;
+}
+
+.trigger-management-view .trigger-name.clickable:hover {
+  text-decoration-color: #667eea;
+  color: #667eea;
+}
+
+.trigger-management-view .trigger-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.trigger-management-view .trigger-status.enabled {
+  background: #d4edda;
+  color: #155724;
+}
+
+.trigger-management-view .trigger-status.disabled {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.trigger-management-view .trigger-interval {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.trigger-management-view .trigger-item-meta {
+  display: flex;
+  gap: 20px;
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 12px;
+}
+
+.trigger-management-view .trigger-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.trigger-management-view .btn-primary {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 1px solid transparent;
+  color: white;
+}
+
+.trigger-management-view .btn-primary:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.trigger-management-view .btn-small {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: #f1f3f4;
+  border: 1px solid #e0e0e0;
+  color: #333;
+}
+
+.trigger-management-view .btn-small:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.trigger-management-view .btn-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trigger-management-view .btn-small.btn-danger {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: white;
+}
+
+.trigger-management-view .btn-small.btn-danger:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.trigger-management-view .btn-small.btn-accent {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
+  color: white;
+}
+
+.trigger-management-view .btn-small.btn-accent:hover:not(:disabled) {
+  opacity: 0.8;
+}

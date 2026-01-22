@@ -1,0 +1,199 @@
+/* Trigger Management Modal - Light mode styling */
+.trigger-management-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.trigger-management-modal {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 650px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.trigger-management-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.trigger-management-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.trigger-management-header .close-btn {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.trigger-management-header .close-btn:hover {
+  color: #333;
+}
+
+.trigger-management-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.trigger-management-actions {
+  margin-bottom: 20px;
+}
+
+.no-triggers {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.no-triggers p {
+  margin: 0.5rem 0;
+}
+
+.no-triggers .hint {
+  font-size: 0.9rem;
+  color: #999;
+}
+
+.trigger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trigger-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: #fafafa;
+}
+
+.trigger-item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.trigger-name {
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+}
+
+.trigger-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.trigger-status.enabled {
+  background: #d4edda;
+  color: #155724;
+}
+
+.trigger-status.disabled {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.trigger-interval {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.trigger-item-meta {
+  display: flex;
+  gap: 20px;
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 12px;
+}
+
+.trigger-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: 1px solid transparent;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: #f1f3f4;
+  border: 1px solid #e0e0e0;
+  color: #333;
+}
+
+.btn-small:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.btn-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-small.btn-danger {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: white;
+}
+
+.btn-small.btn-danger:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.btn-small.btn-accent {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
+  color: white;
+}
+
+.btn-small.btn-accent:hover:not(:disabled) {
+  opacity: 0.9;
+}
