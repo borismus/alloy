@@ -2,7 +2,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { ModelInfo, ComparisonResponse, ProviderType } from '../types';
+import { ModelInfo, ComparisonResponse, ProviderType, getProviderFromModel } from '../types';
 import './ComparisonView.css';
 
 // Custom link renderer that opens URLs in system browser
@@ -37,7 +37,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   gemini: 'Gemini',
 };
 
-const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
+// Use model.key directly for lookups
 
 export function ComparisonView({
   models,
@@ -55,7 +55,8 @@ export function ComparisonView({
     >
       <div className="comparison-columns">
         {models.map((model) => {
-          const modelKey = getModelKey(model);
+          const modelKey = model.key;
+          const providerType = getProviderFromModel(model.key);
           const status = statuses.get(modelKey) || 'pending';
           const content = streamingContents.get(modelKey) || '';
           const error = errors.get(modelKey);
@@ -65,8 +66,8 @@ export function ComparisonView({
               <div className="column-header">
                 <div className="model-info">
                   <span className="model-name">{model.name}</span>
-                  <span className={`provider-badge provider-${model.provider}`}>
-                    {PROVIDER_NAMES[model.provider]}
+                  <span className={`provider-badge provider-${providerType}`}>
+                    {PROVIDER_NAMES[providerType]}
                   </span>
                 </div>
               </div>

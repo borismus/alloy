@@ -3,7 +3,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { Conversation, Message, ModelInfo, ProviderType, Attachment, PendingTopicPrompt } from '../types';
+import { Conversation, Message, ModelInfo, ProviderType, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { ModelSelector } from './ModelSelector';
 import { ToolUseIndicator } from './ToolUseIndicator';
@@ -88,11 +88,9 @@ interface ChatInterfaceProps {
   onSaveImage: (conversationId: string, imageData: Uint8Array, mimeType: string) => Promise<Attachment>;
   loadImageAsBase64: (relativePath: string) => Promise<{ base64: string; mimeType: string }>;
   hasProvider: boolean;
-  onModelChange: (model: string, provider: ProviderType) => void;
+  onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
   availableModels: ModelInfo[];
-  pendingTopicPrompt?: PendingTopicPrompt | null;  // Prompt to auto-send when topic is selected
-  onClearPendingTopicPrompt?: () => void;  // Clear the pending prompt after sending
-  onUpdateTopicLastSent?: (conversationId: string) => void;  // Update lastSent timestamp after auto-send
+  favoriteModels?: string[];  // Format: "provider/model-id"
 }
 
 export interface ChatInterfaceHandle {
@@ -107,7 +105,8 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   gemini: 'Gemini',
 };
 
-const getAssistantName = (provider: ProviderType): string => {
+const getAssistantName = (model: string): string => {
+  const provider = getProviderFromModel(model);
   switch (provider) {
     case 'anthropic':
       return 'Claude';
@@ -122,9 +121,6 @@ const getAssistantName = (provider: ProviderType): string => {
   }
 };
 
-// Cooldown period before allowing another auto-send on a topic (5 minutes)
-const TOPIC_COOLDOWN_MS = 5 * 60 * 1000;
-
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(({
   conversation,
   onSendMessage,
@@ -133,9 +129,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   hasProvider,
   onModelChange,
   availableModels,
-  pendingTopicPrompt,
-  onClearPendingTopicPrompt,
-  onUpdateTopicLastSent,
+  favoriteModels,
 }, ref) => {
   const [input, setInput] = useState('');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -177,7 +171,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Show streaming message if actively streaming OR if we have completed content waiting to be replaced
   const showStreamingMessage = isStreaming || hasCompletedContent;
 
-  const assistantName = conversation ? getAssistantName(conversation.provider) : 'Assistant';
+  const assistantName = conversation ? getAssistantName(conversation.model) : 'Assistant';
 
   useImperativeHandle(ref, () => ({
     focusInput: () => {
@@ -207,11 +201,23 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }, [conversation?.messages, streamingContent, shouldAutoScroll]);
 
-  // Scroll to bottom immediately when switching conversations
+  // Scroll to bottom when switching conversations
   useEffect(() => {
     if (conversation && conversation.messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+      const container = messagesContainerRef.current;
+      if (container) {
+        // Reset scroll position first, then scroll to bottom after layout completes
+        container.scrollTop = 0;
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+        });
+      }
     }
+  }, [conversation?.id]);
+
+  // Close find dialog when conversation changes
+  useEffect(() => {
+    setShowFind(false);
   }, [conversation?.id]);
 
   useEffect(() => {
@@ -219,48 +225,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       textareaRef.current.focus();
     }
   }, [conversation?.id]);
-
-  // Handle pending topic prompt - auto-send when conversation is ready
-  // Only send if conversation.id matches the target AND cooldown has elapsed
-  useEffect(() => {
-    if (!pendingTopicPrompt || !conversation || isStreaming) {
-      return;
-    }
-
-    // Verify this is the correct conversation by ID (not just prompt text)
-    if (conversation.id !== pendingTopicPrompt.targetId) {
-      // Wrong conversation - don't send yet, wait for the right one
-      return;
-    }
-
-    // Check cooldown - don't spam if clicked repeatedly
-    const lastSent = conversation.topic?.lastSent;
-    if (lastSent) {
-      const timeSinceLastSend = Date.now() - new Date(lastSent).getTime();
-      if (timeSinceLastSend < TOPIC_COOLDOWN_MS) {
-        // Cooldown not elapsed - just show the conversation, don't re-send
-        onClearPendingTopicPrompt?.();
-        return;
-      }
-    }
-
-    // Clear the pending prompt first to prevent re-triggering
-    onClearPendingTopicPrompt?.();
-
-    // Send the prompt
-    const abortController = startStreaming();
-    if (abortController) {
-      onSendMessage(pendingTopicPrompt.prompt, [], (chunk) => {
-        updateContent(chunk);
-      }, abortController.signal)
-        .then(() => {
-          completeStreaming(true);
-          // Update the lastSent timestamp
-          onUpdateTopicLastSent?.(conversation.id);
-        })
-        .catch(() => completeStreaming(true));
-    }
-  }, [pendingTopicPrompt, conversation?.id]);
 
   const handleStop = () => {
     stopStreaming();
@@ -497,9 +461,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
         {conversation.messages.length > 0 && (
           <div className="model-info">
-            <span className="model-provider">{PROVIDER_NAMES[conversation.provider]}</span>
+            <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(conversation.model)]}</span>
             <span className="model-separator">·</span>
-            <span className="model-name">{conversation.model}</span>
+            <span className="model-name">{getModelIdFromModel(conversation.model)}</span>
           </div>
         )}
 
@@ -598,6 +562,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             onChange={onModelChange}
             disabled={isStreaming}
             models={availableModels}
+            favoriteModels={favoriteModels}
           />
           {isStreaming ? (
             <button type="button" onClick={handleStop} className="send-button stop-button">

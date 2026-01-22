@@ -1,8 +1,9 @@
 import { useState, useRef, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { Conversation } from '../types';
+import { Conversation, ModelInfo } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Menu } from '@tauri-apps/api/menu';
+import { useTriggerContext } from '../contexts/TriggerContext';
 import './Sidebar.css';
 
 // FLIP animation helper - stores previous positions of items
@@ -102,13 +103,15 @@ interface SidebarProps {
   currentConversationId: string | null;
   streamingConversationIds: string[];
   unreadConversationIds: string[];
+  availableModels: ModelInfo[];
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onNewComparison: () => void;
   onNewCouncil: () => void;
+  onNewTrigger: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onDeleteConversation: (id: string) => void;
-  onMakeTopic?: (conversationId: string, label: string, prompt: string) => void;
+  onOpenTriggerManagement: () => void;
 }
 
 export interface SidebarHandle {
@@ -120,21 +123,22 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   currentConversationId,
   streamingConversationIds,
   unreadConversationIds,
+  availableModels,
   onSelectConversation,
   onNewConversation,
   onNewComparison,
   onNewCouncil,
+  onNewTrigger,
   onRenameConversation,
   onDeleteConversation,
-  onMakeTopic,
+  onOpenTriggerManagement,
 }, ref) {
+  const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
+  const firedTriggerIds = firedTriggers.map(f => f.conversationId);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [topicDialogId, setTopicDialogId] = useState<string | null>(null);
-  const [topicLabel, setTopicLabel] = useState('');
-  const [topicPrompt, setTopicPrompt] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -150,6 +154,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   // Capture positions before any state update that might reorder
   const handleSelectConversation = (id: string) => {
     capturePositions();
+    // Dismiss fired trigger indicator when opening the conversation
+    if (firedTriggerIds.includes(id)) {
+      dismissFiredTrigger(id);
+    }
     onSelectConversation(id);
   };
 
@@ -186,21 +194,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     setDeletingId(null);
   };
 
-  const confirmMakeTopic = () => {
-    if (topicDialogId && topicLabel.trim() && topicPrompt.trim() && onMakeTopic) {
-      onMakeTopic(topicDialogId, topicLabel.trim(), topicPrompt.trim());
-    }
-    setTopicDialogId(null);
-    setTopicLabel('');
-    setTopicPrompt('');
-  };
-
-  const cancelMakeTopic = () => {
-    setTopicDialogId(null);
-    setTopicLabel('');
-    setTopicPrompt('');
-  };
-
   const handleContextMenu = async (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault();
 
@@ -214,18 +207,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           text: 'Rename',
           action: () => {
             startRename(conversationId);
-          }
-        },
-        {
-          id: 'make-topic',
-          text: 'Make Topic...',
-          action: () => {
-            const conversation = conversations.find(c => c.id === conversationId);
-            // Pre-fill with first user message as suggested prompt
-            const firstUserMessage = conversation?.messages.find(m => m.role === 'user');
-            setTopicLabel(conversation?.title?.slice(0, 20) || '');
-            setTopicPrompt(firstUserMessage?.content || '');
-            setTopicDialogId(conversationId);
           }
         },
         {
@@ -279,6 +260,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             action: () => {
               onNewCouncil();
             }
+          },
+          {
+            id: 'new-trigger',
+            text: 'New Trigger',
+            action: () => {
+              onNewTrigger();
+            }
           }
         ]
       });
@@ -291,17 +279,27 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
 
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    // Today: show relative time
+    if (date.toDateString() === now.toDateString()) {
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins} min ago`;
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     }
+
+    // Yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+
+    // Older
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const getConversationTitle = (conversation: Conversation) => {
@@ -318,7 +316,22 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return lastSpace > 20 ? preview.slice(0, lastSpace) : preview;
   };
 
-  const filteredConversations = conversations.filter((conversation) => {
+  const getModelDisplayName = (modelString: string) => {
+    // modelString is in format "provider/model-id" - same as model.key
+    const model = availableModels.find(m => m.key === modelString);
+    if (model) return model.name;
+    // Fallback: extract model ID from string for display
+    const slashIndex = modelString.indexOf('/');
+    return slashIndex !== -1 ? modelString.slice(slashIndex + 1) : modelString;
+  };
+
+  // First filter out trigger conversations that haven't fired yet
+  const visibleConversations = conversations.filter((conversation) => {
+    if (!conversation.trigger) return true;  // Show non-trigger conversations
+    return conversation.trigger.lastTriggered !== undefined;  // Only show triggers that have fired
+  });
+
+  const filteredConversations = visibleConversations.filter((conversation) => {
     if (!searchQuery.trim()) return true;
 
     const query = searchQuery.toLowerCase();
@@ -386,7 +399,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               data-conversation-id={conversation.id}
               className={`conversation-item ${
                 conversation.id === currentConversationId ? 'active' : ''
-              }${conversation.comparison ? ' comparison' : ''}${conversation.council ? ' council' : ''}${
+              }${conversation.comparison ? ' comparison' : ''}${conversation.council ? ' council' : ''}${conversation.trigger ? ' trigger' : ''}${
                 streamingConversationIds.includes(conversation.id) ? ' streaming' : ''
               }`}
               onClick={() => handleSelectConversation(conversation.id)}
@@ -396,23 +409,36 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 {streamingConversationIds.includes(conversation.id) && (
                   <span className="streaming-indicator" title="Streaming...">●</span>
                 )}
-                {!streamingConversationIds.includes(conversation.id) && unreadConversationIds.includes(conversation.id) && (
-                  <span className="unread-indicator" title="New response">●</span>
+                {!streamingConversationIds.includes(conversation.id) && (unreadConversationIds.includes(conversation.id) || firedTriggerIds.includes(conversation.id)) && (
+                  <span className="unread-indicator" title={firedTriggerIds.includes(conversation.id) ? "Trigger fired" : "New response"}>●</span>
                 )}
                 {conversation.comparison && <span className="comparison-badge">Compare</span>}
                 {conversation.council && <span className="council-badge">Council</span>}
+                {conversation.trigger && <span className="trigger-badge">Trigger</span>}
                 {getConversationTitle(conversation)}
               </div>
               <div className="conversation-meta">
                 <span className="conversation-date">{formatDate(conversation.updated || conversation.created)}</span>
-                <span className="conversation-count">
-                  {conversation.comparison
-                    ? `${conversation.comparison.models.length} models`
-                    : conversation.council
-                    ? `${conversation.council.councilMembers.length}+1`
-                    : `${conversation.messages.length} msgs`
-                  }
-                </span>
+                {!conversation.comparison && !conversation.council && !conversation.trigger && (
+                  <span className="conversation-model" title={conversation.model}>
+                    {getModelDisplayName(conversation.model)}
+                  </span>
+                )}
+                {conversation.trigger && (
+                  <button
+                    className="trigger-settings-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenTriggerManagement();
+                    }}
+                    title="Manage triggers"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -462,66 +488,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         </div>
       )}
 
-      {topicDialogId && (
-        <div className="rename-modal" onClick={cancelMakeTopic}>
-          <div className="rename-dialog topic-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Make Topic</h3>
-            <p className="topic-hint">Topics appear as pills above your conversations. Clicking a topic re-asks the standing prompt.</p>
-            <label className="topic-label">
-              Label (short name for the pill)
-              <input
-                type="text"
-                value={topicLabel}
-                onChange={(e) => setTopicLabel(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    confirmMakeTopic();
-                  } else if (e.key === 'Escape') {
-                    cancelMakeTopic();
-                  }
-                }}
-                placeholder="e.g., AI News, SF Trip"
-                autoFocus
-                className="rename-input"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-              />
-            </label>
-            <label className="topic-label">
-              Standing prompt (sent when you click the topic)
-              <textarea
-                value={topicPrompt}
-                onChange={(e) => setTopicPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    cancelMakeTopic();
-                  }
-                }}
-                placeholder="e.g., What's new in AI since we last talked?"
-                className="topic-prompt-input"
-                rows={3}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-              />
-            </label>
-            <div className="rename-buttons">
-              <button onClick={cancelMakeTopic} className="cancel-button">Cancel</button>
-              <button
-                onClick={confirmMakeTopic}
-                className="confirm-button"
-                disabled={!topicLabel.trim() || !topicPrompt.trim()}
-              >
-                Create Topic
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 });

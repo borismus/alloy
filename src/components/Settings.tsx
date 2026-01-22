@@ -110,6 +110,7 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
               Edit config.yaml
             </button>
           </div>
+
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { Conversation, ModelInfo, ProviderType, Message } from '../types';
+import { Conversation, ModelInfo, ProviderType, Message, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useCouncilStreaming, CouncilPhase } from '../hooks/useCouncilStreaming';
 import { skillRegistry } from '../services/skills';
 import './ChatInterface.css';  // Base styles shared with comparison mode
@@ -44,7 +44,7 @@ export interface CouncilChatInterfaceHandle {
   focusInput: () => void;
 }
 
-const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
+// Use model.key directly - no need for helper function
 
 export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, CouncilChatInterfaceProps>(({
   conversation,
@@ -63,15 +63,13 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Get the ModelInfo objects for the council members and chairman
-  const councilMembers = conversation.council?.councilMembers.map(m =>
-    availableModels.find(am => am.id === m.model && am.provider === m.provider)
-  ).filter((m): m is ModelInfo => m !== undefined) || [];
+  // conversation.council.councilMembers and chairman are in "provider/model-id" format, same as model.key
+  const councilMembers = conversation.council?.councilMembers.map(modelString => {
+    return availableModels.find(am => am.key === modelString);
+  }).filter((m): m is ModelInfo => m !== undefined) || [];
 
   const chairman = conversation.council?.chairman
-    ? availableModels.find(am =>
-        am.id === conversation.council!.chairman.model &&
-        am.provider === conversation.council!.chairman.provider
-      )
+    ? availableModels.find(am => am.key === conversation.council!.chairman)
     : undefined;
 
   const systemPrompt = skillRegistry.buildSystemPrompt({
@@ -193,21 +191,21 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
     const result = await startCouncilStreaming(userMessage, councilMembers, chairman);
 
     // Add council member responses
+    // response.model is already in "provider/model-id" format
     const memberMessages: Message[] = result.memberResponses.map((response, index) => ({
       role: 'assistant' as const,
       timestamp: new Date().toISOString(),
-      content: memberContents.get(getModelKey(councilMembers[index])) || response.content || '',
-      provider: response.provider,
+      content: memberContents.get(councilMembers[index].key) || response.content || '',
       model: response.model,
       councilMember: true,
     }));
 
     // Add chairman response
+    // result.chairmanResponse.model is already in "provider/model-id" format
     const chairmanMessage: Message = {
       role: 'assistant' as const,
       timestamp: new Date().toISOString(),
       content: chairmanContent || result.chairmanResponse.content || '',
-      provider: result.chairmanResponse.provider,
       model: result.chairmanResponse.model,
       chairman: true,
     };
@@ -389,7 +387,7 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
                   </div>
                   <div className="council-responses-grid">
                     {councilMembers.map((model) => {
-                      const modelKey = getModelKey(model);
+                      const modelKey = model.key;
                       const content = memberContents.get(modelKey) || '';
                       const status = memberStatuses.get(modelKey) || 'pending';
                       const error = memberErrors.get(modelKey);
@@ -500,25 +498,31 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
             {showModelsDropdown && (
               <div className="council-models-dropdown">
                 <div className="dropdown-section-header">Council Members</div>
-                {councilMembers.map((model) => (
-                  <div key={`${model.provider}:${model.id}`} className="council-model-item">
-                    <span className="council-model-name">{model.name}</span>
-                    <span className={`council-model-provider provider-${model.provider}`}>
-                      {PROVIDER_NAMES[model.provider]}
-                    </span>
-                  </div>
-                ))}
+                {councilMembers.map((model) => {
+                  const provider = getProviderFromModel(model.key);
+                  return (
+                    <div key={model.key} className="council-model-item">
+                      <span className="council-model-name">{model.name}</span>
+                      <span className={`council-model-provider provider-${provider}`}>
+                        {PROVIDER_NAMES[provider]}
+                      </span>
+                    </div>
+                  );
+                })}
                 <div className="dropdown-section-header chairman">
                   <span className="chairman-icon">👑</span> Chairman
                 </div>
-                {chairman && (
-                  <div className="council-model-item chairman-item">
-                    <span className="council-model-name">{chairman.name}</span>
-                    <span className={`council-model-provider provider-${chairman.provider}`}>
-                      {PROVIDER_NAMES[chairman.provider]}
-                    </span>
-                  </div>
-                )}
+                {chairman && (() => {
+                  const provider = getProviderFromModel(chairman.key);
+                  return (
+                    <div className="council-model-item chairman-item">
+                      <span className="council-model-name">{chairman.name}</span>
+                      <span className={`council-model-provider provider-${provider}`}>
+                        {PROVIDER_NAMES[provider]}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -539,8 +543,7 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
 
 interface ResponseWithModel {
   content: string;
-  provider?: ProviderType;
-  model?: string;
+  model?: string;  // Format: "provider/model-id"
 }
 
 interface CouncilExchangeGroup {
@@ -570,7 +573,6 @@ function groupMessagesByCouncilExchange(
       while (j < messages.length && messages[j].role === 'assistant' && messages[j].councilMember) {
         memberResponses.push({
           content: messages[j].content,
-          provider: messages[j].provider,
           model: messages[j].model,
         });
         j++;
@@ -580,7 +582,6 @@ function groupMessagesByCouncilExchange(
       if (j < messages.length && messages[j].role === 'assistant' && messages[j].chairman) {
         chairmanResponse = {
           content: messages[j].content,
-          provider: messages[j].provider,
           model: messages[j].model,
         };
         j++;
@@ -607,23 +608,20 @@ function getModelDisplayName(
   response: ResponseWithModel,
   index: number,
   councilMembers: ModelInfo[],
-  conversationModels?: Array<{ provider: ProviderType; model: string }>
+  conversationModels?: string[]  // In "provider/model-id" format
 ): string {
-  if (response.provider && response.model) {
-    const matchedModel = councilMembers.find(
-      m => m.provider === response.provider && m.id === response.model
-    );
+  if (response.model) {
+    // response.model is in "provider/model-id" format, same as model.key
+    const matchedModel = councilMembers.find(m => m.key === response.model);
     if (matchedModel) return matchedModel.name;
     return response.model;
   }
 
   if (conversationModels && conversationModels[index]) {
-    const meta = conversationModels[index];
-    const matchedModel = councilMembers.find(
-      m => m.provider === meta.provider && m.id === meta.model
-    );
+    const modelString = conversationModels[index];
+    const matchedModel = councilMembers.find(m => m.key === modelString);
     if (matchedModel) return matchedModel.name;
-    return meta.model;
+    return getModelIdFromModel(modelString);
   }
 
   if (councilMembers[index]) {
@@ -637,18 +635,18 @@ function getModelDisplayName(
 function getChairmanDisplayName(
   response: ResponseWithModel,
   chairman: ModelInfo | undefined,
-  conversationChairman?: { provider: ProviderType; model: string }
+  conversationChairman?: string  // Now in "provider/model-id" format
 ): string {
   if (chairman) {
     return chairman.name;
   }
 
-  if (response.provider && response.model) {
+  if (response.model) {
     return response.model;
   }
 
   if (conversationChairman) {
-    return conversationChairman.model;
+    return conversationChairman;
   }
 
   return 'Chairman';

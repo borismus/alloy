@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
-import { toolRegistry } from './services/tools';
 import { skillRegistry } from './services/skills';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, TopicMetadata, PendingTopicPrompt, ToolUse, SkillUse } from './types';
-import { BUILTIN_TOOLS, ToolCall } from './types/tools';
-import { ToolRound } from './services/providers/types';
+import { TriggerProvider } from './contexts/TriggerContext';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel } from './types';
+import { executeWithTools } from './services/tools/executor';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
@@ -16,7 +15,8 @@ import { CouncilModelSelector } from './components/CouncilModelSelector';
 import { CouncilChatInterface, CouncilChatInterfaceHandle } from './components/CouncilChatInterface';
 import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
-import { Menu } from '@tauri-apps/api/menu';
+import { TriggerConfigModal } from './components/TriggerConfigModal';
+import { TriggerManagementView } from './components/TriggerManagementView';
 import './App.css';
 
 function AppContent() {
@@ -28,7 +28,9 @@ function AppContent() {
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const [showCouncilSelector, setShowCouncilSelector] = useState(false);
-  const [pendingTopicPrompt, setPendingTopicPrompt] = useState<PendingTopicPrompt | null>(null);
+  const [showTriggerConfig, setShowTriggerConfig] = useState(false);
+  const [showTriggerManagementView, setShowTriggerManagementView] = useState(false);
+  const [editingTriggerConversation, setEditingTriggerConversation] = useState<Conversation | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
   const councilChatInterfaceRef = useRef<CouncilChatInterfaceHandle>(null);
@@ -65,6 +67,41 @@ function AppContent() {
     setCurrentConversation(prev => prev?.id === id ? updated : prev);
   }, []);
 
+  // Handler for trigger-updated conversations (called by TriggerContext)
+  // Uses atomic update to avoid overwriting concurrent edits (e.g., user edited trigger config)
+  const handleTriggerConversationUpdated = useCallback(async (updatedConversation: Conversation) => {
+    try {
+      // Atomic read-modify-write: load fresh from disk, merge trigger updates, save
+      const merged = await vaultService.updateConversation(updatedConversation.id, (fresh) => ({
+        ...fresh,
+        // Apply the updated timestamp if messages were added
+        updated: updatedConversation.updated,
+        // Use messages from the update (trigger appends new messages)
+        messages: updatedConversation.messages,
+        // Merge trigger: preserve user-edited config, apply scheduler's runtime fields
+        trigger: fresh.trigger && updatedConversation.trigger ? {
+          ...fresh.trigger, // Preserve config: prompts, models, interval, enabled
+          lastChecked: updatedConversation.trigger.lastChecked,
+          lastTriggered: updatedConversation.trigger.lastTriggered,
+          history: updatedConversation.trigger.history,
+        } : updatedConversation.trigger,
+      }));
+
+      if (merged) {
+        // Update state with the merged result
+        setConversations(prev =>
+          prev.map(c => c.id === merged.id ? merged : c)
+            .sort((a, b) => new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime())
+        );
+        setCurrentConversation(prev => prev?.id === merged.id ? merged : prev);
+      }
+    } catch (error) {
+      console.error('Error saving trigger-updated conversation:', error);
+    }
+  }, []);
+
+  // Getter for conversations (used by TriggerProvider)
+  const getConversationsForTrigger = useCallback(() => conversations, [conversations]);
 
   // Use ref to avoid circular dependency with loadVault
   const loadVaultRef = useRef<((path: string) => Promise<void>) | null>(null);
@@ -182,11 +219,19 @@ function AppContent() {
   const handleVaultSelected = async (path: string, provider: ProviderType, credential: string) => {
     // Save the provider credential to config
     const configKey = provider === 'ollama' ? 'OLLAMA_BASE_URL' :
-                      provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
+                      provider === 'openai' ? 'OPENAI_API_KEY' :
+                      provider === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
+
+    // Default models for each provider (using provider/model format)
+    const defaultModels: Record<ProviderType, string> = {
+      anthropic: 'anthropic/claude-opus-4-5-20251101',
+      openai: 'openai/gpt-4o',
+      gemini: 'gemini/gemini-2.0-flash',
+      ollama: '', // Ollama models are discovered dynamically
+    };
 
     const newConfig: Config = {
-      defaultModel: provider === 'anthropic' ? 'claude-opus-4-5-20251101' :
-                    provider === 'openai' ? 'gpt-4o' : '',
+      defaultModel: defaultModels[provider],
       [configKey]: credential,
     };
 
@@ -213,8 +258,7 @@ function AppContent() {
       id: `${date}-${time}-${hash}`,
       created: now.toISOString(),
       updated: now.toISOString(),
-      provider: defaultProvider,
-      model: defaultModel,
+      model: formatModelId(defaultProvider, defaultModel),
       messages: [],
     };
     setCurrentConversation(newConversation);
@@ -246,15 +290,14 @@ function AppContent() {
 
     const comparisonMetadata: ComparisonMetadata = {
       isComparison: true,
-      models: selectedModels.map(m => ({ provider: m.provider, model: m.id })),
+      models: selectedModels.map(m => m.key),
     };
 
     const newConversation: Conversation = {
       id: `${date}-${time}-${hash}-compare`,
       created: now.toISOString(),
       updated: now.toISOString(),
-      provider: selectedModels[0].provider,
-      model: selectedModels[0].id,
+      model: selectedModels[0].key,
       messages: [],
       comparison: comparisonMetadata,
     };
@@ -273,16 +316,15 @@ function AppContent() {
 
     const councilMetadata: CouncilMetadata = {
       isCouncil: true,
-      councilMembers: councilMembers.map(m => ({ provider: m.provider, model: m.id })),
-      chairman: { provider: chairman.provider, model: chairman.id },
+      councilMembers: councilMembers.map(m => m.key),
+      chairman: chairman.key,
     };
 
     const newConversation: Conversation = {
       id: `${date}-${time}-${hash}-council`,
       created: now.toISOString(),
       updated: now.toISOString(),
-      provider: chairman.provider,
-      model: chairman.id,
+      model: chairman.key,
       messages: [],
       council: councilMetadata,
     };
@@ -296,7 +338,8 @@ function AppContent() {
 
     // Check if this is the first message (conversation needs to be added to list)
     const existingConversation = conversations.find(c => c.id === updatedConversation.id);
-    if (!existingConversation && updatedConversation.messages.length > 0) {
+    const isNewConversation = !existingConversation && updatedConversation.messages.length > 0;
+    if (isNewConversation) {
       setConversations(prev => [updatedConversation, ...prev]);
     }
 
@@ -312,7 +355,19 @@ function AppContent() {
           markSelfWrite(oldFilePath);
         }
       }
-      await vaultService.saveConversation(updatedConversation);
+
+      if (isNewConversation) {
+        // First save - no race condition possible, use direct save
+        await vaultService.saveConversation(updatedConversation);
+      } else {
+        // Existing conversation - use atomic update to avoid race conditions
+        await vaultService.updateConversation(updatedConversation.id, (fresh) => ({
+          ...fresh,
+          ...updatedConversation,
+          // Preserve trigger config if it exists (shouldn't for council, but defensive)
+          trigger: fresh.trigger ? { ...fresh.trigger, ...updatedConversation.trigger } : updatedConversation.trigger,
+        }));
+      }
       const loadedConversations = await vaultService.loadConversations();
       setConversations(loadedConversations);
     } catch (error) {
@@ -325,7 +380,8 @@ function AppContent() {
 
     // Check if this is the first message (conversation needs to be added to list)
     const existingConversation = conversations.find(c => c.id === updatedConversation.id);
-    if (!existingConversation && updatedConversation.messages.length > 0) {
+    const isNewConversation = !existingConversation && updatedConversation.messages.length > 0;
+    if (isNewConversation) {
       setConversations(prev => [updatedConversation, ...prev]);
     }
 
@@ -343,7 +399,19 @@ function AppContent() {
           markSelfWrite(oldFilePath);
         }
       }
-      await vaultService.saveConversation(updatedConversation);
+
+      if (isNewConversation) {
+        // First save - no race condition possible, use direct save
+        await vaultService.saveConversation(updatedConversation);
+      } else {
+        // Existing conversation - use atomic update to avoid race conditions
+        await vaultService.updateConversation(updatedConversation.id, (fresh) => ({
+          ...fresh,
+          ...updatedConversation,
+          // Preserve trigger config if it exists (shouldn't for comparison, but defensive)
+          trigger: fresh.trigger ? { ...fresh.trigger, ...updatedConversation.trigger } : updatedConversation.trigger,
+        }));
+      }
       const loadedConversations = await vaultService.loadConversations();
       setConversations(loadedConversations);
     } catch (error) {
@@ -351,24 +419,20 @@ function AppContent() {
     }
   };
 
-  const handleModelChange = (model: string, provider: ProviderType) => {
+  const handleModelChange = (modelKey: string) => {
     if (!currentConversation) return;
 
-    const modelChanged = model !== currentConversation.model;
-    const providerChanged = provider !== currentConversation.provider;
+    const modelChanged = modelKey !== currentConversation.model;
 
-    if (modelChanged || providerChanged) {
+    if (modelChanged) {
       const logMessage: Message = {
         role: 'log',
         timestamp: new Date().toISOString(),
-        content: providerChanged
-          ? `Switched to ${provider} / ${model}`
-          : `Model changed to ${model}`,
+        content: `Switched to ${modelKey}`,
       };
       const updatedConversation: Conversation = {
         ...currentConversation,
-        provider,
-        model,
+        model: modelKey,
         messages: [...currentConversation.messages, logMessage],
       };
       setCurrentConversation(updatedConversation);
@@ -396,9 +460,11 @@ function AppContent() {
   const handleSendMessage = async (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<void> => {
     if (!currentConversation || !config) return;
 
-    const provider = providerRegistry.getProvider(currentConversation.provider);
+    const providerType = getProviderFromModel(currentConversation.model);
+    const modelId = getModelIdFromModel(currentConversation.model);
+    const provider = providerRegistry.getProvider(providerType);
     if (!provider || !provider.isInitialized()) {
-      alert(`Provider ${currentConversation.provider} is not configured.`);
+      alert(`Provider ${providerType} is not configured.`);
       return;
     }
 
@@ -419,6 +485,7 @@ function AppContent() {
       ...currentConversation,
       title,
       messages: updatedMessages,
+      updated: new Date().toISOString(),
     };
 
     setCurrentConversation(updatedConversation);
@@ -459,110 +526,22 @@ function AppContent() {
         return await vaultService.loadImageAsBase64(relativePath);
       };
 
-      // Tool execution loop
-      const MAX_TOOL_ITERATIONS = 10;
-      const currentMessages = updatedMessages;
-      let allToolUses: ToolUse[] = [];
-      let finalContent = '';
-      const toolHistory: ToolRound[] = [];
-
-      const chatOptions = {
-        model: currentConversation.model,
-        systemPrompt,
-        tools: BUILTIN_TOOLS,
+      // Execute with tool loop support
+      const result = await executeWithTools(provider, updatedMessages, modelId, {
+        maxIterations: 10,
         onChunk,
-        onToolUse: (toolUse: ToolUse) => {
-          addToolUse(currentConversation.id, toolUse);
-        },
+        onToolUse: (toolUse) => addToolUse(currentConversation.id, toolUse),
         signal,
         imageLoader,
-      };
-
-      // Initial request
-      let result = await provider.sendMessage(currentMessages, chatOptions);
-      finalContent = result.content;
-      if (result.toolUse) {
-        allToolUses = [...allToolUses, ...result.toolUse];
-      }
-
-      // Track skills used via the use_skill tool
-      const skillUse: SkillUse[] = [];
-
-      // Tool execution loop - keep going while model wants to use tools
-      let iteration = 0;
-      const providerWithTools = provider as any;
-
-      while (
-        iteration < MAX_TOOL_ITERATIONS &&
-        result.stopReason === 'tool_use' &&
-        result.toolCalls &&
-        result.toolCalls.length > 0 &&
-        providerWithTools.sendMessageWithToolResults
-      ) {
-        iteration++;
-
-        // Check for use_skill tool calls and track them
-        for (const toolCall of result.toolCalls) {
-          if (toolCall.name === 'use_skill') {
-            const skillName = toolCall.input.name as string;
-            if (skillName && !skillUse.find(s => s.name === skillName)) {
-              skillUse.push({ name: skillName });
-            }
-          }
-        }
-
-        // Execute each tool call
-        const toolResults = await Promise.all(
-          result.toolCalls.map(async (toolCall: ToolCall) => {
-            const toolResult = await toolRegistry.executeTool(toolCall);
-
-            // Update the tool use entry with result (but not for use_skill - we don't show instructions)
-            if (toolCall.name !== 'use_skill') {
-              const toolUseEntry = allToolUses.find(
-                (t) => t.type === toolCall.name && !t.result
-              );
-              if (toolUseEntry) {
-                toolUseEntry.result = toolResult.content.slice(0, 500); // Truncate for display
-                toolUseEntry.isError = toolResult.is_error;
-              }
-            }
-
-            return toolResult;
-          })
-        );
-
-        // Add this round to the tool history (include any text content from the assistant)
-        toolHistory.push({
-          textContent: result.content || undefined,
-          toolCalls: result.toolCalls,
-          toolResults,
-        });
-
-        // Add space separator between tool call thoughts
-        onChunk?.(' ');
-
-        // Send tool results back to the provider with full history
-        result = await providerWithTools.sendMessageWithToolResults(
-          currentMessages,
-          toolHistory,
-          chatOptions
-        );
-
-        finalContent = result.content;
-        if (result.toolUse) {
-          allToolUses = [...allToolUses, ...result.toolUse];
-        }
-      }
-
-      // Filter out use_skill from displayed tool uses (it's shown via skillUse instead)
-      const displayedToolUses = allToolUses.filter(t => t.type !== 'use_skill');
+        systemPrompt,
+      });
 
       const assistantMessage: Message = {
         role: 'assistant',
         timestamp: new Date().toISOString(),
-        content: finalContent,
-        toolUse: displayedToolUses.length > 0 ? displayedToolUses : undefined,
-        skillUse: skillUse.length > 0 ? skillUse : undefined,
+        content: result.finalContent,
+        toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
+        skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
       };
 
       let finalConversation: Conversation = {
@@ -573,7 +552,7 @@ function AppContent() {
       // Generate better title using LLM for first message
       if (isFirstMessage) {
         try {
-          const betterTitle = await provider.generateTitle(content, finalContent);
+          const betterTitle = await provider.generateTitle(content, result.finalContent);
           if (betterTitle && betterTitle !== finalConversation.title) {
             finalConversation = {
               ...finalConversation,
@@ -648,12 +627,14 @@ function AppContent() {
     // Mark as read when user selects the conversation
     markAsRead(id);
 
+    // Close any open selectors/views
+    setShowTriggerManagementView(false);
+    setShowComparisonSelector(false);
+    setShowCouncilSelector(false);
+
     const conversation = await vaultService.loadConversation(id);
     if (conversation) {
-      // Ensure conversation has provider field (migration for old conversations)
-      if (!conversation.provider) {
-        conversation.provider = 'anthropic';
-      }
+      // Migration is now handled in vault.ts migrateConversationFormat
       setCurrentConversation(conversation);
       setTimeout(() => {
         chatInterfaceRef.current?.focusInput();
@@ -745,179 +726,154 @@ function AppContent() {
   const isComparisonConversation = currentConversation?.comparison !== undefined;
   const isCouncilConversation = currentConversation?.council !== undefined;
 
-  // Separate topics from regular conversations
-  const topics = conversations.filter(c => c.topic !== undefined);
-  const regularConversations = conversations.filter(c => c.topic === undefined);
+  // Separate triggered conversations from regular ones
+  const triggeredConversations = conversations.filter(c => c.trigger !== undefined);
+  const regularConversations = conversations;
 
-  // Handle topic pill click - select the topic conversation and queue the prompt
-  const handleTopicClick = (topic: Conversation) => {
-    if (!topic.topic) return;
+  // Handle removing a trigger from a conversation
+  const handleRemoveTrigger = async (conversationId: string) => {
+    const vaultPathForRemove = vaultService.getVaultPath();
+    if (!vaultPathForRemove) return;
 
-    // Select the topic conversation
-    markAsRead(topic.id);
-    setCurrentConversation(topic);
-
-    // Queue the prompt to be sent once the conversation is active
-    // Include targetId so ChatInterface can verify it's the right conversation
-    setPendingTopicPrompt({
-      prompt: topic.topic.prompt,
-      targetId: topic.id,
-    });
-  };
-
-  // Clear the pending prompt (called by ChatInterface after sending)
-  const clearPendingTopicPrompt = () => {
-    setPendingTopicPrompt(null);
-  };
-
-  // Update the lastSent timestamp for a topic (called after auto-send)
-  const handleUpdateTopicLastSent = async (conversationId: string) => {
-    const conversation = conversations.find(c => c.id === conversationId);
-    const vaultPathForTopic = vaultService.getVaultPath();
-    if (!conversation?.topic || !vaultPathForTopic) return;
-
-    const updatedConversation: Conversation = {
-      ...conversation,
-      topic: {
-        ...conversation.topic,
-        lastSent: new Date().toISOString(),
-      },
-    };
-
-    // Update state
-    setConversations(prev => prev.map(c => c.id === conversationId ? updatedConversation : c));
-    if (currentConversation?.id === conversationId) {
-      setCurrentConversation(updatedConversation);
-    }
-
-    // Save to vault
     try {
-      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      const filePath = `${vaultPathForTopic}/conversations/${filename}`;
-      markSelfWrite(filePath);
-      await vaultService.saveConversation(updatedConversation);
-    } catch (error) {
-      console.error('Error updating topic lastSent:', error);
-    }
-  };
-
-  // Handle unpinning a topic (convert back to regular conversation)
-  const handleUnpinTopic = async (conversationId: string) => {
-    const conversation = conversations.find(c => c.id === conversationId);
-    const vaultPathForUnpin = vaultService.getVaultPath();
-    if (!conversation || !vaultPathForUnpin) return;
-
-    // Remove the topic field
-    const { topic: _, ...conversationWithoutTopic } = conversation;
-    const updatedConversation: Conversation = conversationWithoutTopic;
-
-    // Update state
-    setConversations(prev => prev.map(c => c.id === conversationId ? updatedConversation : c));
-    if (currentConversation?.id === conversationId) {
-      setCurrentConversation(updatedConversation);
-    }
-
-    // Save to vault
-    try {
-      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      const filePath = `${vaultPathForUnpin}/conversations/${filename}`;
-      markSelfWrite(filePath);
-      await vaultService.saveConversation(updatedConversation);
-    } catch (error) {
-      console.error('Error unpinning topic:', error);
-    }
-  };
-
-  // Handle making a conversation into a topic
-  const handleMakeTopic = async (conversationId: string, label: string, prompt: string) => {
-    const conversation = conversations.find(c => c.id === conversationId);
-    const vaultPathForMakeTopic = vaultService.getVaultPath();
-    if (!conversation || !vaultPathForMakeTopic) return;
-
-    const topicMetadata: TopicMetadata = {
-      label,
-      prompt,
-    };
-
-    const updatedConversation: Conversation = {
-      ...conversation,
-      topic: topicMetadata,
-    };
-
-    // Update state
-    setConversations(prev => prev.map(c => c.id === conversationId ? updatedConversation : c));
-    if (currentConversation?.id === conversationId) {
-      setCurrentConversation(updatedConversation);
-    }
-
-    // Save to vault
-    try {
-      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      const filePath = `${vaultPathForMakeTopic}/conversations/${filename}`;
-      markSelfWrite(filePath);
-      await vaultService.saveConversation(updatedConversation);
-    } catch (error) {
-      console.error('Error saving topic:', error);
-    }
-  };
-
-  // Handle right-click on topic pill
-  const handleTopicContextMenu = async (e: React.MouseEvent, topicId: string) => {
-    e.preventDefault();
-    try {
-      const menu = await Menu.new({
-        items: [
-          {
-            id: 'unpin',
-            text: 'Unpin Topic',
-            action: () => {
-              handleUnpinTopic(topicId);
-            }
-          }
-        ]
+      // Atomic read-modify-write to avoid race conditions
+      const updated = await vaultService.updateConversation(conversationId, (fresh) => {
+        const { trigger: _, ...withoutTrigger } = fresh;
+        return withoutTrigger as Conversation;
       });
-      await menu.popup();
+
+      if (updated) {
+        const filename = vaultService.generateFilename(updated.id, updated.title);
+        const filePath = `${vaultPathForRemove}/conversations/${filename}`;
+        markSelfWrite(filePath);
+
+        // Update state with the result
+        setConversations(prev => prev.map(c => c.id === conversationId ? updated : c));
+        if (currentConversation?.id === conversationId) {
+          setCurrentConversation(updated);
+        }
+      }
     } catch (error) {
-      console.error('Failed to show topic context menu:', error);
+      console.error('Error removing trigger:', error);
+    }
+  };
+
+  // Handle updating a trigger on an existing conversation
+  const handleUpdateTrigger = async (conversationId: string, config: import('./types').TriggerConfig) => {
+    const vaultPathForUpdate = vaultService.getVaultPath();
+    if (!vaultPathForUpdate) return;
+
+    try {
+      // Atomic read-modify-write to avoid race conditions
+      const updated = await vaultService.updateConversation(conversationId, (fresh) => ({
+        ...fresh,
+        trigger: config,
+      }));
+
+      if (updated) {
+        const filename = vaultService.generateFilename(updated.id, updated.title);
+        const filePath = `${vaultPathForUpdate}/conversations/${filename}`;
+        markSelfWrite(filePath);
+
+        // Update state with the result
+        setConversations(prev => prev.map(c => c.id === conversationId ? updated : c));
+        if (currentConversation?.id === conversationId) {
+          setCurrentConversation(updated);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating trigger:', error);
+    }
+  };
+
+  // Handle creating a new triggered conversation
+  const handleCreateTrigger = async (config: import('./types').TriggerConfig, title?: string) => {
+    const vaultPathForCreate = vaultService.getVaultPath();
+    if (!vaultPathForCreate) return;
+
+    // Generate conversation ID
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().slice(0, 5).replace(':', '');
+    const hash = Math.random().toString(16).slice(2, 6);
+
+    // Create a new conversation with the trigger
+    // The model is already in unified format from TriggerConfig
+    const newConversation: Conversation = {
+      id: `${date}-${time}-${hash}`,
+      created: now.toISOString(),
+      updated: now.toISOString(),
+      model: config.mainModel,  // Already in "provider/model" format
+      title: title || 'Triggered Conversation',
+      messages: [],
+      trigger: config,
+    };
+
+    // Save to vault
+    try {
+      const filename = vaultService.generateFilename(newConversation.id, newConversation.title);
+      const filePath = `${vaultPathForCreate}/conversations/${filename}`;
+      markSelfWrite(filePath);
+      await vaultService.saveConversation(newConversation);
+
+      // Update state
+      setConversations(prev => [newConversation, ...prev]);
+      setCurrentConversation(newConversation);
+    } catch (error) {
+      console.error('Error creating triggered conversation:', error);
     }
   };
 
   return (
-    <div className="app">
-      <Sidebar
-        ref={sidebarRef}
-        conversations={regularConversations}
-        currentConversationId={currentConversation?.id || null}
-        streamingConversationIds={getStreamingConversationIds()}
-        unreadConversationIds={getUnreadConversationIds()}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
-        onNewComparison={handleNewComparison}
-        onNewCouncil={handleNewCouncil}
-        onRenameConversation={handleRenameConversation}
-        onDeleteConversation={handleDeleteConversation}
-        onMakeTopic={handleMakeTopic}
-      />
+    <TriggerProvider
+      getConversations={getConversationsForTrigger}
+      onConversationUpdated={handleTriggerConversationUpdated}
+      vaultPath={vaultPath}
+    >
+      <div className="app">
+        <Sidebar
+          ref={sidebarRef}
+          conversations={regularConversations}
+          currentConversationId={currentConversation?.id || null}
+          streamingConversationIds={getStreamingConversationIds()}
+          unreadConversationIds={getUnreadConversationIds()}
+          availableModels={availableModels}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onNewComparison={handleNewComparison}
+          onNewCouncil={handleNewCouncil}
+          onNewTrigger={() => setShowTriggerConfig(true)}
+          onRenameConversation={handleRenameConversation}
+          onDeleteConversation={handleDeleteConversation}
+          onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
+        />
       <div className="main-panel">
-        {topics.length > 0 && (
-          <div className="topics-bar">
-            {topics.map((topic) => (
-              <button
-                key={topic.id}
-                className={`topic-pill ${currentConversation?.id === topic.id ? 'active' : ''}`}
-                onClick={() => handleTopicClick(topic)}
-                onContextMenu={(e) => handleTopicContextMenu(e, topic.id)}
-                title={topic.topic?.prompt}
-              >
-                {topic.topic?.label}
-              </button>
-            ))}
+        {showTriggerManagementView ? (
+          <div className="main-content">
+            <TriggerManagementView
+              triggeredConversations={triggeredConversations}
+              onNewTrigger={() => {
+                setShowTriggerManagementView(false);
+                setEditingTriggerConversation(null);
+                setShowTriggerConfig(true);
+              }}
+              onEditTrigger={(conv) => {
+                setShowTriggerManagementView(false);
+                setEditingTriggerConversation(conv);
+                setShowTriggerConfig(true);
+              }}
+              onDeleteTrigger={handleRemoveTrigger}
+              onSelectTrigger={(conversationId) => {
+                setShowTriggerManagementView(false);
+                handleSelectConversation(conversationId);
+              }}
+            />
           </div>
-        )}
-        {showComparisonSelector ? (
+        ) : showComparisonSelector ? (
           <div className="main-content">
             <ComparisonModelSelector
               availableModels={availableModels}
+              favoriteModels={config?.favoriteModels}
               onStartComparison={handleStartComparison}
               onCancel={() => setShowComparisonSelector(false)}
             />
@@ -926,6 +882,7 @@ function AppContent() {
           <div className="main-content">
             <CouncilModelSelector
               availableModels={availableModels}
+              favoriteModels={config?.favoriteModels}
               onStartCouncil={handleStartCouncil}
               onCancel={() => setShowCouncilSelector(false)}
             />
@@ -954,9 +911,7 @@ function AppContent() {
             hasProvider={providerRegistry.hasAnyProvider()}
             onModelChange={handleModelChange}
             availableModels={availableModels}
-            pendingTopicPrompt={pendingTopicPrompt}
-            onClearPendingTopicPrompt={clearPendingTopicPrompt}
-            onUpdateTopicLastSent={handleUpdateTopicLastSent}
+            favoriteModels={config?.favoriteModels}
           />
         )}
       </div>
@@ -973,7 +928,39 @@ function AppContent() {
           onConfigReload={handleConfigReload}
         />
       )}
-    </div>
+      {showTriggerConfig && (
+        <TriggerConfigModal
+          conversation={editingTriggerConversation}
+          availableModels={availableModels}
+          favoriteModels={config?.favoriteModels}
+          onSave={async (newTriggerConfig, title) => {
+            const wasEditing = !!editingTriggerConversation;
+            if (editingTriggerConversation) {
+              // Editing existing trigger
+              await handleUpdateTrigger(editingTriggerConversation.id, newTriggerConfig);
+            } else {
+              // Creating new trigger
+              await handleCreateTrigger(newTriggerConfig, title);
+            }
+            setEditingTriggerConversation(null);
+            setShowTriggerConfig(false);
+            // If we were editing, return to the management view
+            if (wasEditing) {
+              setShowTriggerManagementView(true);
+            }
+          }}
+          onClose={() => {
+            setShowTriggerConfig(false);
+            // If we were editing, return to the management view
+            if (editingTriggerConversation) {
+              setShowTriggerManagementView(true);
+            }
+            setEditingTriggerConversation(null);
+          }}
+        />
+      )}
+      </div>
+    </TriggerProvider>
   );
 }
 

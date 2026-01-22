@@ -93,12 +93,12 @@ export function VaultSetup({ onVaultSelected, onExistingVault }: VaultSetupProps
       <div className="vault-setup-content">
         {step === 'vault' && (
           <>
-            <h1>Welcome to PromptBox</h1>
-            <p>Own your AI conversations</p>
+            <h1>Welcome to Orchestra</h1>
+            <p>Conduct your AI</p>
 
             <div className="vault-setup-description">
               <p>
-                PromptBox stores all your conversations as plain text files in a folder
+                Orchestra stores all your conversations as plain text files in a folder
                 you choose. This folder is called your "vault".
               </p>
               <p>

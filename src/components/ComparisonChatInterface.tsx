@@ -3,7 +3,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { Conversation, ModelInfo, ComparisonResponse, ProviderType } from '../types';
+import { Conversation, ModelInfo, ComparisonResponse, ProviderType, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useComparisonStreaming } from '../hooks/useComparisonStreaming';
 import { skillRegistry } from '../services/skills';
 import './ChatInterface.css';
@@ -43,7 +43,7 @@ export interface ComparisonChatInterfaceHandle {
   focusInput: () => void;
 }
 
-const getModelKey = (model: ModelInfo) => `${model.provider}:${model.id}`;
+// Use model.key directly - no need for helper function
 
 export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle, ComparisonChatInterfaceProps>(({
   conversation,
@@ -61,9 +61,10 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Get the ModelInfo objects for the comparison models
-  const comparisonModels = conversation.comparison?.models.map(m =>
-    availableModels.find(am => am.id === m.model && am.provider === m.provider)
-  ).filter((m): m is ModelInfo => m !== undefined) || [];
+  // conversation.comparison.models are in "provider/model-id" format, same as model.key
+  const comparisonModels = conversation.comparison?.models.map(modelString => {
+    return availableModels.find(am => am.key === modelString);
+  }).filter((m): m is ModelInfo => m !== undefined) || [];
 
   const systemPrompt = skillRegistry.buildSystemPrompt({
     id: conversation.id,
@@ -180,11 +181,11 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     const responses = await startStreaming(userMessage, comparisonModels);
 
     // Add responses to conversation (using final content from streaming)
+    // response.model is already in "provider/model-id" format
     const assistantMessages = responses.map((response: ComparisonResponse, index: number) => ({
       role: 'assistant' as const,
       timestamp: new Date().toISOString(),
-      content: streamingContents.get(getModelKey(comparisonModels[index])) || response.content || '',
-      provider: response.provider,
+      content: streamingContents.get(comparisonModels[index].key) || response.content || '',
       model: response.model,
     }));
 
@@ -275,13 +276,12 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                 </div>
                 <div className="comparison-responses-summary">
                   {comparisonModels.map((model) => {
-                    const modelKey = getModelKey(model);
-                    const content = streamingContents.get(modelKey) || '';
-                    const status = statuses.get(modelKey) || 'pending';
-                    const error = errors.get(modelKey);
+                    const content = streamingContents.get(model.key) || '';
+                    const status = statuses.get(model.key) || 'pending';
+                    const error = errors.get(model.key);
 
                     return (
-                      <div key={modelKey} className={`response-summary status-${status}`}>
+                      <div key={model.key} className={`response-summary status-${status}`}>
                         <div className="response-summary-header">
                           {model.name}
                           {status === 'streaming' && <span className="streaming-indicator" />}
@@ -349,14 +349,17 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
             </button>
             {showModelsDropdown && (
               <div className="comparison-models-dropdown">
-                {comparisonModels.map((model) => (
-                  <div key={`${model.provider}:${model.id}`} className="comparison-model-item">
-                    <span className="comparison-model-name">{model.name}</span>
-                    <span className={`comparison-model-provider provider-${model.provider}`}>
-                      {PROVIDER_NAMES[model.provider]}
-                    </span>
-                  </div>
-                ))}
+                {comparisonModels.map((model) => {
+                  const provider = getProviderFromModel(model.key);
+                  return (
+                    <div key={model.key} className="comparison-model-item">
+                      <span className="comparison-model-name">{model.name}</span>
+                      <span className={`comparison-model-provider provider-${provider}`}>
+                        {PROVIDER_NAMES[provider]}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -377,8 +380,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
 
 interface ResponseWithModel {
   content: string;
-  provider?: string;
-  model?: string;
+  model?: string;  // Format: "provider/model-id"
 }
 
 interface MessageGroup {
@@ -403,7 +405,6 @@ function groupMessagesByPrompt(messages: Conversation['messages'], modelCount: n
         if (nextMsg.role === 'assistant') {
           responses.push({
             content: nextMsg.content,
-            provider: nextMsg.provider,
             model: nextMsg.model,
           });
         }
@@ -430,26 +431,24 @@ function getModelDisplayName(
   response: ResponseWithModel,
   index: number,
   comparisonModels: ModelInfo[],
-  conversationModels?: Array<{ provider: string; model: string }>
+  conversationModels?: string[]  // In "provider/model-id" format
 ): string {
-  // First try: look up by provider/model from the message itself
-  if (response.provider && response.model) {
-    const matchedModel = comparisonModels.find(
-      m => m.provider === response.provider && m.id === response.model
-    );
+  // First try: look up by model string from the message itself
+  if (response.model) {
+    // response.model is in "provider/model-id" format, same as model.key
+    const matchedModel = comparisonModels.find(m => m.key === response.model);
     if (matchedModel) return matchedModel.name;
-    // Model not in availableModels, use raw model ID
+    // Model not in availableModels, use raw model string
     return response.model;
   }
 
-  // Fallback for old conversations: use positional matching with conversation metadata
+  // Fallback: use positional matching with conversation metadata
   if (conversationModels && conversationModels[index]) {
-    const meta = conversationModels[index];
-    const matchedModel = comparisonModels.find(
-      m => m.provider === meta.provider && m.id === meta.model
-    );
+    const modelString = conversationModels[index];
+    const matchedModel = comparisonModels.find(m => m.key === modelString);
     if (matchedModel) return matchedModel.name;
-    return meta.model;
+    // Return just the model ID part
+    return getModelIdFromModel(modelString);
   }
 
   // Last resort: use comparisonModels by index

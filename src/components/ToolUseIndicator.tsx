@@ -89,7 +89,12 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
                 {tool.input.url.slice(0, 50)}
               </span>
             )}
-            {typeof tool.input?.query === 'string' && <span className="tool-use-path">{tool.input.query.slice(0, 50)}</span>}
+            {typeof tool.input?.query === 'string' && (
+              <span className="tool-use-path">
+                {tool.input.query.slice(0, 50)}
+                {typeof tool.input?.recency === 'string' && ` (${tool.input.recency})`}
+              </span>
+            )}
             {isStreaming && <span className="tool-use-spinner" />}
           </div>
         );
