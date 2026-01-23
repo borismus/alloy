@@ -1,4 +1,4 @@
-# PromptBox Development Notes
+# Orchestra Development Notes
 
 ## Quick Start
 
@@ -16,7 +16,7 @@ npm run tauri dev
 ## Project Structure
 
 ```
-promptbox/
+orchestra/
 ├── src/                      # React frontend
 │   ├── components/          # UI components
 │   │   ├── VaultSetup.tsx   # First-run vault selection
@@ -77,7 +77,7 @@ messages:
 
 ### Config (YAML)
 ```yaml
-vaultPath: /Users/you/promptbox-vault
+vaultPath: /Users/you/orchestra-vault
 anthropicApiKey: sk-ant-...
 defaultModel: claude-sonnet-4-20250514
 ```
@@ -152,4 +152,4 @@ All vault operations can be inspected by looking at the files in your vault fold
 
 ---
 
-Built with lateral thinking & withered technology 🚀
+Built with lateral thinking & withered technology

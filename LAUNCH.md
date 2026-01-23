@@ -1,4 +1,4 @@
-# PromptBox - Launch Checklist
+# Orchestra - Launch Checklist
 
 ## Before First Run
 
@@ -31,7 +31,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ### Option 1: Using the Launch Script (Recommended)
 
 ```bash
-# From the promptbox directory
+# From the orchestra directory
 ./run.sh
 ```
 
@@ -53,7 +53,7 @@ npm run tauri dev
 This will:
 1. Build the Rust backend (first time takes 2-3 minutes)
 2. Start the Vite dev server
-3. Launch the PromptBox window
+3. Launch the Orchestra window
 
 ## First Run Experience
 
@@ -62,7 +62,7 @@ When the app opens:
 ### Step 1: Select Your Vault Folder
 - Click "Select Vault Folder"
 - Choose where you want your conversations stored
-- Recommended: Create a new folder like `~/promptbox-vault`
+- Recommended: Create a new folder like `~/orchestra-vault`
 
 ### Step 2: Enter API Key
 - Paste your Anthropic API key
@@ -80,7 +80,7 @@ After first run, check your vault folder:
 
 ```bash
 # Navigate to your vault
-cd ~/promptbox-vault  # or wherever you chose
+cd ~/orchestra-vault  # or wherever you chose
 
 # You should see:
 ls -la
@@ -173,4 +173,4 @@ npm run tauri build
 
 ---
 
-**Ready to go!** Run `npm run tauri dev` and enjoy PromptBox 🚀
+**Ready to go!** Run `npm run tauri dev` and enjoy Orchestra!
