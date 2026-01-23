@@ -31,35 +31,23 @@ export function TriggerConfigModal({
   const existingTrigger = conversation?.trigger;
   const isEditing = !!existingTrigger;
 
-  // Default trigger model (prefer haiku for cost efficiency)
-  const defaultTriggerModel = availableModels.find(m => m.key.includes('haiku'))?.key
-    || availableModels[0]?.key
-    || 'anthropic/claude-haiku-4-5-20251001';
-
-  // Default main model
-  // conversation.model is already in "provider/model-id" format
-  const defaultMainModel = conversation?.model
+  // Default model - prefer sonnet for quality
+  const defaultModel = conversation?.model
+    || availableModels.find(m => m.key.includes('sonnet'))?.key
     || availableModels[0]?.key
     || 'anthropic/claude-sonnet-4-5-20250929';
 
   // Form state
   const [title, setTitle] = useState(conversation?.title || '');
   const [triggerPrompt, setTriggerPrompt] = useState(existingTrigger?.triggerPrompt || '');
-  const [triggerModel, setTriggerModel] = useState(
-    existingTrigger?.triggerModel || defaultTriggerModel
-  );
-  const [mainPrompt, setMainPrompt] = useState(existingTrigger?.mainPrompt || '');
-  const [mainModel, setMainModel] = useState(
-    existingTrigger?.mainModel || defaultMainModel
-  );
+  const [model, setModel] = useState(existingTrigger?.model || defaultModel);
   const [intervalMinutes, setIntervalMinutes] = useState(
     existingTrigger?.intervalMinutes || 60
   );
   const [enabled, setEnabled] = useState(existingTrigger?.enabled ?? true);
 
   // Check if a model is in the favorites list
-  const isFavorite = (model: ModelInfo) =>
-    favoriteModels.includes(model.key);
+  const isFavorite = (m: ModelInfo) => favoriteModels.includes(m.key);
 
   // Get favorite models (matched from available models)
   const favorites = availableModels.filter(isFavorite);
@@ -73,50 +61,17 @@ export function TriggerConfigModal({
     const config: TriggerConfig = {
       enabled,
       triggerPrompt,
-      triggerModel,
-      mainPrompt,
-      mainModel,
+      model,
       intervalMinutes,
       lastChecked: existingTrigger?.lastChecked,
       lastTriggered: existingTrigger?.lastTriggered,
+      history: existingTrigger?.history,
     };
 
     onSave(config, isEditing ? undefined : title);
   };
 
-  const isValid = triggerPrompt.trim() && mainPrompt.trim() && (isEditing || title.trim());
-
-  const renderModelSelect = (
-    id: string,
-    value: string,
-    onChange: (value: string) => void,
-    hint: string
-  ) => (
-    <div className="form-group">
-      <label htmlFor={id}>{id === 'triggerModel' ? 'Trigger Model' : 'Main Model'}</label>
-      <select
-        id={id}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-      >
-        {favorites.length > 0 && (
-          <optgroup label="Favorites">
-            {favorites.map(m => (
-              <option key={m.key} value={m.key}>
-                {m.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {nonFavorites.map(m => (
-          <option key={m.key} value={m.key}>
-            {m.name}
-          </option>
-        ))}
-      </select>
-      <span className="form-hint">{hint}</span>
-    </div>
-  );
+  const isValid = triggerPrompt.trim() && (isEditing || title.trim());
 
   return (
     <div className="trigger-config-modal-overlay" onClick={onClose}>
@@ -135,60 +90,52 @@ export function TriggerConfigModal({
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="e.g., Daily News Summary"
+                placeholder="e.g., Stock Price Monitor"
               />
             </div>
           )}
 
           <div className="form-section">
-            <h3>Trigger Condition</h3>
+            <h3>Trigger Prompt</h3>
             <p className="form-hint">
-              This prompt runs on a schedule. It must determine whether to trigger the main prompt.
-              The response must be JSON: {`{"shouldTrigger": true/false, "reasoning": "..."}`}
+              This prompt runs on a schedule. When the condition is met, the response will be added to the conversation.
+              The model will compare against previous responses to detect meaningful changes.
             </p>
 
             <div className="form-group">
-              <label htmlFor="triggerPrompt">Trigger Prompt</label>
+              <label htmlFor="triggerPrompt">Prompt</label>
               <textarea
                 id="triggerPrompt"
                 value={triggerPrompt}
                 onChange={e => setTriggerPrompt(e.target.value)}
-                placeholder="e.g., Check if there are any significant breaking news stories in the last hour."
-                rows={3}
+                placeholder="e.g., Let me know when AAPL stock moves more than 1% from the previous check."
+                rows={4}
               />
             </div>
-
-            {renderModelSelect(
-              'triggerModel',
-              triggerModel,
-              setTriggerModel,
-              'Use a cheap model for cost efficiency'
-            )}
-          </div>
-
-          <div className="form-section">
-            <h3>Main Action</h3>
-            <p className="form-hint">
-              When the trigger fires, this prompt will be sent and the response added to the conversation.
-            </p>
 
             <div className="form-group">
-              <label htmlFor="mainPrompt">Main Prompt</label>
-              <textarea
-                id="mainPrompt"
-                value={mainPrompt}
-                onChange={e => setMainPrompt(e.target.value)}
-                placeholder="e.g., Summarize the most important news stories from the past hour."
-                rows={3}
-              />
+              <label htmlFor="model">Model</label>
+              <select
+                id="model"
+                value={model}
+                onChange={e => setModel(e.target.value)}
+              >
+                {favorites.length > 0 && (
+                  <optgroup label="Favorites">
+                    {favorites.map(m => (
+                      <option key={m.key} value={m.key}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {nonFavorites.map(m => (
+                  <option key={m.key} value={m.key}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
             </div>
-
-            {renderModelSelect(
-              'mainModel',
-              mainModel,
-              setMainModel,
-              'Use a capable model for quality responses'
-            )}
           </div>
 
           <div className="form-section">
