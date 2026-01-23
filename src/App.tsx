@@ -803,7 +803,7 @@ function AppContent() {
       id: `${date}-${time}-${hash}`,
       created: now.toISOString(),
       updated: now.toISOString(),
-      model: config.mainModel,  // Already in "provider/model" format
+      model: config.model,  // Already in "provider/model" format
       title: title || 'Triggered Conversation',
       messages: [],
       trigger: config,
