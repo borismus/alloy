@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { Conversation, TriggerAttempt } from '../types';
+import { Conversation, Message, TriggerAttempt } from '../types';
 import { triggerScheduler } from '../services/triggers/scheduler';
-import { triggerExecutor } from '../services/triggers/executor';
 
 interface FiredTrigger {
   conversationId: string;
@@ -76,56 +75,52 @@ export function TriggerProvider({
         const historyEntry: TriggerAttempt = {
           timestamp: now,
           result: 'triggered',
-          reasoning: result.reasoning,
+          reasoning: result.response.slice(0, 200), // Brief summary for history
         };
 
-        try {
-          const { triggerPromptMsg, triggerReasoningMsg, mainPromptMsg, mainResponseMsg } =
-            await triggerExecutor.executeMainPrompt(
-              freshConversation,
-              trigger,
-              result.reasoning
-            );
+        // Create the 2-message block: trigger prompt + response
+        const triggerPromptMsg: Message = {
+          role: 'user',
+          timestamp: now,
+          content: trigger.triggerPrompt,
+        };
 
-          // Re-fetch again after async operation to get latest state
-          const latestConversation = getFreshConversation(conversation.id);
-          if (!latestConversation?.trigger) return;
+        const triggerResponseMsg: Message = {
+          role: 'assistant',
+          timestamp: now,
+          content: result.response,
+          model: trigger.model,
+        };
 
-          // Update conversation with new messages, timestamps, and history
-          // 4-message block: trigger prompt, trigger reasoning, main prompt, main response
-          const updatedConversation: Conversation = {
-            ...latestConversation,
-            updated: now,
-            messages: [
-              ...latestConversation.messages,
-              triggerPromptMsg,
-              triggerReasoningMsg,
-              mainPromptMsg,
-              mainResponseMsg,
-            ],
-            trigger: {
-              ...latestConversation.trigger,
-              lastChecked: now,
-              lastTriggered: now,
-              history: addHistoryEntry(latestConversation.trigger, historyEntry),
-            },
-          };
+        // Update conversation with new messages, timestamps, and history
+        const updatedConversation: Conversation = {
+          ...freshConversation,
+          updated: now,
+          messages: [
+            ...freshConversation.messages,
+            triggerPromptMsg,
+            triggerResponseMsg,
+          ],
+          trigger: {
+            ...trigger,
+            lastChecked: now,
+            lastTriggered: now,
+            history: addHistoryEntry(trigger, historyEntry),
+          },
+        };
 
-          await onConversationUpdatedRef.current(updatedConversation);
+        await onConversationUpdatedRef.current(updatedConversation);
 
-          // Add to fired triggers list for UI notification
-          setFiredTriggers((prev) => [
-            {
-              conversationId: conversation.id,
-              conversationTitle: conversation.title,
-              firedAt: new Date().toISOString(),
-              reasoning: result.reasoning,
-            },
-            ...prev,
-          ]);
-        } catch (error) {
-          console.error('Failed to execute main prompt:', error);
-        }
+        // Add to fired triggers list for UI notification
+        setFiredTriggers((prev) => [
+          {
+            conversationId: conversation.id,
+            conversationTitle: conversation.title,
+            firedAt: now,
+            reasoning: result.response.slice(0, 200),
+          },
+          ...prev,
+        ]);
       },
 
       onTriggerSkipped: async (conversation, result) => {
@@ -139,7 +134,7 @@ export function TriggerProvider({
         const historyEntry: TriggerAttempt = {
           timestamp: now,
           result: 'skipped',
-          reasoning: result.reasoning,
+          reasoning: result.response,
         };
 
         const updatedConversation: Conversation = {
