@@ -538,6 +538,7 @@ When the user asks to organize or consolidate their notes:
     // Migrate trigger format
     const trigger = conv.trigger;
     if (trigger) {
+      // Old format: triggerProvider + triggerModel → triggerModel (unified)
       if (trigger.triggerProvider && !trigger.triggerModel?.includes('/')) {
         trigger.triggerModel = formatModelId(trigger.triggerProvider, trigger.triggerModel);
         delete trigger.triggerProvider;
@@ -546,6 +547,16 @@ When the user asks to organize or consolidate their notes:
         trigger.mainModel = formatModelId(trigger.mainProvider, trigger.mainModel);
         delete trigger.mainProvider;
       }
+
+      // New simplified format: triggerModel/mainModel → model
+      // Prefer mainModel (quality) over triggerModel (cheap) since we now use a single model
+      if (!trigger.model) {
+        trigger.model = trigger.mainModel || trigger.triggerModel;
+      }
+      // Clean up old fields
+      delete trigger.triggerModel;
+      delete trigger.mainModel;
+      delete trigger.mainPrompt;
     }
   }
 
