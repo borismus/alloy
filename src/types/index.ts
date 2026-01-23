@@ -97,10 +97,8 @@ export interface TriggerAttempt {
 // Trigger configuration for automated background execution
 export interface TriggerConfig {
   enabled: boolean;
-  triggerPrompt: string;           // Must return JSON: {shouldTrigger, reasoning}
-  triggerModel: string;            // Format: "provider/model-id" (e.g., "anthropic/claude-haiku-4-5-20250819")
-  mainPrompt: string;
-  mainModel: string;               // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
+  triggerPrompt: string;           // The prompt to evaluate and respond to
+  model: string;                   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   intervalMinutes: number;         // e.g., 60 for hourly
   lastChecked?: string;            // ISO timestamp
   lastTriggered?: string;          // ISO timestamp
@@ -110,7 +108,7 @@ export interface TriggerConfig {
 // Result of a trigger check
 export interface TriggerResult {
   result: 'triggered' | 'skipped' | 'error';
-  reasoning: string;  // Explanation for triggered/skipped, empty for error
+  response: string;   // Full response if triggered, brief reasoning if skipped
   error?: string;     // Error message when result is 'error'
 }
 
