@@ -103,22 +103,18 @@ export class TriggerScheduler {
     try {
       console.log(`TriggerScheduler: Checking trigger for "${conversation.title}"`);
 
-      // Pass recent conversation history for context (last 2 trigger cycles = 8 messages)
-      // Filter out log messages, keep only user/assistant messages
-      const recentHistory = conversation.messages
-        .filter(m => m.role !== 'log')
-        .slice(-8);
-
-      const result = await triggerExecutor.executeTriggerPrompt(trigger, recentHistory);
+      // Pass conversation messages - executor extracts baseline based on triggerConfig.lastTriggered
+      const messages = conversation.messages.filter(m => m.role !== 'log');
+      const result = await triggerExecutor.executeTrigger(trigger, messages);
 
       if (result.result === 'triggered') {
         console.log(
-          `TriggerScheduler: Trigger FIRED for "${conversation.title}": ${result.reasoning}`
+          `TriggerScheduler: Trigger FIRED for "${conversation.title}"`
         );
         await this.callbacks?.onTriggerFired(conversation, result);
       } else if (result.result === 'skipped') {
         console.log(
-          `TriggerScheduler: Trigger skipped for "${conversation.title}": ${result.reasoning}`
+          `TriggerScheduler: Trigger skipped for "${conversation.title}": ${result.response}`
         );
         await this.callbacks?.onTriggerSkipped(conversation, result);
       } else {
@@ -136,7 +132,7 @@ export class TriggerScheduler {
 
       return {
         result: 'error',
-        reasoning: '',
+        response: '',
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     } finally {
