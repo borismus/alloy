@@ -241,12 +241,23 @@ function AppContent() {
   };
 
   const handleNewConversation = () => {
-    const defaultProvider = providerRegistry.getDefaultProvider();
-    const defaultModel = providerRegistry.getDefaultModel();
+    // Pick a random favorite model, or fall back to default
+    let selectedModel: string;
+    const favorites = config?.favoriteModels;
 
-    if (!defaultProvider || !defaultModel) {
-      alert('No provider configured. Please add a provider in Settings.');
-      return;
+    if (favorites && favorites.length > 0) {
+      // Pick a random favorite
+      selectedModel = favorites[Math.floor(Math.random() * favorites.length)];
+    } else {
+      // Fall back to default provider/model
+      const defaultProvider = providerRegistry.getDefaultProvider();
+      const defaultModel = providerRegistry.getDefaultModel();
+
+      if (!defaultProvider || !defaultModel) {
+        alert('No provider configured. Please add a provider in Settings.');
+        return;
+      }
+      selectedModel = formatModelId(defaultProvider, defaultModel);
     }
 
     const now = new Date();
@@ -258,7 +269,7 @@ function AppContent() {
       id: `${date}-${time}-${hash}`,
       created: now.toISOString(),
       updated: now.toISOString(),
-      model: formatModelId(defaultProvider, defaultModel),
+      model: selectedModel,
       messages: [],
     };
     setCurrentConversation(newConversation);
