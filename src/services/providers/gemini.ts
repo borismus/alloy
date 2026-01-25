@@ -212,7 +212,7 @@ export class GeminiService implements IProviderService {
 
       // Add function responses
       geminiHistory.push({
-        role: 'user',
+        role: 'function',
         parts: round.toolResults.map((result) => {
           // Find the tool call to get the actual function name
           const toolCall = round.toolCalls.find((tc) => tc.id === result.tool_use_id);
