@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ModelInfo, Message, ComparisonResponse, getProviderFromModel, getModelIdFromModel } from '../types';
+import { ModelInfo, Message, ComparisonResponse, ToolUse, SkillUse, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from '../services/providers/registry';
 import { useStreamingContext } from '../contexts/StreamingContext';
+import { executeWithTools } from '../services/tools/executor';
+import { BUILTIN_TOOLS } from '../types/tools';
 
 export type CouncilPhase = 'idle' | 'individual' | 'synthesis' | 'complete';
 
@@ -19,17 +21,21 @@ interface CouncilStreamingResult {
     content: string;
     status: 'complete' | 'error';
     error?: string;
+    toolUse?: ToolUse[];
+    skillUse?: SkillUse[];
   };
 }
 
 interface UseCouncilStreamingReturn {
   // Phase 1: Council member responses
   memberContents: Map<string, string>;
+  memberToolUses: Map<string, ToolUse[]>;
   memberStatuses: Map<string, ComparisonResponse['status']>;
   memberErrors: Map<string, string>;
 
   // Phase 2: Chairman response
   chairmanContent: string;
+  chairmanToolUses: ToolUse[];
   chairmanStatus: 'idle' | 'pending' | 'streaming' | 'complete' | 'error';
   chairmanError: string | null;
 
@@ -61,11 +67,13 @@ export function useCouncilStreaming(
 ): UseCouncilStreamingReturn {
   // Phase 1: Council member state
   const [memberContents, setMemberContents] = useState<Map<string, string>>(new Map());
+  const [memberToolUses, setMemberToolUses] = useState<Map<string, ToolUse[]>>(new Map());
   const [memberStatuses, setMemberStatuses] = useState<Map<string, ComparisonResponse['status']>>(new Map());
   const [memberErrors, setMemberErrors] = useState<Map<string, string>>(new Map());
 
   // Phase 2: Chairman state
   const [chairmanContent, setChairmanContent] = useState('');
+  const [chairmanToolUses, setChairmanToolUses] = useState<ToolUse[]>([]);
   const [chairmanStatus, setChairmanStatus] = useState<'idle' | 'pending' | 'streaming' | 'complete' | 'error'>('idle');
   const [chairmanError, setChairmanError] = useState<string | null>(null);
 
@@ -107,6 +115,19 @@ export function useCouncilStreaming(
     setMemberErrors(prev => new Map(prev).set(modelKey, error));
   }, []);
 
+  const addMemberToolUse = useCallback((modelKey: string, toolUse: ToolUse) => {
+    setMemberToolUses(prev => {
+      const next = new Map(prev);
+      const current = next.get(modelKey) || [];
+      next.set(modelKey, [...current, toolUse]);
+      return next;
+    });
+  }, []);
+
+  const addChairmanToolUse = useCallback((toolUse: ToolUse) => {
+    setChairmanToolUses(prev => [...prev, toolUse]);
+  }, []);
+
   const stopAll = useCallback(() => {
     // Stop all council members
     abortControllersRef.current.forEach((controller) => {
@@ -130,9 +151,11 @@ export function useCouncilStreaming(
   ): Promise<CouncilStreamingResult> => {
     // Reset all state
     setMemberContents(new Map());
+    setMemberToolUses(new Map());
     setMemberStatuses(new Map());
     setMemberErrors(new Map());
     setChairmanContent('');
+    setChairmanToolUses([]);
     setChairmanStatus('idle');
     setChairmanError(null);
     setCurrentPhase('individual');
@@ -179,11 +202,13 @@ export function useCouncilStreaming(
       try {
         updateMemberStatus(modelKey, 'streaming');
 
-        const result = await provider.sendMessage(messages, {
-          model: modelId,
-          systemPrompt: options.systemPrompt,
+        const result = await executeWithTools(provider, messages, modelId, {
+          maxIterations: 10,
           onChunk: (text) => updateMemberContent(modelKey, text),
+          onToolUse: (toolUse) => addMemberToolUse(modelKey, toolUse),
           signal: abortController.signal,
+          systemPrompt: options.systemPrompt,
+          tools: BUILTIN_TOOLS,
         });
 
         updateMemberStatus(modelKey, 'complete');
@@ -191,8 +216,10 @@ export function useCouncilStreaming(
 
         return {
           model: model.key,
-          content: result.content,
+          content: result.finalContent,
           status: 'complete',
+          toolUse: result.allToolUses,
+          skillUse: result.skillUses,
         };
       } catch (error: unknown) {
         abortControllersRef.current.delete(modelKey);
@@ -292,11 +319,13 @@ Please synthesize these responses into a comprehensive final answer.`;
     try {
       setChairmanStatus('streaming');
 
-      const chairmanResult = await chairmanProvider.sendMessage(chairmanMessages, {
-        model: chairmanModelId,
-        systemPrompt: CHAIRMAN_SYSTEM_PROMPT,
+      const chairmanResult = await executeWithTools(chairmanProvider, chairmanMessages, chairmanModelId, {
+        maxIterations: 10,
         onChunk: (text) => setChairmanContent(prev => prev + text),
+        onToolUse: addChairmanToolUse,
         signal: chairmanAbortRef.current.signal,
+        systemPrompt: CHAIRMAN_SYSTEM_PROMPT,
+        tools: BUILTIN_TOOLS,
       });
 
       setChairmanStatus('complete');
@@ -308,8 +337,10 @@ Please synthesize these responses into a comprehensive final answer.`;
         memberResponses,
         chairmanResponse: {
           model: chairman.key,
-          content: chairmanResult.content,
+          content: chairmanResult.finalContent,
           status: 'complete',
+          toolUse: chairmanResult.allToolUses,
+          skillUse: chairmanResult.skillUses,
         },
       };
     } catch (error: unknown) {
@@ -346,13 +377,15 @@ Please synthesize these responses into a comprehensive final answer.`;
         },
       };
     }
-  }, [options.existingMessages, options.systemPrompt, updateMemberStatus, updateMemberContent, updateMemberError]);
+  }, [options.existingMessages, options.systemPrompt, updateMemberStatus, updateMemberContent, updateMemberError, addMemberToolUse, addChairmanToolUse]);
 
   return {
     memberContents,
+    memberToolUses,
     memberStatuses,
     memberErrors,
     chairmanContent,
+    chairmanToolUses,
     chairmanStatus,
     chairmanError,
     currentPhase,

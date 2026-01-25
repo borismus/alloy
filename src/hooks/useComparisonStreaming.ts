@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ModelInfo, Message, ComparisonResponse, getProviderFromModel, getModelIdFromModel } from '../types';
+import { ModelInfo, Message, ComparisonResponse, ToolUse, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from '../services/providers/registry';
 import { useStreamingContext } from '../contexts/StreamingContext';
+import { executeWithTools } from '../services/tools/executor';
+import { BUILTIN_TOOLS } from '../types/tools';
 
 interface UseComparisonStreamingOptions {
   conversationId: string | null;
@@ -12,6 +14,7 @@ interface UseComparisonStreamingOptions {
 
 interface UseComparisonStreamingReturn {
   streamingContents: Map<string, string>;
+  streamingToolUses: Map<string, ToolUse[]>;
   statuses: Map<string, ComparisonResponse['status']>;
   errors: Map<string, string>;
   startStreaming: (userMessage: string, models: ModelInfo[]) => Promise<ComparisonResponse[]>;
@@ -24,6 +27,7 @@ export function useComparisonStreaming(
   options: UseComparisonStreamingOptions
 ): UseComparisonStreamingReturn {
   const [streamingContents, setStreamingContents] = useState<Map<string, string>>(new Map());
+  const [streamingToolUses, setStreamingToolUses] = useState<Map<string, ToolUse[]>>(new Map());
   const [statuses, setStatuses] = useState<Map<string, ComparisonResponse['status']>>(new Map());
   const [errors, setErrors] = useState<Map<string, string>>(new Map());
   const [isAnyStreaming, setIsAnyStreaming] = useState(false);
@@ -61,6 +65,15 @@ export function useComparisonStreaming(
     setErrors(prev => new Map(prev).set(modelKey, error));
   }, []);
 
+  const addToolUse = useCallback((modelKey: string, toolUse: ToolUse) => {
+    setStreamingToolUses(prev => {
+      const next = new Map(prev);
+      const current = next.get(modelKey) || [];
+      next.set(modelKey, [...current, toolUse]);
+      return next;
+    });
+  }, []);
+
   const stopModel = useCallback((modelId: string) => {
     const controller = abortControllersRef.current.get(modelId);
     if (controller) {
@@ -82,6 +95,7 @@ export function useComparisonStreaming(
   ): Promise<ComparisonResponse[]> => {
     // Reset state
     setStreamingContents(new Map());
+    setStreamingToolUses(new Map());
     setStatuses(new Map());
     setErrors(new Map());
     setIsAnyStreaming(true);
@@ -126,11 +140,13 @@ export function useComparisonStreaming(
       try {
         updateStatus(modelKey, 'streaming');
 
-        const result = await provider.sendMessage(messages, {
-          model: modelId,
-          systemPrompt: options.systemPrompt,
+        const result = await executeWithTools(provider, messages, modelId, {
+          maxIterations: 10,
           onChunk: (text) => updateContent(modelKey, text),
+          onToolUse: (toolUse) => addToolUse(modelKey, toolUse),
           signal: abortController.signal,
+          systemPrompt: options.systemPrompt,
+          tools: BUILTIN_TOOLS,
         });
 
         updateStatus(modelKey, 'complete');
@@ -138,8 +154,10 @@ export function useComparisonStreaming(
 
         return {
           model: model.key,
-          content: result.content,
+          content: result.finalContent,
           status: 'complete',
+          toolUse: result.allToolUses,
+          skillUse: result.skillUses,
         };
       } catch (error: unknown) {
         abortControllersRef.current.delete(modelKey);
@@ -183,10 +201,11 @@ export function useComparisonStreaming(
         error: 'Unexpected error',
       };
     });
-  }, [options.existingMessages, options.systemPrompt, updateStatus, updateContent, updateError]);
+  }, [options.existingMessages, options.systemPrompt, updateStatus, updateContent, updateError, addToolUse]);
 
   return {
     streamingContents,
+    streamingToolUses,
     statuses,
     errors,
     startStreaming,
