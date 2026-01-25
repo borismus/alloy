@@ -160,7 +160,8 @@
   font-size: 0.95rem;
 }
 
-.chairman-content {
+.chairman-content,
+.chairman-content-wrapper .response-summary-content {
   font-size: 0.95rem;
   line-height: 1.7;
   color: #333;

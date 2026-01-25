@@ -71,6 +71,8 @@ export interface ComparisonResponse {
   content: string;
   status: 'pending' | 'streaming' | 'complete' | 'error';
   error?: string;
+  toolUse?: ToolUse[];
+  skillUse?: SkillUse[];
 }
 
 // Metadata for comparison conversations

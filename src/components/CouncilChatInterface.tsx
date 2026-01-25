@@ -6,6 +6,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { Conversation, ModelInfo, ProviderType, Message, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useCouncilStreaming, CouncilPhase } from '../hooks/useCouncilStreaming';
 import { skillRegistry } from '../services/skills';
+import { AgentResponseView } from './AgentResponseView';
 import './ChatInterface.css';  // Base styles shared with comparison mode
 import './CouncilChatInterface.css';  // Council-specific overrides
 import 'highlight.js/styles/github-dark.css';
@@ -79,9 +80,11 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
 
   const {
     memberContents,
+    memberToolUses,
     memberStatuses,
     memberErrors,
     chairmanContent,
+    chairmanToolUses,
     chairmanStatus,
     chairmanError,
     currentPhase,
@@ -190,24 +193,30 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
     // Start council streaming
     const result = await startCouncilStreaming(userMessage, councilMembers, chairman);
 
-    // Add council member responses
+    // Add council member responses using content from response objects
+    // (don't use memberContents state - it may be stale due to closure)
     // response.model is already in "provider/model-id" format
-    const memberMessages: Message[] = result.memberResponses.map((response, index) => ({
+    const memberMessages: Message[] = result.memberResponses.map((response) => ({
       role: 'assistant' as const,
       timestamp: new Date().toISOString(),
-      content: memberContents.get(councilMembers[index].key) || response.content || '',
+      content: response.content,
       model: response.model,
       councilMember: true,
+      toolUse: response.toolUse,
+      skillUse: response.skillUse,
     }));
 
-    // Add chairman response
+    // Add chairman response using content from response object
+    // (don't use chairmanContent state - it may be stale due to closure)
     // result.chairmanResponse.model is already in "provider/model-id" format
     const chairmanMessage: Message = {
       role: 'assistant' as const,
       timestamp: new Date().toISOString(),
-      content: chairmanContent || result.chairmanResponse.content || '',
+      content: result.chairmanResponse.content,
       model: result.chairmanResponse.model,
       chairman: true,
+      toolUse: result.chairmanResponse.toolUse,
+      skillUse: result.chairmanResponse.skillUse,
     };
 
     const finalConversation = {
@@ -305,20 +314,15 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
                   {!collapsedExchanges.has(groupIndex) && (
                     <div className="council-responses-grid">
                       {group.memberResponses.map((response, respIndex) => (
-                        <div key={respIndex} className="response-summary council-member-response">
-                          <div className="response-summary-header">
-                            {getModelDisplayName(response, respIndex, councilMembers, conversation.council?.councilMembers)}
-                          </div>
-                          <div className="response-summary-content">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              rehypePlugins={[rehypeHighlight]}
-                              components={markdownComponents}
-                            >
-                              {response.content}
-                            </ReactMarkdown>
-                          </div>
-                        </div>
+                        <AgentResponseView
+                          key={respIndex}
+                          content={response.content}
+                          status="complete"
+                          toolUses={response.toolUse}
+                          skillUses={response.skillUse}
+                          headerContent={getModelDisplayName(response, respIndex, councilMembers, conversation.council?.councilMembers)}
+                          className="council-member-response"
+                        />
                       ))}
                     </div>
                   )}
@@ -333,15 +337,14 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
                         {getChairmanDisplayName(group.chairmanResponse, chairman, conversation.council?.chairman)}
                       </span>
                     </div>
-                    <div className="chairman-content">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeHighlight]}
-                        components={markdownComponents}
-                      >
-                        {group.chairmanResponse.content}
-                      </ReactMarkdown>
-                    </div>
+                    <AgentResponseView
+                      content={group.chairmanResponse.content}
+                      status="complete"
+                      toolUses={group.chairmanResponse.toolUse}
+                      skillUses={group.chairmanResponse.skillUse}
+                      showHeader={false}
+                      className="chairman-content-wrapper"
+                    />
                   </div>
                 )}
               </div>
@@ -386,81 +389,36 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
                     </span>
                   </div>
                   <div className="council-responses-grid">
-                    {councilMembers.map((model) => {
-                      const modelKey = model.key;
-                      const content = memberContents.get(modelKey) || '';
-                      const status = memberStatuses.get(modelKey) || 'pending';
-                      const error = memberErrors.get(modelKey);
-
-                      return (
-                        <div key={modelKey} className={`response-summary council-member-response status-${status}`}>
-                          <div className="response-summary-header">
-                            {model.name}
-                            {status === 'streaming' && <span className="streaming-indicator" />}
-                          </div>
-                          <div className="response-summary-content">
-                            {status === 'pending' && (
-                              <span className="waiting-text">Waiting...</span>
-                            )}
-                            {status === 'streaming' && !content && (
-                              <div className="thinking-indicator">
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                              </div>
-                            )}
-                            {content && (
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                rehypePlugins={[rehypeHighlight]}
-                                components={markdownComponents}
-                              >
-                                {content}
-                              </ReactMarkdown>
-                            )}
-                            {status === 'error' && (
-                              <span className="error-text">{error || 'An error occurred'}</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {councilMembers.map((model) => (
+                      <AgentResponseView
+                        key={model.key}
+                        content={memberContents.get(model.key) || ''}
+                        status={memberStatuses.get(model.key) || 'pending'}
+                        error={memberErrors.get(model.key)}
+                        toolUses={memberToolUses.get(model.key) || []}
+                        modelName={model.name}
+                        className="council-member-response"
+                      />
+                    ))}
                   </div>
                 </div>
 
                 {/* Streaming chairman response */}
                 {(currentPhase === 'synthesis' || currentPhase === 'complete') && (
-                  <div className={`chairman-response status-${chairmanStatus}`}>
-                    <div className="chairman-header">
-                      <span className="chairman-icon">👑</span>
-                      <span className="chairman-label">{chairmanName}</span>
-                      {chairmanStatus === 'streaming' && <span className="streaming-indicator" />}
-                    </div>
-                    <div className="chairman-content">
-                      {chairmanStatus === 'pending' && (
-                        <span className="waiting-text">Preparing synthesis...</span>
-                      )}
-                      {chairmanStatus === 'streaming' && !chairmanContent && (
-                        <div className="thinking-indicator">
-                          <span></span>
-                          <span></span>
-                          <span></span>
-                        </div>
-                      )}
-                      {chairmanContent && (
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeHighlight]}
-                          components={markdownComponents}
-                        >
-                          {chairmanContent}
-                        </ReactMarkdown>
-                      )}
-                      {chairmanStatus === 'error' && (
-                        <span className="error-text">{chairmanError || 'An error occurred'}</span>
-                      )}
-                    </div>
-                  </div>
+                  <AgentResponseView
+                    content={chairmanContent}
+                    status={chairmanStatus === 'idle' ? 'pending' : chairmanStatus}
+                    error={chairmanError || undefined}
+                    toolUses={chairmanToolUses}
+                    className="chairman-response"
+                    pendingText="Preparing synthesis..."
+                    headerContent={
+                      <>
+                        <span className="chairman-icon">👑</span>
+                        <span className="chairman-label">{chairmanName}</span>
+                      </>
+                    }
+                  />
                 )}
               </div>
             )}
@@ -544,6 +502,8 @@ export const CouncilChatInterface = forwardRef<CouncilChatInterfaceHandle, Counc
 interface ResponseWithModel {
   content: string;
   model?: string;  // Format: "provider/model-id"
+  toolUse?: import('../types').ToolUse[];
+  skillUse?: import('../types').SkillUse[];
 }
 
 interface CouncilExchangeGroup {
@@ -574,6 +534,8 @@ function groupMessagesByCouncilExchange(
         memberResponses.push({
           content: messages[j].content,
           model: messages[j].model,
+          toolUse: messages[j].toolUse,
+          skillUse: messages[j].skillUse,
         });
         j++;
       }
@@ -583,6 +545,8 @@ function groupMessagesByCouncilExchange(
         chairmanResponse = {
           content: messages[j].content,
           model: messages[j].model,
+          toolUse: messages[j].toolUse,
+          skillUse: messages[j].skillUse,
         };
         j++;
       }

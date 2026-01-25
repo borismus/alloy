@@ -6,6 +6,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { Conversation, ModelInfo, ComparisonResponse, ProviderType, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useComparisonStreaming } from '../hooks/useComparisonStreaming';
 import { skillRegistry } from '../services/skills';
+import { AgentResponseView } from './AgentResponseView';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
 
@@ -73,6 +74,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
 
   const {
     streamingContents,
+    streamingToolUses,
     statuses,
     errors,
     startStreaming,
@@ -180,13 +182,16 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     // Start streaming to all models
     const responses = await startStreaming(userMessage, comparisonModels);
 
-    // Add responses to conversation (using final content from streaming)
+    // Add responses to conversation using content from response objects
+    // (don't use streamingContents state - it may be stale due to closure)
     // response.model is already in "provider/model-id" format
-    const assistantMessages = responses.map((response: ComparisonResponse, index: number) => ({
+    const assistantMessages = responses.map((response: ComparisonResponse) => ({
       role: 'assistant' as const,
       timestamp: new Date().toISOString(),
-      content: streamingContents.get(comparisonModels[index].key) || response.content || '',
+      content: response.content,
       model: response.model,
+      toolUse: response.toolUse,
+      skillUse: response.skillUse,
     }));
 
     const finalConversation = {
@@ -240,20 +245,14 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                 </div>
                 <div className="comparison-responses-summary">
                   {group.responses.map((response, respIndex) => (
-                    <div key={respIndex} className="response-summary">
-                      <div className="response-summary-header">
-                        {getModelDisplayName(response, respIndex, comparisonModels, conversation.comparison?.models)}
-                      </div>
-                      <div className="response-summary-content">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeHighlight]}
-                          components={markdownComponents}
-                        >
-                          {response.content}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
+                    <AgentResponseView
+                      key={respIndex}
+                      content={response.content}
+                      status="complete"
+                      toolUses={response.toolUse}
+                      skillUses={response.skillUse}
+                      headerContent={getModelDisplayName(response, respIndex, comparisonModels, conversation.comparison?.models)}
+                    />
                   ))}
                 </div>
               </div>
@@ -275,44 +274,16 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                   </div>
                 </div>
                 <div className="comparison-responses-summary">
-                  {comparisonModels.map((model) => {
-                    const content = streamingContents.get(model.key) || '';
-                    const status = statuses.get(model.key) || 'pending';
-                    const error = errors.get(model.key);
-
-                    return (
-                      <div key={model.key} className={`response-summary status-${status}`}>
-                        <div className="response-summary-header">
-                          {model.name}
-                          {status === 'streaming' && <span className="streaming-indicator" />}
-                        </div>
-                        <div className="response-summary-content">
-                          {status === 'pending' && (
-                            <span className="waiting-text">Waiting...</span>
-                          )}
-                          {status === 'streaming' && !content && (
-                            <div className="thinking-indicator">
-                              <span></span>
-                              <span></span>
-                              <span></span>
-                            </div>
-                          )}
-                          {content && (
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              rehypePlugins={[rehypeHighlight]}
-                              components={markdownComponents}
-                            >
-                              {content}
-                            </ReactMarkdown>
-                          )}
-                          {status === 'error' && (
-                            <span className="error-text">{error || 'An error occurred'}</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {comparisonModels.map((model) => (
+                    <AgentResponseView
+                      key={model.key}
+                      content={streamingContents.get(model.key) || ''}
+                      status={statuses.get(model.key) || 'pending'}
+                      error={errors.get(model.key)}
+                      toolUses={streamingToolUses.get(model.key) || []}
+                      modelName={model.name}
+                    />
+                  ))}
                 </div>
               </div>
             )}
@@ -381,6 +352,8 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
 interface ResponseWithModel {
   content: string;
   model?: string;  // Format: "provider/model-id"
+  toolUse?: import('../types').ToolUse[];
+  skillUse?: import('../types').SkillUse[];
 }
 
 interface MessageGroup {
@@ -406,6 +379,8 @@ function groupMessagesByPrompt(messages: Conversation['messages'], modelCount: n
           responses.push({
             content: nextMsg.content,
             model: nextMsg.model,
+            toolUse: nextMsg.toolUse,
+            skillUse: nextMsg.skillUse,
           });
         }
       }
