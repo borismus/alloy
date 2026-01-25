@@ -6,10 +6,8 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { Conversation, Message, ModelInfo, ProviderType, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { ModelSelector } from './ModelSelector';
-import { ToolUseIndicator } from './ToolUseIndicator';
-import { SkillUseIndicator } from './SkillUseIndicator';
 import { FindInConversation, FindInConversationHandle } from './FindInConversation';
-import { SkillUse } from '../types';
+import { AgentResponseView } from './AgentResponseView';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
 
@@ -34,33 +32,16 @@ const markdownComponents: Components = {
   ),
 };
 
-interface MessageItemProps {
+interface UserMessageProps {
   message: Message;
-  assistantName: string;
   imageUrls: Record<string, string>;
 }
 
-const MessageItem = React.memo(({ message, assistantName, imageUrls }: MessageItemProps) => {
-  if (message.role === 'log') {
-    return (
-      <div className="message log">
-        <div className="log-content">{message.content}</div>
-      </div>
-    );
-  }
-
+// UserMessage handles user messages with image attachments
+const UserMessage = React.memo(({ message, imageUrls }: UserMessageProps) => {
   return (
-    <div className={`message ${message.role}`}>
-      <div className="message-role">
-        {message.role === 'user' ? 'You' : assistantName}
-      </div>
+    <div className="message user">
       <div className="message-content">
-        {message.skillUse && message.skillUse.length > 0 && (
-          <SkillUseIndicator skillUse={message.skillUse} />
-        )}
-        {message.toolUse && message.toolUse.length > 0 && (
-          <ToolUseIndicator toolUse={message.toolUse} isStreaming={false} />
-        )}
         {message.attachments?.filter(a => a.type === 'image').map((attachment) => (
           <div key={attachment.path} className="message-image">
             {imageUrls[attachment.path] && (
@@ -75,6 +56,13 @@ const MessageItem = React.memo(({ message, assistantName, imageUrls }: MessageIt
     </div>
   );
 });
+
+// LogMessage handles system log messages
+const LogMessage = React.memo(({ message }: { message: Message }) => (
+  <div className="message log">
+    <div className="log-content">{message.content}</div>
+  </div>
+));
 
 export interface PendingImage {
   data: Uint8Array;
@@ -474,53 +462,42 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           if (isLastMessage && message.role === 'assistant' && streamingContent) {
             return null;
           }
+
+          if (message.role === 'log') {
+            return <LogMessage key={`${conversation.id}-${index}`} message={message} />;
+          }
+
+          if (message.role === 'user') {
+            return (
+              <UserMessage
+                key={`${conversation.id}-${index}`}
+                message={message}
+                imageUrls={imageUrls}
+              />
+            );
+          }
+
+          // Assistant messages use AgentResponseView
           return (
-            <MessageItem
+            <AgentResponseView
               key={`${conversation.id}-${index}`}
-              message={message}
-              assistantName={assistantName}
-              imageUrls={imageUrls}
+              content={message.content}
+              status="complete"
+              toolUses={message.toolUse}
+              skillUses={message.skillUse}
+              headerContent={assistantName}
             />
           );
         })}
 
-        {showStreamingMessage && !streamingContent && (
-          <div className="message assistant thinking">
-            <div className="message-role">{assistantName}</div>
-            <div className="message-content">
-              <div className="thinking-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          </div>
+        {showStreamingMessage && (
+          <AgentResponseView
+            content={streamingContent || ''}
+            status={streamingContent ? 'streaming' : 'pending'}
+            toolUses={streamingToolUse}
+            headerContent={assistantName}
+          />
         )}
-
-        {showStreamingMessage && streamingContent && (() => {
-          // Derive skill use from use_skill tool calls
-          const streamingSkillUse: SkillUse[] = streamingToolUse
-            .filter(t => t.type === 'use_skill')
-            .map(t => ({ name: (t.input?.name as string) || 'skill' }));
-          // Filter out use_skill from displayed tools
-          const displayedStreamingToolUse = streamingToolUse.filter(t => t.type !== 'use_skill');
-          return (
-            <div className="message assistant streaming">
-              <div className="message-role">{assistantName}</div>
-              <div className="message-content">
-                {streamingSkillUse.length > 0 && (
-                  <SkillUseIndicator skillUse={streamingSkillUse} />
-                )}
-                {displayedStreamingToolUse.length > 0 && (
-                  <ToolUseIndicator toolUse={displayedStreamingToolUse} isStreaming={true} />
-                )}
-                <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
-                  {streamingContent}
-                </ReactMarkdown>
-              </div>
-            </div>
-          );
-        })()}
 
         <div ref={messagesEndRef} />
       </div>
