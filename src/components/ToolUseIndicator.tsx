@@ -69,10 +69,15 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
     <div className="tool-use-indicators">
       {toolUse.map((tool, idx) => {
         const labels = TOOL_LABELS[tool.type] || { active: tool.type, complete: tool.type };
-        const label = isStreaming ? labels.active : labels.complete;
+        const isToolComplete = !!tool.result || !isStreaming;
+        const label = isToolComplete ? labels.complete : labels.active;
 
         return (
-          <div key={idx} className={`tool-use-indicator ${tool.isError ? 'error' : ''}`}>
+          <div
+            key={idx}
+            className={`tool-use-indicator ${tool.isError ? 'error' : ''}`}
+            title={tool.isError && tool.result ? tool.result : undefined}
+          >
             <span className="tool-use-icon">
               <ToolIcon type={tool.type} />
             </span>
@@ -95,7 +100,7 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
                 {typeof tool.input?.recency === 'string' && ` (${tool.input.recency})`}
               </span>
             )}
-            {isStreaming && <span className="tool-use-spinner" />}
+            {isStreaming && !tool.result && <span className="tool-use-spinner" />}
           </div>
         );
       })}
