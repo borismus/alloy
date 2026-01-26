@@ -17,7 +17,12 @@
       "mcp__playwright__browser_take_screenshot",
       "Bash(npm run tauri:*)",
       "mcp__playwright__browser_close",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker run:*)"
     ]
   }
 }
