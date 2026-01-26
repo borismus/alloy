@@ -179,7 +179,7 @@ function AppContent() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSettings]);
+  }, [showSettings, config]);
 
   const loadVault = async (path: string) => {
     try {
