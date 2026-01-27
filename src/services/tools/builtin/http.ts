@@ -1,3 +1,4 @@
+import { fetch } from '@tauri-apps/plugin-http';
 import { ToolResult } from '../../../types/tools';
 import { vaultService } from '../../vault';
 

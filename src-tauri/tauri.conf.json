@@ -46,6 +46,7 @@
             "fs:allow-mkdir",
             "fs:allow-remove",
             "fs:allow-watch",
+            "fs:allow-stat",
             "shell:allow-execute",
             "opener:allow-open-path",
             "opener:allow-open-url",
@@ -92,6 +93,10 @@
             {
               "identifier": "fs:allow-watch",
               "allow": [{"path": "$HOME/**"}]
+            },
+            {
+              "identifier": "fs:allow-stat",
+              "allow": [{"path": "$HOME/**"}]
             }
           ]
         },
@@ -110,6 +115,18 @@
             },
             {
               "identifier": "opener:allow-open-url",
+              "allow": [{"url": "https://**"}, {"url": "http://**"}]
+            }
+          ]
+        },
+        {
+          "identifier": "http-scope",
+          "description": "HTTP access for external requests",
+          "windows": ["main"],
+          "permissions": [
+            "http:default",
+            {
+              "identifier": "http:allow-fetch",
               "allow": [{"url": "https://**"}, {"url": "http://**"}]
             }
           ]

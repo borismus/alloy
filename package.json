@@ -24,6 +24,7 @@
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-http": "^2",
     "js-yaml": "^4.1.1",
     "openai": "^6.16.0",
     "react": "^19.1.0",
