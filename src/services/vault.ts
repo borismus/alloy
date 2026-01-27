@@ -1,8 +1,8 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile, stat } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Conversation, Config, Attachment, ProviderType, formatModelId } from '../types';
+import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo } from '../types';
 
 export class VaultService {
   private vaultPath: string | null = null;
@@ -717,6 +717,73 @@ When the user asks to organize or consolidate their notes:
     }
 
     return null;
+  }
+
+  // Note handling methods
+
+  getNotesPath(): string | null {
+    if (!this.vaultPath) return null;
+    return `${this.vaultPath}/notes`;
+  }
+
+  async getNoteFilePath(filename: string): Promise<string | null> {
+    if (!this.vaultPath) return null;
+    return await join(this.vaultPath, 'notes', filename);
+  }
+
+  async deleteNote(filename: string): Promise<boolean> {
+    if (!this.vaultPath) return false;
+
+    const notePath = await join(this.vaultPath, 'notes', filename);
+    if (await exists(notePath)) {
+      await remove(notePath);
+      return true;
+    }
+    return false;
+  }
+
+  async loadNotes(): Promise<NoteInfo[]> {
+    if (!this.vaultPath) {
+      console.log('[VaultService] loadNotes: No vault path set');
+      return [];
+    }
+
+    const notesPath = await join(this.vaultPath, 'notes');
+    console.log('[VaultService] loadNotes: Looking in', notesPath);
+
+    // Auto-create notes directory if missing
+    if (!(await exists(notesPath))) {
+      await mkdir(notesPath, { recursive: true });
+      return [];
+    }
+
+    const entries = await readDir(notesPath);
+    const notes: NoteInfo[] = [];
+
+    for (const entry of entries) {
+      if (entry.name?.endsWith('.md')) {
+        const filePath = await join(notesPath, entry.name);
+
+        // Get file stats for modification time
+        const fileStat = await stat(filePath);
+        const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
+
+        // Read file content to check for skill markers
+        const content = await readTextFile(filePath);
+        const hasSkillContent = content.includes('&[[');
+
+        notes.push({
+          filename: entry.name,
+          lastModified,
+          hasSkillContent,
+        });
+      }
+    }
+
+    // Sort by lastModified descending (newest first)
+    const sortedNotes = notes.sort((a, b) => b.lastModified - a.lastModified);
+    console.log('[VaultService] loadNotes: Found', sortedNotes.length, 'notes:', sortedNotes.map(n => n.filename));
+    return sortedNotes;
   }
 
   async loadRawConfig(): Promise<string> {

@@ -1,5 +1,5 @@
 import { useState, useRef, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { Conversation, ModelInfo } from '../types';
+import { Conversation, ModelInfo, NoteInfo, SidebarTab } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Menu } from '@tauri-apps/api/menu';
@@ -112,6 +112,13 @@ interface SidebarProps {
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onDeleteConversation: (id: string) => void;
   onOpenTriggerManagement: () => void;
+  // Notes tab props
+  notes: NoteInfo[];
+  activeTab: SidebarTab;
+  selectedNoteFilename: string | null;
+  onSelectNote: (filename: string) => void;
+  onNewNotesChat: () => void;
+  onTabChange: (tab: SidebarTab) => void;
 }
 
 export interface SidebarHandle {
@@ -132,13 +139,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onRenameConversation,
   onDeleteConversation,
   onOpenTriggerManagement,
+  notes,
+  activeTab,
+  selectedNoteFilename,
+  onSelectNote,
+  onNewNotesChat,
+  onTabChange,
 }, ref) {
   const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
   const firedTriggerIds = firedTriggers.map(f => f.conversationId);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -183,15 +196,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     setRenameValue('');
   };
 
-  const confirmDelete = () => {
-    if (deletingId) {
-      onDeleteConversation(deletingId);
+  const confirmDelete = async () => {
+    if (deletingItem) {
+      if (deletingItem.type === 'conversation') {
+        onDeleteConversation(deletingItem.id);
+      } else if (deletingItem.type === 'note') {
+        await vaultService.deleteNote(deletingItem.id);
+      }
     }
-    setDeletingId(null);
+    setDeletingItem(null);
   };
 
   const cancelDelete = () => {
-    setDeletingId(null);
+    setDeletingItem(null);
   };
 
   const handleContextMenu = async (e: React.MouseEvent, conversationId: string) => {
@@ -213,7 +230,42 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           id: 'delete',
           text: 'Delete',
           action: () => {
-            setDeletingId(conversationId);
+            setDeletingItem({ type: 'conversation', id: conversationId });
+          }
+        },
+        {
+          id: 'reveal',
+          text: 'Reveal in Finder',
+          action: async () => {
+            try {
+              await revealItemInDir(filePath);
+            } catch (error) {
+              console.error('Failed to reveal file in Finder:', error);
+            }
+          }
+        }
+      ];
+
+      const menu = await Menu.new({ items: menuItems });
+      await menu.popup();
+    } catch (error) {
+      console.error('Failed to show context menu:', error);
+    }
+  };
+
+  const handleNoteContextMenu = async (e: React.MouseEvent, filename: string) => {
+    e.preventDefault();
+
+    const filePath = await vaultService.getNoteFilePath(filename);
+    if (!filePath) return;
+
+    try {
+      const menuItems = [
+        {
+          id: 'delete',
+          text: 'Delete',
+          action: () => {
+            setDeletingItem({ type: 'note', id: filename });
           }
         },
         {
@@ -350,6 +402,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return matchesTitle || hasMatchingMessage || matchesId;
   });
 
+  // Filter notes by search query (filename only)
+  const filteredNotes = notes.filter((note) => {
+    if (!searchQuery.trim()) return true;
+    return note.filename.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
   return (
     <div className="sidebar">
       <div className="search-box" data-tauri-drag-region>
@@ -357,7 +415,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Search conversations..."
+            placeholder={activeTab === 'chats' ? "Search conversations..." : "Search notes..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
@@ -381,6 +439,22 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         </button>
       </div>
 
+      <div className="sidebar-tabs">
+        <button
+          className={`sidebar-tab ${activeTab === 'chats' ? 'active' : ''}`}
+          onClick={() => onTabChange('chats')}
+        >
+          Chats
+        </button>
+        <button
+          className={`sidebar-tab ${activeTab === 'notes' ? 'active' : ''}`}
+          onClick={() => onTabChange('notes')}
+        >
+          Notes
+        </button>
+      </div>
+
+      {activeTab === 'chats' ? (
       <div className="conversations-list" ref={containerRef}>
         {filteredConversations.length === 0 && conversations.length === 0 ? (
           <div className="no-conversations">
@@ -444,6 +518,35 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           ))
         )}
       </div>
+      ) : (
+      <div className="notes-list">
+        {filteredNotes.length === 0 && notes.length === 0 ? (
+          <div className="no-conversations">
+            <p>No notes yet</p>
+            <p className="hint">Notes will appear here</p>
+          </div>
+        ) : filteredNotes.length === 0 ? (
+          <div className="no-conversations">
+            <p>No results found</p>
+            <p className="hint">Try a different search</p>
+          </div>
+        ) : (
+          filteredNotes.map((note) => (
+            <div
+              key={note.filename}
+              className={`note-item ${selectedNoteFilename === note.filename ? 'active' : ''}`}
+              onClick={() => onSelectNote(note.filename)}
+              onContextMenu={(e) => handleNoteContextMenu(e, note.filename)}
+            >
+              {note.hasSkillContent && (
+                <span className="skill-indicator" title="Contains AI content">●</span>
+              )}
+              <span className="note-title">{note.filename.replace(/\.md$/, '')}</span>
+            </div>
+          ))
+        )}
+      </div>
+      )}
 
       {renamingId && (
         <div className="rename-modal" onClick={cancelRename}>
@@ -475,11 +578,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         </div>
       )}
 
-      {deletingId && (
+      {deletingItem && (
         <div className="rename-modal" onClick={cancelDelete}>
           <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete Conversation</h3>
-            <p className="delete-warning">Are you sure you want to delete this conversation? This action cannot be undone.</p>
+            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : 'Note'}</h3>
+            <p className="delete-warning">
+              Are you sure you want to delete this {deletingItem.type}? This action cannot be undone.
+            </p>
             <div className="rename-buttons">
               <button onClick={cancelDelete} className="cancel-button">Cancel</button>
               <button onClick={confirmDelete} className="delete-button">Delete</button>
