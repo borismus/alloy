@@ -7,6 +7,30 @@
   position: relative;
 }
 
+.chat-nav-header {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.chat-nav-header .back-button {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: #666;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chat-nav-header .back-button:hover {
+  background: #e5e5e5;
+  color: #333;
+}
+
 /* CSS Custom Highlight API for find-in-conversation */
 ::highlight(search) {
   background-color: #fef08a;
@@ -123,6 +147,7 @@
   display: flex;
   gap: 4px;
   padding: 4px 0;
+  margin-top: 0.5rem;
 }
 
 .thinking-indicator span {
@@ -604,6 +629,57 @@
 .message.user .message-content a {
   color: white;
   text-decoration: underline;
+}
+
+/* Wiki-links - internal links to notes and conversations */
+.message-content a.wiki-link,
+.response-summary-content a.wiki-link {
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 0.125em 0.375em;
+  border-radius: 4px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.message-content a.wiki-link:hover,
+.response-summary-content a.wiki-link:hover {
+  background: #dbeafe;
+  text-decoration: none;
+}
+
+.message.user .message-content a.wiki-link {
+  color: #dbeafe;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.message.user .message-content a.wiki-link:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Provenance markers - style them subtly as superscript links */
+.message-content a.provenance-link,
+.response-summary-content a.provenance-link {
+  color: #888;
+  font-size: 0.7em;
+  vertical-align: super;
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.message-content a.provenance-link:hover,
+.response-summary-content a.provenance-link:hover {
+  opacity: 1;
+  color: #667eea;
+}
+
+.message.user .message-content a.provenance-link {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message.user .message-content a.provenance-link:hover {
+  color: white;
 }
 
 .message-content hr,

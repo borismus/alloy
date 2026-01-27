@@ -1,0 +1,211 @@
+.note-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: white;
+}
+
+.note-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.back-button {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: #666;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.back-button:hover {
+  background: #e5e5e5;
+  color: #333;
+}
+
+.note-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.note-content-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem;
+}
+
+.note-content {
+  max-width: 800px;
+  margin: 0 auto;
+  line-height: 1.7;
+  color: #333;
+}
+
+.note-content h1,
+.note-content h2,
+.note-content h3,
+.note-content h4,
+.note-content h5,
+.note-content h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  color: #222;
+}
+
+.note-content h1 { font-size: 1.75rem; }
+.note-content h2 { font-size: 1.5rem; }
+.note-content h3 { font-size: 1.25rem; }
+
+.note-content p {
+  margin: 0 0 1em 0;
+}
+
+.note-content ul,
+.note-content ol {
+  margin: 0 0 1em 0;
+  padding-left: 1.5em;
+}
+
+.note-content li {
+  margin-bottom: 0.25em;
+}
+
+.note-content code {
+  background: #f5f5f5;
+  padding: 0.125em 0.375em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.note-content pre {
+  background: #1e1e1e;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.note-content pre code {
+  background: none;
+  padding: 0;
+  color: #d4d4d4;
+}
+
+.note-content blockquote {
+  border-left: 4px solid #667eea;
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  background: #f8f9ff;
+  color: #555;
+}
+
+.note-content a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.note-content a:hover {
+  text-decoration: underline;
+}
+
+/* Wiki-links - internal links to notes and conversations */
+.note-content a.wiki-link {
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 0.125em 0.375em;
+  border-radius: 4px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.note-content a.wiki-link:hover {
+  background: #dbeafe;
+  text-decoration: none;
+}
+
+/* Provenance markers - style them subtly as superscript links */
+.note-content a.provenance-link {
+  color: #888;
+  font-size: 0.7em;
+  vertical-align: super;
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.note-content a.provenance-link:hover {
+  opacity: 1;
+  color: #667eea;
+}
+
+.note-input-area {
+  padding: 1rem 1.5rem 1.5rem;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.note-input-hint {
+  font-size: 0.8125rem;
+  color: #888;
+  margin-bottom: 0.75rem;
+  text-align: center;
+}
+
+.note-input-area .input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.note-input-area textarea {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  resize: none;
+  height: 44px;
+  max-height: 200px;
+  line-height: 1.4;
+  transition: border-color 0.15s;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.note-input-area textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.note-input-area .send-button {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: #667eea;
+  color: white;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.note-input-area .send-button:hover:not(:disabled) {
+  background: #5a6fd6;
+}
+
+.note-input-area .send-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}

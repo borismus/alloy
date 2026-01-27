@@ -7,6 +7,9 @@ export interface VaultWatcherCallbacks {
   onConversationModified: (id: string) => void;
   onMemoryChanged?: () => void;
   onConfigChanged: () => void;
+  onNoteAdded?: (filename: string) => void;
+  onNoteRemoved?: (filename: string) => void;
+  onNoteModified?: (filename: string) => void;
 }
 
 export interface UseVaultWatcherOptions {
@@ -123,6 +126,9 @@ export function useVaultWatcher(
           filePath.endsWith('.yaml');
         const isMemoryFile = filePath.endsWith('memory.md');
         const isConfigFile = filePath.endsWith('config.yaml');
+        const isNoteFile =
+          filePath.includes('/notes/') &&
+          filePath.endsWith('.md');
 
         // Skip .md files in conversations (auto-generated previews)
         if (filePath.includes('/conversations/') && filePath.endsWith('.md')) {
@@ -162,6 +168,28 @@ export function useVaultWatcher(
         } else if (isConfigFile) {
           if (eventType === 'modify' || eventType === 'create') {
             callbacksRef.current.onConfigChanged();
+          }
+        } else if (isNoteFile) {
+          const filename = filePath.split('/').pop() || '';
+          console.log('[VaultWatcher] Note event:', { eventType, filename, filePath });
+
+          // For rename events (macOS deletion), check if file still exists
+          let effectiveEventType = eventType;
+          if (eventType === 'rename') {
+            const fileExists = await exists(filePath);
+            effectiveEventType = fileExists ? 'modify' : 'remove';
+          }
+
+          switch (effectiveEventType) {
+            case 'create':
+              callbacksRef.current.onNoteAdded?.(filename);
+              break;
+            case 'remove':
+              callbacksRef.current.onNoteRemoved?.(filename);
+              break;
+            case 'modify':
+              callbacksRef.current.onNoteModified?.(filename);
+              break;
           }
         }
       }

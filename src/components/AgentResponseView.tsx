@@ -1,28 +1,11 @@
-import React from 'react';
-import ReactMarkdown, { Components } from 'react-markdown';
+import React, { useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { ToolUse, SkillUse } from '../types';
 import { ToolUseIndicator } from './ToolUseIndicator';
 import { SkillUseIndicator } from './SkillUseIndicator';
-
-// Custom link renderer that opens URLs in system browser
-const markdownComponents: Components = {
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      onClick={(e) => {
-        e.preventDefault();
-        if (href) {
-          openUrl(href);
-        }
-      }}
-    >
-      {children}
-    </a>
-  ),
-};
+import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
 
 const remarkPlugins = [remarkGfm];
 const rehypePlugins = [rehypeHighlight];
@@ -50,6 +33,10 @@ interface AgentResponseViewProps {
   className?: string;
   /** Custom header content (overrides modelName) */
   headerContent?: React.ReactNode;
+  /** Callback when a wiki-link to a note is clicked */
+  onNavigateToNote?: (noteFilename: string) => void;
+  /** Callback when a wiki-link to a conversation is clicked */
+  onNavigateToConversation?: (conversationId: string) => void;
 }
 
 /**
@@ -68,6 +55,8 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
   pendingText = 'Waiting...',
   className = '',
   headerContent,
+  onNavigateToNote,
+  onNavigateToConversation,
 }) => {
   // Use provided skillUses, or derive from use_skill tool calls
   const skillUses: SkillUse[] = skillUsesProp ?? toolUses
@@ -78,6 +67,15 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
   const displayedToolUses = toolUses.filter(t => t.type !== 'use_skill');
 
   const isStreaming = status === 'streaming';
+
+  // Process wiki-links in content
+  const processedContent = useMemo(() => processWikiLinks(content), [content]);
+
+  // Create markdown components with wiki-link handling
+  const markdownComponents = useMemo(
+    () => createMarkdownComponents({ onNavigateToNote, onNavigateToConversation }),
+    [onNavigateToNote, onNavigateToConversation]
+  );
 
   return (
     <div className={`response-summary status-${status} ${className}`}>
@@ -110,7 +108,7 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
             rehypePlugins={rehypePlugins}
             components={markdownComponents}
           >
-            {content}
+            {processedContent}
           </ReactMarkdown>
         )}
         {status === 'error' && (

@@ -5,7 +5,7 @@ import { skillRegistry } from './services/skills';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, SidebarTab } from './types';
 import { executeWithTools } from './services/tools/executor';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
@@ -17,6 +17,8 @@ import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import { TriggerConfigModal } from './components/TriggerConfigModal';
 import { TriggerManagementView } from './components/TriggerManagementView';
+import { NoteViewer } from './components/NoteViewer';
+import { readTextFile } from '@tauri-apps/plugin-fs';
 import './App.css';
 
 function AppContent() {
@@ -31,6 +33,15 @@ function AppContent() {
   const [showTriggerConfig, setShowTriggerConfig] = useState(false);
   const [showTriggerManagementView, setShowTriggerManagementView] = useState(false);
   const [editingTriggerConversation, setEditingTriggerConversation] = useState<Conversation | null>(null);
+  const [notes, setNotes] = useState<NoteInfo[]>([]);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chats');
+  const [selectedNote, setSelectedNote] = useState<{ filename: string; content: string } | null>(null);
+  const [noteModel, setNoteModel] = useState<string>('');
+  // Navigation history for back button support
+  type NavigationEntry =
+    | { type: 'note'; filename: string; content: string }
+    | { type: 'conversation'; id: string };
+  const [navigationHistory, setNavigationHistory] = useState<NavigationEntry[]>([]);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
   const councilChatInterfaceRef = useRef<CouncilChatInterfaceHandle>(null);
@@ -114,6 +125,13 @@ function AppContent() {
   }, []);
 
   const vaultPath = vaultService.getVaultPath();
+
+  // Note watcher callbacks - reload full list to maintain sort order and skill detection
+  const handleNoteChanged = useCallback(async () => {
+    const loadedNotes = await vaultService.loadNotes();
+    setNotes(loadedNotes);
+  }, []);
+
   const { markSelfWrite } = useVaultWatcher(
     {
       vaultPath,
@@ -124,6 +142,9 @@ function AppContent() {
       onConversationRemoved: handleConversationRemoved,
       onConversationModified: handleConversationModified,
       onConfigChanged: handleConfigChanged,
+      onNoteAdded: handleNoteChanged,
+      onNoteRemoved: handleNoteChanged,
+      onNoteModified: handleNoteChanged,
     }
   );
 
@@ -199,6 +220,11 @@ function AppContent() {
         const loadedConversations = await vaultService.loadConversations();
         setConversations(loadedConversations);
 
+        // Load notes from vault
+        const loadedNotes = await vaultService.loadNotes();
+        console.log('[App] Loaded notes:', loadedNotes.length, loadedNotes);
+        setNotes(loadedNotes);
+
         // Load skills from vault
         skillRegistry.setVaultPath(path);
         await skillRegistry.loadSkills();
@@ -240,24 +266,30 @@ function AppContent() {
     await loadVault(path);
   };
 
-  const handleNewConversation = () => {
-    // Pick a random favorite model, or fall back to default
-    let selectedModel: string;
+  // Helper to get a default model for new conversations
+  const getDefaultModel = (): string | null => {
     const favorites = config?.favoriteModels;
 
     if (favorites && favorites.length > 0) {
       // Pick a random favorite
-      selectedModel = favorites[Math.floor(Math.random() * favorites.length)];
-    } else {
-      // Fall back to default provider/model
-      const defaultProvider = providerRegistry.getDefaultProvider();
-      const defaultModel = providerRegistry.getDefaultModel();
+      return favorites[Math.floor(Math.random() * favorites.length)];
+    }
 
-      if (!defaultProvider || !defaultModel) {
-        alert('No provider configured. Please add a provider in Settings.');
-        return;
-      }
-      selectedModel = formatModelId(defaultProvider, defaultModel);
+    // Fall back to default provider/model
+    const defaultProvider = providerRegistry.getDefaultProvider();
+    const defaultModel = providerRegistry.getDefaultModel();
+
+    if (!defaultProvider || !defaultModel) {
+      return null;
+    }
+    return formatModelId(defaultProvider, defaultModel);
+  };
+
+  const handleNewConversation = () => {
+    const model = getDefaultModel();
+    if (!model) {
+      alert('No provider configured. Please add a provider in Settings.');
+      return;
     }
 
     const now = new Date();
@@ -269,10 +301,76 @@ function AppContent() {
       id: `${date}-${time}-${hash}`,
       created: now.toISOString(),
       updated: now.toISOString(),
-      model: selectedModel,
+      model: model,
       messages: [],
     };
     setCurrentConversation(newConversation);
+  };
+
+  const handleSelectNote = async (filename: string, addToHistory = true) => {
+    const notesPath = vaultService.getNotesPath();
+    if (notesPath) {
+      const notePath = `${notesPath}/${filename}`;
+      try {
+        const content = await readTextFile(notePath);
+        // Push current view to history before navigating
+        if (addToHistory) {
+          if (selectedNote) {
+            setNavigationHistory(prev => [...prev, { type: 'note', filename: selectedNote.filename, content: selectedNote.content }]);
+          } else if (currentConversation) {
+            setNavigationHistory(prev => [...prev, { type: 'conversation', id: currentConversation.id }]);
+          }
+        }
+        // Clear conversation selection and switch to notes tab
+        setCurrentConversation(null);
+        setSidebarTab('notes');
+        setSelectedNote({ filename, content });
+        // Initialize model selection for the note viewer
+        setNoteModel(getDefaultModel() || '');
+      } catch (error) {
+        console.error('Failed to load note:', error);
+      }
+    }
+  };
+
+  const handleSendNoteMessage = (message: string, noteFilename: string, noteContent: string) => {
+    // Use the selected model from NoteViewer, or fall back to default
+    const model = noteModel || getDefaultModel();
+    if (!model) {
+      alert('No provider configured. Please add a provider in Settings.');
+      return;
+    }
+
+    // Create a new conversation with the note as context
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().slice(0, 5).replace(':', '');
+    const hash = Math.random().toString(16).slice(2, 6);
+    const noteTitle = noteFilename.replace(/\.md$/, '');
+
+    const newConversation: Conversation = {
+      id: `${date}-${time}-${hash}`,
+      title: `Re: ${noteTitle}`,
+      created: now.toISOString(),
+      updated: now.toISOString(),
+      model: model,
+      messages: [],
+    };
+
+    // Close the note viewer and switch to chats tab
+    setSelectedNote(null);
+    setSidebarTab('chats');
+    setCurrentConversation(newConversation);
+
+    // Prepend note context to the user's message
+    const contextMessage = `I'm looking at my note "${noteTitle}":\n\n---\n${noteContent}\n---\n\n${message}`;
+
+    // Send the message with note context
+    handleSendMessage(contextMessage, []);
+  };
+
+  const handleNewNotesChat = () => {
+    handleNewConversation();
   };
 
   const handleNewComparison = () => {
@@ -634,22 +732,52 @@ function AppContent() {
     }
   };
 
-  const handleSelectConversation = async (id: string) => {
+  const handleSelectConversation = async (id: string, addToHistory = true) => {
+    console.log('[App] handleSelectConversation called with id:', id);
     // Mark as read when user selects the conversation
     markAsRead(id);
 
-    // Close any open selectors/views
+    // Push current view to history before navigating
+    if (addToHistory) {
+      if (selectedNote) {
+        setNavigationHistory(prev => [...prev, { type: 'note', filename: selectedNote.filename, content: selectedNote.content }]);
+      } else if (currentConversation) {
+        setNavigationHistory(prev => [...prev, { type: 'conversation', id: currentConversation.id }]);
+      }
+    }
+
+    // Close any open selectors/views and clear note selection
     setShowTriggerManagementView(false);
     setShowComparisonSelector(false);
     setShowCouncilSelector(false);
+    setSelectedNote(null);
+    setSidebarTab('chats');
 
     const conversation = await vaultService.loadConversation(id);
+    console.log('[App] Loaded conversation:', conversation ? conversation.id : 'NOT FOUND');
     if (conversation) {
       // Migration is now handled in vault.ts migrateConversationFormat
       setCurrentConversation(conversation);
       setTimeout(() => {
         chatInterfaceRef.current?.focusInput();
       }, 0);
+    }
+  };
+
+  const handleGoBack = async () => {
+    if (navigationHistory.length === 0) return;
+
+    const previousEntry = navigationHistory[navigationHistory.length - 1];
+    setNavigationHistory(prev => prev.slice(0, -1));
+
+    if (previousEntry.type === 'note') {
+      // Navigate back to note without adding to history
+      setCurrentConversation(null);
+      setSidebarTab('notes');
+      setSelectedNote({ filename: previousEntry.filename, content: previousEntry.content });
+    } else if (previousEntry.type === 'conversation') {
+      // Navigate back to conversation without adding to history
+      await handleSelectConversation(previousEntry.id, false);
     }
   };
 
@@ -857,6 +985,12 @@ function AppContent() {
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
           onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
+          notes={notes}
+          activeTab={sidebarTab}
+          selectedNoteFilename={selectedNote?.filename || null}
+          onSelectNote={handleSelectNote}
+          onNewNotesChat={handleNewNotesChat}
+          onTabChange={setSidebarTab}
         />
       <div className="main-panel">
         {showTriggerManagementView ? (
@@ -898,6 +1032,23 @@ function AppContent() {
               onCancel={() => setShowCouncilSelector(false)}
             />
           </div>
+        ) : selectedNote ? (
+          <NoteViewer
+            filename={selectedNote.filename}
+            content={selectedNote.content}
+            onSendMessage={handleSendNoteMessage}
+            availableModels={availableModels}
+            selectedModel={noteModel}
+            onModelChange={setNoteModel}
+            favoriteModels={config?.favoriteModels}
+            onNavigateToNote={handleSelectNote}
+            onNavigateToConversation={(conversationId) => {
+              console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId);
+              handleSelectConversation(conversationId);
+            }}
+            conversations={conversations}
+            onGoBack={navigationHistory.length > 0 ? handleGoBack : undefined}
+          />
         ) : isCouncilConversation && currentConversation ? (
           <CouncilChatInterface
             ref={councilChatInterfaceRef}
@@ -923,6 +1074,13 @@ function AppContent() {
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
+            onNavigateToNote={(noteFilename) => {
+              // Switch to notes tab and open the note
+              setSidebarTab('notes');
+              handleSelectNote(noteFilename);
+            }}
+            onNavigateToConversation={handleSelectConversation}
+            onGoBack={navigationHistory.length > 0 ? handleGoBack : undefined}
           />
         )}
       </div>

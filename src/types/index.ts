@@ -163,3 +163,13 @@ export interface ConversationStreamingState {
   streamingToolUse?: ToolUse[];
   error?: string;
 }
+
+// Sidebar tab type
+export type SidebarTab = 'chats' | 'notes';
+
+// Note metadata for sidebar display
+export interface NoteInfo {
+  filename: string;        // e.g., "my-note.md"
+  lastModified: number;    // Unix timestamp for sorting
+  hasSkillContent: boolean; // true if contains &[[...]] markers
+}
