@@ -70,7 +70,15 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
       {toolUse.map((tool, idx) => {
         const labels = TOOL_LABELS[tool.type] || { active: tool.type, complete: tool.type };
         const isToolComplete = !!tool.result || !isStreaming;
-        const label = isToolComplete ? labels.complete : labels.active;
+
+        // For web_search, include the query in the label
+        let label = isToolComplete ? labels.complete : labels.active;
+        if (tool.type === 'web_search' && typeof tool.input?.query === 'string') {
+          const query = tool.input.query.length > 40
+            ? tool.input.query.slice(0, 40) + '...'
+            : tool.input.query;
+          label = isToolComplete ? `Searched "${query}"` : `Searching "${query}"`;
+        }
 
         return (
           <div
@@ -94,11 +102,13 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
                 {tool.input.url.slice(0, 50)}
               </span>
             )}
-            {typeof tool.input?.query === 'string' && (
+            {tool.type !== 'web_search' && typeof tool.input?.query === 'string' && (
               <span className="tool-use-path">
                 {tool.input.query.slice(0, 50)}
-                {typeof tool.input?.recency === 'string' && ` (${tool.input.recency})`}
               </span>
+            )}
+            {tool.type === 'web_search' && typeof tool.input?.recency === 'string' && (
+              <span className="tool-use-path">({tool.input.recency})</span>
             )}
             {isStreaming && !tool.result && <span className="tool-use-spinner" />}
           </div>
