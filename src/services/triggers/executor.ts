@@ -24,13 +24,14 @@ function buildTriggerSystemPrompt(hasBaseline: boolean): string {
 
   const baselineInstructions = hasBaseline
     ? `A BASELINE from your last notification is provided below.
+The baseline is your last assistant message from when you previously triggered.
 Only trigger if the current state has MEANINGFULLY CHANGED from this baseline.
 Do NOT re-trigger for the same condition that was already reported.
 Compare the current data against the baseline to detect changes.`
     : `This is the FIRST CHECK - no baseline exists yet.
 Gather the current state and evaluate the condition.
 If the condition is already met, trigger and report it.
-Your response will become the baseline for future comparisons.`;
+Your assistant response will become the baseline for future comparisons.`;
 
   return `You are a trigger evaluation system that monitors conditions and notifies the user when they're met.
 
