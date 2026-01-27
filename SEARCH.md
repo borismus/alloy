@@ -29,6 +29,10 @@ search:
 server:
   secret_key: "promptbox-searxng-local"
   limiter: false
+  default_http_headers:
+    Access-Control-Allow-Origin: "*"
+    Access-Control-Allow-Methods: "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers: "Content-Type, Accept"
 ```
 
 ### 3. Start SearXNG
@@ -36,7 +40,7 @@ server:
 ```bash
 docker run -d \
   --name searxng \
-  -p 7731:8080 \
+  -p 8080:8080 \
   -v ~/.searxng:/etc/searxng \
   searxng/searxng
 ```
@@ -47,13 +51,13 @@ Add to your vault's `config.yaml`:
 
 ```yaml
 SEARCH_PROVIDER: searxng
-SEARXNG_URL: http://localhost:7731
+SEARXNG_URL: http://localhost:8080
 ```
 
 ### 5. Verify
 
 ```bash
-curl "http://localhost:7731/search?q=test&format=json"
+curl "http://localhost:8080/search?q=test&format=json"
 ```
 
 You should see JSON output with search results.
@@ -79,7 +83,7 @@ docker logs searxng
 **Container won't start:**
 ```bash
 docker rm -f searxng
-docker run -d --name searxng -p 7731:8080 -v ~/.searxng:/etc/searxng searxng/searxng
+docker run -d --name searxng -p 8080:8080 -v ~/.searxng:/etc/searxng searxng/searxng
 ```
 
 **JSON returns HTML error:**
