@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { openPath } from '@tauri-apps/plugin-opener';
-import { Conversation } from '../types';
+import { Trigger } from '../types';
 import { vaultService } from '../services/vault';
 import { useTriggerContext } from '../contexts/TriggerContext';
 import './TriggerManagementView.css';
 
 interface TriggerManagementViewProps {
-  triggeredConversations: Conversation[];
+  triggers: Trigger[];
   onNewTrigger: () => void;
-  onEditTrigger: (conversation: Conversation) => void;
-  onDeleteTrigger: (conversationId: string) => void;
-  onSelectTrigger: (conversationId: string) => void;
+  onEditTrigger: (trigger: Trigger) => void;
+  onDeleteTrigger: (triggerId: string) => void;
+  onSelectTrigger: (triggerId: string) => void;
 }
 
 function formatInterval(minutes: number): string {
@@ -36,7 +36,7 @@ function formatTimeAgo(isoString?: string): string {
 }
 
 export function TriggerManagementView({
-  triggeredConversations,
+  triggers,
   onNewTrigger,
   onEditTrigger,
   onDeleteTrigger,
@@ -46,38 +46,39 @@ export function TriggerManagementView({
   const [runningTriggers, setRunningTriggers] = useState<Set<string>>(new Set());
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const handleViewYaml = async (conversationId: string) => {
+  const handleViewYaml = async (triggerId: string) => {
     try {
-      const filePath = await vaultService.getConversationFilePath(conversationId);
-      if (filePath) {
+      const vaultPath = vaultService.getVaultPath();
+      if (vaultPath) {
+        const { join } = await import('@tauri-apps/api/path');
+        const filePath = await join(vaultPath, 'triggers', `${triggerId}.yaml`);
         await openPath(filePath);
       }
     } catch (error) {
-      console.error('Failed to open conversation file:', error);
+      console.error('Failed to open trigger file:', error);
     }
   };
 
-  const handleRunNow = async (conversation: Conversation) => {
-    if (!conversation.trigger) return;
-
-    setRunningTriggers(prev => new Set(prev).add(conversation.id));
+  const handleRunNow = async (trigger: Trigger) => {
+    setRunningTriggers(prev => new Set(prev).add(trigger.id));
 
     try {
       const { triggerScheduler } = await import('../services/triggers/scheduler');
-      await triggerScheduler.manualCheck(conversation);
+      // Cast trigger to Conversation-like shape for scheduler compatibility
+      await triggerScheduler.manualCheck(trigger as any);
     } catch (error) {
       console.error('Failed to run trigger:', error);
     } finally {
       setRunningTriggers(prev => {
         const next = new Set(prev);
-        next.delete(conversation.id);
+        next.delete(trigger.id);
         return next;
       });
     }
   };
 
-  const handleDelete = (conversationId: string) => {
-    onDeleteTrigger(conversationId);
+  const handleDelete = (triggerId: string) => {
+    onDeleteTrigger(triggerId);
     setDeleteConfirmId(null);
   };
 
@@ -91,48 +92,48 @@ export function TriggerManagementView({
       </div>
 
       <div className="trigger-management-view-content">
-        {triggeredConversations.length === 0 ? (
+        {triggers.length === 0 ? (
           <div className="no-triggers">
             <p>No triggers configured yet.</p>
             <p className="hint">Triggers automatically run prompts on a schedule.</p>
           </div>
         ) : (
           <div className="trigger-list">
-            {triggeredConversations.map(conv => {
-              const trigger = conv.trigger!;
-              const isRunning = runningTriggers.has(conv.id) || activeChecks.includes(conv.id);
-              const isDeleting = deleteConfirmId === conv.id;
-              const hasFired = trigger.lastTriggered !== undefined;
+            {triggers.map(trigger => {
+              const triggerConfig = trigger.trigger;
+              const isRunning = runningTriggers.has(trigger.id) || activeChecks.includes(trigger.id);
+              const isDeleting = deleteConfirmId === trigger.id;
+              const hasFired = triggerConfig.lastTriggered !== undefined;
 
               return (
-                <div key={conv.id} className="trigger-item">
+                <div key={trigger.id} className="trigger-item">
                   <div className="trigger-item-header">
                     <span
                       className={`trigger-name ${hasFired ? 'clickable' : ''}`}
-                      onClick={() => hasFired && onSelectTrigger(conv.id)}
-                      title={hasFired ? 'View conversation' : 'Not yet triggered'}
+                      onClick={() => hasFired && onSelectTrigger(trigger.id)}
+                      title={hasFired ? 'View trigger history' : 'Not yet triggered'}
                     >
-                      {conv.title || 'Untitled'}
+                      {trigger.title || 'Untitled'}
                     </span>
-                    <span className={`trigger-status ${trigger.enabled ? 'enabled' : 'disabled'}`}>
-                      {trigger.enabled ? 'Enabled' : 'Disabled'}
+                    <span className={`trigger-status ${triggerConfig.enabled ? 'enabled' : 'disabled'}`}>
+                      {triggerConfig.enabled ? 'Enabled' : 'Disabled'}
                     </span>
-                    <span className="trigger-interval">{formatInterval(trigger.intervalMinutes)}</span>
+                    <span className="trigger-interval">{formatInterval(triggerConfig.intervalMinutes)}</span>
                   </div>
                   <div className="trigger-item-meta">
-                    <span>Last checked: {formatTimeAgo(trigger.lastChecked)}</span>
-                    <span>Last triggered: {formatTimeAgo(trigger.lastTriggered)}</span>
+                    <span>Last checked: {formatTimeAgo(triggerConfig.lastChecked)}</span>
+                    <span>Last triggered: {formatTimeAgo(triggerConfig.lastTriggered)}</span>
                   </div>
                   <div className="trigger-item-actions">
                     <button
                       className="btn-small"
-                      onClick={() => onEditTrigger(conv)}
+                      onClick={() => onEditTrigger(trigger)}
                     >
                       Edit
                     </button>
                     <button
                       className="btn-small"
-                      onClick={() => handleViewYaml(conv.id)}
+                      onClick={() => handleViewYaml(trigger.id)}
                     >
                       View YAML
                     </button>
@@ -140,7 +141,7 @@ export function TriggerManagementView({
                       <>
                         <button
                           className="btn-small btn-danger"
-                          onClick={() => handleDelete(conv.id)}
+                          onClick={() => handleDelete(trigger.id)}
                         >
                           Confirm
                         </button>
@@ -154,14 +155,14 @@ export function TriggerManagementView({
                     ) : (
                       <button
                         className="btn-small"
-                        onClick={() => setDeleteConfirmId(conv.id)}
+                        onClick={() => setDeleteConfirmId(trigger.id)}
                       >
                         Delete
                       </button>
                     )}
                     <button
                       className="btn-small btn-accent"
-                      onClick={() => handleRunNow(conv)}
+                      onClick={() => handleRunNow(trigger)}
                       disabled={isRunning}
                     >
                       {isRunning ? 'Running...' : 'Run Now'}

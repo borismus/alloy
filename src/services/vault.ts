@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile, stat } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo } from '../types';
+import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger } from '../types';
 
 export class VaultService {
   private vaultPath: string | null = null;
@@ -238,6 +238,86 @@ When the user asks to organize or consolidate their notes:
 3. Only proceed with changes after user confirms
 `;
       await writeTextFile(await join(noteLinkerSkillPath, 'SKILL.md'), noteLinkerSkillMd);
+    }
+
+    // Create trigger skill
+    const createTriggerSkillPath = await join(skillsPath, 'create-trigger');
+    if (!(await exists(createTriggerSkillPath))) {
+      await mkdir(createTriggerSkillPath, { recursive: true });
+      const createTriggerSkillMd = `---
+name: create-trigger
+description: Create recurring background tasks that run on a schedule.
+---
+
+# Create Trigger Skill
+
+Help users set up recurring triggered tasks that run automatically in the background.
+
+## What is a Trigger?
+
+A trigger is a scheduled task that:
+1. Runs at a specified interval (e.g., every hour, daily, weekly)
+2. Evaluates a prompt you define
+3. Decides whether to respond based on conditions in the prompt
+4. Saves responses when triggered
+
+## Gathering Requirements
+
+When a user wants to create a trigger, gather this information:
+
+1. **Title**: A descriptive name (e.g., "Daily News Digest", "Bitcoin Price Alert")
+
+2. **Trigger Prompt**: What to check and when to respond
+   - Be specific about conditions that warrant a response
+   - Include any URLs or APIs to check
+   - Describe the desired output format
+
+3. **Interval**: How often should it run?
+   - Hourly: 60 minutes
+   - Every 6 hours: 360 minutes
+   - Daily: 1440 minutes
+   - Weekly: 10080 minutes
+
+4. **Model** (optional): Which AI model to use. If not specified, use the default.
+
+## Creating the Trigger
+
+Generate a unique ID and write the trigger YAML file:
+
+\`\`\`yaml
+id: "YYYY-MM-DD-HHMM-XXXX"  # Generate: date-time-4random_hex_chars
+created: "ISO_TIMESTAMP"
+updated: "ISO_TIMESTAMP"
+title: "User's Title"
+model: "provider/model-id"  # e.g., "anthropic/claude-sonnet-4-5-20250929"
+trigger:
+  enabled: true
+  triggerPrompt: "The prompt to evaluate..."
+  intervalMinutes: 60
+messages: []
+\`\`\`
+
+Use \`write_file\` with path \`triggers/{id}.yaml\` to create the trigger.
+
+## Example Trigger Prompts
+
+### News Digest (always responds)
+"Search for the top 5 technology news stories from today. Summarize each in 2-3 sentences. Always respond with the digest."
+
+### Price Alert (conditional)
+"Check the current Bitcoin price. Only respond if the price has changed more than 5% since the last check. Include the current price and percentage change."
+
+### Website Monitor (conditional)
+"Fetch https://example.com and check if the content has changed significantly. Only respond if you detect meaningful changes. Summarize what changed."
+
+## Tips for Good Prompts
+
+1. **Be explicit**: "Only respond if..." or "Always respond with..."
+2. **Include sources**: URLs, APIs, or search queries to use
+3. **Specify format**: How should the response be structured?
+4. **Match interval to data**: Don't check hourly if data changes daily
+`;
+      await writeTextFile(await join(createTriggerSkillPath, 'SKILL.md'), createTriggerSkillMd);
     }
   }
 
@@ -483,6 +563,128 @@ When the user asks to organize or consolidate their notes:
   }
 
   /**
+   * Load all triggers from the triggers/ directory.
+   * Excludes logs.yaml which is used for trigger execution history.
+   */
+  async loadTriggers(): Promise<Trigger[]> {
+    if (!this.vaultPath) return [];
+
+    const triggersPath = await join(this.vaultPath, 'triggers');
+
+    if (!(await exists(triggersPath))) {
+      return [];
+    }
+
+    const entries = await readDir(triggersPath);
+    const triggers: Trigger[] = [];
+
+    for (const entry of entries) {
+      // Skip logs.yaml and non-yaml files
+      if (!entry.name?.endsWith('.yaml') || entry.name === 'logs.yaml') {
+        continue;
+      }
+
+      try {
+        const filePath = await join(triggersPath, entry.name);
+        const content = await readTextFile(filePath);
+        const trigger = yaml.load(content) as Trigger;
+
+        // Basic validation - ensure required fields exist
+        if (trigger.id && trigger.trigger?.triggerPrompt) {
+          triggers.push(trigger);
+        }
+      } catch (error) {
+        console.error(`[VaultService] Failed to load trigger ${entry.name}:`, error);
+      }
+    }
+
+    // Sort by updated date, newest first
+    return triggers.sort((a, b) =>
+      new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
+    );
+  }
+
+  /**
+   * Find a trigger file by its ID, handling files with slugs in the filename.
+   */
+  async findTriggerFile(id: string): Promise<string | null> {
+    if (!this.vaultPath) return null;
+
+    const triggersPath = await join(this.vaultPath, 'triggers');
+    if (!(await exists(triggersPath))) return null;
+
+    const entries = await readDir(triggersPath);
+
+    for (const entry of entries) {
+      if (entry.name?.endsWith('.yaml') && entry.name !== 'logs.yaml') {
+        if (entry.name === `${id}.yaml` || entry.name.startsWith(`${id}-`)) {
+          return await join(triggersPath, entry.name);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Save a trigger to the triggers/ directory.
+   * Preserves existing filename if the trigger already exists.
+   */
+  async saveTrigger(trigger: Trigger): Promise<void> {
+    if (!this.vaultPath) return;
+
+    const triggersPath = await join(this.vaultPath, 'triggers');
+
+    if (!(await exists(triggersPath))) {
+      await mkdir(triggersPath, { recursive: true });
+    }
+
+    // Use existing file path if it exists (preserves slug)
+    const existingFile = await this.findTriggerFile(trigger.id);
+    const filePath = existingFile || await join(triggersPath, `${trigger.id}.yaml`);
+
+    await writeTextFile(filePath, yaml.dump(trigger));
+  }
+
+  /**
+   * Load a single trigger by ID.
+   */
+  async loadTrigger(id: string): Promise<Trigger | null> {
+    if (!this.vaultPath) return null;
+
+    const filePath = await this.findTriggerFile(id);
+
+    if (filePath) {
+      try {
+        const content = await readTextFile(filePath);
+        return yaml.load(content) as Trigger;
+      } catch (error) {
+        console.error(`[VaultService] Failed to load trigger ${id}:`, error);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Atomically update a trigger: load fresh from disk, apply update function, save back.
+   */
+  async updateTrigger(
+    id: string,
+    updateFn: (fresh: Trigger) => Trigger
+  ): Promise<Trigger | null> {
+    if (!this.vaultPath) return null;
+
+    const fresh = await this.loadTrigger(id);
+    if (!fresh) return null;
+
+    const updated = updateFn(fresh);
+    await this.saveTrigger(updated);
+
+    return updated;
+  }
+
+  /**
    * Migrate old conversation format to new unified model format.
    * Old format: { provider: "anthropic", model: "claude-sonnet-4-5-20250929" }
    * New format: { model: "anthropic/claude-sonnet-4-5-20250929" }
@@ -578,6 +780,11 @@ When the user asks to organize or consolidate their notes:
   async getConversationFilePath(id: string): Promise<string | null> {
     // Find file by core ID (handles files with slugs)
     return await this.findConversationFile(id);
+  }
+
+  async getTriggerFilePath(id: string): Promise<string | null> {
+    // Find file by core ID (handles files with slugs)
+    return await this.findTriggerFile(id);
   }
 
   generateSlug(title: string): string {
@@ -748,17 +955,32 @@ When the user asks to organize or consolidate their notes:
       return [];
     }
 
+    const notes: NoteInfo[] = [];
+
+    // Check for memory.md at vault root (always first)
+    const memoryPath = await join(this.vaultPath, 'memory.md');
+    if (await exists(memoryPath)) {
+      const fileStat = await stat(memoryPath);
+      const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
+      const content = await readTextFile(memoryPath);
+      const hasSkillContent = content.includes('&[[');
+      notes.push({
+        filename: 'memory.md',
+        lastModified,
+        hasSkillContent,
+      });
+    }
+
     const notesPath = await join(this.vaultPath, 'notes');
     console.log('[VaultService] loadNotes: Looking in', notesPath);
 
     // Auto-create notes directory if missing
     if (!(await exists(notesPath))) {
       await mkdir(notesPath, { recursive: true });
-      return [];
+      return notes; // Return just memory.md if notes dir is empty
     }
 
     const entries = await readDir(notesPath);
-    const notes: NoteInfo[] = [];
 
     for (const entry of entries) {
       if (entry.name?.endsWith('.md')) {
@@ -780,8 +1002,13 @@ When the user asks to organize or consolidate their notes:
       }
     }
 
-    // Sort by lastModified descending (newest first)
-    const sortedNotes = notes.sort((a, b) => b.lastModified - a.lastModified);
+    // Sort by lastModified descending (newest first), but keep memory.md at top
+    const sortedNotes = notes.sort((a, b) => {
+      // memory.md always comes first
+      if (a.filename === 'memory.md') return -1;
+      if (b.filename === 'memory.md') return 1;
+      return b.lastModified - a.lastModified;
+    });
     console.log('[VaultService] loadNotes: Found', sortedNotes.length, 'notes:', sortedNotes.map(n => n.filename));
     return sortedNotes;
   }

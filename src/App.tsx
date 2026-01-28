@@ -5,7 +5,7 @@ import { skillRegistry } from './services/skills';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, SidebarTab } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, SidebarTab, Trigger } from './types';
 import { executeWithTools } from './services/tools/executor';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
@@ -18,6 +18,7 @@ import { Settings } from './components/Settings';
 import { TriggerConfigModal } from './components/TriggerConfigModal';
 import { TriggerManagementView } from './components/TriggerManagementView';
 import { NoteViewer } from './components/NoteViewer';
+import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import './App.css';
 
@@ -25,6 +26,7 @@ function AppContent() {
   const [config, setConfig] = useState<Config | null>(null);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
@@ -78,41 +80,40 @@ function AppContent() {
     setCurrentConversation(prev => prev?.id === id ? updated : prev);
   }, []);
 
-  // Handler for trigger-updated conversations (called by TriggerContext)
-  // Uses atomic update to avoid overwriting concurrent edits (e.g., user edited trigger config)
-  const handleTriggerConversationUpdated = useCallback(async (updatedConversation: Conversation) => {
+  // Handler for trigger updates (called by TriggerContext)
+  // Uses atomic update to avoid overwriting concurrent edits
+  const handleTriggerUpdated = useCallback(async (updatedTrigger: Trigger) => {
     try {
       // Atomic read-modify-write: load fresh from disk, merge trigger updates, save
-      const merged = await vaultService.updateConversation(updatedConversation.id, (fresh) => ({
+      const merged = await vaultService.updateTrigger(updatedTrigger.id, (fresh) => ({
         ...fresh,
         // Apply the updated timestamp if messages were added
-        updated: updatedConversation.updated,
+        updated: updatedTrigger.updated,
         // Use messages from the update (trigger appends new messages)
-        messages: updatedConversation.messages,
-        // Merge trigger: preserve user-edited config, apply scheduler's runtime fields
-        trigger: fresh.trigger && updatedConversation.trigger ? {
+        messages: updatedTrigger.messages,
+        // Merge trigger config: preserve user-edited config, apply scheduler's runtime fields
+        trigger: {
           ...fresh.trigger, // Preserve config: prompts, models, interval, enabled
-          lastChecked: updatedConversation.trigger.lastChecked,
-          lastTriggered: updatedConversation.trigger.lastTriggered,
-          history: updatedConversation.trigger.history,
-        } : updatedConversation.trigger,
+          lastChecked: updatedTrigger.trigger.lastChecked,
+          lastTriggered: updatedTrigger.trigger.lastTriggered,
+          history: updatedTrigger.trigger.history,
+        },
       }));
 
       if (merged) {
         // Update state with the merged result
-        setConversations(prev =>
-          prev.map(c => c.id === merged.id ? merged : c)
+        setTriggers(prev =>
+          prev.map(t => t.id === merged.id ? merged : t)
             .sort((a, b) => new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime())
         );
-        setCurrentConversation(prev => prev?.id === merged.id ? merged : prev);
       }
     } catch (error) {
-      console.error('Error saving trigger-updated conversation:', error);
+      console.error('Error saving trigger update:', error);
     }
   }, []);
 
-  // Getter for conversations (used by TriggerProvider)
-  const getConversationsForTrigger = useCallback(() => conversations, [conversations]);
+  // Getter for triggers (used by TriggerProvider)
+  const getTriggers = useCallback(() => triggers, [triggers]);
 
   // Use ref to avoid circular dependency with loadVault
   const loadVaultRef = useRef<((path: string) => Promise<void>) | null>(null);
@@ -220,6 +221,10 @@ function AppContent() {
         const loadedConversations = await vaultService.loadConversations();
         setConversations(loadedConversations);
 
+        // Load triggers from triggers/ directory
+        const loadedTriggers = await vaultService.loadTriggers();
+        setTriggers(loadedTriggers);
+
         // Load notes from vault
         const loadedNotes = await vaultService.loadNotes();
         console.log('[App] Loaded notes:', loadedNotes.length, loadedNotes);
@@ -308,9 +313,13 @@ function AppContent() {
   };
 
   const handleSelectNote = async (filename: string, addToHistory = true) => {
+    const vaultPathStr = vaultService.getVaultPath();
     const notesPath = vaultService.getNotesPath();
-    if (notesPath) {
-      const notePath = `${notesPath}/${filename}`;
+    if (vaultPathStr && notesPath) {
+      // memory.md is at vault root, other notes are in notes/
+      const notePath = filename === 'memory.md'
+        ? `${vaultPathStr}/${filename}`
+        : `${notesPath}/${filename}`;
       try {
         const content = await readTextFile(notePath);
         // Push current view to history before navigating
@@ -753,7 +762,18 @@ function AppContent() {
     setSelectedNote(null);
     setSidebarTab('chats');
 
-    const conversation = await vaultService.loadConversation(id);
+    // First try loading as a regular conversation
+    let conversation = await vaultService.loadConversation(id);
+
+    // If not found, try loading as a trigger (triggers are in triggers/ directory)
+    if (!conversation) {
+      const trigger = await vaultService.loadTrigger(id);
+      if (trigger) {
+        // Cast trigger to Conversation for display
+        conversation = trigger as unknown as Conversation;
+      }
+    }
+
     console.log('[App] Loaded conversation:', conversation ? conversation.id : 'NOT FOUND');
     if (conversation) {
       // Migration is now handled in vault.ts migrateConversationFormat
@@ -865,35 +885,24 @@ function AppContent() {
   const isComparisonConversation = currentConversation?.comparison !== undefined;
   const isCouncilConversation = currentConversation?.council !== undefined;
 
-  // Separate triggered conversations from regular ones
-  const triggeredConversations = conversations.filter(c => c.trigger !== undefined);
+  // Triggers are now loaded separately from conversations
   const regularConversations = conversations;
 
-  // Handle removing a trigger from a conversation
-  const handleRemoveTrigger = async (conversationId: string) => {
-    const vaultPathForRemove = vaultService.getVaultPath();
-    if (!vaultPathForRemove) return;
+  // Handle deleting a trigger
+  const handleDeleteTrigger = async (triggerId: string) => {
+    const vaultPathForDelete = vaultService.getVaultPath();
+    if (!vaultPathForDelete) return;
 
     try {
-      // Atomic read-modify-write to avoid race conditions
-      const updated = await vaultService.updateConversation(conversationId, (fresh) => {
-        const { trigger: _, ...withoutTrigger } = fresh;
-        return withoutTrigger as Conversation;
-      });
+      const { remove } = await import('@tauri-apps/plugin-fs');
+      const { join } = await import('@tauri-apps/api/path');
+      const triggerPath = await join(vaultPathForDelete, 'triggers', `${triggerId}.yaml`);
+      await remove(triggerPath);
 
-      if (updated) {
-        const filename = vaultService.generateFilename(updated.id, updated.title);
-        const filePath = `${vaultPathForRemove}/conversations/${filename}`;
-        markSelfWrite(filePath);
-
-        // Update state with the result
-        setConversations(prev => prev.map(c => c.id === conversationId ? updated : c));
-        if (currentConversation?.id === conversationId) {
-          setCurrentConversation(updated);
-        }
-      }
+      // Update state
+      setTriggers(prev => prev.filter(t => t.id !== triggerId));
     } catch (error) {
-      console.error('Error removing trigger:', error);
+      console.error('Error deleting trigger:', error);
     }
   };
 
@@ -965,14 +974,16 @@ function AppContent() {
 
   return (
     <TriggerProvider
-      getConversations={getConversationsForTrigger}
-      onConversationUpdated={handleTriggerConversationUpdated}
+      getTriggers={getTriggers}
+      onTriggerUpdated={handleTriggerUpdated}
       vaultPath={vaultPath}
     >
+      <UpdateChecker />
       <div className="app">
         <Sidebar
           ref={sidebarRef}
           conversations={regularConversations}
+          triggers={triggers}
           currentConversationId={currentConversation?.id || null}
           streamingConversationIds={getStreamingConversationIds()}
           unreadConversationIds={getUnreadConversationIds()}
@@ -984,6 +995,7 @@ function AppContent() {
           onNewTrigger={() => setShowTriggerConfig(true)}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
+          onDeleteTrigger={handleDeleteTrigger}
           onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
           notes={notes}
           activeTab={sidebarTab}
@@ -996,21 +1008,22 @@ function AppContent() {
         {showTriggerManagementView ? (
           <div className="main-content">
             <TriggerManagementView
-              triggeredConversations={triggeredConversations}
+              triggers={triggers}
               onNewTrigger={() => {
                 setShowTriggerManagementView(false);
                 setEditingTriggerConversation(null);
                 setShowTriggerConfig(true);
               }}
-              onEditTrigger={(conv) => {
+              onEditTrigger={(trigger) => {
                 setShowTriggerManagementView(false);
-                setEditingTriggerConversation(conv);
+                // Convert trigger to conversation-like shape for editing
+                setEditingTriggerConversation(trigger as unknown as Conversation);
                 setShowTriggerConfig(true);
               }}
-              onDeleteTrigger={handleRemoveTrigger}
-              onSelectTrigger={(conversationId) => {
+              onDeleteTrigger={handleDeleteTrigger}
+              onSelectTrigger={() => {
+                // TODO: Open trigger view
                 setShowTriggerManagementView(false);
-                handleSelectConversation(conversationId);
               }}
             />
           </div>

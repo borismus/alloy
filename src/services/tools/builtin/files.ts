@@ -3,6 +3,7 @@ import { vaultService } from '../../vault';
 import { ToolRegistry } from '../registry';
 import { readTextFile, writeTextFile, exists, readDir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
+import yaml from 'js-yaml';
 
 // Directory permission configuration
 // Defines which directories the AI can read from and write to
@@ -16,6 +17,7 @@ const DIRECTORY_PERMISSIONS: DirectoryPermission[] = [
   { path: 'notes/', read: true, write: true },
   { path: 'skills/', read: true, write: true },
   { path: 'conversations/', read: true, write: false },
+  { path: 'triggers/', read: true, write: true },
 ];
 
 /**
@@ -41,6 +43,64 @@ function checkPathPermission(relativePath: string, operation: 'read' | 'write'):
 
   // Deny by default for unlisted directories
   return false;
+}
+
+/**
+ * Validate trigger YAML content before writing to triggers/ directory.
+ * Returns null if valid, or an error message if invalid.
+ */
+function validateTriggerYaml(content: string): string | null {
+  // Parse YAML
+  let data: unknown;
+  try {
+    data = yaml.load(content);
+  } catch (e) {
+    return `Invalid YAML syntax: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
+  if (!data || typeof data !== 'object') {
+    return 'Trigger file must be a YAML object';
+  }
+
+  const trigger = data as Record<string, unknown>;
+
+  // Check required top-level fields
+  if (!trigger.id || typeof trigger.id !== 'string') {
+    return 'Missing or invalid field: id (must be a string)';
+  }
+  if (!trigger.title || typeof trigger.title !== 'string') {
+    return 'Missing or invalid field: title (must be a string)';
+  }
+  if (!trigger.model || typeof trigger.model !== 'string') {
+    return 'Missing or invalid field: model (must be a string)';
+  }
+  if (!trigger.model.includes('/')) {
+    return 'Invalid model format: must be "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")';
+  }
+
+  // Check trigger config
+  if (!trigger.trigger || typeof trigger.trigger !== 'object') {
+    return 'Missing or invalid field: trigger (must be an object)';
+  }
+
+  const triggerConfig = trigger.trigger as Record<string, unknown>;
+
+  if (typeof triggerConfig.enabled !== 'boolean') {
+    return 'Missing or invalid field: trigger.enabled (must be a boolean)';
+  }
+  if (!triggerConfig.triggerPrompt || typeof triggerConfig.triggerPrompt !== 'string') {
+    return 'Missing or invalid field: trigger.triggerPrompt (must be a non-empty string)';
+  }
+  if (typeof triggerConfig.intervalMinutes !== 'number' || triggerConfig.intervalMinutes < 1) {
+    return 'Missing or invalid field: trigger.intervalMinutes (must be a positive number)';
+  }
+
+  // Check messages array exists (can be empty)
+  if (!Array.isArray(trigger.messages)) {
+    return 'Missing or invalid field: messages (must be an array)';
+  }
+
+  return null; // Valid
 }
 
 export async function executeFileTools(
@@ -140,6 +200,19 @@ async function writeFile(
       content: 'Missing required parameter: content',
       is_error: true,
     };
+  }
+
+  // Validate trigger YAML when writing to triggers/ directory
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  if (normalizedPath.startsWith('triggers/') && normalizedPath.endsWith('.yaml') && !normalizedPath.endsWith('logs.yaml')) {
+    const validationError = validateTriggerYaml(content);
+    if (validationError) {
+      return {
+        tool_use_id: '',
+        content: `Invalid trigger file: ${validationError}`,
+        is_error: true,
+      };
+    }
   }
 
   try {

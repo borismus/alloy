@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { Conversation, Message, TriggerAttempt } from '../types';
+import { Conversation, Message, TriggerAttempt, Trigger } from '../types';
 import { triggerScheduler } from '../services/triggers/scheduler';
 
 interface FiredTrigger {
@@ -23,33 +23,33 @@ const TriggerContext = createContext<TriggerContextValue | null>(null);
 
 interface TriggerProviderProps {
   children: React.ReactNode;
-  getConversations: () => Conversation[];
-  onConversationUpdated: (conversation: Conversation) => void;
+  getTriggers: () => Trigger[];
+  onTriggerUpdated: (trigger: Trigger) => void;
   vaultPath: string | null;
 }
 
 export function TriggerProvider({
   children,
-  getConversations,
-  onConversationUpdated,
+  getTriggers,
+  onTriggerUpdated,
   vaultPath,
 }: TriggerProviderProps) {
   const [isSchedulerRunning, setIsSchedulerRunning] = useState(false);
   const [activeChecks, setActiveChecks] = useState<string[]>([]);
   const [firedTriggers, setFiredTriggers] = useState<FiredTrigger[]>([]);
 
-  // Use ref to always have latest conversations
-  const getConversationsRef = useRef(getConversations);
-  getConversationsRef.current = getConversations;
+  // Use ref to always have latest triggers
+  const getTriggersRef = useRef(getTriggers);
+  getTriggersRef.current = getTriggers;
 
-  const onConversationUpdatedRef = useRef(onConversationUpdated);
-  onConversationUpdatedRef.current = onConversationUpdated;
+  const onTriggerUpdatedRef = useRef(onTriggerUpdated);
+  onTriggerUpdatedRef.current = onTriggerUpdated;
 
   const MAX_HISTORY_ENTRIES = 50;
 
-  // Helper to get fresh conversation data to avoid race conditions
-  const getFreshConversation = (conversationId: string): Conversation | undefined => {
-    return getConversationsRef.current().find(c => c.id === conversationId);
+  // Helper to get fresh trigger data to avoid race conditions
+  const getFreshTrigger = (triggerId: string): Trigger | undefined => {
+    return getTriggersRef.current().find(t => t.id === triggerId);
   };
 
   const addHistoryEntry = (trigger: Conversation['trigger'], attempt: TriggerAttempt): TriggerAttempt[] => {
@@ -61,14 +61,14 @@ export function TriggerProvider({
     if (isSchedulerRunning) return;
 
     triggerScheduler.start({
-      getConversations: () => getConversationsRef.current(),
+      getConversations: () => getTriggersRef.current() as Conversation[],
 
-      onTriggerFired: async (conversation, result) => {
-        // Re-fetch fresh conversation to avoid race conditions
-        const freshConversation = getFreshConversation(conversation.id);
-        if (!freshConversation?.trigger) return;
+      onTriggerFired: async (triggerDoc, result) => {
+        // Re-fetch fresh trigger to avoid race conditions
+        const freshTrigger = getFreshTrigger(triggerDoc.id);
+        if (!freshTrigger?.trigger) return;
 
-        const trigger = freshConversation.trigger;
+        const triggerConfig = freshTrigger.trigger;
         const now = new Date().toISOString();
 
         // Create history entry for this trigger firing
@@ -82,40 +82,40 @@ export function TriggerProvider({
         const triggerPromptMsg: Message = {
           role: 'user',
           timestamp: now,
-          content: trigger.triggerPrompt,
+          content: triggerConfig.triggerPrompt,
         };
 
         const triggerResponseMsg: Message = {
           role: 'assistant',
           timestamp: now,
           content: result.response,
-          model: trigger.model,
+          model: triggerConfig.model,
         };
 
-        // Update conversation with new messages, timestamps, and history
-        const updatedConversation: Conversation = {
-          ...freshConversation,
+        // Update trigger with new messages, timestamps, and history
+        const updatedTrigger: Trigger = {
+          ...freshTrigger,
           updated: now,
           messages: [
-            ...freshConversation.messages,
+            ...freshTrigger.messages,
             triggerPromptMsg,
             triggerResponseMsg,
           ],
           trigger: {
-            ...trigger,
+            ...triggerConfig,
             lastChecked: now,
             lastTriggered: now,
-            history: addHistoryEntry(trigger, historyEntry),
+            history: addHistoryEntry(triggerConfig, historyEntry),
           },
         };
 
-        await onConversationUpdatedRef.current(updatedConversation);
+        await onTriggerUpdatedRef.current(updatedTrigger);
 
         // Add to fired triggers list for UI notification
         setFiredTriggers((prev) => [
           {
-            conversationId: conversation.id,
-            conversationTitle: conversation.title,
+            conversationId: triggerDoc.id,
+            conversationTitle: triggerDoc.title,
             firedAt: now,
             reasoning: result.response.slice(0, 200),
           },
@@ -123,12 +123,12 @@ export function TriggerProvider({
         ]);
       },
 
-      onTriggerSkipped: async (conversation, result) => {
-        // Re-fetch fresh conversation to avoid race conditions
-        const freshConversation = getFreshConversation(conversation.id);
-        if (!freshConversation?.trigger) return;
+      onTriggerSkipped: async (triggerDoc, result) => {
+        // Re-fetch fresh trigger to avoid race conditions
+        const freshTrigger = getFreshTrigger(triggerDoc.id);
+        if (!freshTrigger?.trigger) return;
 
-        const trigger = freshConversation.trigger;
+        const triggerConfig = freshTrigger.trigger;
         const now = new Date().toISOString();
 
         const historyEntry: TriggerAttempt = {
@@ -137,35 +137,35 @@ export function TriggerProvider({
           reasoning: result.response,
         };
 
-        const updatedConversation: Conversation = {
-          ...freshConversation,
-          // Preserve the original updated timestamp so skipped triggers don't bump the conversation
-          updated: freshConversation.updated,
+        const updatedTrigger: Trigger = {
+          ...freshTrigger,
+          // Preserve the original updated timestamp so skipped triggers don't bump the trigger
+          updated: freshTrigger.updated,
           trigger: {
-            ...trigger,
+            ...triggerConfig,
             lastChecked: now,
-            history: addHistoryEntry(trigger, historyEntry),
+            history: addHistoryEntry(triggerConfig, historyEntry),
           },
         };
-        await onConversationUpdatedRef.current(updatedConversation);
+        await onTriggerUpdatedRef.current(updatedTrigger);
       },
 
-      onTriggerChecking: (conversationId) => {
-        setActiveChecks((prev) => [...prev, conversationId]);
+      onTriggerChecking: (triggerId) => {
+        setActiveChecks((prev) => [...prev, triggerId]);
       },
 
-      onTriggerCheckComplete: (conversationId) => {
-        setActiveChecks((prev) => prev.filter((id) => id !== conversationId));
+      onTriggerCheckComplete: (triggerId) => {
+        setActiveChecks((prev) => prev.filter((id) => id !== triggerId));
       },
 
-      onError: async (conversation, error) => {
+      onError: async (triggerDoc, error) => {
         console.error('Trigger check error:', error);
 
-        // Re-fetch fresh conversation to avoid race conditions
-        const freshConversation = getFreshConversation(conversation.id);
-        if (!freshConversation?.trigger) return;
+        // Re-fetch fresh trigger to avoid race conditions
+        const freshTrigger = getFreshTrigger(triggerDoc.id);
+        if (!freshTrigger?.trigger) return;
 
-        const trigger = freshConversation.trigger;
+        const triggerConfig = freshTrigger.trigger;
         const now = new Date().toISOString();
 
         const historyEntry: TriggerAttempt = {
@@ -175,16 +175,16 @@ export function TriggerProvider({
           error: error.message,
         };
 
-        const updatedConversation: Conversation = {
-          ...freshConversation,
-          updated: freshConversation.updated,
+        const updatedTrigger: Trigger = {
+          ...freshTrigger,
+          updated: freshTrigger.updated,
           trigger: {
-            ...trigger,
+            ...triggerConfig,
             lastChecked: now,
-            history: addHistoryEntry(trigger, historyEntry),
+            history: addHistoryEntry(triggerConfig, historyEntry),
           },
         };
-        await onConversationUpdatedRef.current(updatedConversation);
+        await onTriggerUpdatedRef.current(updatedTrigger);
       },
     });
 

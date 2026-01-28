@@ -124,6 +124,17 @@ export interface TriggerLogEntry {
   error?: string;
 }
 
+// Standalone trigger stored in triggers/ directory
+export interface Trigger {
+  id: string;
+  created: string;
+  updated: string;
+  title: string;
+  model: string;  // Format: "provider/model-id"
+  trigger: TriggerConfig;  // Required for triggers
+  messages: Message[];
+}
+
 export interface Conversation {
   id: string;
   created: string;

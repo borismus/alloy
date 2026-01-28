@@ -1,5 +1,5 @@
-import { useState, useRef, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { Conversation, ModelInfo, NoteInfo, SidebarTab } from '../types';
+import { useState, useRef, useLayoutEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
+import { Conversation, ModelInfo, NoteInfo, SidebarTab, Trigger } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Menu } from '@tauri-apps/api/menu';
@@ -100,6 +100,7 @@ function useFLIPAnimation(items: Conversation[]) {
 
 interface SidebarProps {
   conversations: Conversation[];
+  triggers: Trigger[];
   currentConversationId: string | null;
   streamingConversationIds: string[];
   unreadConversationIds: string[];
@@ -111,6 +112,7 @@ interface SidebarProps {
   onNewTrigger: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onDeleteConversation: (id: string) => void;
+  onDeleteTrigger: (id: string) => void;
   onOpenTriggerManagement: () => void;
   // Notes tab props
   notes: NoteInfo[];
@@ -127,6 +129,7 @@ export interface SidebarHandle {
 
 export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar({
   conversations,
+  triggers,
   currentConversationId,
   streamingConversationIds,
   unreadConversationIds,
@@ -138,12 +141,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onNewTrigger,
   onRenameConversation,
   onDeleteConversation,
+  onDeleteTrigger,
   onOpenTriggerManagement,
   notes,
   activeTab,
   selectedNoteFilename,
   onSelectNote,
-  onNewNotesChat,
+  onNewNotesChat: _onNewNotesChat,
   onTabChange,
 }, ref) {
   const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
@@ -151,7 +155,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note'; id: string } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -200,6 +204,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     if (deletingItem) {
       if (deletingItem.type === 'conversation') {
         onDeleteConversation(deletingItem.id);
+      } else if (deletingItem.type === 'trigger') {
+        onDeleteTrigger(deletingItem.id);
       } else if (deletingItem.type === 'note') {
         await vaultService.deleteNote(deletingItem.id);
       }
@@ -214,37 +220,47 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const handleContextMenu = async (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault();
 
-    const filePath = await vaultService.getConversationFilePath(conversationId);
+    // Try conversation first, then trigger
+    let filePath = await vaultService.getConversationFilePath(conversationId);
+    const isTrigger = !filePath;
+    if (!filePath) {
+      filePath = await vaultService.getTriggerFilePath(conversationId);
+    }
     if (!filePath) return;
 
     try {
-      const menuItems = [
-        {
+      const menuItems = [];
+
+      // Rename is only available for conversations, not triggers
+      if (!isTrigger) {
+        menuItems.push({
           id: 'rename',
           text: 'Rename',
           action: () => {
             startRename(conversationId);
           }
-        },
-        {
-          id: 'delete',
-          text: 'Delete',
-          action: () => {
-            setDeletingItem({ type: 'conversation', id: conversationId });
-          }
-        },
-        {
-          id: 'reveal',
-          text: 'Reveal in Finder',
-          action: async () => {
-            try {
-              await revealItemInDir(filePath);
-            } catch (error) {
-              console.error('Failed to reveal file in Finder:', error);
-            }
+        });
+      }
+
+      menuItems.push({
+        id: 'delete',
+        text: 'Delete',
+        action: () => {
+          setDeletingItem({ type: isTrigger ? 'trigger' : 'conversation', id: conversationId });
+        }
+      });
+
+      menuItems.push({
+        id: 'reveal',
+        text: 'Reveal in Finder',
+        action: async () => {
+          try {
+            await revealItemInDir(filePath);
+          } catch (error) {
+            console.error('Failed to reveal file in Finder:', error);
           }
         }
-      ];
+      });
 
       const menu = await Menu.new({ items: menuItems });
       await menu.popup();
@@ -377,11 +393,25 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return slashIndex !== -1 ? modelString.slice(slashIndex + 1) : modelString;
   };
 
-  // First filter out trigger conversations that haven't fired yet
-  const visibleConversations = conversations.filter((conversation) => {
-    if (!conversation.trigger) return true;  // Show non-trigger conversations
-    return conversation.trigger.lastTriggered !== undefined;  // Only show triggers that have fired
-  });
+  // Combine conversations with triggers that have fired
+  // Triggers are stored separately but displayed in the same list
+  const visibleConversations = useMemo(() => {
+    // Regular conversations (no trigger field)
+    const regularConvs = conversations.filter(c => !c.trigger);
+
+    // Triggers that have fired (shown as conversations)
+    const firedTriggers = triggers
+      .filter(t => t.trigger.lastTriggered !== undefined)
+      .map(t => ({
+        ...t,
+        // Ensure trigger conversations have the trigger field for display logic
+      } as Conversation));
+
+    // Combine and sort by updated date
+    return [...regularConvs, ...firedTriggers].sort((a, b) =>
+      new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
+    );
+  }, [conversations, triggers]);
 
   const filteredConversations = visibleConversations.filter((conversation) => {
     if (!searchQuery.trim()) return true;
