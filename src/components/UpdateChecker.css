@@ -1,0 +1,92 @@
+.update-banner {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: white;
+  padding: 10px 16px;
+  font-size: 13px;
+}
+
+.update-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.update-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-icon {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.update-text {
+  font-weight: 500;
+}
+
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s;
+}
+
+.update-button:hover {
+  opacity: 0.9;
+}
+
+.update-button-primary {
+  background: white;
+  color: #4f46e5;
+}
+
+.update-button-secondary {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-bar {
+  width: 120px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: white;
+  border-radius: 3px;
+  transition: width 0.2s ease-out;
+}
+
+.progress-text {
+  font-size: 12px;
+  min-width: 36px;
+}
+
+.update-error {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.2);
+  border-radius: 4px;
+  font-size: 12px;
+}

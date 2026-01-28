@@ -50,7 +50,9 @@
             "shell:allow-execute",
             "opener:allow-open-path",
             "opener:allow-open-url",
-            "opener:allow-reveal-item-in-dir"
+            "opener:allow-reveal-item-in-dir",
+            "updater:default",
+            "process:allow-restart"
           ]
         },
         {
@@ -134,7 +136,14 @@
       ]
     }
   },
-  "plugins": {},
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/borismus/promptbox/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENFM0EzNjQ5NERDNjAxRDYKUldUV0FjWk5TVFk2emppalZVa0FmOXhBMytuWTQvTFFrdEJFZmgvdWFLTlR6SGZNN1JEdnZTQ2QK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
