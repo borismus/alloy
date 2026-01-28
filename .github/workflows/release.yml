@@ -62,7 +62,6 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
-          updaterJsonKeepUniversal: true
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -102,35 +101,109 @@ jobs:
         with:
           path: artifacts
 
-      - name: Download latest.json from release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Download latest.json from the draft release
-          gh release download ${{ github.ref_name }} \
-            --repo ${{ github.repository }} \
-            --pattern "latest.json" \
-            --dir deploy || echo "latest.json not found in release"
-
       - name: Flatten and collect files
         run: |
-          # Find and copy all binary files to deploy directory
-          find artifacts -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage" -o -name "*.AppImage.sig" -o -name "*.deb" -o -name "*.exe" -o -name "*.msi" -o -name "*.msi.sig" -o -name "*.nsis.zip" -o -name "*.nsis.zip.sig" \) -exec cp {} deploy/ \;
+          # Find and copy all binary and sig files to deploy directory
+          find artifacts -type f \( -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage" -o -name "*.AppImage.sig" -o -name "*.deb" -o -name "*.exe" -o -name "*.msi" -o -name "*.msi.sig" -o -name "*.nsis.zip" -o -name "*.nsis.zip.sig" \) -exec cp {} deploy/ \;
 
           # List what we're deploying
           echo "Files to deploy:"
           ls -la deploy/
 
-      - name: Rewrite URLs in latest.json
+      - name: Generate latest.json
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
-          if [ -f deploy/latest.json ]; then
-            # Replace GitHub release URLs with GitHub Pages URLs
-            sed -i 's|https://github.com/[^/]*/[^/]*/releases/download/[^/]*/|https://borismus.github.io/promptbox/|g' deploy/latest.json
-            echo "Updated latest.json:"
-            cat deploy/latest.json
-          else
-            echo "WARNING: latest.json not found!"
+          cd deploy
+          VERSION="${VERSION#v}"  # Remove 'v' prefix
+
+          # Start JSON
+          cat > latest.json << EOF
+          {
+            "version": "${VERSION}",
+            "notes": "See release notes on GitHub",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+          EOF
+
+          FIRST=true
+
+          # macOS ARM
+          if [ -f "Orchestra.app.tar.gz.sig" ] || ls *aarch64*.app.tar.gz.sig 2>/dev/null; then
+            SIG_FILE=$(ls *aarch64*.app.tar.gz.sig 2>/dev/null || echo "Orchestra.app.tar.gz.sig")
+            TAR_FILE="${SIG_FILE%.sig}"
+            if [ -f "$SIG_FILE" ]; then
+              SIG=$(cat "$SIG_FILE")
+              [ "$FIRST" = false ] && echo "," >> latest.json
+              FIRST=false
+              cat >> latest.json << EOF
+              "darwin-aarch64": {
+                "signature": "${SIG}",
+                "url": "https://borismus.github.io/promptbox/${TAR_FILE}"
+              }
+          EOF
+            fi
           fi
+
+          # macOS x64
+          if ls *x64*.app.tar.gz.sig 2>/dev/null || ls Orchestra_*_x64.app.tar.gz.sig 2>/dev/null; then
+            SIG_FILE=$(ls *x64*.app.tar.gz.sig 2>/dev/null | head -1)
+            TAR_FILE="${SIG_FILE%.sig}"
+            if [ -f "$SIG_FILE" ]; then
+              SIG=$(cat "$SIG_FILE")
+              [ "$FIRST" = false ] && echo "," >> latest.json
+              FIRST=false
+              cat >> latest.json << EOF
+              "darwin-x86_64": {
+                "signature": "${SIG}",
+                "url": "https://borismus.github.io/promptbox/${TAR_FILE}"
+              }
+          EOF
+            fi
+          fi
+
+          # Linux
+          if ls *.AppImage.sig 2>/dev/null; then
+            SIG_FILE=$(ls *.AppImage.sig | head -1)
+            APPIMAGE_FILE="${SIG_FILE%.sig}"
+            if [ -f "$SIG_FILE" ]; then
+              SIG=$(cat "$SIG_FILE")
+              [ "$FIRST" = false ] && echo "," >> latest.json
+              FIRST=false
+              cat >> latest.json << EOF
+              "linux-x86_64": {
+                "signature": "${SIG}",
+                "url": "https://borismus.github.io/promptbox/${APPIMAGE_FILE}"
+              }
+          EOF
+            fi
+          fi
+
+          # Windows (NSIS)
+          if ls *.nsis.zip.sig 2>/dev/null; then
+            SIG_FILE=$(ls *.nsis.zip.sig | head -1)
+            NSIS_FILE="${SIG_FILE%.sig}"
+            if [ -f "$SIG_FILE" ]; then
+              SIG=$(cat "$SIG_FILE")
+              [ "$FIRST" = false ] && echo "," >> latest.json
+              FIRST=false
+              cat >> latest.json << EOF
+              "windows-x86_64": {
+                "signature": "${SIG}",
+                "url": "https://borismus.github.io/promptbox/${NSIS_FILE}"
+              }
+          EOF
+            fi
+          fi
+
+          # Close JSON
+          cat >> latest.json << EOF
+            }
+          }
+          EOF
+
+          echo "Generated latest.json:"
+          cat latest.json
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
