@@ -10,37 +10,50 @@ export interface TriggerSchedulerCallbacks {
   onError: (conversation: Conversation, error: Error) => void;
 }
 
+// Use a global key to track the interval across HMR reloads
+const INTERVAL_KEY = '__triggerSchedulerIntervalId__';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getWindow = (): any => window;
+
 export class TriggerScheduler {
-  private intervalId: number | null = null;
   private checkIntervalMs = 60000; // Check every minute
   private activeChecks = new Set<string>();
   private isRunning = false;
   private callbacks: TriggerSchedulerCallbacks | null = null;
 
   start(callbacks: TriggerSchedulerCallbacks): void {
+    // Clean up any orphaned interval from HMR
+    const existingIntervalId = getWindow()[INTERVAL_KEY] as number | undefined;
+    if (existingIntervalId) {
+      window.clearInterval(existingIntervalId);
+      delete getWindow()[INTERVAL_KEY];
+    }
+
     if (this.isRunning) {
-      console.log('TriggerScheduler: Already running');
       return;
     }
 
     this.callbacks = callbacks;
     this.isRunning = true;
 
-    console.log('TriggerScheduler: Starting...');
+    console.log('TriggerScheduler: Started');
 
-    // Run initial check
-    this.runScheduledChecks();
-
-    // Then check every minute
-    this.intervalId = window.setInterval(() => {
+    // Don't run initial check - wait for the first interval to avoid
+    // firing triggers on app reload/refresh
+    const intervalId = window.setInterval(() => {
       this.runScheduledChecks();
     }, this.checkIntervalMs);
+
+    // Store on window to survive HMR
+    getWindow()[INTERVAL_KEY] = intervalId;
   }
 
   stop(): void {
-    if (this.intervalId !== null) {
-      window.clearInterval(this.intervalId);
-      this.intervalId = null;
+    const intervalId = getWindow()[INTERVAL_KEY] as number | undefined;
+    if (intervalId) {
+      window.clearInterval(intervalId);
+      delete getWindow()[INTERVAL_KEY];
     }
     this.isRunning = false;
     this.callbacks = null;
@@ -73,10 +86,6 @@ export class TriggerScheduler {
       (c) => c.trigger?.enabled
     );
 
-    console.log(
-      `TriggerScheduler: Checking ${triggeredConversations.length} triggered conversations`
-    );
-
     for (const conv of triggeredConversations) {
       const trigger = conv.trigger!;
 
@@ -85,7 +94,7 @@ export class TriggerScheduler {
       }
 
       if (this.activeChecks.has(conv.id)) {
-        console.log(`TriggerScheduler: Skipping ${conv.id}, already checking`);
+        console.log(`TriggerScheduler: Skipping ${conv.id}, LLM check already in progress`);
         continue;
       }
 
@@ -101,7 +110,7 @@ export class TriggerScheduler {
     this.callbacks?.onTriggerChecking(conversation.id);
 
     try {
-      console.log(`TriggerScheduler: Checking trigger for "${conversation.title}"`);
+      console.log(`TriggerScheduler: Executing LLM check for "${conversation.title}"`);
 
       // Pass conversation messages - executor extracts baseline based on triggerConfig.lastTriggered
       const messages = conversation.messages.filter(m => m.role !== 'log');
@@ -109,25 +118,25 @@ export class TriggerScheduler {
 
       if (result.result === 'triggered') {
         console.log(
-          `TriggerScheduler: Trigger FIRED for "${conversation.title}"`
+          `TriggerScheduler: LLM returned TRIGGERED for "${conversation.title}"`
         );
         await this.callbacks?.onTriggerFired(conversation, result);
       } else if (result.result === 'skipped') {
         console.log(
-          `TriggerScheduler: Trigger skipped for "${conversation.title}": ${result.response}`
+          `TriggerScheduler: LLM returned SKIPPED for "${conversation.title}": ${result.response}`
         );
         await this.callbacks?.onTriggerSkipped(conversation, result);
       } else {
         // result.result === 'error'
         console.error(
-          `TriggerScheduler: Trigger error for "${conversation.title}": ${result.error}`
+          `TriggerScheduler: LLM check failed for "${conversation.title}": ${result.error}`
         );
         this.callbacks?.onError(conversation, new Error(result.error || 'Unknown error'));
       }
 
       return result;
     } catch (error) {
-      console.error(`TriggerScheduler: Error checking "${conversation.title}":`, error);
+      console.error(`TriggerScheduler: LLM check error for "${conversation.title}":`, error);
       this.callbacks?.onError(conversation, error instanceof Error ? error : new Error('Unknown error'));
 
       return {

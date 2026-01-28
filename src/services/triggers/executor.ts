@@ -1,6 +1,16 @@
 import { Message, ProviderType, TriggerConfig, TriggerResult } from '../../types';
 import { providerRegistry } from '../providers/registry';
 import { executeWithTools, buildSystemPromptWithSkills } from '../tools/executor';
+import { truncateToTokenBudget } from '../context';
+
+// Max tokens for trigger context (baseline + prompt). Keeps costs low and focus high.
+const MAX_TRIGGER_CONTEXT_TOKENS = 4000;
+
+// Reserve tokens for system prompt, tool results buffer, and trigger prompt
+const RESERVED_TOKENS = 1500;
+
+// Max tokens available for baseline content
+const MAX_BASELINE_TOKENS = MAX_TRIGGER_CONTEXT_TOKENS - RESERVED_TOKENS;
 
 /**
  * Parse a "provider/model" string into its components.
@@ -104,12 +114,13 @@ export class TriggerExecutor {
 
     const messages: Message[] = [];
 
-    // Add baseline context if it exists
+    // Add baseline context if it exists (truncated to stay within token budget)
     if (baseline) {
+      const truncatedBaseline = truncateToTokenBudget(baseline, MAX_BASELINE_TOKENS);
       messages.push({
         role: 'user',
         timestamp: new Date().toISOString(),
-        content: `BASELINE (from your last notification):\n\n${baseline}`,
+        content: `BASELINE (from your last notification):\n\n${truncatedBaseline}`,
       });
       messages.push({
         role: 'assistant',
