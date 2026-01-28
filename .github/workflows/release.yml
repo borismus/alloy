@@ -15,12 +15,16 @@ jobs:
         include:
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
+            artifact-name: 'macos-arm'
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
+            artifact-name: 'macos-intel'
           - platform: 'ubuntu-22.04'
             args: ''
+            artifact-name: 'linux'
           - platform: 'windows-latest'
             args: ''
+            artifact-name: 'windows'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -58,3 +62,81 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+          updaterJsonKeepUniversal: true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: |
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.app.tar.gz
+            src-tauri/target/release/bundle/**/*.app.tar.gz.sig
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.AppImage.sig
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.msi.sig
+            src-tauri/target/release/bundle/**/*.nsis.zip
+            src-tauri/target/release/bundle/**/*.nsis.zip.sig
+            src-tauri/target/aarch64-apple-darwin/release/bundle/**/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/**/*.app.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/**/*.app.tar.gz.sig
+            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.app.tar.gz
+            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.app.tar.gz.sig
+          if-no-files-found: ignore
+
+      - name: Upload latest.json (Linux only)
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-json
+          path: latest.json
+          if-no-files-found: ignore
+
+  deploy-updater:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create deploy directory
+        run: mkdir -p deploy
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten and collect files
+        run: |
+          # Find and copy all binary files to deploy directory
+          find artifacts -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage" -o -name "*.AppImage.sig" -o -name "*.deb" -o -name "*.exe" -o -name "*.msi" -o -name "*.msi.sig" -o -name "*.nsis.zip" -o -name "*.nsis.zip.sig" \) -exec cp {} deploy/ \;
+
+          # Copy latest.json if it exists
+          if [ -f artifacts/latest-json/latest.json ]; then
+            cp artifacts/latest-json/latest.json deploy/
+          fi
+
+          # List what we're deploying
+          echo "Files to deploy:"
+          ls -la deploy/
+
+      - name: Rewrite URLs in latest.json
+        run: |
+          if [ -f deploy/latest.json ]; then
+            # Replace GitHub release URLs with GitHub Pages URLs
+            sed -i 's|https://github.com/[^/]*/[^/]*/releases/download/[^/]*/|https://borismus.github.io/promptbox/|g' deploy/latest.json
+            echo "Updated latest.json:"
+            cat deploy/latest.json
+          fi
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy
+          publish_branch: gh-pages
+          force_orphan: true
