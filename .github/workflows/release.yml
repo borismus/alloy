@@ -14,10 +14,10 @@ jobs:
       matrix:
         include:
           - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
+            args: '--target aarch64-apple-darwin --bundles app'
             artifact-name: 'macos-arm'
           - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
+            args: '--target x86_64-apple-darwin --bundles app'
             artifact-name: 'macos-intel'
           - platform: 'ubuntu-22.04'
             args: ''
