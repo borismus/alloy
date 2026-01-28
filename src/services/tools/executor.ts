@@ -3,6 +3,7 @@ import { ToolCall, ToolDefinition, BUILTIN_TOOLS } from '../../types/tools';
 import { ToolRound, IProviderService, ChatOptions } from '../providers/types';
 import { toolRegistry } from './registry';
 import { skillRegistry } from '../skills/registry';
+import { ContextManager } from '../context';
 
 export interface ToolExecutionOptions {
   maxIterations?: number;  // Default: 10 for chat, 5 for triggers
@@ -57,8 +58,20 @@ export async function executeWithTools(
     imageLoader,
   };
 
-  // Initial request
-  let result = await provider.sendMessage(messages, chatOptions);
+  // Apply context management - build from newest to oldest to fit budget
+  const contextManager = new ContextManager();
+  const budget = contextManager.calculateBudget(systemPrompt || '', tools);
+  const prepared = contextManager.prepareContext(messages, budget);
+
+  if (prepared.truncated) {
+    console.log(
+      `[Context] Dropped ${prepared.truncatedCount} old messages to fit ${budget.messages} token budget ` +
+      `(${prepared.estimatedTokens} tokens used)`
+    );
+  }
+
+  // Initial request with context-managed messages
+  let result = await provider.sendMessage(prepared.messages, chatOptions);
   let finalContent = result.content;
   if (result.toolUse) {
     allToolUses = [...allToolUses, ...result.toolUse];
@@ -119,7 +132,7 @@ export async function executeWithTools(
 
     // Send tool results back to the provider with full history
     result = await providerWithTools.sendMessageWithToolResults(
-      messages,
+      prepared.messages,
       toolHistory,
       chatOptions
     );
