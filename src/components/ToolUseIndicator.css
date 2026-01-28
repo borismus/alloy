@@ -37,6 +37,15 @@
   white-space: nowrap;
 }
 
+.tool-use-path.clickable {
+  color: #667eea;
+  cursor: pointer;
+}
+
+.tool-use-path.clickable:hover {
+  text-decoration: underline;
+}
+
 .tool-use-url {
   color: #667eea;
   font-size: 0.75rem;

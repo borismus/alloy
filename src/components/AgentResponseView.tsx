@@ -90,7 +90,11 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
           <SkillUseIndicator skillUse={skillUses} />
         )}
         {displayedToolUses.length > 0 && (
-          <ToolUseIndicator toolUse={displayedToolUses} isStreaming={isStreaming} />
+          <ToolUseIndicator
+            toolUse={displayedToolUses}
+            isStreaming={isStreaming}
+            onNavigateToNote={onNavigateToNote}
+          />
         )}
         {status === 'pending' && (
           <span className="waiting-text">{pendingText}</span>

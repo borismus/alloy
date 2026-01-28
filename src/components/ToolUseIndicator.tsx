@@ -6,6 +6,7 @@ import './ToolUseIndicator.css';
 interface ToolUseIndicatorProps {
   toolUse: ToolUse[];
   isStreaming?: boolean;
+  onNavigateToNote?: (noteFilename: string) => void;
 }
 
 const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: string }> = {
@@ -61,7 +62,8 @@ const ToolIcon: React.FC<{ type: string }> = ({ type }) => {
 
 export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
   toolUse,
-  isStreaming = false
+  isStreaming = false,
+  onNavigateToNote,
 }) => {
   if (toolUse.length === 0) return null;
 
@@ -90,7 +92,23 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
               <ToolIcon type={tool.type} />
             </span>
             <span className="tool-use-label">{label}</span>
-            {typeof tool.input?.path === 'string' && <span className="tool-use-path">{tool.input.path}</span>}
+            {typeof tool.input?.path === 'string' && (
+              tool.input.path.endsWith('.md') && onNavigateToNote ? (
+                <span
+                  className="tool-use-path clickable"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Strip notes/ prefix - handleSelectNote adds it back
+                    const filename = (tool.input!.path as string).replace(/^notes\//, '');
+                    onNavigateToNote(filename);
+                  }}
+                >
+                  {tool.input.path}
+                </span>
+              ) : (
+                <span className="tool-use-path">{tool.input.path}</span>
+              )
+            )}
             {typeof tool.input?.url === 'string' && (
               <span
                 className="tool-use-url"
