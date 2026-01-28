@@ -70,8 +70,6 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
 
   return {
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-      console.log('[wikiLinks] Rendering link:', { href, children });
-
       // Handle provenance markers (&[[...]]) - these always link to conversations
       if (href?.startsWith('provenance:')) {
         const target = href.replace('provenance:', '');
