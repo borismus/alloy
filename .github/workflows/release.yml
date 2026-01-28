@@ -14,16 +14,16 @@ jobs:
       matrix:
         include:
           - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin --bundles app'
+            args: '--target aarch64-apple-darwin --bundles macos'
             artifact-name: 'macos-arm'
           - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin --bundles app'
+            args: '--target x86_64-apple-darwin --bundles macos'
             artifact-name: 'macos-intel'
           - platform: 'ubuntu-22.04'
-            args: ''
+            args: '--bundles appimage'
             artifact-name: 'linux'
           - platform: 'windows-latest'
-            args: ''
+            args: '--bundles nsis'
             artifact-name: 'windows'
 
     runs-on: ${{ matrix.platform }}
