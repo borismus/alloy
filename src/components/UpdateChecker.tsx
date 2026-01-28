@@ -14,18 +14,26 @@ export function UpdateChecker() {
   useEffect(() => {
     // Check for updates on mount
     checkForUpdates();
+
+    // Expose for debugging
+    (window as any).checkForUpdates = checkForUpdates;
   }, []);
 
   const checkForUpdates = async () => {
+    console.log('[Updater] Checking for updates...');
     setChecking(true);
     setError(null);
     try {
       const available = await check();
+      console.log('[Updater] Check result:', available);
       if (available) {
+        console.log('[Updater] Update available:', available.version);
         setUpdate(available);
+      } else {
+        console.log('[Updater] No update available');
       }
     } catch (err) {
-      console.error('Failed to check for updates:', err);
+      console.error('[Updater] Failed to check for updates:', err);
       // Don't show error to user for automatic checks
     } finally {
       setChecking(false);

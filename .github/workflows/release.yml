@@ -88,14 +88,6 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.app.tar.gz.sig
           if-no-files-found: ignore
 
-      - name: Upload latest.json (Linux only)
-        if: matrix.platform == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
-        with:
-          name: latest-json
-          path: latest.json
-          if-no-files-found: ignore
-
   deploy-updater:
     needs: release
     runs-on: ubuntu-latest
@@ -110,15 +102,20 @@ jobs:
         with:
           path: artifacts
 
+      - name: Download latest.json from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Download latest.json from the draft release
+          gh release download ${{ github.ref_name }} \
+            --repo ${{ github.repository }} \
+            --pattern "latest.json" \
+            --dir deploy || echo "latest.json not found in release"
+
       - name: Flatten and collect files
         run: |
           # Find and copy all binary files to deploy directory
           find artifacts -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage" -o -name "*.AppImage.sig" -o -name "*.deb" -o -name "*.exe" -o -name "*.msi" -o -name "*.msi.sig" -o -name "*.nsis.zip" -o -name "*.nsis.zip.sig" \) -exec cp {} deploy/ \;
-
-          # Copy latest.json if it exists
-          if [ -f artifacts/latest-json/latest.json ]; then
-            cp artifacts/latest-json/latest.json deploy/
-          fi
 
           # List what we're deploying
           echo "Files to deploy:"
@@ -131,6 +128,8 @@ jobs:
             sed -i 's|https://github.com/[^/]*/[^/]*/releases/download/[^/]*/|https://borismus.github.io/promptbox/|g' deploy/latest.json
             echo "Updated latest.json:"
             cat deploy/latest.json
+          else
+            echo "WARNING: latest.json not found!"
           fi
 
       - name: Deploy to GitHub Pages
