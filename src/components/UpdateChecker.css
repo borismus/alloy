@@ -91,6 +91,17 @@
   font-size: 12px;
 }
 
+/* Temporary banners (checking, success, error) - overlay without affecting layout */
+.update-banner-checking,
+.update-banner-success,
+.update-banner-error {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+}
+
 /* Checking state */
 .update-banner-checking {
   background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
