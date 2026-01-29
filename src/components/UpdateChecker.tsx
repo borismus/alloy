@@ -3,6 +3,9 @@ import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import './UpdateChecker.css';
 
+// Export for use in Settings
+export type CheckResult = { available: true; version: string } | { available: false } | { error: string };
+
 export function UpdateChecker() {
   const [update, setUpdate] = useState<Update | null>(null);
   const [checking, setChecking] = useState(false);
@@ -10,31 +13,45 @@ export function UpdateChecker() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [showNoUpdate, setShowNoUpdate] = useState(false);
 
   useEffect(() => {
-    // Check for updates on mount
-    checkForUpdates();
+    // Check for updates on mount (silent)
+    checkForUpdates(false);
 
-    // Expose for debugging
-    (window as any).checkForUpdates = checkForUpdates;
+    // Expose for manual checks from Settings
+    (window as any).checkForUpdates = () => checkForUpdates(true);
   }, []);
 
-  const checkForUpdates = async () => {
-    console.log('[Updater] Checking for updates...');
+  const checkForUpdates = async (manual = false): Promise<CheckResult> => {
+    console.log('[Updater] Checking for updates...', manual ? '(manual)' : '(auto)');
     setChecking(true);
     setError(null);
+    setShowNoUpdate(false);
+    setDismissed(false); // Reset dismissed state on manual check
     try {
       const available = await check();
       console.log('[Updater] Check result:', available);
       if (available) {
         console.log('[Updater] Update available:', available.version);
         setUpdate(available);
+        return { available: true, version: available.version };
       } else {
         console.log('[Updater] No update available');
+        if (manual) {
+          setShowNoUpdate(true);
+          // Auto-hide after 5 seconds
+          setTimeout(() => setShowNoUpdate(false), 5000);
+        }
+        return { available: false };
       }
     } catch (err) {
       console.error('[Updater] Failed to check for updates:', err);
-      // Don't show error to user for automatic checks
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      if (manual) {
+        setError(`Failed to check for updates: ${errorMsg}`);
+      }
+      return { error: errorMsg };
     } finally {
       setChecking(false);
     }
@@ -81,8 +98,62 @@ export function UpdateChecker() {
     setDismissed(true);
   };
 
-  // Don't render if no update, dismissed, or still checking
-  if (!update || dismissed || checking) {
+  // Show checking state
+  if (checking) {
+    return (
+      <div className="update-banner update-banner-checking">
+        <div className="update-content">
+          <div className="update-info">
+            <span className="update-icon">⟳</span>
+            <span className="update-text">Checking for updates...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show "no updates" message after manual check
+  if (showNoUpdate && !update) {
+    return (
+      <div className="update-banner update-banner-success">
+        <div className="update-content">
+          <div className="update-info">
+            <span className="update-icon">✓</span>
+            <span className="update-text">You're up to date!</span>
+          </div>
+          <button
+            className="update-button update-button-secondary"
+            onClick={() => setShowNoUpdate(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if present
+  if (error && !update) {
+    return (
+      <div className="update-banner update-banner-error">
+        <div className="update-content">
+          <div className="update-info">
+            <span className="update-icon">!</span>
+            <span className="update-text">{error}</span>
+          </div>
+          <button
+            className="update-button update-button-secondary"
+            onClick={() => setError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if no update or dismissed
+  if (!update || dismissed) {
     return null;
   }
 
@@ -124,7 +195,6 @@ export function UpdateChecker() {
           )}
         </div>
       </div>
-      {error && <div className="update-error">{error}</div>}
     </div>
   );
 }

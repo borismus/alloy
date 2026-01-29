@@ -90,3 +90,31 @@
   border-radius: 4px;
   font-size: 12px;
 }
+
+/* Checking state */
+.update-banner-checking {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+}
+
+.update-banner-checking .update-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Success state (no updates) */
+.update-banner-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+/* Error state */
+.update-banner-error {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.update-banner-error .update-icon {
+  font-weight: bold;
+}

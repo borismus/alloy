@@ -111,6 +111,19 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
             </button>
           </div>
 
+          <div className="settings-section">
+            <h3>Updates</h3>
+            <p className="settings-description">
+              Check for new versions of Orchestra.
+            </p>
+            <button
+              onClick={() => (window as any).checkForUpdates?.()}
+              className="settings-button"
+            >
+              Check for Updates
+            </button>
+          </div>
+
         </div>
       </div>
     </div>
