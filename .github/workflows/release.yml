@@ -127,32 +127,26 @@ jobs:
           cd deploy
           VERSION="${VERSION#v}"  # Remove 'v' prefix
 
-          # Find the macOS files
-          ARM_TAR=$(ls *aarch64*.app.tar.gz 2>/dev/null | head -1 || ls Orchestra.app.tar.gz 2>/dev/null | head -1)
-          ARM_SIG=$(ls *aarch64*.app.tar.gz.sig 2>/dev/null | head -1 || ls Orchestra.app.tar.gz.sig 2>/dev/null | head -1)
-          X64_TAR=$(ls *x64*.app.tar.gz 2>/dev/null | head -1)
-          X64_SIG=$(ls *x64*.app.tar.gz.sig 2>/dev/null | head -1)
+          echo "=== Files in deploy directory ==="
+          ls -la
 
-          echo "ARM_TAR: $ARM_TAR"
-          echo "ARM_SIG: $ARM_SIG"
-          echo "X64_TAR: $X64_TAR"
-          echo "X64_SIG: $X64_SIG"
+          # Find tar.gz and sig files - use simple approach
+          TAR_FILE=$(find . -name "*.app.tar.gz" -type f | head -1 | sed 's|^\./||')
+          SIG_FILE=$(find . -name "*.app.tar.gz.sig" -type f | head -1 | sed 's|^\./||')
 
-          # Build platforms JSON
+          echo "TAR_FILE: $TAR_FILE"
+          echo "SIG_FILE: $SIG_FILE"
+
+          # Build platforms JSON - use same file for both architectures for now
           PLATFORMS=""
 
-          if [ -f "$ARM_SIG" ] && [ -f "$ARM_TAR" ]; then
-            SIG=$(cat "$ARM_SIG")
-            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${ARM_TAR}\" }"
+          if [ -n "$SIG_FILE" ] && [ -n "$TAR_FILE" ] && [ -f "$SIG_FILE" ] && [ -f "$TAR_FILE" ]; then
+            SIG=$(cat "$SIG_FILE")
+            # Add both darwin platforms pointing to same universal build
+            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${TAR_FILE}\" }, \"darwin-x86_64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${TAR_FILE}\" }"
           fi
 
-          if [ -f "$X64_SIG" ] && [ -f "$X64_TAR" ]; then
-            SIG=$(cat "$X64_SIG")
-            if [ -n "$PLATFORMS" ]; then
-              PLATFORMS="${PLATFORMS}, "
-            fi
-            PLATFORMS="${PLATFORMS}\"darwin-x86_64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${X64_TAR}\" }"
-          fi
+          echo "PLATFORMS: $PLATFORMS"
 
           # Generate JSON
           cat > latest.json << EOF
