@@ -19,12 +19,6 @@ jobs:
           - platform: 'macos-latest'
             args: '--target x86_64-apple-darwin'
             artifact-name: 'macos-intel'
-          - platform: 'ubuntu-22.04'
-            args: ''
-            artifact-name: 'linux'
-          - platform: 'windows-latest'
-            args: ''
-            artifact-name: 'windows'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -68,7 +62,7 @@ jobs:
           echo "=== Files in root ==="
           ls -la *.tar.gz *.sig 2>/dev/null || echo "No tar.gz/sig in root"
           echo "=== Files in src-tauri ==="
-          find src-tauri -name "*.tar.gz" -o -name "*.sig" -o -name "*.AppImage*" -o -name "*.nsis*" 2>/dev/null || echo "None found"
+          find src-tauri -name "*.tar.gz" -o -name "*.sig" 2>/dev/null || echo "None found"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -77,27 +71,10 @@ jobs:
           path: |
             *.app.tar.gz
             *.app.tar.gz.sig
-            *.AppImage
-            *.AppImage.sig
-            *.nsis.zip
-            *.nsis.zip.sig
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.app.tar.gz
-            src-tauri/target/release/bundle/**/*.app.tar.gz.sig
-            src-tauri/target/release/bundle/**/*.AppImage
-            src-tauri/target/release/bundle/**/*.AppImage.sig
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.exe
-            src-tauri/target/release/bundle/**/*.msi
-            src-tauri/target/release/bundle/**/*.msi.sig
-            src-tauri/target/release/bundle/**/*.nsis.zip
-            src-tauri/target/release/bundle/**/*.nsis.zip.sig
-            src-tauri/target/aarch64-apple-darwin/release/bundle/**/*.dmg
-            src-tauri/target/aarch64-apple-darwin/release/bundle/**/*.app.tar.gz
-            src-tauri/target/aarch64-apple-darwin/release/bundle/**/*.app.tar.gz.sig
-            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.dmg
-            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.app.tar.gz
-            src-tauri/target/x86_64-apple-darwin/release/bundle/**/*.app.tar.gz.sig
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: ignore
 
   deploy-updater:
@@ -116,8 +93,8 @@ jobs:
 
       - name: Flatten and collect files
         run: |
-          # Find and copy all binary and sig files to deploy directory
-          find artifacts -type f \( -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" -o -name "*.AppImage" -o -name "*.AppImage.sig" -o -name "*.deb" -o -name "*.exe" -o -name "*.msi" -o -name "*.msi.sig" -o -name "*.nsis.zip" -o -name "*.nsis.zip.sig" \) -exec cp {} deploy/ \;
+          # Find and copy all macOS tar.gz and sig files to deploy directory
+          find artifacts -type f \( -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" \) -exec cp {} deploy/ \;
 
           # List what we're deploying
           echo "Files to deploy:"
@@ -130,88 +107,40 @@ jobs:
           cd deploy
           VERSION="${VERSION#v}"  # Remove 'v' prefix
 
-          # Start JSON
+          # Find the macOS files
+          ARM_TAR=$(ls *aarch64*.app.tar.gz 2>/dev/null | head -1 || ls Orchestra.app.tar.gz 2>/dev/null | head -1)
+          ARM_SIG=$(ls *aarch64*.app.tar.gz.sig 2>/dev/null | head -1 || ls Orchestra.app.tar.gz.sig 2>/dev/null | head -1)
+          X64_TAR=$(ls *x64*.app.tar.gz 2>/dev/null | head -1)
+          X64_SIG=$(ls *x64*.app.tar.gz.sig 2>/dev/null | head -1)
+
+          echo "ARM_TAR: $ARM_TAR"
+          echo "ARM_SIG: $ARM_SIG"
+          echo "X64_TAR: $X64_TAR"
+          echo "X64_SIG: $X64_SIG"
+
+          # Build platforms JSON
+          PLATFORMS=""
+
+          if [ -f "$ARM_SIG" ] && [ -f "$ARM_TAR" ]; then
+            SIG=$(cat "$ARM_SIG")
+            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${ARM_TAR}\" }"
+          fi
+
+          if [ -f "$X64_SIG" ] && [ -f "$X64_TAR" ]; then
+            SIG=$(cat "$X64_SIG")
+            if [ -n "$PLATFORMS" ]; then
+              PLATFORMS="${PLATFORMS}, "
+            fi
+            PLATFORMS="${PLATFORMS}\"darwin-x86_64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${X64_TAR}\" }"
+          fi
+
+          # Generate JSON
           cat > latest.json << EOF
           {
             "version": "${VERSION}",
             "notes": "See release notes on GitHub",
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-          EOF
-
-          FIRST=true
-
-          # macOS ARM
-          if [ -f "Orchestra.app.tar.gz.sig" ] || ls *aarch64*.app.tar.gz.sig 2>/dev/null; then
-            SIG_FILE=$(ls *aarch64*.app.tar.gz.sig 2>/dev/null || echo "Orchestra.app.tar.gz.sig")
-            TAR_FILE="${SIG_FILE%.sig}"
-            if [ -f "$SIG_FILE" ]; then
-              SIG=$(cat "$SIG_FILE")
-              [ "$FIRST" = false ] && echo "," >> latest.json
-              FIRST=false
-              cat >> latest.json << EOF
-              "darwin-aarch64": {
-                "signature": "${SIG}",
-                "url": "https://borismus.github.io/promptbox/${TAR_FILE}"
-              }
-          EOF
-            fi
-          fi
-
-          # macOS x64
-          if ls *x64*.app.tar.gz.sig 2>/dev/null || ls Orchestra_*_x64.app.tar.gz.sig 2>/dev/null; then
-            SIG_FILE=$(ls *x64*.app.tar.gz.sig 2>/dev/null | head -1)
-            TAR_FILE="${SIG_FILE%.sig}"
-            if [ -f "$SIG_FILE" ]; then
-              SIG=$(cat "$SIG_FILE")
-              [ "$FIRST" = false ] && echo "," >> latest.json
-              FIRST=false
-              cat >> latest.json << EOF
-              "darwin-x86_64": {
-                "signature": "${SIG}",
-                "url": "https://borismus.github.io/promptbox/${TAR_FILE}"
-              }
-          EOF
-            fi
-          fi
-
-          # Linux
-          if ls *.AppImage.sig 2>/dev/null; then
-            SIG_FILE=$(ls *.AppImage.sig | head -1)
-            APPIMAGE_FILE="${SIG_FILE%.sig}"
-            if [ -f "$SIG_FILE" ]; then
-              SIG=$(cat "$SIG_FILE")
-              [ "$FIRST" = false ] && echo "," >> latest.json
-              FIRST=false
-              cat >> latest.json << EOF
-              "linux-x86_64": {
-                "signature": "${SIG}",
-                "url": "https://borismus.github.io/promptbox/${APPIMAGE_FILE}"
-              }
-          EOF
-            fi
-          fi
-
-          # Windows (NSIS)
-          if ls *.nsis.zip.sig 2>/dev/null; then
-            SIG_FILE=$(ls *.nsis.zip.sig | head -1)
-            NSIS_FILE="${SIG_FILE%.sig}"
-            if [ -f "$SIG_FILE" ]; then
-              SIG=$(cat "$SIG_FILE")
-              [ "$FIRST" = false ] && echo "," >> latest.json
-              FIRST=false
-              cat >> latest.json << EOF
-              "windows-x86_64": {
-                "signature": "${SIG}",
-                "url": "https://borismus.github.io/promptbox/${NSIS_FILE}"
-              }
-          EOF
-            fi
-          fi
-
-          # Close JSON
-          cat >> latest.json << EOF
-            }
+            "platforms": { ${PLATFORMS} }
           }
           EOF
 
