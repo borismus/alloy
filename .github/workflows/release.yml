@@ -14,16 +14,16 @@ jobs:
       matrix:
         include:
           - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin --bundles macos'
+            args: '--target aarch64-apple-darwin'
             artifact-name: 'macos-arm'
           - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin --bundles macos'
+            args: '--target x86_64-apple-darwin'
             artifact-name: 'macos-intel'
           - platform: 'ubuntu-22.04'
-            args: '--bundles appimage'
+            args: ''
             artifact-name: 'linux'
           - platform: 'windows-latest'
-            args: '--bundles nsis'
+            args: ''
             artifact-name: 'windows'
 
     runs-on: ${{ matrix.platform }}
@@ -63,11 +63,24 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      - name: List all generated files
+        run: |
+          echo "=== Files in root ==="
+          ls -la *.tar.gz *.sig 2>/dev/null || echo "No tar.gz/sig in root"
+          echo "=== Files in src-tauri ==="
+          find src-tauri -name "*.tar.gz" -o -name "*.sig" -o -name "*.AppImage*" -o -name "*.nsis*" 2>/dev/null || echo "None found"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
           path: |
+            *.app.tar.gz
+            *.app.tar.gz.sig
+            *.AppImage
+            *.AppImage.sig
+            *.nsis.zip
+            *.nsis.zip.sig
             src-tauri/target/release/bundle/**/*.dmg
             src-tauri/target/release/bundle/**/*.app.tar.gz
             src-tauri/target/release/bundle/**/*.app.tar.gz.sig
