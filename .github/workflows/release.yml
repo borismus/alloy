@@ -59,23 +59,21 @@ jobs:
 
       - name: List all generated files
         run: |
-          echo "=== Files in root ==="
-          ls -la *.tar.gz *.sig 2>/dev/null || echo "No tar.gz/sig in root"
-          echo "=== Files in src-tauri ==="
-          find src-tauri -name "*.tar.gz" -o -name "*.sig" 2>/dev/null || echo "None found"
+          echo "=== All tar.gz files ==="
+          find . -name "*.tar.gz" -type f 2>/dev/null
+          echo "=== All sig files ==="
+          find . -name "*.sig" -type f 2>/dev/null
+          echo "=== Bundle directory contents ==="
+          ls -la src-tauri/target/*/release/bundle/macos/ 2>/dev/null || echo "No bundle dirs found"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
           path: |
-            *.app.tar.gz
-            *.app.tar.gz.sig
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
-            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
-          if-no-files-found: ignore
+            src-tauri/target/*/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/*/release/bundle/macos/*.app.tar.gz.sig
+          if-no-files-found: warn
 
   deploy-updater:
     needs: release
@@ -93,11 +91,15 @@ jobs:
 
       - name: Flatten and collect files
         run: |
+          echo "=== Artifact structure ==="
+          find artifacts -type f -ls
+
           # Find and copy all macOS tar.gz and sig files to deploy directory
-          find artifacts -type f \( -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" \) -exec cp {} deploy/ \;
+          find artifacts -type f -name "*.app.tar.gz" -exec cp {} deploy/ \;
+          find artifacts -type f -name "*.app.tar.gz.sig" -exec cp {} deploy/ \;
 
           # List what we're deploying
-          echo "Files to deploy:"
+          echo "=== Files to deploy ==="
           ls -la deploy/
 
       - name: Generate latest.json
