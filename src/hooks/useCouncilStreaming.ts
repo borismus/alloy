@@ -202,13 +202,14 @@ export function useCouncilStreaming(
       try {
         updateMemberStatus(modelKey, 'streaming');
 
+        // Council members don't get tools - only the chairman does
         const result = await executeWithTools(provider, messages, modelId, {
-          maxIterations: 10,
+          maxIterations: 1,  // No tool iterations needed without tools
           onChunk: (text) => updateMemberContent(modelKey, text),
           onToolUse: (toolUse) => addMemberToolUse(modelKey, toolUse),
           signal: abortController.signal,
           systemPrompt: options.systemPrompt,
-          tools: BUILTIN_TOOLS,
+          tools: [],  // No tools for council members
         });
 
         updateMemberStatus(modelKey, 'complete');
