@@ -226,7 +226,6 @@ interface ChatInterfaceProps {
   favoriteModels?: string[];  // Format: "provider/model-id"
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string) => void;
-  onGoBack?: () => void; // Navigation history back
 }
 
 export interface ChatInterfaceHandle {
@@ -268,7 +267,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   favoriteModels,
   onNavigateToNote,
   onNavigateToConversation,
-  onGoBack,
 }, ref) => {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -573,13 +571,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {onGoBack && (
-        <div className="chat-nav-header">
-          <button className="back-button" onClick={onGoBack} title="Go back">
-            &larr;
-          </button>
-        </div>
-      )}
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {showFind && (
           <FindInConversation

@@ -10,9 +10,10 @@ interface ToolUseIndicatorProps {
 }
 
 const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: string }> = {
-  read_file: { active: 'Reading file', complete: 'Read file', icon: 'file' },
-  write_file: { active: 'Writing file', complete: 'Wrote file', icon: 'file' },
-  append_file: { active: 'Appending to file', complete: 'Appended to file', icon: 'file' },
+  read_file: { active: 'Reading', complete: 'Read file', icon: 'file' },
+  write_file: { active: 'Writing', complete: 'Wrote file', icon: 'file' },
+  append_file: { active: 'Appending', complete: 'Appended to file', icon: 'file' },
+  append_to_note: { active: 'Appending', complete: 'Append', icon: 'file' },
   http_get: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
   http_post: { active: 'Sending request', complete: 'Sent request', icon: 'globe' },
   get_secret: { active: 'Getting secret', complete: 'Got secret', icon: 'key' },
@@ -92,23 +93,31 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
               <ToolIcon type={tool.type} />
             </span>
             <span className="tool-use-label">{label}</span>
-            {typeof tool.input?.path === 'string' && (
-              tool.input.path.endsWith('.md') && onNavigateToNote ? (
-                <span
-                  className="tool-use-path clickable"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Strip notes/ prefix - handleSelectNote adds it back
-                    const filename = (tool.input!.path as string).replace(/^notes\//, '');
-                    onNavigateToNote(filename);
-                  }}
-                >
-                  {tool.input.path}
-                </span>
-              ) : (
-                <span className="tool-use-path">{tool.input.path}</span>
-              )
-            )}
+            {typeof tool.input?.path === 'string' && (() => {
+              const path = tool.input.path as string;
+              // Make notes/ files and memory.md clickable for navigation
+              const isNavigable = onNavigateToNote && (
+                (path.startsWith('notes/') && path.endsWith('.md')) ||
+                path === 'memory.md'
+              );
+
+              if (isNavigable) {
+                return (
+                  <span
+                    className="tool-use-path clickable"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Strip notes/ prefix - handleSelectNote adds it back
+                      const filename = path.replace(/^notes\//, '');
+                      onNavigateToNote(filename);
+                    }}
+                  >
+                    {path}
+                  </span>
+                );
+              }
+              return <span className="tool-use-path">{path}</span>;
+            })()}
             {typeof tool.input?.url === 'string' && (
               <span
                 className="tool-use-url"

@@ -1,9 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { ApprovalProvider } from "./contexts/ApprovalContext";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ApprovalProvider>
+      <App />
+    </ApprovalProvider>
   </React.StrictMode>,
 );

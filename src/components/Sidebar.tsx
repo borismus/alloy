@@ -121,6 +121,9 @@ interface SidebarProps {
   onSelectNote: (filename: string) => void;
   onNewNotesChat: () => void;
   onTabChange: (tab: SidebarTab) => void;
+  // Navigation
+  canGoBack: boolean;
+  onGoBack: () => void;
 }
 
 export interface SidebarHandle {
@@ -149,6 +152,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onSelectNote,
   onNewNotesChat: _onNewNotesChat,
   onTabChange,
+  canGoBack,
+  onGoBack,
 }, ref) {
   const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
   const firedTriggerIds = firedTriggers.map(f => f.conversationId);
@@ -335,6 +340,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             action: () => {
               onNewTrigger();
             }
+          },
+          {
+            id: 'manage-triggers',
+            text: 'Manage Triggers',
+            action: () => {
+              onOpenTriggerManagement();
+            }
           }
         ]
       });
@@ -441,6 +453,16 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   return (
     <div className="sidebar">
       <div className="search-box" data-tauri-drag-region>
+        <button
+          className={`back-button ${!canGoBack ? 'disabled' : ''}`}
+          onClick={onGoBack}
+          disabled={!canGoBack}
+          title="Go back"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+        </button>
         <div className="search-input-wrapper">
           <input
             ref={searchInputRef}

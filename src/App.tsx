@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
+import { rambleService } from './services/ramble';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
+import { ApprovalProvider } from './contexts/ApprovalContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, SidebarTab, Trigger } from './types';
-import { executeWithTools } from './services/tools/executor';
+import { useToolExecution } from './hooks/useToolExecution';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { ComparisonChatInterface, ComparisonChatInterfaceHandle } from './components/ComparisonChatInterface';
@@ -18,8 +20,10 @@ import { Settings } from './components/Settings';
 import { TriggerConfigModal } from './components/TriggerConfigModal';
 import { TriggerManagementView } from './components/TriggerManagementView';
 import { NoteViewer } from './components/NoteViewer';
+import { NoteChatSidebar } from './components/NoteChatSidebar';
 import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
+import { isBrowser, DEMO_VAULT_PATH } from './mocks';
 import './App.css';
 
 function AppContent() {
@@ -38,7 +42,6 @@ function AppContent() {
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chats');
   const [selectedNote, setSelectedNote] = useState<{ filename: string; content: string } | null>(null);
-  const [noteModel, setNoteModel] = useState<string>('');
   // Navigation history for back button support
   type NavigationEntry =
     | { type: 'note'; filename: string; content: string }
@@ -49,6 +52,7 @@ function AppContent() {
   const councilChatInterfaceRef = useRef<CouncilChatInterfaceHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
   const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse } = useStreamingContext();
+  const { execute: executeWithTools } = useToolExecution();
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
@@ -133,6 +137,32 @@ function AppContent() {
     setNotes(loadedNotes);
   }, []);
 
+  // Trigger watcher callbacks
+  const handleTriggerAdded = useCallback(async (id: string) => {
+    const newTrigger = await vaultService.loadTrigger(id);
+    if (newTrigger) {
+      setTriggers(prev => {
+        // Avoid duplicates
+        if (prev.some(t => t.id === id)) return prev;
+        return [newTrigger, ...prev].sort((a, b) =>
+          new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
+        );
+      });
+    }
+  }, []);
+
+  const handleTriggerRemoved = useCallback((id: string) => {
+    setTriggers(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const handleTriggerModified = useCallback(async (id: string) => {
+    const updated = await vaultService.loadTrigger(id);
+    if (!updated) return;
+    setTriggers(prev =>
+      prev.map(t => t.id === id ? updated : t)
+    );
+  }, []);
+
   const { markSelfWrite } = useVaultWatcher(
     {
       vaultPath,
@@ -146,6 +176,9 @@ function AppContent() {
       onNoteAdded: handleNoteChanged,
       onNoteRemoved: handleNoteChanged,
       onNoteModified: handleNoteChanged,
+      onTriggerAdded: handleTriggerAdded,
+      onTriggerRemoved: handleTriggerRemoved,
+      onTriggerModified: handleTriggerModified,
     }
   );
 
@@ -155,6 +188,10 @@ function AppContent() {
         const savedVaultPath = localStorage.getItem('vaultPath');
         if (savedVaultPath) {
           await loadVault(savedVaultPath);
+        } else if (isBrowser()) {
+          // Browser-only mode: auto-load demo vault
+          console.log('[App] Browser mode detected, loading demo vault');
+          await loadVault(DEMO_VAULT_PATH);
         } else {
           setIsLoading(false);
         }
@@ -233,6 +270,9 @@ function AppContent() {
         // Load skills from vault
         skillRegistry.setVaultPath(path);
         await skillRegistry.loadSkills();
+
+        // Initialize ramble service
+        rambleService.setVaultPath(path);
       } else {
         localStorage.removeItem('vaultPath');
       }
@@ -316,6 +356,11 @@ function AppContent() {
     const vaultPathStr = vaultService.getVaultPath();
     const notesPath = vaultService.getNotesPath();
     if (vaultPathStr && notesPath) {
+      // Don't navigate to the same note we're already viewing
+      if (selectedNote?.filename === filename) {
+        return;
+      }
+
       // memory.md is at vault root, other notes are in notes/
       const notePath = filename === 'memory.md'
         ? `${vaultPathStr}/${filename}`
@@ -334,48 +379,10 @@ function AppContent() {
         setCurrentConversation(null);
         setSidebarTab('notes');
         setSelectedNote({ filename, content });
-        // Initialize model selection for the note viewer
-        setNoteModel(getDefaultModel() || '');
       } catch (error) {
         console.error('Failed to load note:', error);
       }
     }
-  };
-
-  const handleSendNoteMessage = (message: string, noteFilename: string, noteContent: string) => {
-    // Use the selected model from NoteViewer, or fall back to default
-    const model = noteModel || getDefaultModel();
-    if (!model) {
-      alert('No provider configured. Please add a provider in Settings.');
-      return;
-    }
-
-    // Create a new conversation with the note as context
-    const now = new Date();
-    const date = now.toISOString().split('T')[0];
-    const time = now.toTimeString().slice(0, 5).replace(':', '');
-    const hash = Math.random().toString(16).slice(2, 6);
-    const noteTitle = noteFilename.replace(/\.md$/, '');
-
-    const newConversation: Conversation = {
-      id: `${date}-${time}-${hash}`,
-      title: `Re: ${noteTitle}`,
-      created: now.toISOString(),
-      updated: now.toISOString(),
-      model: model,
-      messages: [],
-    };
-
-    // Close the note viewer and switch to chats tab
-    setSelectedNote(null);
-    setSidebarTab('chats');
-    setCurrentConversation(newConversation);
-
-    // Prepend note context to the user's message
-    const contextMessage = `I'm looking at my note "${noteTitle}":\n\n---\n${noteContent}\n---\n\n${message}`;
-
-    // Send the message with note context
-    handleSendMessage(contextMessage, []);
   };
 
   const handleNewNotesChat = () => {
@@ -743,6 +750,12 @@ function AppContent() {
 
   const handleSelectConversation = async (id: string, addToHistory = true) => {
     console.log('[App] handleSelectConversation called with id:', id);
+
+    // Don't navigate to the same conversation we're already viewing
+    if (currentConversation?.id === id && !selectedNote) {
+      return;
+    }
+
     // Mark as read when user selects the conversation
     markAsRead(id);
 
@@ -869,6 +882,7 @@ function AppContent() {
     }
   };
 
+
   if (isLoading) {
     return <div className="loading">Loading...</div>;
   }
@@ -945,6 +959,13 @@ function AppContent() {
     const time = now.toTimeString().slice(0, 5).replace(':', '');
     const hash = Math.random().toString(16).slice(2, 6);
 
+    // Seed the conversation with the baseline message (the trigger prompt)
+    const baselineMessage: import('./types').Message = {
+      role: 'user',
+      timestamp: now.toISOString(),
+      content: config.triggerPrompt,
+    };
+
     // Create a new conversation with the trigger
     // The model is already in unified format from TriggerConfig
     const newConversation: Conversation = {
@@ -953,7 +974,7 @@ function AppContent() {
       updated: now.toISOString(),
       model: config.model,  // Already in "provider/model" format
       title: title || 'Triggered Conversation',
-      messages: [],
+      messages: [baselineMessage],
       trigger: config,
     };
 
@@ -1003,6 +1024,8 @@ function AppContent() {
           onSelectNote={handleSelectNote}
           onNewNotesChat={handleNewNotesChat}
           onTabChange={setSidebarTab}
+          canGoBack={navigationHistory.length > 0}
+          onGoBack={handleGoBack}
         />
       <div className="main-panel">
         {showTriggerManagementView ? (
@@ -1047,20 +1070,13 @@ function AppContent() {
           </div>
         ) : selectedNote ? (
           <NoteViewer
-            filename={selectedNote.filename}
             content={selectedNote.content}
-            onSendMessage={handleSendNoteMessage}
-            availableModels={availableModels}
-            selectedModel={noteModel}
-            onModelChange={setNoteModel}
-            favoriteModels={config?.favoriteModels}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId) => {
               console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId);
               handleSelectConversation(conversationId);
             }}
             conversations={conversations}
-            onGoBack={navigationHistory.length > 0 ? handleGoBack : undefined}
           />
         ) : isCouncilConversation && currentConversation ? (
           <CouncilChatInterface
@@ -1093,7 +1109,6 @@ function AppContent() {
               handleSelectNote(noteFilename);
             }}
             onNavigateToConversation={handleSelectConversation}
-            onGoBack={navigationHistory.length > 0 ? handleGoBack : undefined}
           />
         )}
       </div>
@@ -1141,6 +1156,9 @@ function AppContent() {
           }}
         />
       )}
+        {selectedNote && (
+          <NoteChatSidebar isOpen={true} availableModels={availableModels} favoriteModels={config?.favoriteModels} onNavigateToNote={handleSelectNote} />
+        )}
       </div>
     </TriggerProvider>
   );
@@ -1149,7 +1167,9 @@ function AppContent() {
 function App() {
   return (
     <StreamingProvider>
-      <AppContent />
+      <ApprovalProvider>
+        <AppContent />
+      </ApprovalProvider>
     </StreamingProvider>
   );
 }
