@@ -153,7 +153,7 @@ export async function executeFileTools(
     case 'write_file':
       return await writeFile(fullPath, path, input.content as string, input._requireApproval as boolean | undefined);
     case 'append_to_note':
-      return await appendToNote(fullPath, path, input.content as string, input._messageId as string | undefined);
+      return await appendToNote(fullPath, path, input.content as string, input._messageId as string | undefined, input._conversationId as string | undefined);
     case 'list_directory':
       return await listDirectory(fullPath, path);
     default:
@@ -258,7 +258,8 @@ async function appendToNote(
   fullPath: string,
   relativePath: string,
   content: string,
-  messageId?: string
+  messageId?: string,
+  conversationId?: string
 ): Promise<ToolResult> {
   if (content === undefined || content === null) {
     return {
@@ -270,11 +271,14 @@ async function appendToNote(
 
   // Generate a fallback message ID if not provided
   const provId = messageId || `msg-${Math.random().toString(16).slice(2, 6)}`;
+  // Use conversation ID from context, fallback to 'unknown' if not provided
+  const convId = conversationId || 'unknown';
 
   // Add provenance marker to each non-empty line
+  // Reference points to the source conversation (e.g., 'ramble_history' or 'conversations/...')
   const contentWithProvenance = content
     .split('\n')
-    .map(line => line.trim() ? `${line} &[[chat^${provId}]]` : line)
+    .map(line => line.trim() ? `${line} &[[${convId}^${provId}]]` : line)
     .join('\n');
 
   try {
