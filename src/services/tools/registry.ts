@@ -8,6 +8,7 @@ import { executeWebSearchTools } from './builtin/websearch';
 
 export interface ToolContext {
   messageId?: string;
+  conversationId?: string;  // Conversation ID for provenance tracking
   requireWriteApproval?: boolean;  // write_file always requires approval unless this is explicitly false (after user approval)
 }
 
