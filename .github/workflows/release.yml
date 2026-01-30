@@ -112,9 +112,21 @@ jobs:
           echo "=== Artifact structure ==="
           find artifacts -type f -ls
 
-          # Find and copy all macOS tar.gz and sig files to deploy directory
-          find artifacts -type f -name "*.app.tar.gz" -exec cp {} deploy/ \;
-          find artifacts -type f -name "*.app.tar.gz.sig" -exec cp {} deploy/ \;
+          # Copy ARM build with architecture suffix
+          ARM_TAR=$(find artifacts/macos-arm -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
+          ARM_SIG=$(find artifacts/macos-arm -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
+          if [ -n "$ARM_TAR" ]; then
+            cp "$ARM_TAR" deploy/Orchestra-aarch64.app.tar.gz
+            cp "$ARM_SIG" deploy/Orchestra-aarch64.app.tar.gz.sig
+          fi
+
+          # Copy Intel build with architecture suffix
+          INTEL_TAR=$(find artifacts/macos-intel -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
+          INTEL_SIG=$(find artifacts/macos-intel -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
+          if [ -n "$INTEL_TAR" ]; then
+            cp "$INTEL_TAR" deploy/Orchestra-x86_64.app.tar.gz
+            cp "$INTEL_SIG" deploy/Orchestra-x86_64.app.tar.gz.sig
+          fi
 
           # List what we're deploying
           echo "=== Files to deploy ==="
@@ -130,20 +142,22 @@ jobs:
           echo "=== Files in deploy directory ==="
           ls -la
 
-          # Find tar.gz and sig files - use simple approach
-          TAR_FILE=$(find . -name "*.app.tar.gz" -type f | head -1 | sed 's|^\./||')
-          SIG_FILE=$(find . -name "*.app.tar.gz.sig" -type f | head -1 | sed 's|^\./||')
-
-          echo "TAR_FILE: $TAR_FILE"
-          echo "SIG_FILE: $SIG_FILE"
-
-          # Build platforms JSON - use same file for both architectures for now
+          # Build platforms JSON with separate binaries for each architecture
           PLATFORMS=""
 
-          if [ -n "$SIG_FILE" ] && [ -n "$TAR_FILE" ] && [ -f "$SIG_FILE" ] && [ -f "$TAR_FILE" ]; then
-            SIG=$(cat "$SIG_FILE")
-            # Add both darwin platforms pointing to same universal build
-            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${TAR_FILE}\" }, \"darwin-x86_64\": { \"signature\": \"${SIG}\", \"url\": \"https://borismus.github.io/promptbox/${TAR_FILE}\" }"
+          # ARM (aarch64)
+          if [ -f "Orchestra-aarch64.app.tar.gz.sig" ] && [ -f "Orchestra-aarch64.app.tar.gz" ]; then
+            ARM_SIG=$(cat "Orchestra-aarch64.app.tar.gz.sig")
+            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${ARM_SIG}\", \"url\": \"https://borismus.github.io/promptbox/Orchestra-aarch64.app.tar.gz\" }"
+          fi
+
+          # Intel (x86_64)
+          if [ -f "Orchestra-x86_64.app.tar.gz.sig" ] && [ -f "Orchestra-x86_64.app.tar.gz" ]; then
+            INTEL_SIG=$(cat "Orchestra-x86_64.app.tar.gz.sig")
+            if [ -n "$PLATFORMS" ]; then
+              PLATFORMS="${PLATFORMS}, "
+            fi
+            PLATFORMS="${PLATFORMS}\"darwin-x86_64\": { \"signature\": \"${INTEL_SIG}\", \"url\": \"https://borismus.github.io/promptbox/Orchestra-x86_64.app.tar.gz\" }"
           fi
 
           echo "PLATFORMS: $PLATFORMS"

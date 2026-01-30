@@ -14,6 +14,8 @@ export function UpdateChecker() {
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [showNoUpdate, setShowNoUpdate] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   useEffect(() => {
     // Check for updates on mount (silent)
@@ -88,8 +90,9 @@ export function UpdateChecker() {
       // Relaunch the app to apply the update
       await relaunch();
     } catch (err) {
-      console.error('Failed to install update:', err);
-      setError('Failed to install update. Please try again.');
+      console.error('[Updater] Failed to install update:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setInstallError(errorMsg);
       setDownloading(false);
     }
   };
@@ -155,6 +158,51 @@ export function UpdateChecker() {
   // Don't render if no update or dismissed
   if (!update || dismissed) {
     return null;
+  }
+
+  // Show install error with details
+  if (installError) {
+    return (
+      <div className="update-banner update-banner-error">
+        <div className="update-content">
+          <div className="update-info">
+            <span className="update-icon">!</span>
+            <span className="update-text">
+              Update to {update.version} failed
+              <button
+                className="update-details-toggle"
+                onClick={() => setShowErrorDetails(!showErrorDetails)}
+                title={showErrorDetails ? "Hide details" : "Show details"}
+              >
+                {showErrorDetails ? '▼' : '▶'}
+              </button>
+            </span>
+          </div>
+          <div className="update-actions">
+            <button
+              className="update-button update-button-primary"
+              onClick={() => {
+                setInstallError(null);
+                downloadAndInstall();
+              }}
+            >
+              Retry
+            </button>
+            <button
+              className="update-button update-button-secondary"
+              onClick={dismiss}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+        {showErrorDetails && (
+          <div className="update-error-details">
+            {installError}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
