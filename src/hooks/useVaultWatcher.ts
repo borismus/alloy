@@ -10,6 +10,9 @@ export interface VaultWatcherCallbacks {
   onNoteAdded?: (filename: string) => void;
   onNoteRemoved?: (filename: string) => void;
   onNoteModified?: (filename: string) => void;
+  onTriggerAdded?: (id: string) => void;
+  onTriggerRemoved?: (id: string) => void;
+  onTriggerModified?: (id: string) => void;
 }
 
 export interface UseVaultWatcherOptions {
@@ -95,6 +98,9 @@ export function useVaultWatcher(
     return name; // Return as-is if doesn't match expected format
   }, []);
 
+  // Same ID extraction logic works for triggers (same filename format)
+  const extractTriggerId = extractConversationId;
+
   useEffect(() => {
     if (!vaultPath || !enabled) {
       isWatchingRef.current = false;
@@ -129,6 +135,10 @@ export function useVaultWatcher(
         const isNoteFile =
           filePath.includes('/notes/') &&
           filePath.endsWith('.md');
+        const isTriggerFile =
+          filePath.includes('/triggers/') &&
+          filePath.endsWith('.yaml') &&
+          !filePath.endsWith('logs.yaml');
 
         // Skip .md files in conversations (auto-generated previews)
         if (filePath.includes('/conversations/') && filePath.endsWith('.md')) {
@@ -189,6 +199,30 @@ export function useVaultWatcher(
               break;
             case 'modify':
               callbacksRef.current.onNoteModified?.(filename);
+              break;
+          }
+        } else if (isTriggerFile) {
+          const triggerId = extractTriggerId(filePath);
+          if (!triggerId) continue;
+
+          console.log('[VaultWatcher] Trigger event:', { eventType, triggerId, filePath });
+
+          // For rename events (macOS deletion), check if file still exists
+          let effectiveEventType = eventType;
+          if (eventType === 'rename') {
+            const fileExists = await exists(filePath);
+            effectiveEventType = fileExists ? 'modify' : 'remove';
+          }
+
+          switch (effectiveEventType) {
+            case 'create':
+              callbacksRef.current.onTriggerAdded?.(triggerId);
+              break;
+            case 'remove':
+              callbacksRef.current.onTriggerRemoved?.(triggerId);
+              break;
+            case 'modify':
+              callbacksRef.current.onTriggerModified?.(triggerId);
               break;
           }
         }

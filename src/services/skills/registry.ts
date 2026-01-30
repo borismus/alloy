@@ -1,28 +1,41 @@
 import { Skill } from '../../types/skills';
 import { loadSkillsFromVault } from './loader';
+import { loadBundledSkills } from './bundled';
 
 export class SkillRegistry {
   private skills: Map<string, Skill> = new Map();
   private vaultPath: string | null = null;
+  private bundledSkills: Skill[];
+
+  constructor() {
+    // Load bundled skills from skills/ directory
+    this.bundledSkills = loadBundledSkills();
+    for (const skill of this.bundledSkills) {
+      this.skills.set(skill.name, skill);
+    }
+  }
 
   setVaultPath(path: string): void {
     this.vaultPath = path;
   }
 
   async loadSkills(): Promise<void> {
-    if (!this.vaultPath) {
-      console.warn('No vault path set, cannot load skills');
-      return;
-    }
-
-    const skills = await loadSkillsFromVault(this.vaultPath);
+    // Start with bundled skills
     this.skills.clear();
-
-    for (const skill of skills) {
+    for (const skill of this.bundledSkills) {
       this.skills.set(skill.name, skill);
     }
 
-    console.log(`Loaded ${skills.length} skills:`, skills.map(s => s.name));
+    // Load vault skills (can override bundled skills)
+    if (this.vaultPath) {
+      const vaultSkills = await loadSkillsFromVault(this.vaultPath);
+      for (const skill of vaultSkills) {
+        this.skills.set(skill.name, skill);
+      }
+      console.log(`Loaded ${vaultSkills.length} vault skills + ${this.bundledSkills.length} bundled skills`);
+    } else {
+      console.log(`Loaded ${this.bundledSkills.length} bundled skills (no vault path set)`);
+    }
   }
 
   getSkills(): Skill[] {
