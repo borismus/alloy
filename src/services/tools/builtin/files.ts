@@ -151,9 +151,9 @@ export async function executeFileTools(
     case 'read_file':
       return await readFile(fullPath, path);
     case 'write_file':
-      return await writeFile(fullPath, path, input.content as string);
-    case 'append_file':
-      return await appendFile(fullPath, path, input.content as string);
+      return await writeFile(fullPath, path, input.content as string, input._requireApproval as boolean | undefined);
+    case 'append_to_note':
+      return await appendToNote(fullPath, path, input.content as string, input._messageId as string | undefined);
     case 'list_directory':
       return await listDirectory(fullPath, path);
     default:
@@ -192,7 +192,8 @@ async function readFile(fullPath: string, relativePath: string): Promise<ToolRes
 async function writeFile(
   fullPath: string,
   relativePath: string,
-  content: string
+  content: string,
+  requireApproval?: boolean
 ): Promise<ToolResult> {
   if (content === undefined || content === null) {
     return {
@@ -215,6 +216,29 @@ async function writeFile(
     }
   }
 
+  // If approval is required, return the data for UI to show diff
+  if (requireApproval) {
+    let originalContent = '';
+    try {
+      if (await exists(fullPath)) {
+        originalContent = await readTextFile(fullPath);
+      }
+    } catch {
+      // File doesn't exist, that's fine
+    }
+
+    return {
+      tool_use_id: '',
+      content: `Approval required to write to ${relativePath}`,
+      requires_approval: true,
+      approval_data: {
+        path: relativePath,
+        originalContent,
+        newContent: content,
+      },
+    };
+  }
+
   try {
     await writeTextFile(fullPath, content);
     return {
@@ -230,10 +254,11 @@ async function writeFile(
   }
 }
 
-async function appendFile(
+async function appendToNote(
   fullPath: string,
   relativePath: string,
-  content: string
+  content: string,
+  messageId?: string
 ): Promise<ToolResult> {
   if (content === undefined || content === null) {
     return {
@@ -243,21 +268,35 @@ async function appendFile(
     };
   }
 
+  // Generate a fallback message ID if not provided
+  const provId = messageId || `msg-${Math.random().toString(16).slice(2, 6)}`;
+
+  // Add provenance marker to each non-empty line
+  const contentWithProvenance = content
+    .split('\n')
+    .map(line => line.trim() ? `${line} &[[chat^${provId}]]` : line)
+    .join('\n');
+
   try {
     let existingContent = '';
     if (await exists(fullPath)) {
       existingContent = await readTextFile(fullPath);
     }
 
-    await writeTextFile(fullPath, existingContent + content);
+    // Ensure proper spacing between existing content and new content
+    const newContent = existingContent
+      ? existingContent.trimEnd() + '\n\n' + contentWithProvenance
+      : contentWithProvenance;
+
+    await writeTextFile(fullPath, newContent);
     return {
       tool_use_id: '',
-      content: `Successfully appended to ${relativePath}`,
+      content: `Appended to ${relativePath}`,
     };
   } catch (error) {
     return {
       tool_use_id: '',
-      content: `Error appending to file: ${error instanceof Error ? error.message : String(error)}`,
+      content: `Error appending to note: ${error instanceof Error ? error.message : String(error)}`,
       is_error: true,
     };
   }

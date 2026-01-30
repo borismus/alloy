@@ -1,18 +1,26 @@
 import { Message, ToolUse, SkillUse } from '../../types';
 import { ToolCall, ToolDefinition, BUILTIN_TOOLS } from '../../types/tools';
 import { ToolRound, IProviderService, ChatOptions } from '../providers/types';
-import { toolRegistry } from './registry';
+import { toolRegistry, ToolContext } from './registry';
 import { skillRegistry } from '../skills/registry';
 import { ContextManager } from '../context';
+
+export interface ApprovalRequest {
+  path: string;
+  originalContent: string;
+  newContent: string;
+}
 
 export interface ToolExecutionOptions {
   maxIterations?: number;  // Default: 10 for chat, 5 for triggers
   onChunk?: (text: string) => void;
   onToolUse?: (toolUse: ToolUse) => void;
+  onApprovalRequired?: (request: ApprovalRequest) => Promise<boolean>;  // Returns true if approved
   signal?: AbortSignal;
   imageLoader?: (relativePath: string) => Promise<string>;
   tools?: ToolDefinition[];  // Override default tools
   systemPrompt?: string;
+  toolContext?: ToolContext;  // Context passed to tool executors (e.g., messageId for provenance)
 }
 
 export interface ToolExecutionResult {
@@ -36,10 +44,12 @@ export async function executeWithTools(
     maxIterations = 10,
     onChunk,
     onToolUse,
+    onApprovalRequired,
     signal,
     imageLoader,
     tools = BUILTIN_TOOLS,
     systemPrompt,
+    toolContext,
   } = options;
 
   const toolHistory: ToolRound[] = [];
@@ -103,7 +113,24 @@ export async function executeWithTools(
     // Execute each tool call
     const toolResults = await Promise.all(
       result.toolCalls.map(async (toolCall: ToolCall) => {
-        const toolResult = await toolRegistry.executeTool(toolCall);
+        let toolResult = await toolRegistry.executeTool(toolCall, toolContext);
+
+        // Handle approval flow
+        if (toolResult.requires_approval && toolResult.approval_data && onApprovalRequired) {
+          const approved = await onApprovalRequired(toolResult.approval_data);
+          if (approved) {
+            // Execute the tool again without the approval flag to actually perform the write
+            const contextWithoutApproval = { ...toolContext, requireWriteApproval: false };
+            toolResult = await toolRegistry.executeTool(toolCall, contextWithoutApproval);
+          } else {
+            // User rejected - return an error to the model
+            toolResult = {
+              tool_use_id: toolCall.id,
+              content: `User rejected the write to ${toolResult.approval_data.path}`,
+              is_error: true,
+            };
+          }
+        }
 
         // Update the tool use entry with result (but not for use_skill - we don't show instructions)
         if (toolCall.name !== 'use_skill') {

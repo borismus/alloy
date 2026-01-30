@@ -6,6 +6,11 @@ import { executeSkillTools } from './builtin/skills';
 import { executeSearchTools } from './builtin/search';
 import { executeWebSearchTools } from './builtin/websearch';
 
+export interface ToolContext {
+  messageId?: string;
+  requireWriteApproval?: boolean;  // write_file always requires approval unless this is explicitly false (after user approval)
+}
+
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition> = new Map();
 
@@ -24,7 +29,7 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  async executeTool(toolCall: ToolCall): Promise<ToolResult> {
+  async executeTool(toolCall: ToolCall, context?: ToolContext): Promise<ToolResult> {
     console.log(`[Tool] Executing: ${toolCall.name}`, toolCall.input);
 
     const tool = this.tools.get(toolCall.name);
@@ -41,12 +46,21 @@ export class ToolRegistry {
       // Route to appropriate executor based on tool name
       let result: ToolResult;
 
+      // Inject context into input for tools that need it
+      // write_file always requires approval unless explicitly bypassed (after user approval)
+      const requireApprovalForWrite = toolCall.name === 'write_file' && context?.requireWriteApproval !== false;
+      const inputWithContext = {
+        ...toolCall.input,
+        ...(context?.messageId && { _messageId: context.messageId }),
+        ...(requireApprovalForWrite && { _requireApproval: true }),
+      };
+
       switch (toolCall.name) {
         case 'read_file':
         case 'write_file':
-        case 'append_file':
         case 'list_directory':
-          result = await executeFileTools(toolCall.name, toolCall.input);
+        case 'append_to_note':
+          result = await executeFileTools(toolCall.name, inputWithContext);
           break;
         case 'http_get':
         case 'http_post':

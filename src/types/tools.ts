@@ -20,6 +20,12 @@ export interface ToolResult {
   tool_use_id: string;
   content: string;
   is_error?: boolean;
+  requires_approval?: boolean;
+  approval_data?: {
+    path: string;
+    originalContent: string;
+    newContent: string;
+  };
 }
 
 // Built-in tool definitions
@@ -43,18 +49,6 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       properties: {
         path: { type: 'string', description: 'Relative path within vault (e.g., "memory.md", "notes/todo.md")' },
         content: { type: 'string', description: 'Content to write' },
-      },
-      required: ['path', 'content'],
-    },
-  },
-  {
-    name: 'append_file',
-    description: 'Append content to a file in allowed vault directories (notes/, skills/) or root files like memory.md. Cannot access conversations/.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        path: { type: 'string', description: 'Relative path within vault (e.g., "memory.md", "notes/todo.md")' },
-        content: { type: 'string', description: 'Content to append' },
       },
       required: ['path', 'content'],
     },
@@ -107,13 +101,13 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     name: 'list_directory',
-    description: 'List files in a vault directory (notes/, skills/, conversations/). Returns file names with basic metadata.',
+    description: 'List files in a vault directory. Allowed directories: notes/, skills/, conversations/, triggers/. Returns file names sorted with directories first.',
     input_schema: {
       type: 'object',
       properties: {
-        directory: { type: 'string', description: 'Directory to list (e.g., "notes", "skills", "conversations")' },
+        path: { type: 'string', description: 'Relative directory path within vault (e.g., "notes", "skills", "conversations", "triggers")' },
       },
-      required: ['directory'],
+      required: ['path'],
     },
   },
   {
@@ -142,6 +136,18 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
         recency: { type: 'string', description: 'IMPORTANT: Use this when searching for recent content. Examples: "hour", "day", "24 hours", "3 days", "week", "month", "year"' },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'append_to_note',
+    description: 'Append content to a note with provenance tracking. Content is automatically marked with a provenance ID linking it to this chat message. Use for capturing insights, ideas, to-dos as the user talks. Keep appends small and atomic (1-3 lines typically).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative path within vault notes/ directory (e.g., "notes/ideas.md", "notes/todo.md")' },
+        content: { type: 'string', description: 'Content to append. Do NOT include provenance markers - they are added automatically.' },
+      },
+      required: ['path', 'content'],
     },
   },
 ];
