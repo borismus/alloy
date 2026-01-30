@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { Conversation, Message, ModelInfo, ProviderType, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
+import { useScrollToMessage } from '../hooks/useScrollToMessage';
 import { ModelSelector } from './ModelSelector';
 import { FindInConversation, FindInConversationHandle } from './FindInConversation';
 import { AgentResponseView } from './AgentResponseView';
@@ -19,7 +20,7 @@ interface UserMessageProps {
   message: Message;
   getImageUrl: (path: string) => string | undefined;
   onNavigateToNote?: (noteFilename: string) => void;
-  onNavigateToConversation?: (conversationId: string) => void;
+  onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
 }
 
 // UserMessage handles user messages with image attachments
@@ -225,7 +226,9 @@ interface ChatInterfaceProps {
   availableModels: ModelInfo[];
   favoriteModels?: string[];  // Format: "provider/model-id"
   onNavigateToNote?: (noteFilename: string) => void;
-  onNavigateToConversation?: (conversationId: string) => void;
+  onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
+  scrollToMessageId?: string | null;  // Message ID to scroll to (from provenance links)
+  onScrollComplete?: () => void;  // Called after scrolling to message
 }
 
 export interface ChatInterfaceHandle {
@@ -267,6 +270,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   favoriteModels,
   onNavigateToNote,
   onNavigateToConversation,
+  scrollToMessageId,
+  onScrollComplete,
 }, ref) => {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -330,28 +335,30 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
       if (message.role === 'user') {
         return (
-          <UserMessage
-            key={`${conversation.id}-${index}`}
-            message={message}
-            getImageUrl={getImageUrl}
-            onNavigateToNote={onNavigateToNote}
-            onNavigateToConversation={onNavigateToConversation}
-          />
+          <div key={`${conversation.id}-${index}`} data-message-id={message.id}>
+            <UserMessage
+              message={message}
+              getImageUrl={getImageUrl}
+              onNavigateToNote={onNavigateToNote}
+              onNavigateToConversation={onNavigateToConversation}
+            />
+          </div>
         );
       }
 
       // Assistant messages use AgentResponseView
       return (
-        <AgentResponseView
-          key={`${conversation.id}-${index}`}
-          content={message.content}
-          status="complete"
-          toolUses={message.toolUse}
-          skillUses={message.skillUse}
-          onNavigateToNote={onNavigateToNote}
-          onNavigateToConversation={onNavigateToConversation}
-          headerContent={assistantName}
-        />
+        <div key={`${conversation.id}-${index}`} data-message-id={message.id}>
+          <AgentResponseView
+            content={message.content}
+            status="complete"
+            toolUses={message.toolUse}
+            skillUses={message.skillUse}
+            onNavigateToNote={onNavigateToNote}
+            onNavigateToConversation={onNavigateToConversation}
+            headerContent={assistantName}
+          />
+        </div>
       );
     });
   }, [conversation, getImageUrl, streamingContent, assistantName]);
@@ -384,8 +391,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }, [conversation?.messages, streamingContent, shouldAutoScroll]);
 
-  // Scroll to bottom when switching conversations
+  // Scroll to bottom when switching conversations (unless scrollToMessageId is set)
   useEffect(() => {
+    // Skip if we have a pending scroll target - let the scroll-to-message effect handle it
+    if (scrollToMessageId) return;
+
     if (conversation && conversation.messages.length > 0) {
       const container = messagesContainerRef.current;
       if (container) {
@@ -396,12 +406,19 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         });
       }
     }
-  }, [conversation?.id]);
+  }, [conversation?.id, scrollToMessageId]);
 
   // Close find dialog when conversation changes
   useEffect(() => {
     setShowFind(false);
   }, [conversation?.id]);
+
+  // Scroll to specific message when scrollToMessageId is set (from provenance links)
+  useScrollToMessage({
+    containerRef: messagesContainerRef,
+    messageId: scrollToMessageId,
+    onScrollComplete,
+  });
 
   useEffect(() => {
     if (conversation && conversation.messages.length === 0) {

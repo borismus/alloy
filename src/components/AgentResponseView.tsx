@@ -36,7 +36,7 @@ interface AgentResponseViewProps {
   /** Callback when a wiki-link to a note is clicked */
   onNavigateToNote?: (noteFilename: string) => void;
   /** Callback when a wiki-link to a conversation is clicked */
-  onNavigateToConversation?: (conversationId: string) => void;
+  onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
 }
 
 /**
