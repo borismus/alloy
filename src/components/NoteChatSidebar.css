@@ -114,6 +114,20 @@
   background: #c0392b;
 }
 
+/* Message highlight animation for scroll-to-message */
+.note-chat-conversation .message-highlight {
+  animation: message-highlight-pulse 2s ease-out;
+}
+
+@keyframes message-highlight-pulse {
+  0% {
+    background-color: rgba(59, 130, 246, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .note-chat-sidebar {

@@ -116,38 +116,7 @@
   font-size: 0.9rem;
 }
 
-.thinking-indicator {
-  display: flex;
-  gap: 4px;
-  padding: 1rem 0;
-}
-
-.thinking-indicator span {
-  width: 8px;
-  height: 8px;
-  background: #667eea;
-  border-radius: 50%;
-  animation: thinking 1.4s ease-in-out infinite both;
-}
-
-.thinking-indicator span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.thinking-indicator span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes thinking {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.5;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
+/* thinking-indicator styles are in ChatInterface.css */
 
 .response-content {
   font-size: 0.9rem;

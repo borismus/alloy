@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, KeyboardEvent, useCallback } from 'react';
+import React, { useState, useEffect, useRef, KeyboardEvent, useCallback, useImperativeHandle } from 'react';
 import { rambleService } from '../services/ramble';
 import { providerRegistry } from '../services/providers';
 import { useToolExecution } from '../hooks/useToolExecution';
-import { Message, ToolUse, ModelInfo, getModelIdFromModel } from '../types';
+import { useConversationStreaming } from '../hooks/useConversationStreaming';
+import { Message, ModelInfo, getModelIdFromModel } from '../types';
 import { BUILTIN_TOOLS } from '../types/tools';
 import { ConversationView, ConversationViewHandle } from './ConversationView';
 import { ModelSelector } from './ModelSelector';
@@ -58,17 +59,32 @@ interface NoteChatSidebarProps {
   onNavigateToNote?: (noteFilename: string) => void;
 }
 
-export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNavigateToNote }: NoteChatSidebarProps) {
+export interface NoteChatSidebarHandle {
+  scrollToMessage: (messageId: string) => void;
+}
+
+const RAMBLE_CONVERSATION_ID = 'ramble_history';
+
+export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatSidebarProps>(({ isOpen, availableModels, favoriteModels, onNavigateToNote }, ref) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingContent, setStreamingContent] = useState('');
-  const [streamingToolUse, setStreamingToolUse] = useState<ToolUse[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationRef = useRef<ConversationViewHandle>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const { execute: executeWithTools } = useToolExecution();
+
+  // Use shared streaming context (same as ChatInterface)
+  const {
+    isStreaming,
+    streamingContent,
+    streamingToolUse,
+    start: startStreaming,
+    stop: stopStreaming,
+    updateContent,
+    addToolUse,
+    complete: completeStreaming,
+    clear: clearStreaming,
+  } = useConversationStreaming(RAMBLE_CONVERSATION_ID);
 
   // Initialize model selection
   useEffect(() => {
@@ -101,6 +117,22 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
     }
   }, [isOpen]);
 
+  // Clear streaming content once the assistant message appears in history
+  const lastMessage = messages[messages.length - 1];
+  const hasCompletedContent = !isStreaming && !!streamingContent;
+  useEffect(() => {
+    if (hasCompletedContent && lastMessage?.role === 'assistant') {
+      clearStreaming();
+    }
+  }, [hasCompletedContent, lastMessage?.role, clearStreaming]);
+
+  // Expose scrollToMessage via ref
+  useImperativeHandle(ref, () => ({
+    scrollToMessage: (messageId: string) => {
+      conversationRef.current?.scrollToMessage(messageId);
+    },
+  }), []);
+
   // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
@@ -110,12 +142,8 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
   };
 
   const handleStop = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsStreaming(false);
-  }, []);
+    stopStreaming();
+  }, [stopStreaming]);
 
   const handleSend = async () => {
     if (!inputValue.trim() || isStreaming || !selectedModel) return;
@@ -131,6 +159,7 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
 
     // Create user message
     const userMessage: Message = {
+      id: generateMessageId(),
       role: 'user',
       timestamp: new Date().toISOString(),
       content: inputValue.trim(),
@@ -147,11 +176,9 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
       textareaRef.current.style.height = 'auto';
     }
 
-    // Start streaming
-    setIsStreaming(true);
-    setStreamingContent('');
-    setStreamingToolUse([]);
-    abortControllerRef.current = new AbortController();
+    // Start streaming (returns AbortController)
+    const abortController = startStreaming();
+    if (!abortController) return;
 
     // Generate message ID for provenance tracking
     const messageId = generateMessageId();
@@ -162,20 +189,22 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
         tools: NOTE_CHAT_TOOLS,
         toolContext: {
           messageId,
+          conversationId: 'ramble_history',
           requireWriteApproval: true,
         },
         onChunk: (chunk) => {
-          setStreamingContent(prev => prev + chunk);
+          updateContent(chunk);
         },
         onToolUse: (toolUse) => {
-          setStreamingToolUse(prev => [...prev, toolUse]);
+          addToolUse(toolUse);
         },
-        signal: abortControllerRef.current?.signal,
+        signal: abortController.signal,
         systemPrompt: NOTE_CHAT_SYSTEM_PROMPT,
       });
 
       // Create assistant message
       const assistantMessage: Message = {
+        id: messageId,
         role: 'assistant',
         timestamp: new Date().toISOString(),
         content: result.finalContent,
@@ -187,7 +216,9 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
       setMessages(finalMessages);
       await rambleService.saveHistory(finalMessages);
 
+      completeStreaming();
     } catch (error: any) {
+      completeStreaming();
       if (error?.name === 'AbortError') {
         // User cancelled - save partial if any
         if (streamingContent) {
@@ -204,17 +235,12 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
       } else {
         console.error('[NoteChat] Error:', error);
       }
-    } finally {
-      setIsStreaming(false);
-      setStreamingContent('');
-      setStreamingToolUse([]);
-      abortControllerRef.current = null;
     }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Cmd/Ctrl+Enter to send
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // Enter to send, modifier+Enter for newline
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       handleSend();
     }
@@ -279,7 +305,7 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
               className="note-chat-send-btn"
               onClick={handleSend}
               disabled={!inputValue.trim() || !selectedModel}
-              title="Send (Cmd+Enter)"
+              title="Send (Enter)"
             >
               Go
             </button>
@@ -288,4 +314,4 @@ export function NoteChatSidebar({ isOpen, availableModels, favoriteModels, onNav
       </div>
     </div>
   );
-}
+});

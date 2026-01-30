@@ -5,6 +5,8 @@ import rehypeHighlight from 'rehype-highlight';
 import { Message, ToolUse } from '../types';
 import { AgentResponseView } from './AgentResponseView';
 import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
+import { useScrollToMessageCallback } from '../hooks/useScrollToMessage';
+import './ChatInterface.css';
 
 const remarkPlugins = [remarkGfm];
 const rehypePlugins = [rehypeHighlight];
@@ -72,6 +74,7 @@ export interface ConversationViewProps {
 
 export interface ConversationViewHandle {
   scrollToBottom: () => void;
+  scrollToMessage: (messageId: string) => void;
 }
 
 export const ConversationView = React.forwardRef<ConversationViewHandle, ConversationViewProps>(({
@@ -102,10 +105,14 @@ export const ConversationView = React.forwardRef<ConversationViewHandle, Convers
     }
   }, []);
 
-  // Expose scrollToBottom via ref
+  // Scroll to specific message by ID
+  const scrollToMessage = useScrollToMessageCallback(containerRef);
+
+  // Expose methods via ref
   React.useImperativeHandle(ref, () => ({
-    scrollToBottom: () => scrollToBottom(true)
-  }), [scrollToBottom]);
+    scrollToBottom: () => scrollToBottom(true),
+    scrollToMessage,
+  }), [scrollToBottom, scrollToMessage]);
 
   // Reset auto-scroll when streaming starts
   useEffect(() => {
@@ -150,31 +157,33 @@ export const ConversationView = React.forwardRef<ConversationViewHandle, Convers
 
       if (message.role === 'user') {
         return (
-          <UserMessage
-            key={index}
-            message={message}
-            getImageUrl={getImageUrl}
-            onNavigateToNote={onNavigateToNote}
-            onNavigateToConversation={onNavigateToConversation}
-            compact={compact}
-          />
+          <div key={index} data-message-id={message.id}>
+            <UserMessage
+              message={message}
+              getImageUrl={getImageUrl}
+              onNavigateToNote={onNavigateToNote}
+              onNavigateToConversation={onNavigateToConversation}
+              compact={compact}
+            />
+          </div>
         );
       }
 
       // Assistant message
       return (
-        <AgentResponseView
-          key={index}
-          content={message.content}
-          status="complete"
-          toolUses={message.toolUse}
-          skillUses={message.skillUse}
-          onNavigateToNote={onNavigateToNote}
-          onNavigateToConversation={onNavigateToConversation}
-          headerContent={showHeader ? assistantName : undefined}
-          showHeader={showHeader}
-          className={compact ? 'compact' : ''}
-        />
+        <div key={index} data-message-id={message.id}>
+          <AgentResponseView
+            content={message.content}
+            status="complete"
+            toolUses={message.toolUse}
+            skillUses={message.skillUse}
+            onNavigateToNote={onNavigateToNote}
+            onNavigateToConversation={onNavigateToConversation}
+            headerContent={showHeader ? assistantName : undefined}
+            showHeader={showHeader}
+            className={compact ? 'compact' : ''}
+          />
+        </div>
       );
     });
   }, [messages, streamingContent, getImageUrl, onNavigateToNote, onNavigateToConversation, showHeader, assistantName, compact]);
