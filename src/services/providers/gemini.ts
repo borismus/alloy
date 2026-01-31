@@ -5,6 +5,8 @@ import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from
 import { geminiToolAdapter } from './tool-adapters/gemini';
 
 const GEMINI_MODELS: ModelInfo[] = [
+  { key: 'gemini/gemini-3-pro-preview', name: 'Gemini 3 Pro' },
+  { key: 'gemini/gemini-3-flash-preview', name: 'Gemini 3 Flash' },
   { key: 'gemini/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
   { key: 'gemini/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
   { key: 'gemini/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
@@ -101,7 +103,8 @@ export class GeminiService implements IProviderService {
     const toolUseList: ToolUse[] = [];
     const toolCalls: ToolCall[] = [];
     let stopReason: StopReason = 'end_turn';
-    const functionCalls: GeminiFunctionCall[] = [];
+    // Store function calls with their thought signatures (Gemini 3 requirement)
+    const functionCallsWithSignatures: { call: GeminiFunctionCall; signature?: string }[] = [];
 
     for await (const chunk of result.stream) {
       // Check if aborted
@@ -132,7 +135,12 @@ export class GeminiService implements IProviderService {
           if (candidate.content?.parts) {
             for (const part of candidate.content.parts) {
               if ('functionCall' in part && part.functionCall) {
-                functionCalls.push(part.functionCall);
+                // Capture thought signature if present (Gemini 3 feature)
+                const partWithSig = part as { functionCall: GeminiFunctionCall; thoughtSignature?: string };
+                functionCallsWithSignatures.push({
+                  call: part.functionCall,
+                  signature: partWithSig.thoughtSignature,
+                });
 
                 // Notify UI immediately
                 const toolUse: ToolUse = {
@@ -149,12 +157,19 @@ export class GeminiService implements IProviderService {
     }
 
     // If we have function calls, set stop reason to tool_use
-    if (functionCalls.length > 0) {
+    if (functionCallsWithSignatures.length > 0) {
       stopReason = 'tool_use';
 
-      // Parse function calls into our format
-      const parsedCalls = geminiToolAdapter.parseToolCalls(functionCalls);
-      toolCalls.push(...parsedCalls);
+      // Parse function calls into our format, including thought signatures
+      for (let i = 0; i < functionCallsWithSignatures.length; i++) {
+        const { call, signature } = functionCallsWithSignatures[i];
+        toolCalls.push({
+          id: `gemini-call-${Date.now()}-${i}`,
+          name: call.name,
+          input: (call.args || {}) as Record<string, unknown>,
+          thoughtSignature: signature,
+        });
+      }
     }
 
     return {
@@ -193,21 +208,26 @@ export class GeminiService implements IProviderService {
     for (let i = 0; i < toolHistory.length - 1; i++) {
       const round = toolHistory[i];
       // Add model's function calls (and any text content)
-      const modelParts: Part[] = [];
+      // Include thought signatures for Gemini 3 compatibility
+      const modelParts: (Part & { thoughtSignature?: string })[] = [];
       if (round.textContent) {
         modelParts.push({ text: round.textContent });
       }
       for (const tc of round.toolCalls) {
-        modelParts.push({
+        const part: Part & { thoughtSignature?: string } = {
           functionCall: {
             name: tc.name,
             args: tc.input,
           },
-        });
+        };
+        if (tc.thoughtSignature) {
+          part.thoughtSignature = tc.thoughtSignature;
+        }
+        modelParts.push(part);
       }
       geminiHistory.push({
         role: 'model',
-        parts: modelParts,
+        parts: modelParts as Part[],
       });
 
       // Add function responses
@@ -244,22 +264,27 @@ export class GeminiService implements IProviderService {
     });
 
     // Also need to add the model's function calls for the last round to history (with any text content)
+    // Include thought signatures for Gemini 3 compatibility
     if (lastRound.toolCalls.length > 0) {
-      const lastRoundParts: Part[] = [];
+      const lastRoundParts: (Part & { thoughtSignature?: string })[] = [];
       if (lastRound.textContent) {
         lastRoundParts.push({ text: lastRound.textContent });
       }
       for (const tc of lastRound.toolCalls) {
-        lastRoundParts.push({
+        const part: Part & { thoughtSignature?: string } = {
           functionCall: {
             name: tc.name,
             args: tc.input,
           },
-        });
+        };
+        if (tc.thoughtSignature) {
+          part.thoughtSignature = tc.thoughtSignature;
+        }
+        lastRoundParts.push(part);
       }
       geminiHistory.push({
         role: 'model',
-        parts: lastRoundParts,
+        parts: lastRoundParts as Part[],
       });
     }
 
@@ -285,7 +310,8 @@ export class GeminiService implements IProviderService {
     const toolUseList: ToolUse[] = [];
     const toolCalls: ToolCall[] = [];
     let stopReason: StopReason = 'end_turn';
-    const functionCalls: GeminiFunctionCall[] = [];
+    // Store function calls with their thought signatures (Gemini 3 requirement)
+    const functionCallsWithSignatures: { call: GeminiFunctionCall; signature?: string }[] = [];
 
     for await (const chunk of result.stream) {
       if (options.signal?.aborted) {
@@ -312,7 +338,12 @@ export class GeminiService implements IProviderService {
           if (candidate.content?.parts) {
             for (const part of candidate.content.parts) {
               if ('functionCall' in part && part.functionCall) {
-                functionCalls.push(part.functionCall);
+                // Capture thought signature if present (Gemini 3 feature)
+                const partWithSig = part as { functionCall: GeminiFunctionCall; thoughtSignature?: string };
+                functionCallsWithSignatures.push({
+                  call: part.functionCall,
+                  signature: partWithSig.thoughtSignature,
+                });
 
                 const toolUse: ToolUse = {
                   type: part.functionCall.name,
@@ -327,10 +358,20 @@ export class GeminiService implements IProviderService {
       }
     }
 
-    if (functionCalls.length > 0) {
+    // If we have function calls, set stop reason to tool_use
+    if (functionCallsWithSignatures.length > 0) {
       stopReason = 'tool_use';
-      const parsedCalls = geminiToolAdapter.parseToolCalls(functionCalls);
-      toolCalls.push(...parsedCalls);
+
+      // Parse function calls into our format, including thought signatures
+      for (let i = 0; i < functionCallsWithSignatures.length; i++) {
+        const { call, signature } = functionCallsWithSignatures[i];
+        toolCalls.push({
+          id: `gemini-call-${Date.now()}-${i}`,
+          name: call.name,
+          input: (call.args || {}) as Record<string, unknown>,
+          thoughtSignature: signature,
+        });
+      }
     }
 
     return {
