@@ -99,7 +99,7 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
         {status === 'pending' && (
           <span className="waiting-text">{pendingText}</span>
         )}
-        {isStreaming && !content && (
+        {isStreaming && !content.trim() && (
           <div className="thinking-indicator">
             <span></span>
             <span></span>
