@@ -11,14 +11,27 @@ const host = process.env.TAURI_DEV_HOST;
 // @ts-expect-error process is a nodejs global
 const isBrowserOnly = process.env.BROWSER_ONLY === 'true';
 
+// Server mode: use HTTP API for filesystem operations
+// Use `npm run dev:server` for server mode against a local/remote server
+// @ts-expect-error process is a nodejs global
+const isServerMode = process.env.SERVER_MODE === 'true';
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
 
-  // In browser-only mode (BROWSER_ONLY=true), swap Tauri modules for mocks
-  resolve: isBrowserOnly ? {
+  // Pass server mode flag to runtime code
+  define: isServerMode ? {
+    'import.meta.env.VITE_SERVER_MODE': JSON.stringify('true'),
+  } : {},
+
+  // In browser-only or server mode, swap Tauri modules for mocks
+  // Server mode uses HTTP-based fs mock, browser mode uses in-memory mock
+  resolve: (isBrowserOnly || isServerMode) ? {
     alias: {
-      '@tauri-apps/plugin-fs': path.resolve(__dirname, 'src/mocks/tauri-fs.ts'),
+      '@tauri-apps/plugin-fs': isServerMode
+        ? path.resolve(__dirname, 'src/mocks/tauri-fs-http.ts')
+        : path.resolve(__dirname, 'src/mocks/tauri-fs.ts'),
       '@tauri-apps/plugin-dialog': path.resolve(__dirname, 'src/mocks/tauri-dialog.ts'),
       '@tauri-apps/plugin-opener': path.resolve(__dirname, 'src/mocks/tauri-opener.ts'),
       '@tauri-apps/plugin-http': path.resolve(__dirname, 'src/mocks/tauri-http.ts'),
