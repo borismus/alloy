@@ -3,6 +3,7 @@ import { triggerExecutor } from './executor';
 
 export interface TriggerSchedulerCallbacks {
   getConversations: () => Conversation[];
+  reloadTrigger: (id: string) => Promise<Conversation | null>;
   onTriggerFired: (conversation: Conversation, result: TriggerResult) => Promise<void>;
   onTriggerSkipped: (conversation: Conversation, result: TriggerResult) => void;
   onTriggerChecking: (conversationId: string) => void;
@@ -87,19 +88,22 @@ export class TriggerScheduler {
     );
 
     for (const conv of triggeredConversations) {
-      const trigger = conv.trigger!;
-
-      if (!this.isDueForCheck(trigger)) {
-        continue;
-      }
-
+      // Skip if already checking
       if (this.activeChecks.has(conv.id)) {
         console.log(`TriggerScheduler: Skipping ${conv.id}, LLM check already in progress`);
         continue;
       }
 
+      // Reload from disk to get latest timestamps (multi-instance coordination)
+      const freshConv = await this.callbacks.reloadTrigger(conv.id);
+      if (!freshConv?.trigger?.enabled) continue;
+
+      if (!this.isDueForCheck(freshConv.trigger)) {
+        continue;
+      }
+
       // Don't await - run checks concurrently
-      this.checkConversation(conv);
+      this.checkConversation(freshConv);
     }
   }
 

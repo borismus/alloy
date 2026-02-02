@@ -165,16 +165,16 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
       content: inputValue.trim(),
     };
 
-    // Add to UI and save
+    // Add to UI, clear input, and start streaming
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
-    await rambleService.saveHistory(updatedMessages);
-
-    // Clear input
     setInputValue('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
+
+    // Save history in background (don't block UI)
+    rambleService.saveHistory(updatedMessages);
 
     // Start streaming (returns AbortController)
     const abortController = startStreaming();

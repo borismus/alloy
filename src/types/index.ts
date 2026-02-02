@@ -42,7 +42,8 @@ export interface SkillUse {
 }
 
 export interface Message {
-  id?: string;  // Unique message identifier for provenance tracking
+  // Unique identifier for provenance tracking (e.g., 'msg-a1b2')
+  id?: string;
   // 'log' messages are for UI display only and are filtered out before sending to agents
   role: 'user' | 'assistant' | 'log';
   timestamp: string;

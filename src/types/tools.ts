@@ -14,6 +14,7 @@ export interface ToolCall {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  thoughtSignature?: string;  // Gemini 3 thought signature for context preservation
 }
 
 export interface ToolResult {

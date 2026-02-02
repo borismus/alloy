@@ -28,7 +28,7 @@ interface ConversationInfo {
 interface NoteViewerProps {
   content: string;
   onNavigateToNote?: (noteFilename: string) => void;
-  onNavigateToConversation?: (conversationId: string) => void;
+  onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   conversations?: ConversationInfo[]; // For looking up conversation titles
 }
 

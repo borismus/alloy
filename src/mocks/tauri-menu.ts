@@ -1,8 +1,11 @@
 /**
  * Mock implementation of @tauri-apps/api/menu
  *
- * No-op menu system for browser mode.
+ * In server/browser mode, shows a React-based context menu.
  */
+
+import { getGlobalShowMenu, ContextMenuItem } from '../contexts/ContextMenuContext';
+import { isServerMode } from './index';
 
 interface MenuItemOptions {
   id?: string;
@@ -12,7 +15,25 @@ interface MenuItemOptions {
 }
 
 interface MenuOptions {
-  items?: MenuItem[];
+  items?: MenuItemOptions[];
+}
+
+// Track last mouse position for menu placement
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+// Update mouse position on every contextmenu event
+if (typeof window !== 'undefined') {
+  document.addEventListener('contextmenu', (e) => {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
+
+  // Also track regular mouse events for the FAB menu case
+  document.addEventListener('mousedown', (e) => {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+  });
 }
 
 class MenuItem {
@@ -30,27 +51,45 @@ class MenuItem {
 }
 
 export class Menu {
-  private items: MenuItem[] = [];
+  private items: ContextMenuItem[] = [];
 
-  constructor(_options?: MenuOptions) {
-    // No-op
+  constructor(options?: MenuOptions) {
+    if (options?.items) {
+      this.items = options.items.map(item => ({
+        id: item.id || '',
+        text: item.text || '',
+        enabled: item.enabled ?? true,
+        action: item.action,
+      }));
+    }
   }
 
-  static async new(_options?: MenuOptions): Promise<Menu> {
-    return new Menu(_options);
+  static async new(options?: MenuOptions): Promise<Menu> {
+    return new Menu(options);
   }
 
   async append(item: MenuItem): Promise<void> {
-    this.items.push(item);
+    this.items.push({
+      id: item.id,
+      text: item.text,
+      enabled: item.enabled,
+      action: item.action,
+    });
   }
 
   async popup(): Promise<void> {
-    console.log('[MockMenu] popup() - no-op in browser mode');
-    // Could implement a custom context menu here if needed
+    if (isServerMode() || !('__TAURI_INTERNALS__' in window)) {
+      const showMenu = getGlobalShowMenu();
+      if (showMenu) {
+        showMenu(this.items, lastMouseX, lastMouseY);
+      } else {
+        console.log('[MockMenu] popup() - ContextMenuProvider not mounted');
+      }
+    }
   }
 
   async close(): Promise<void> {
-    // No-op
+    // No-op - menu closes on click outside
   }
 }
 

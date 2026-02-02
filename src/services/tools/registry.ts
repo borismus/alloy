@@ -8,7 +8,7 @@ import { executeWebSearchTools } from './builtin/websearch';
 
 export interface ToolContext {
   messageId?: string;
-  conversationId?: string;  // Conversation ID for provenance tracking
+  conversationId?: string;  // e.g., 'ramble_history' or 'conversations/2025-01-19-...'
   requireWriteApproval?: boolean;  // write_file always requires approval unless this is explicitly false (after user approval)
 }
 
@@ -53,6 +53,7 @@ export class ToolRegistry {
       const inputWithContext = {
         ...toolCall.input,
         ...(context?.messageId && { _messageId: context.messageId }),
+        ...(context?.conversationId && { _conversationId: context.conversationId }),
         ...(requireApprovalForWrite && { _requireApproval: true }),
       };
 

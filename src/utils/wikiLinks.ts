@@ -53,7 +53,7 @@ interface ConversationInfo {
 
 interface WikiLinkCallbacks {
   onNavigateToNote?: (noteFilename: string) => void;
-  onNavigateToConversation?: (conversationId: string) => void;
+  onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   conversations?: ConversationInfo[]; // For looking up conversation titles
 }
 
@@ -70,12 +70,19 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
 
   return {
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-      // Handle provenance markers (&[[...]]) - these always link to conversations
+      // Handle provenance markers (&[[...]]) - these link to conversations/ramble with optional message ID
+      // Format: &[[conversationPath^messageId]] e.g., &[[ramble_history^msg-a1b2]] or &[[conversations/2025-01-19...^msg-a1b2]]
       if (href?.startsWith('provenance:')) {
-        const target = href.replace('provenance:', '');
-        const conversationId = extractConversationId(target);
+        const target = decodeURIComponent(href.replace('provenance:', ''));
+        // Parse conversation path and optional message ID (separated by ^)
+        const [conversationPath, messageId] = target.split('^');
+        const conversationId = conversationPath === 'ramble_history'
+          ? 'ramble_history'
+          : extractConversationId(conversationPath);
         // Look up the conversation title from YAML, fall back to slug-derived name
-        const conversationTitle = lookupConversationTitle(conversationId, conversations);
+        const conversationTitle = conversationId === 'ramble_history'
+          ? 'Note Chat'
+          : lookupConversationTitle(conversationId, conversations);
         const displayText = conversationTitle || children;
 
         return React.createElement('a', {
@@ -85,9 +92,9 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
           onClick: (e: React.MouseEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('[wikiLinks] Provenance link clicked:', { target, conversationId, conversationTitle, hasCallback: !!onNavigateToConversation });
+            console.log('[wikiLinks] Provenance link clicked:', { target, conversationId, messageId, conversationTitle, hasCallback: !!onNavigateToConversation });
             if (onNavigateToConversation) {
-              onNavigateToConversation(conversationId);
+              onNavigateToConversation(conversationId, messageId);
             }
           }
         }, displayText);
@@ -95,7 +102,7 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
 
       // Handle wiki-links
       if (href?.startsWith('wikilink:')) {
-        const target = href.replace('wikilink:', '');
+        const target = decodeURIComponent(href.replace('wikilink:', ''));
         const isConversation = target.startsWith('conversations/');
 
         return React.createElement('a', {

@@ -138,9 +138,8 @@ export const ConversationView = React.forwardRef<ConversationViewHandle, Convers
   }, []);
 
   // Determine if we should show streaming message
-  const showStreamingMessage = isStreaming || (streamingContent && !messages.some(
-    m => m.role === 'assistant' && m.content === streamingContent
-  ));
+  // Show when actively streaming OR when we have content that hasn't been added to messages yet
+  const showStreamingMessage = isStreaming || !!streamingContent;
 
   // Memoize rendered messages
   const renderedMessages = useMemo(() => {

@@ -20,11 +20,16 @@ import { Settings } from './components/Settings';
 import { TriggerConfigModal } from './components/TriggerConfigModal';
 import { TriggerManagementView } from './components/TriggerManagementView';
 import { NoteViewer } from './components/NoteViewer';
-import { NoteChatSidebar } from './components/NoteChatSidebar';
+import { NoteChatSidebar, NoteChatSidebarHandle } from './components/NoteChatSidebar';
 import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
-import { isBrowser, DEMO_VAULT_PATH } from './mocks';
+import { isBrowser, isServerMode, DEMO_VAULT_PATH } from './mocks';
+import { ContextMenuProvider } from './contexts/ContextMenuContext';
+import { ContextMenu } from './components/ContextMenu';
 import './App.css';
+
+// Generate unique message ID for provenance tracking
+const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
 
 function AppContent() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -49,10 +54,13 @@ function AppContent() {
     | { type: 'note'; filename: string; content: string }
     | { type: 'conversation'; id: string };
   const [navigationHistory, setNavigationHistory] = useState<NavigationEntry[]>([]);
+  // Message ID to scroll to after navigating to a conversation (for provenance links)
+  const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
   const councilChatInterfaceRef = useRef<CouncilChatInterfaceHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
+  const noteChatSidebarRef = useRef<NoteChatSidebarHandle>(null);
   const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse } = useStreamingContext();
   const { execute: executeWithTools } = useToolExecution();
 
@@ -139,6 +147,33 @@ function AppContent() {
     setNotes(loadedNotes);
   }, []);
 
+  // Handle note modification - refresh selected note content if it's the one being viewed
+  const handleNoteModified = useCallback(async (filename: string) => {
+    // Reload the notes list
+    const loadedNotes = await vaultService.loadNotes();
+    setNotes(loadedNotes);
+
+    // If the modified note is currently selected, refresh its content
+    setSelectedNote(prev => {
+      if (prev && prev.filename === filename) {
+        // Re-read the file content asynchronously
+        const vaultPathStr = vaultService.getVaultPath();
+        const notesPath = vaultService.getNotesPath();
+        if (vaultPathStr && notesPath) {
+          const notePath = filename === 'memory.md'
+            ? `${vaultPathStr}/${filename}`
+            : `${notesPath}/${filename}`;
+          readTextFile(notePath).then(content => {
+            setSelectedNote({ filename, content });
+          }).catch(error => {
+            console.error('Failed to refresh note content:', error);
+          });
+        }
+      }
+      return prev; // Return prev for now, update happens async
+    });
+  }, []);
+
   // Trigger watcher callbacks
   const handleTriggerAdded = useCallback(async (id: string) => {
     const newTrigger = await vaultService.loadTrigger(id);
@@ -177,7 +212,7 @@ function AppContent() {
       onConfigChanged: handleConfigChanged,
       onNoteAdded: handleNoteChanged,
       onNoteRemoved: handleNoteChanged,
-      onNoteModified: handleNoteChanged,
+      onNoteModified: handleNoteModified,
       onTriggerAdded: handleTriggerAdded,
       onTriggerRemoved: handleTriggerRemoved,
       onTriggerModified: handleTriggerModified,
@@ -190,6 +225,10 @@ function AppContent() {
         const savedVaultPath = localStorage.getItem('vaultPath');
         if (savedVaultPath) {
           await loadVault(savedVaultPath);
+        } else if (isServerMode()) {
+          // Server mode: auto-load vault (server's VAULT_PATH is the root)
+          console.log('[App] Server mode detected, loading vault');
+          await loadVault('/');
         } else if (isBrowser()) {
           // Browser-only mode: auto-load demo vault
           console.log('[App] Browser mode detected, loading demo vault');
@@ -619,6 +658,7 @@ function AppContent() {
     }
 
     const userMessage: Message = {
+      id: generateMessageId(),
       role: 'user',
       timestamp: new Date().toISOString(),
       content,
@@ -676,9 +716,16 @@ function AppContent() {
         return await vaultService.loadImageAsBase64(relativePath);
       };
 
+      // Generate message ID for provenance tracking
+      const assistantMessageId = generateMessageId();
+
       // Execute with tool loop support
       const result = await executeWithTools(provider, updatedMessages, modelId, {
         maxIterations: 10,
+        toolContext: {
+          messageId: assistantMessageId,
+          conversationId: `conversations/${currentConversation.id}`,
+        },
         onChunk,
         onToolUse: (toolUse) => addToolUse(currentConversation.id, toolUse),
         signal,
@@ -687,6 +734,7 @@ function AppContent() {
       });
 
       const assistantMessage: Message = {
+        id: assistantMessageId,
         role: 'assistant',
         timestamp: new Date().toISOString(),
         content: result.finalContent,
@@ -773,8 +821,20 @@ function AppContent() {
     }
   };
 
-  const handleSelectConversation = async (id: string, addToHistory = true) => {
-    console.log('[App] handleSelectConversation called with id:', id);
+  const handleSelectConversation = async (id: string, addToHistory = true, messageId?: string) => {
+    console.log('[App] handleSelectConversation called with id:', id, 'messageId:', messageId);
+
+    // Handle ramble_history specially - it's the Note Chat sidebar, not a loadable conversation
+    if (id === 'ramble_history') {
+      // Scroll Note Chat sidebar to the message if provided
+      if (messageId) {
+        noteChatSidebarRef.current?.scrollToMessage(messageId);
+      }
+      return;
+    }
+
+    // Store messageId for scrolling after conversation loads
+    setPendingScrollToMessageId(messageId || null);
 
     // Don't navigate to the same conversation we're already viewing
     if (currentConversation?.id === id && !selectedNote) {
@@ -1123,9 +1183,9 @@ function AppContent() {
           <NoteViewer
             content={selectedNote.content}
             onNavigateToNote={handleSelectNote}
-            onNavigateToConversation={(conversationId) => {
-              console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId);
-              handleSelectConversation(conversationId);
+            onNavigateToConversation={(conversationId: string, messageId?: string) => {
+              console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId, messageId);
+              handleSelectConversation(conversationId, true, messageId);
             }}
             conversations={conversations}
           />
@@ -1159,7 +1219,9 @@ function AppContent() {
               setSidebarTab('notes');
               handleSelectNote(noteFilename);
             }}
-            onNavigateToConversation={handleSelectConversation}
+onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+            scrollToMessageId={pendingScrollToMessageId}
+            onScrollComplete={() => setPendingScrollToMessageId(null)}
             onToggleSidebar={toggleSidebar}
           />
         )}
@@ -1209,7 +1271,7 @@ function AppContent() {
         />
       )}
         {selectedNote && (
-          <NoteChatSidebar isOpen={true} availableModels={availableModels} favoriteModels={config?.favoriteModels} onNavigateToNote={handleSelectNote} />
+          <NoteChatSidebar ref={noteChatSidebarRef} isOpen={true} availableModels={availableModels} favoriteModels={config?.favoriteModels} onNavigateToNote={handleSelectNote} />
         )}
       </div>
     </TriggerProvider>
@@ -1220,7 +1282,10 @@ function App() {
   return (
     <StreamingProvider>
       <ApprovalProvider>
-        <AppContent />
+        <ContextMenuProvider>
+          <AppContent />
+          <ContextMenu />
+        </ContextMenuProvider>
       </ApprovalProvider>
     </StreamingProvider>
   );
