@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Conversation, Message, TriggerAttempt, Trigger } from '../types';
 import { triggerScheduler } from '../services/triggers/scheduler';
+import { vaultService } from '../services/vault';
 
 interface FiredTrigger {
   conversationId: string;
@@ -62,6 +63,11 @@ export function TriggerProvider({
 
     triggerScheduler.start({
       getConversations: () => getTriggersRef.current() as Conversation[],
+
+      reloadTrigger: async (id: string) => {
+        // Load fresh from disk for multi-instance coordination
+        return await vaultService.loadTrigger(id) as Conversation | null;
+      },
 
       onTriggerFired: async (triggerDoc, result) => {
         // Re-fetch fresh trigger to avoid race conditions
