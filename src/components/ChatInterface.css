@@ -897,3 +897,155 @@
     opacity: 1;
   }
 }
+
+/* ==========================================
+   Mobile Responsive Styles
+   ========================================== */
+
+/* Mobile Header - Only visible on mobile */
+.mobile-header {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  padding-top: calc(0.75rem + var(--safe-area-top, 0px));
+  border-bottom: 1px solid #e0e0e0;
+  background: white;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  gap: 0.75rem;
+}
+
+.hamburger-button {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.hamburger-button:hover {
+  background: #f0f0f0;
+}
+
+.hamburger-button:active {
+  background: #e0e0e0;
+}
+
+.mobile-header-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Hide mobile header on tablet+ */
+@media (min-width: 768px) {
+  .mobile-header {
+    display: none;
+  }
+}
+
+/* Responsive messages container */
+.messages-container {
+  padding: 1rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 768px) {
+  .messages-container {
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .messages-container {
+    padding: 2rem;
+  }
+}
+
+/* Responsive message sizing */
+.message {
+  margin-bottom: 1rem;
+  max-width: 100%;
+}
+
+@media (min-width: 768px) {
+  .message {
+    margin-bottom: 1.5rem;
+    max-width: 85%;
+  }
+}
+
+@media (min-width: 1024px) {
+  .message {
+    margin-bottom: 2rem;
+    max-width: 800px;
+  }
+}
+
+/* Responsive input form */
+.input-form {
+  padding: 0.75rem 1rem;
+  padding-bottom: calc(0.75rem + var(--safe-area-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .input-form {
+    padding: 1rem 1.5rem;
+    padding-bottom: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .input-form {
+    padding: 1.5rem;
+  }
+}
+
+/* Responsive welcome message */
+.welcome-message,
+.no-conversation,
+.no-provider {
+  padding: 2rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .welcome-message,
+  .no-conversation,
+  .no-provider {
+    padding: 4rem 2rem;
+  }
+}
+
+/* Touch-friendly buttons */
+@media (max-width: 767px) {
+  .send-button {
+    min-width: 48px;
+    min-height: 48px;
+  }
+
+  .model-selector {
+    min-height: 48px;
+  }
+
+  .input-form textarea {
+    min-height: 48px;
+    font-size: 16px; /* Prevent iOS zoom */
+  }
+
+  .remove-image {
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+  }
+}

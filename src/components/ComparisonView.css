@@ -227,3 +227,43 @@
 .stop-all-button:hover {
   background: #c82333;
 }
+
+/* Mobile responsive enhancements */
+@media (max-width: 767px) {
+  .comparison-view {
+    padding: 0.5rem;
+    gap: 0.5rem;
+  }
+
+  .comparison-columns {
+    gap: 0.75rem;
+  }
+
+  .comparison-column {
+    min-height: 250px;
+  }
+
+  .column-header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .model-name {
+    font-size: 0.85rem;
+  }
+
+  .column-content {
+    padding: 0.75rem;
+    min-height: 150px;
+  }
+
+  .column-header .stop-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .stop-all-button {
+    width: 100%;
+    padding: 0.75rem;
+    min-height: 44px;
+  }
+}

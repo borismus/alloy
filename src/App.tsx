@@ -42,6 +42,8 @@ function AppContent() {
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chats');
   const [selectedNote, setSelectedNote] = useState<{ filename: string; content: string } | null>(null);
+  // Mobile sidebar state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
   // Navigation history for back button support
   type NavigationEntry =
     | { type: 'note'; filename: string; content: string }
@@ -239,6 +241,29 @@ function AppContent() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showSettings, config]);
+
+  // Handle viewport resize for sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      const isDesktop = window.innerWidth >= 768;
+      if (isDesktop) {
+        setIsSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen(prev => !prev);
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  }, []);
 
   const loadVault = async (path: string) => {
     try {
@@ -1009,23 +1034,49 @@ function AppContent() {
           streamingConversationIds={getStreamingConversationIds()}
           unreadConversationIds={getUnreadConversationIds()}
           availableModels={availableModels}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onNewComparison={handleNewComparison}
-          onNewCouncil={handleNewCouncil}
-          onNewTrigger={() => setShowTriggerConfig(true)}
+          onSelectConversation={(id) => {
+            handleSelectConversation(id);
+            closeSidebar();
+          }}
+          onNewConversation={() => {
+            handleNewConversation();
+            closeSidebar();
+          }}
+          onNewComparison={() => {
+            handleNewComparison();
+            closeSidebar();
+          }}
+          onNewCouncil={() => {
+            handleNewCouncil();
+            closeSidebar();
+          }}
+          onNewTrigger={() => {
+            setShowTriggerConfig(true);
+            closeSidebar();
+          }}
           onRenameConversation={handleRenameConversation}
           onDeleteConversation={handleDeleteConversation}
           onDeleteTrigger={handleDeleteTrigger}
-          onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
+          onOpenTriggerManagement={() => {
+            setShowTriggerManagementView(true);
+            closeSidebar();
+          }}
           notes={notes}
           activeTab={sidebarTab}
           selectedNoteFilename={selectedNote?.filename || null}
-          onSelectNote={handleSelectNote}
-          onNewNotesChat={handleNewNotesChat}
+          onSelectNote={(filename) => {
+            handleSelectNote(filename);
+            closeSidebar();
+          }}
+          onNewNotesChat={() => {
+            handleNewNotesChat();
+            closeSidebar();
+          }}
           onTabChange={setSidebarTab}
           canGoBack={navigationHistory.length > 0}
           onGoBack={handleGoBack}
+          isOpen={isSidebarOpen}
+          onClose={closeSidebar}
         />
       <div className="main-panel">
         {showTriggerManagementView ? (
@@ -1109,6 +1160,7 @@ function AppContent() {
               handleSelectNote(noteFilename);
             }}
             onNavigateToConversation={handleSelectConversation}
+            onToggleSidebar={toggleSidebar}
           />
         )}
       </div>

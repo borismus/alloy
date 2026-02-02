@@ -226,6 +226,7 @@ interface ChatInterfaceProps {
   favoriteModels?: string[];  // Format: "provider/model-id"
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string) => void;
+  onToggleSidebar?: () => void;
 }
 
 export interface ChatInterfaceHandle {
@@ -267,6 +268,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   favoriteModels,
   onNavigateToNote,
   onNavigateToConversation,
+  onToggleSidebar,
 }, ref) => {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -571,6 +573,19 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {/* Mobile header with hamburger menu */}
+      <div className="mobile-header">
+        <button className="hamburger-button" onClick={onToggleSidebar} aria-label="Toggle sidebar">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <span className="mobile-header-title">
+          {conversation?.title || 'New conversation'}
+        </span>
+      </div>
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {showFind && (
           <FindInConversation

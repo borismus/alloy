@@ -1,17 +1,57 @@
+/* Sidebar Backdrop - Mobile overlay */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--z-sidebar-backdrop, 1050);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-slow, 0.3s ease);
+}
+
+.sidebar-backdrop.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Hide backdrop on tablet+ */
+@media (min-width: 768px) {
+  .sidebar-backdrop {
+    display: none;
+  }
+}
+
+/* Sidebar - Mobile-first (hidden by default) */
 .sidebar {
+  position: fixed;
+  left: -280px;
   width: 280px;
   background: #f8f9fa;
   border-right: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
   height: 100vh;
-  position: relative;
+  height: 100dvh;
+  z-index: var(--z-sidebar, 1100);
+  transition: left var(--transition-slow, 0.3s ease);
+}
+
+.sidebar.open {
+  left: 0;
+}
+
+/* Tablet+: sidebar in document flow */
+@media (min-width: 768px) {
+  .sidebar {
+    position: relative;
+    left: 0;
+  }
 }
 
 .back-button {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -22,6 +62,13 @@
   align-items: center;
   justify-content: center;
   padding: 0;
+}
+
+@media (min-width: 768px) {
+  .back-button {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 .back-button:hover:not(.disabled) {
@@ -36,8 +83,8 @@
 
 .new-button {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 6px;
   border: none;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -53,6 +100,13 @@
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
+@media (min-width: 768px) {
+  .new-button {
+    width: 36px;
+    height: 36px;
+  }
+}
+
 .new-button:hover {
   transform: scale(1.05);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
@@ -64,11 +118,18 @@
 
 .search-box {
   padding: 1rem;
+  padding-top: calc(1rem + var(--safe-area-top, 0px));
   background: #f8f9fa;
   user-select: none;
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+@media (min-width: 768px) {
+  .search-box {
+    padding-top: 1rem;
+  }
 }
 
 .search-input-wrapper {
@@ -82,9 +143,15 @@
   padding-right: 1.75rem;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-family: inherit;
   box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .search-input {
+    font-size: 0.875rem;
+  }
 }
 
 .search-input:focus {
@@ -97,19 +164,27 @@
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: #999;
   color: white;
   border-radius: 50%;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+}
+
+@media (min-width: 768px) {
+  .clear-search-button {
+    width: 18px;
+    height: 18px;
+    font-size: 12px;
+  }
 }
 
 .clear-search-button:hover {
@@ -122,6 +197,7 @@
   padding: 0.5rem;
   scrollbar-width: thin;
   scrollbar-color: #ccc transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 .conversations-list::-webkit-scrollbar {
@@ -162,10 +238,15 @@
   cursor: pointer;
   transition: background 0.2s;
   border: 1px solid transparent;
+  min-height: 48px;
 }
 
 .conversation-item:hover {
   background: #e9ecef;
+}
+
+.conversation-item:active {
+  background: #dde0e3;
 }
 
 .conversation-item.active {
@@ -249,20 +330,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: none;
   background: transparent;
   color: #999;
   cursor: pointer;
   border-radius: 4px;
-  opacity: 0;
+  opacity: 1;
   transition: all 0.15s ease;
 }
 
-.conversation-item:hover .trigger-settings-btn {
-  opacity: 1;
+@media (min-width: 768px) {
+  .trigger-settings-btn {
+    width: 22px;
+    height: 22px;
+    opacity: 0;
+  }
+
+  .conversation-item:hover .trigger-settings-btn {
+    opacity: 1;
+  }
 }
 
 .trigger-settings-btn:hover {
@@ -280,7 +369,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1200;
+  padding: 1rem;
 }
 
 .rename-dialog {
@@ -288,7 +378,7 @@
   padding: 1.5rem;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  min-width: 320px;
+  width: 100%;
   max-width: 400px;
 }
 
@@ -300,12 +390,19 @@
 
 .rename-input {
   width: 100%;
-  padding: 0.625rem;
+  padding: 0.75rem;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-family: inherit;
   margin-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  .rename-input {
+    padding: 0.625rem;
+    font-size: 0.9rem;
+  }
 }
 
 .rename-input:focus {
@@ -320,13 +417,22 @@
 }
 
 .rename-buttons button {
-  padding: 0.5rem 1rem;
+  padding: 0.75rem 1.25rem;
   border-radius: 6px;
   border: none;
-  font-size: 0.9rem;
+  font-size: 1rem;
   cursor: pointer;
   transition: all 0.2s;
   font-family: inherit;
+  min-height: 44px;
+}
+
+@media (min-width: 768px) {
+  .rename-buttons button {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    min-height: auto;
+  }
 }
 
 .cancel-button {
@@ -394,7 +500,8 @@
 
 .sidebar-tab {
   flex: 1;
-  padding: 0.5rem 0.75rem;
+  padding: 0.75rem;
+  min-height: 44px;
   border: none;
   background: transparent;
   font-size: 0.875rem;
@@ -403,6 +510,13 @@
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
+}
+
+@media (min-width: 768px) {
+  .sidebar-tab {
+    padding: 0.5rem 0.75rem;
+    min-height: auto;
+  }
 }
 
 .sidebar-tab:hover {
@@ -423,6 +537,7 @@
   padding: 0.5rem;
   scrollbar-width: thin;
   scrollbar-color: #ccc transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 .notes-list::-webkit-scrollbar {
@@ -452,10 +567,15 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 48px;
 }
 
 .note-item:hover {
   background: #e9ecef;
+}
+
+.note-item:active {
+  background: #dde0e3;
 }
 
 .note-item.active {

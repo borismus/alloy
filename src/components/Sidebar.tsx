@@ -124,6 +124,9 @@ interface SidebarProps {
   // Navigation
   canGoBack: boolean;
   onGoBack: () => void;
+  // Mobile responsive
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 export interface SidebarHandle {
@@ -154,6 +157,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onTabChange,
   canGoBack,
   onGoBack,
+  isOpen,
+  onClose,
 }, ref) {
   const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
   const firedTriggerIds = firedTriggers.map(f => f.conversationId);
@@ -451,7 +456,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   });
 
   return (
-    <div className="sidebar">
+    <>
+      <div className={`sidebar-backdrop ${isOpen ? 'visible' : ''}`} onClick={onClose} />
+      <div className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="search-box" data-tauri-drag-region>
         <button
           className={`back-button ${!canGoBack ? 'disabled' : ''}`}
@@ -646,5 +653,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       )}
 
     </div>
+    </>
   );
 });
