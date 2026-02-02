@@ -23,7 +23,9 @@ import { NoteViewer } from './components/NoteViewer';
 import { NoteChatSidebar, NoteChatSidebarHandle } from './components/NoteChatSidebar';
 import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
-import { isBrowser, DEMO_VAULT_PATH } from './mocks';
+import { isBrowser, isServerMode, DEMO_VAULT_PATH } from './mocks';
+import { ContextMenuProvider } from './contexts/ContextMenuContext';
+import { ContextMenu } from './components/ContextMenu';
 import './App.css';
 
 // Generate unique message ID for provenance tracking
@@ -221,6 +223,10 @@ function AppContent() {
         const savedVaultPath = localStorage.getItem('vaultPath');
         if (savedVaultPath) {
           await loadVault(savedVaultPath);
+        } else if (isServerMode()) {
+          // Server mode: auto-load vault (server's VAULT_PATH is the root)
+          console.log('[App] Server mode detected, loading vault');
+          await loadVault('/');
         } else if (isBrowser()) {
           // Browser-only mode: auto-load demo vault
           console.log('[App] Browser mode detected, loading demo vault');
@@ -1224,7 +1230,10 @@ function App() {
   return (
     <StreamingProvider>
       <ApprovalProvider>
-        <AppContent />
+        <ContextMenuProvider>
+          <AppContent />
+          <ContextMenu />
+        </ContextMenuProvider>
       </ApprovalProvider>
     </StreamingProvider>
   );
