@@ -6,12 +6,14 @@
   "scripts": {
     "dev": "vite",
     "dev:browser": "BROWSER_ONLY=true vite",
-    "dev:server": "SERVER_MODE=true VITE_API_URL=http://localhost:3001 vite",
+    "dev:web": "SERVER_MODE=true VITE_API_URL=http://localhost:3001 vite",
     "build": "tsc && vite build",
-    "build:server": "SERVER_MODE=true vite build",
+    "build:web": "SERVER_MODE=true vite build",
+    "build:web:watch": "SERVER_MODE=true vite build --watch",
     "preview": "vite preview",
     "server": "node --import tsx server/index.ts",
     "server:dev": "node --import tsx --watch server/index.ts",
+    "web": "concurrently -n server,vite -c blue,green \"node --import tsx server/index.ts\" \"SERVER_MODE=true VITE_API_URL=http://localhost:3001 vite\"",
     "tauri": "tauri",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -19,7 +21,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "playwright:install": "playwright install chromium"
+    "playwright:install": "playwright install chromium",
+    "generate-icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -54,7 +57,9 @@
     "@types/ws": "^8",
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/ui": "^4.0.16",
+    "concurrently": "^9.2.1",
     "happy-dom": "^20.1.0",
+    "sharp": "^0.34.5",
     "tsx": "^4.21.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",

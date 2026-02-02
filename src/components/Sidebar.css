@@ -5,7 +5,9 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   position: relative;
+  overflow: hidden;
 }
 
 .back-button {
@@ -492,4 +494,58 @@
   color: #10b981;
   font-size: 0.6rem;
   flex-shrink: 0;
+}
+
+/* Mobile full-screen mode */
+.sidebar.full-screen {
+  width: 100%;
+  max-width: none;
+  border-right: none;
+}
+
+.mobile-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  min-height: 56px;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-sidebar-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.mobile-back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #666;
+}
+
+.mobile-back-button:hover {
+  background: #f0f0f0;
+}
+
+.mobile-back-button:active {
+  background: #e0e0e0;
+}
+
+/* Hide desktop back button in full-screen mode */
+.sidebar.full-screen .back-button {
+  display: none;
 }

@@ -91,6 +91,15 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    setIsMobile(mediaQuery.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -187,7 +196,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder="Send a message... (drop or paste images)"
+          placeholder={isMobile ? "Send a message..." : "Send a message... (drop or paste images)"}
           disabled={isStreaming}
           rows={1}
           autoComplete="off"
@@ -229,6 +238,7 @@ interface ChatInterfaceProps {
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   scrollToMessageId?: string | null;  // Message ID to scroll to (from provenance links)
   onScrollComplete?: () => void;  // Called after scrolling to message
+  onBack?: () => void;  // Mobile back button callback
 }
 
 export interface ChatInterfaceHandle {
@@ -272,6 +282,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onNavigateToConversation,
   scrollToMessageId,
   onScrollComplete,
+  onBack,
 }, ref) => {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -570,6 +581,46 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   }
 
   if (!conversation) {
+    // On mobile with onBack, show full interface with input form for new conversations
+    if (onBack) {
+      return (
+        <div
+          className={`chat-interface ${isDragging ? 'drag-over' : ''} has-mobile-header`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <div className="mobile-chat-header">
+            <button className="mobile-back-button" onClick={onBack}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <h2 className="mobile-chat-title">New Conversation</h2>
+          </div>
+          <div className="messages-container" ref={messagesContainerRef}>
+            <div className="welcome-message">
+              <h2>Start a conversation</h2>
+              <p>Ask me anything. Your conversation will be saved as a YAML file in your vault.</p>
+            </div>
+          </div>
+          <ChatInputForm
+            ref={chatInputRef}
+            onSubmit={handleFormSubmit}
+            onStop={handleStop}
+            isStreaming={isStreaming}
+            model={availableModels[0]?.key || ''}
+            onModelChange={onModelChange}
+            availableModels={availableModels}
+            favoriteModels={favoriteModels}
+          />
+        </div>
+      );
+    }
+    // On desktop, show simple message
     return (
       <div className="chat-interface">
         <div className="no-conversation">
@@ -582,12 +633,32 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   return (
     <div
-      className={`chat-interface ${isDragging ? 'drag-over' : ''}`}
+      className={`chat-interface ${isDragging ? 'drag-over' : ''} ${onBack ? 'has-mobile-header' : ''}`}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {onBack && (
+        <div className="mobile-chat-header">
+          <button className="mobile-back-button" onClick={onBack}>
+            {conversation ? (
+              // Back arrow when viewing a conversation
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              </svg>
+            ) : (
+              // Menu icon when in welcome state
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            )}
+          </button>
+          <h2 className="mobile-chat-title">{conversation?.title || 'New Conversation'}</h2>
+        </div>
+      )}
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {showFind && (
           <FindInConversation
