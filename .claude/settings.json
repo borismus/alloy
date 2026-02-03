@@ -1,4 +1,6 @@
 {
+  "includeCoAuthoredBy": false,
+  "gitAttribution": false,
   "permissions": {
     "allow": [
       "WebFetch",
