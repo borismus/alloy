@@ -11,9 +11,6 @@ interface RambleHistoryFile {
 const MAX_MESSAGES = 50;
 const RAMBLE_FILENAME = 'ramble_history.yaml';
 
-// Use Haiku for fast, cheap crystallization
-const RAMBLE_MODEL = 'anthropic/claude-haiku-4-5-20251001';
-
 // Terse system prompt for action-focused responses
 export const RAMBLE_SYSTEM_PROMPT = `You are a quick-action assistant. Be extremely terse. Focus on doing, not explaining.
 
@@ -116,19 +113,17 @@ export class RambleService {
 
   // Crystallize: rewrite the entire ramble note based on ALL accumulated input
   // This allows restructuring earlier content as new thoughts emerge
-  // Always uses Haiku for fast, cheap processing
   async crystallize(
     allRawInput: string,
     rambleNotePath: string,
     existingNotes: NoteInfo[],
-    _model: string, // Ignored - always uses RAMBLE_MODEL
+    model: string,
     signal?: AbortSignal
   ): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
-    // Always use Haiku for crystallization (fast and cheap)
-    const providerType = getProviderFromModel(RAMBLE_MODEL);
-    const modelId = getModelIdFromModel(RAMBLE_MODEL);
+    const providerType = getProviderFromModel(model);
+    const modelId = getModelIdFromModel(model);
     const provider = providerRegistry.getProvider(providerType);
 
     if (!provider || !provider.isInitialized()) {
@@ -189,17 +184,15 @@ Existing notes in vault (for wikilinks): ${notesList}`;
   }
 
   // Generate integration proposals for other notes
-  // Always uses Haiku for fast processing
   async generateIntegrationProposal(
     rambleNotePath: string,
     existingNotes: NoteInfo[],
-    _model: string // Ignored - always uses RAMBLE_MODEL
+    model: string
   ): Promise<ProposedChange[]> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
-    // Always use Haiku for integration proposals (fast and cheap)
-    const providerType = getProviderFromModel(RAMBLE_MODEL);
-    const modelId = getModelIdFromModel(RAMBLE_MODEL);
+    const providerType = getProviderFromModel(model);
+    const modelId = getModelIdFromModel(model);
     const provider = providerRegistry.getProvider(providerType);
 
     if (!provider || !provider.isInitialized()) {

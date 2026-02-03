@@ -443,10 +443,17 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
       {/* Ramble mode controls */}
       {isRambleMode && (
         <div className="note-chat-input-controls ramble-controls">
+          <ModelSelector
+            value={selectedModel}
+            onChange={setSelectedModel}
+            disabled={!!isRambleProcessing}
+            models={availableModels}
+            favoriteModels={favoriteModels}
+          />
           <button
             className="note-chat-send-btn"
             onClick={handleSend}
-            disabled={!inputValue.trim()}
+            disabled={!inputValue.trim() || !selectedModel}
             title="Integrate (⌘+Enter)"
           >
             Integrate
