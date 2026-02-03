@@ -10,8 +10,10 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   background: white;
   position: relative;
+  overflow: hidden;
 }
 
 .chat-nav-header {
@@ -65,7 +67,10 @@
 .messages-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .welcome-message,
@@ -204,6 +209,8 @@
   flex-direction: column;
   gap: 0.75rem;
   background: white;
+  flex-shrink: 0;
+  touch-action: manipulation;
 }
 
 .input-row {
@@ -895,5 +902,86 @@
   }
   50% {
     opacity: 1;
+  }
+}
+
+/* Mobile header styles */
+.mobile-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  min-height: 56px;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.mobile-chat-header .mobile-back-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #666;
+}
+
+.mobile-chat-header .mobile-back-button:hover {
+  background: #f0f0f0;
+}
+
+.mobile-chat-header .mobile-back-button:active {
+  background: #e0e0e0;
+}
+
+.mobile-chat-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Mobile input form layout */
+@media (max-width: 768px) {
+  .input-form {
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .input-form .input-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .input-form .input-row textarea {
+    width: 100% !important;
+    flex: none !important;
+    order: 1;
+  }
+
+  .input-form .input-row .model-selector-container {
+    order: 2;
+    flex: 1;
+  }
+
+  .input-form .input-row .send-button {
+    order: 3;
+  }
+
+  /* Force dropdown to open upward on mobile */
+  .input-form .model-selector-dropdown {
+    bottom: calc(100% + 4px);
+    top: auto;
   }
 }

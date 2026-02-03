@@ -4,6 +4,7 @@ import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { rambleService } from './services/ramble';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
+import { useIsMobile } from './hooks/useIsMobile';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
 import { ApprovalProvider } from './contexts/ApprovalContext';
@@ -21,6 +22,7 @@ import { TriggerConfigModal } from './components/TriggerConfigModal';
 import { TriggerManagementView } from './components/TriggerManagementView';
 import { NoteViewer } from './components/NoteViewer';
 import { NoteChatSidebar, NoteChatSidebarHandle } from './components/NoteChatSidebar';
+// MobileNewConversation removed - ChatInterface handles both new and existing conversations
 import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { isBrowser, isServerMode, DEMO_VAULT_PATH } from './mocks';
@@ -52,6 +54,11 @@ function AppContent() {
     | { type: 'note'; filename: string; content: string }
     | { type: 'conversation'; id: string };
   const [navigationHistory, setNavigationHistory] = useState<NavigationEntry[]>([]);
+  // Mobile navigation state
+  const isMobile = useIsMobile();
+  type MobileView = 'list' | 'conversation';
+  const [mobileView, setMobileView] = useState<MobileView>('conversation');
+
   // Message ID to scroll to after navigating to a conversation (for provenance links)
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
@@ -390,6 +397,13 @@ function AppContent() {
     };
     setCurrentConversation(newConversation);
   };
+
+  // Auto-create a new conversation when entering mobile conversation view without one
+  useEffect(() => {
+    if (isMobile && mobileView === 'conversation' && !currentConversation && config && availableModels.length > 0) {
+      handleNewConversation();
+    }
+  }, [isMobile, mobileView, currentConversation, config, availableModels.length]);
 
   const handleSelectNote = async (filename: string, addToHistory = true) => {
     const vaultPathStr = vaultService.getVaultPath();
@@ -1061,32 +1075,94 @@ function AppContent() {
     >
       <UpdateChecker />
       <div className="app">
-        <Sidebar
-          ref={sidebarRef}
-          conversations={regularConversations}
-          triggers={triggers}
-          currentConversationId={currentConversation?.id || null}
-          streamingConversationIds={getStreamingConversationIds()}
-          unreadConversationIds={getUnreadConversationIds()}
-          availableModels={availableModels}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onNewComparison={handleNewComparison}
-          onNewCouncil={handleNewCouncil}
-          onNewTrigger={() => setShowTriggerConfig(true)}
-          onRenameConversation={handleRenameConversation}
-          onDeleteConversation={handleDeleteConversation}
-          onDeleteTrigger={handleDeleteTrigger}
-          onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
-          notes={notes}
-          activeTab={sidebarTab}
-          selectedNoteFilename={selectedNote?.filename || null}
-          onSelectNote={handleSelectNote}
-          onNewNotesChat={handleNewNotesChat}
-          onTabChange={setSidebarTab}
-          canGoBack={navigationHistory.length > 0}
-          onGoBack={handleGoBack}
-        />
+        {isMobile ? (
+          // Mobile layout - show one view at a time
+          mobileView === 'list' ? (
+            <Sidebar
+              ref={sidebarRef}
+              fullScreen
+              onMobileBack={() => setMobileView('conversation')}
+              conversations={regularConversations}
+              triggers={triggers}
+              currentConversationId={currentConversation?.id || null}
+              streamingConversationIds={getStreamingConversationIds()}
+              unreadConversationIds={getUnreadConversationIds()}
+              availableModels={availableModels}
+              onSelectConversation={(id) => {
+                handleSelectConversation(id);
+                setMobileView('conversation');
+              }}
+              onNewConversation={() => {
+                handleNewConversation();
+                setMobileView('conversation');
+              }}
+              onNewComparison={handleNewComparison}
+              onNewCouncil={handleNewCouncil}
+              onNewTrigger={() => setShowTriggerConfig(true)}
+              onRenameConversation={handleRenameConversation}
+              onDeleteConversation={handleDeleteConversation}
+              onDeleteTrigger={handleDeleteTrigger}
+              onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
+              notes={notes}
+              activeTab={sidebarTab}
+              selectedNoteFilename={selectedNote?.filename || null}
+              onSelectNote={handleSelectNote}
+              onNewNotesChat={handleNewNotesChat}
+              onTabChange={setSidebarTab}
+              canGoBack={navigationHistory.length > 0}
+              onGoBack={handleGoBack}
+            />
+          ) : (
+            // mobileView === 'conversation'
+            <ChatInterface
+              ref={chatInterfaceRef}
+              conversation={currentConversation}
+              onSendMessage={handleSendMessage}
+              onSaveImage={handleSaveImage}
+              loadImageAsBase64={handleLoadImageAsBase64}
+              hasProvider={providerRegistry.hasAnyProvider()}
+              onModelChange={handleModelChange}
+              availableModels={availableModels}
+              favoriteModels={config?.favoriteModels}
+              onNavigateToNote={(noteFilename) => {
+                setSidebarTab('notes');
+                handleSelectNote(noteFilename);
+              }}
+              onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+              scrollToMessageId={pendingScrollToMessageId}
+              onScrollComplete={() => setPendingScrollToMessageId(null)}
+              onBack={() => setMobileView('list')}
+            />
+          )
+        ) : (
+          // Desktop layout - sidebar + main panel
+          <>
+            <Sidebar
+              ref={sidebarRef}
+              conversations={regularConversations}
+              triggers={triggers}
+              currentConversationId={currentConversation?.id || null}
+              streamingConversationIds={getStreamingConversationIds()}
+              unreadConversationIds={getUnreadConversationIds()}
+              availableModels={availableModels}
+              onSelectConversation={handleSelectConversation}
+              onNewConversation={handleNewConversation}
+              onNewComparison={handleNewComparison}
+              onNewCouncil={handleNewCouncil}
+              onNewTrigger={() => setShowTriggerConfig(true)}
+              onRenameConversation={handleRenameConversation}
+              onDeleteConversation={handleDeleteConversation}
+              onDeleteTrigger={handleDeleteTrigger}
+              onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
+              notes={notes}
+              activeTab={sidebarTab}
+              selectedNoteFilename={selectedNote?.filename || null}
+              onSelectNote={handleSelectNote}
+              onNewNotesChat={handleNewNotesChat}
+              onTabChange={setSidebarTab}
+              canGoBack={navigationHistory.length > 0}
+              onGoBack={handleGoBack}
+            />
       <div className="main-panel">
         {showTriggerManagementView ? (
           <div className="main-content">
@@ -1174,6 +1250,8 @@ function AppContent() {
           />
         )}
       </div>
+          </>
+        )}
       {showSettings && (
         <Settings
           onClose={() => setShowSettings(false)}
