@@ -186,3 +186,12 @@ export interface NoteInfo {
   lastModified: number;    // Unix timestamp for sorting
   hasSkillContent: boolean; // true if contains &[[...]] markers
 }
+
+// Ramble mode: proposed changes to integrate into other notes
+export interface ProposedChange {
+  type: 'create' | 'update' | 'append';
+  path: string;              // e.g., "notes/topic.md"
+  description: string;       // Human-readable description of change
+  newContent: string;        // Content to write/append
+  reasoning: string;         // Why this change is proposed
+}

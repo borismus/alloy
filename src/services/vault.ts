@@ -537,6 +537,16 @@ export class VaultService {
     return this.vaultPath;
   }
 
+  async ensureRamblesDirectory(): Promise<string | null> {
+    if (!this.vaultPath) return null;
+
+    const ramblesPath = await join(this.vaultPath, 'rambles');
+    if (!(await exists(ramblesPath))) {
+      await mkdir(ramblesPath, { recursive: true });
+    }
+    return ramblesPath;
+  }
+
   extractConversationIdFromPath(filePath: string): string | null {
     const filename = filePath.split('/').pop() || '';
     if (!filename.endsWith('.yaml')) return null;

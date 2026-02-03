@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -27,6 +27,7 @@ interface ConversationInfo {
 
 interface NoteViewerProps {
   content: string;
+  filename?: string; // Used to detect ramble notes for auto-scroll
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   conversations?: ConversationInfo[]; // For looking up conversation titles
@@ -34,10 +35,26 @@ interface NoteViewerProps {
 
 export const NoteViewer: React.FC<NoteViewerProps> = ({
   content,
+  filename,
   onNavigateToNote,
   onNavigateToConversation,
   conversations,
 }) => {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const prevContentLengthRef = useRef<number>(0);
+
+  // Auto-scroll to bottom for ramble notes when content grows
+  const isRambleNote = filename?.startsWith('rambles/');
+  useEffect(() => {
+    if (isRambleNote && contentRef.current) {
+      // Only scroll if content has grown (not on initial load or content changes)
+      if (content.length > prevContentLengthRef.current && prevContentLengthRef.current > 0) {
+        contentRef.current.scrollTop = contentRef.current.scrollHeight;
+      }
+      prevContentLengthRef.current = content.length;
+    }
+  }, [content, isRambleNote]);
+
   // Process wiki-links in content
   const processedContent = useMemo(() => {
     const result = processWikiLinks(content);
@@ -57,7 +74,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
 
   return (
     <div className="note-viewer">
-      <div className="note-content-container">
+      <div className="note-content-container" ref={contentRef}>
         <div className="note-content markdown-content">
           <ReactMarkdown
             remarkPlugins={remarkPlugins}

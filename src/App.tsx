@@ -27,8 +27,26 @@ import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { isBrowser, isServerMode, DEMO_VAULT_PATH } from './mocks';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
+import { RambleProvider, useRambleContext } from './contexts/RambleContext';
+import { RambleBatchApprovalModal } from './components/RambleBatchApprovalModal';
 import { ContextMenu } from './components/ContextMenu';
 import './App.css';
+
+// Wrapper component to access RambleContext and show approval modal
+const RambleApprovalModal: React.FC = () => {
+  const rambleContext = useRambleContext();
+
+  if (rambleContext.phase !== 'approving') return null;
+
+  return (
+    <RambleBatchApprovalModal
+      proposedChanges={rambleContext.proposedChanges}
+      isProcessing={rambleContext.isProcessing}
+      onApply={rambleContext.applyChanges}
+      onCancel={rambleContext.cancelIntegration}
+    />
+  );
+};
 
 // Generate unique message ID for provenance tracking
 const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
@@ -1073,8 +1091,10 @@ function AppContent() {
       onTriggerUpdated={handleTriggerUpdated}
       vaultPath={vaultPath}
     >
-      <UpdateChecker />
-      <div className="app">
+      <RambleProvider onSelectNote={handleSelectNote}>
+        <UpdateChecker />
+        <RambleApprovalModal />
+        <div className="app">
         {isMobile ? (
           // Mobile layout - show one view at a time
           mobileView === 'list' ? (
@@ -1207,6 +1227,7 @@ function AppContent() {
         ) : selectedNote ? (
           <NoteViewer
             content={selectedNote.content}
+            filename={selectedNote.filename}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId: string, messageId?: string) => {
               console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId, messageId);
@@ -1297,9 +1318,10 @@ function AppContent() {
         />
       )}
         {selectedNote && (
-          <NoteChatSidebar ref={noteChatSidebarRef} isOpen={true} availableModels={availableModels} favoriteModels={config?.favoriteModels} onNavigateToNote={handleSelectNote} />
+          <NoteChatSidebar ref={noteChatSidebarRef} isOpen={true} availableModels={availableModels} favoriteModels={config?.favoriteModels} notes={notes} onNavigateToNote={handleSelectNote} />
         )}
       </div>
+      </RambleProvider>
     </TriggerProvider>
   );
 }

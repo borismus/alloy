@@ -3,7 +3,8 @@ import { rambleService } from '../services/ramble';
 import { providerRegistry } from '../services/providers';
 import { useToolExecution } from '../hooks/useToolExecution';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
-import { Message, ModelInfo, getModelIdFromModel } from '../types';
+import { useRambleContextOptional } from '../contexts/RambleContext';
+import { Message, ModelInfo, NoteInfo, getModelIdFromModel } from '../types';
 import { BUILTIN_TOOLS } from '../types/tools';
 import { ConversationView, ConversationViewHandle } from './ConversationView';
 import { ModelSelector } from './ModelSelector';
@@ -52,10 +53,13 @@ You do NOT add these markers yourself - they are added automatically.`;
 // Generate unique message ID
 const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
 
+type SidebarMode = 'chat' | 'ramble';
+
 interface NoteChatSidebarProps {
   isOpen: boolean;
   availableModels: ModelInfo[];
   favoriteModels?: string[];
+  notes?: NoteInfo[];
   onNavigateToNote?: (noteFilename: string) => void;
 }
 
@@ -65,13 +69,18 @@ export interface NoteChatSidebarHandle {
 
 const RAMBLE_CONVERSATION_ID = 'ramble_history';
 
-export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatSidebarProps>(({ isOpen, availableModels, favoriteModels, onNavigateToNote }, ref) => {
+export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatSidebarProps>(({ isOpen, availableModels, favoriteModels, notes = [], onNavigateToNote }, ref) => {
+  const [mode, setMode] = useState<SidebarMode>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationRef = useRef<ConversationViewHandle>(null);
+  const processingIntervalRef = useRef<number | null>(null);
   const { execute: executeWithTools } = useToolExecution();
+
+  // Ramble context (optional - might be outside provider)
+  const rambleContext = useRambleContextOptional();
 
   // Use shared streaming context (same as ChatInterface)
   const {
@@ -98,7 +107,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
     }
   }, [availableModels, favoriteModels, selectedModel]);
 
-  // Load history on mount
+  // Load history on mount (for chat mode)
   useEffect(() => {
     const loadHistory = async () => {
       const history = await rambleService.loadHistory();
@@ -126,6 +135,30 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
     }
   }, [hasCompletedContent, lastMessage?.role, clearStreaming]);
 
+  // Set up ramble mode processing interval
+  useEffect(() => {
+    if (mode !== 'ramble' || !rambleContext?.isRambling) {
+      if (processingIntervalRef.current) {
+        window.clearInterval(processingIntervalRef.current);
+        processingIntervalRef.current = null;
+      }
+      return;
+    }
+
+    processingIntervalRef.current = window.setInterval(() => {
+      if (selectedModel && rambleContext) {
+        rambleContext.processInputNow(selectedModel, notes);
+      }
+    }, 500);
+
+    return () => {
+      if (processingIntervalRef.current) {
+        window.clearInterval(processingIntervalRef.current);
+        processingIntervalRef.current = null;
+      }
+    };
+  }, [mode, rambleContext?.isRambling, selectedModel, notes, rambleContext]);
+
   // Expose scrollToMessage via ref
   useImperativeHandle(ref, () => ({
     scrollToMessage: (messageId: string) => {
@@ -134,11 +167,21 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   }), []);
 
   // Auto-resize textarea
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputValue(e.target.value);
+  const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
     const textarea = e.target;
     textarea.style.height = 'auto';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 300)}px`;
+
+    // In ramble mode, update context and start ramble if first input
+    if (mode === 'ramble' && rambleContext) {
+      if (!rambleContext.isRambling && newValue.trim()) {
+        // Start ramble on first input
+        await rambleContext.startRamble();
+      }
+      rambleContext.updateRawInput(newValue);
+    }
   };
 
   const handleStop = useCallback(() => {
@@ -148,6 +191,17 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   const handleSend = async () => {
     if (!inputValue.trim() || isStreaming || !selectedModel) return;
 
+    // In ramble mode, Enter triggers finish
+    if (mode === 'ramble' && rambleContext) {
+      await rambleContext.finishRamble(selectedModel, notes);
+      setInputValue('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      return;
+    }
+
+    // Regular chat mode
     const [providerType] = selectedModel.split('/') as [string, string];
     const modelId = getModelIdFromModel(selectedModel);
 
@@ -239,39 +293,100 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter to send, modifier+Enter for newline
-    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    // Shift+Enter for newline in both modes
+    if (e.key === 'Enter' && e.shiftKey) {
+      return; // Allow default newline behavior
+    }
+
+    // Enter to send/finish
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       handleSend();
     }
-    // Escape to cancel
+
+    // Escape to cancel (chat mode only)
     if (e.key === 'Escape' && isStreaming) {
       e.preventDefault();
       handleStop();
     }
   };
 
+  const handleModeChange = (newMode: SidebarMode) => {
+    if (newMode === mode) return;
+
+    // Reset state when switching modes
+    if (newMode === 'chat') {
+      // Switching to chat mode - reset ramble context
+      rambleContext?.reset();
+    }
+
+    setMode(newMode);
+    setInputValue('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  };
+
   if (!isOpen) return null;
+
+  const isRambleMode = mode === 'ramble';
+  const isRambling = isRambleMode && rambleContext?.isRambling;
+  const isRambleProcessing = isRambleMode && rambleContext?.isProcessing;
 
   return (
     <div className="note-chat-sidebar">
-      <ConversationView
-        ref={conversationRef}
-        messages={messages}
-        streamingContent={streamingContent}
-        streamingToolUse={streamingToolUse}
-        isStreaming={isStreaming}
-        showHeader={false}
-        compact={true}
-        className="note-chat-conversation"
-        onNavigateToNote={onNavigateToNote}
-        emptyState={
+      {/* Mode toggle */}
+      <div className="note-chat-mode-toggle">
+        <button
+          className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
+          onClick={() => handleModeChange('chat')}
+        >
+          Chat
+        </button>
+        <button
+          className={`mode-btn ${mode === 'ramble' ? 'active' : ''}`}
+          onClick={() => handleModeChange('ramble')}
+          disabled={!rambleContext}
+        >
+          Ramble
+        </button>
+      </div>
+
+      {mode === 'chat' ? (
+        // Chat mode: show conversation view
+        <ConversationView
+          ref={conversationRef}
+          messages={messages}
+          streamingContent={streamingContent}
+          streamingToolUse={streamingToolUse}
+          isStreaming={isStreaming}
+          showHeader={false}
+          compact={true}
+          className="note-chat-conversation"
+          onNavigateToNote={onNavigateToNote}
+          emptyState={
+            <div className="note-chat-empty">
+              <p>Note Chat</p>
+              <p className="hint">Talk to your notes, add thoughts</p>
+            </div>
+          }
+        />
+      ) : (
+        // Ramble mode: show instructions
+        <div className="note-chat-ramble-area">
           <div className="note-chat-empty">
-            <p>Note Chat</p>
-            <p className="hint">Talk to your notes, add thoughts</p>
+            <p>Ramble Mode</p>
+            <p className="hint">
+              {isRambling
+                ? 'Keep typing... AI processes every ~5 seconds'
+                : 'Start typing your thoughts. A ramble note will be created.'}
+            </p>
+            {isRambleProcessing && (
+              <p className="processing-indicator">Processing...</p>
+            )}
           </div>
-        }
-      />
+        </div>
+      )}
 
       <div className="note-chat-input-area">
         <textarea
@@ -279,7 +394,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder="Chat with your notes..."
+          placeholder={isRambleMode ? 'Type your thoughts... (Enter to integrate)' : 'Chat with your notes...'}
           className="note-chat-textarea"
           rows={3}
           disabled={isStreaming}
@@ -288,7 +403,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           <ModelSelector
             value={selectedModel}
             onChange={setSelectedModel}
-            disabled={isStreaming}
+            disabled={isStreaming || !!isRambling}
             models={availableModels}
             favoriteModels={favoriteModels}
           />
@@ -305,9 +420,9 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
               className="note-chat-send-btn"
               onClick={handleSend}
               disabled={!inputValue.trim() || !selectedModel}
-              title="Send (Enter)"
+              title={isRambleMode ? 'Integrate (Enter)' : 'Send (Enter)'}
             >
-              Go
+              {isRambleMode ? 'Done' : 'Go'}
             </button>
           )}
         </div>

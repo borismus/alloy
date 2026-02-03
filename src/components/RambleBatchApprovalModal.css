@@ -1,0 +1,186 @@
+.ramble-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ramble-modal {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.ramble-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ramble-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ramble-modal-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.ramble-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.ramble-modal-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 20px;
+}
+
+.ramble-modal-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ramble-change-item {
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.ramble-change-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ramble-change-type {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.ramble-change-type-append {
+  background: var(--success-bg, #1a4d2e);
+  color: var(--success-text, #4ade80);
+}
+
+.ramble-change-type-update {
+  background: var(--warning-bg, #4d3d1a);
+  color: var(--warning-text, #fbbf24);
+}
+
+.ramble-change-type-create {
+  background: var(--info-bg, #1a3d4d);
+  color: var(--info-text, #60a5fa);
+}
+
+.ramble-change-path {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.ramble-change-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 8px 0;
+}
+
+.ramble-change-details {
+  font-size: 12px;
+}
+
+.ramble-change-details summary {
+  cursor: pointer;
+  color: var(--accent-color);
+  font-size: 12px;
+}
+
+.ramble-change-details summary:hover {
+  text-decoration: underline;
+}
+
+.ramble-change-content {
+  background: var(--bg-primary);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 8px 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.ramble-change-reasoning {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0;
+  font-style: italic;
+}
+
+.ramble-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.ramble-modal-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.ramble-modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ramble-modal-btn-primary {
+  background: var(--accent-color);
+  color: white;
+}
+
+.ramble-modal-btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.ramble-modal-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.ramble-modal-btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
