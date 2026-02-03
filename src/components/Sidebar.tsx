@@ -455,6 +455,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return note.filename.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
+  // Split into regular notes and rambles
+  const regularNotes = filteredNotes.filter(note => !note.filename.startsWith('rambles/'));
+  const rambleNotes = filteredNotes.filter(note => note.filename.startsWith('rambles/'));
+
   return (
     <div className={`sidebar ${fullScreen ? 'full-screen' : ''}`}>
       {fullScreen && onMobileBack && (
@@ -598,19 +602,42 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             <p className="hint">Try a different search</p>
           </div>
         ) : (
-          filteredNotes.map((note) => (
-            <div
-              key={note.filename}
-              className={`note-item ${selectedNoteFilename === note.filename ? 'active' : ''}`}
-              onClick={() => onSelectNote(note.filename)}
-              onContextMenu={(e) => handleNoteContextMenu(e, note.filename)}
-            >
-              {note.hasSkillContent && (
-                <span className="skill-indicator" title="Contains AI content">●</span>
-              )}
-              <span className="note-title">{note.filename.replace(/\.md$/, '')}</span>
-            </div>
-          ))
+          <>
+            {/* Regular notes */}
+            {regularNotes.map((note) => (
+              <div
+                key={note.filename}
+                className={`note-item ${selectedNoteFilename === note.filename ? 'active' : ''}`}
+                onClick={() => onSelectNote(note.filename)}
+                onContextMenu={(e) => handleNoteContextMenu(e, note.filename)}
+              >
+                {note.hasSkillContent && (
+                  <span className="skill-indicator" title="Contains AI content">●</span>
+                )}
+                <span className="note-title">{note.filename.replace(/\.md$/, '')}</span>
+              </div>
+            ))}
+
+            {/* Rambles section */}
+            {rambleNotes.length > 0 && (
+              <>
+                <div className="notes-section-header">Rambles</div>
+                {rambleNotes.map((note) => (
+                  <div
+                    key={note.filename}
+                    className={`note-item ${selectedNoteFilename === note.filename ? 'active' : ''}`}
+                    onClick={() => onSelectNote(note.filename)}
+                    onContextMenu={(e) => handleNoteContextMenu(e, note.filename)}
+                  >
+                    {note.hasSkillContent && (
+                      <span className="skill-indicator" title="Contains AI content">●</span>
+                    )}
+                    <span className="note-title">{note.filename.replace('rambles/', '').replace(/\.md$/, '')}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
         )}
       </div>
       )}

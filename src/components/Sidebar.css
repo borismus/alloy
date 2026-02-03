@@ -496,6 +496,17 @@
   flex-shrink: 0;
 }
 
+.notes-section-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1rem 0.75rem 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid #e0e0e0;
+}
+
 /* Mobile full-screen mode */
 .sidebar.full-screen {
   width: 100%;
