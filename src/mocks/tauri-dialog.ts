@@ -1,11 +1,8 @@
 /**
  * Mock implementation of @tauri-apps/plugin-dialog
  *
- * Auto-selects demo vault path in browser mode.
- * In server mode, returns vault path from env.
+ * Returns vault path from env in server mode.
  */
-
-import { DEMO_VAULT_PATH, isServerMode, getVaultPath } from './index';
 
 interface OpenDialogOptions {
   directory?: boolean;
@@ -18,16 +15,9 @@ interface OpenDialogOptions {
 export async function open(
   _options?: OpenDialogOptions
 ): Promise<string | string[] | null> {
-  if (isServerMode()) {
-    // In server mode, return the configured vault path
-    const vaultPath = getVaultPath();
-    console.log('[MockDialog] open() called in server mode, returning:', vaultPath);
-    return vaultPath || '/';
-  }
-
-  // In browser mode, always return the demo vault path
-  console.log('[MockDialog] open() called, returning demo vault path');
-  return DEMO_VAULT_PATH;
+  const vaultPath = import.meta.env.VITE_VAULT_PATH || '/';
+  console.log('[MockDialog] open() called, returning:', vaultPath);
+  return vaultPath;
 }
 
 export async function save(

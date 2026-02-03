@@ -25,7 +25,7 @@ import { NoteChatSidebar, NoteChatSidebarHandle } from './components/NoteChatSid
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
 import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
-import { isBrowser, isServerMode, DEMO_VAULT_PATH } from './mocks';
+import { isServerMode } from './mocks';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RambleProvider, useRambleContext } from './contexts/RambleContext';
 import { RambleBatchApprovalModal } from './components/RambleBatchApprovalModal';
@@ -298,10 +298,6 @@ function AppContent() {
           // Server mode: auto-load vault (server's VAULT_PATH is the root)
           console.log('[App] Server mode detected, loading vault');
           await loadVault('/');
-        } else if (isBrowser()) {
-          // Browser-only mode: auto-load demo vault
-          console.log('[App] Browser mode detected, loading demo vault');
-          await loadVault(DEMO_VAULT_PATH);
         } else {
           setIsLoading(false);
         }

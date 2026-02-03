@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:browser": "BROWSER_ONLY=true vite",
     "dev:web": "SERVER_MODE=true VITE_API_URL=http://localhost:3001 vite",
     "build": "tsc && vite build",
     "build:web": "SERVER_MODE=true vite build",
