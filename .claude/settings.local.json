@@ -25,5 +25,9 @@
       "Bash(docker rm:*)",
       "Bash(docker run:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "playwright"
+  ],
+  "enableAllProjectMcpServers": true
 }
