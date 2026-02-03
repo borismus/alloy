@@ -172,12 +172,15 @@ function AppContent() {
 
   // Handle note modification - refresh selected note content if it's the one being viewed
   const handleNoteModified = useCallback(async (filename: string) => {
+    console.log('[App] handleNoteModified called:', filename);
+
     // Reload the notes list
     const loadedNotes = await vaultService.loadNotes();
     setNotes(loadedNotes);
 
     // If the modified note is currently selected, refresh its content
     setSelectedNote(prev => {
+      console.log('[App] Checking if should refresh:', { selectedFilename: prev?.filename, modifiedFilename: filename });
       if (prev && prev.filename === filename) {
         // Re-read the file content asynchronously
         const vaultPathStr = vaultService.getVaultPath();
@@ -187,7 +190,9 @@ function AppContent() {
           const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
             ? `${vaultPathStr}/${filename}`
             : `${notesPath}/${filename}`;
+          console.log('[App] Refreshing note content from:', notePath);
           readTextFile(notePath).then(content => {
+            console.log('[App] Note content refreshed, length:', content.length);
             setSelectedNote({ filename, content });
           }).catch(error => {
             console.error('Failed to refresh note content:', error);
