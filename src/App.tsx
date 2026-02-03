@@ -1230,17 +1230,26 @@ function AppContent() {
               onCancel={() => setShowCouncilSelector(false)}
             />
           </div>
-        ) : selectedNote ? (
-          <NoteViewer
-            content={selectedNote.content}
-            filename={selectedNote.filename}
-            onNavigateToNote={handleSelectNote}
-            onNavigateToConversation={(conversationId: string, messageId?: string) => {
-              console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId, messageId);
-              handleSelectConversation(conversationId, true, messageId);
-            }}
-            conversations={conversations}
-          />
+        ) : sidebarTab === 'notes' ? (
+          selectedNote ? (
+            <NoteViewer
+              content={selectedNote.content}
+              filename={selectedNote.filename}
+              onNavigateToNote={handleSelectNote}
+              onNavigateToConversation={(conversationId: string, messageId?: string) => {
+                console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId, messageId);
+                handleSelectConversation(conversationId, true, messageId);
+              }}
+              conversations={conversations}
+            />
+          ) : (
+            <div className="main-content no-note-selected">
+              <div className="empty-state">
+                <p>No note selected</p>
+                <p className="hint">Select a note from the sidebar or start rambling</p>
+              </div>
+            </div>
+          )
         ) : isCouncilConversation && currentConversation ? (
           <CouncilChatInterface
             ref={councilChatInterfaceRef}
@@ -1323,7 +1332,7 @@ function AppContent() {
           }}
         />
       )}
-        {selectedNote && (
+        {sidebarTab === 'notes' && (
           <NoteChatSidebar ref={noteChatSidebarRef} isOpen={true} availableModels={availableModels} favoriteModels={config?.favoriteModels} notes={notes} onNavigateToNote={handleSelectNote} />
         )}
       </div>

@@ -77,3 +77,24 @@ body {
   overflow: hidden;
 }
 
+.no-note-selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.no-note-selected .empty-state {
+  text-align: center;
+  color: #666;
+}
+
+.no-note-selected .empty-state p {
+  margin: 0;
+}
+
+.no-note-selected .empty-state .hint {
+  font-size: 0.9rem;
+  margin-top: 8px;
+  opacity: 0.7;
+}
+
