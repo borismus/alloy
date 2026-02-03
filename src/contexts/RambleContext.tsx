@@ -56,6 +56,12 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
   stateRef.current = state;
 
   const startRamble = useCallback(async (): Promise<string> => {
+    // Guard: ensure vault is loaded
+    if (!rambleService.getVaultPath()) {
+      console.warn('[RambleContext] Cannot start ramble: vault path not set');
+      return '';
+    }
+
     const filename = await rambleService.getOrCreateRambleNote();
 
     setState(prev => ({
