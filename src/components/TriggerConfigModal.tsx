@@ -110,6 +110,10 @@ export function TriggerConfigModal({
                 onChange={e => setTriggerPrompt(e.target.value)}
                 placeholder="e.g., Let me know when AAPL stock moves more than 1% from the previous check."
                 rows={4}
+                autoCorrect="off"
+                autoCapitalize="off"
+                autoComplete="off"
+                spellCheck={false}
               />
             </div>
 
