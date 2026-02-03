@@ -48,10 +48,12 @@
 /* Ramble area */
 .note-chat-ramble-area {
   flex: 1;
+  min-height: 0;  /* Allow flex child to shrink and scroll */
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 8px;
   position: relative;
+  overflow: hidden;
 }
 
 .note-chat-ramble-textarea {
@@ -60,7 +62,7 @@
   resize: none;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
-  padding: 16px;
+  padding: 8px;
   font-size: 15px;
   font-family: inherit;
   line-height: 1.6;
@@ -80,8 +82,8 @@
 
 .ramble-processing-indicator {
   position: absolute;
-  bottom: 24px;
-  right: 24px;
+  bottom: 16px;
+  right: 16px;
   font-size: 11px;
   color: var(--accent-color, #3b82f6);
   animation: pulse 1.5s ease-in-out infinite;
