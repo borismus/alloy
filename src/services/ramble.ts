@@ -111,9 +111,10 @@ export class RambleService {
     return filename;
   }
 
-  // Process user input and append to ramble note
-  async processRambleInput(
-    input: string,
+  // Crystallize: rewrite the entire ramble note based on ALL accumulated input
+  // This allows restructuring earlier content as new thoughts emerge
+  async crystallize(
+    allRawInput: string,
     rambleNotePath: string,
     existingNotes: NoteInfo[],
     model: string,
@@ -129,12 +130,7 @@ export class RambleService {
       throw new Error(`Provider ${providerType} not initialized`);
     }
 
-    // Read existing ramble note content for context
     const fullPath = await join(this.vaultPath, rambleNotePath);
-    let existingContent = '';
-    if (await exists(fullPath)) {
-      existingContent = await readTextFile(fullPath);
-    }
 
     // Build notes list for wikilink suggestions
     const notesList = existingNotes
@@ -142,37 +138,48 @@ export class RambleService {
       .map(n => n.filename.replace('.md', ''))
       .join(', ');
 
-    const systemPrompt = `You are helping capture the user's stream of consciousness. Process this new chunk of their rambling into clear, structured markdown.
+    // Get timestamp from filename for the header
+    const filename = rambleNotePath.split('/').pop()?.replace('.md', '') || '';
+    const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})-(\d{6})/);
+    let headerDate = new Date().toLocaleString();
+    if (dateMatch) {
+      const [, date, time] = dateMatch;
+      const timeFormatted = `${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`;
+      headerDate = `${date} ${timeFormatted}`;
+    }
+
+    const systemPrompt = `You are crystallizing a stream of consciousness into a coherent note. The user has been typing raw thoughts continuously - your job is to structure ALL of it into clear, organized markdown.
 
 Rules:
+- Produce a COMPLETE note structure, not incremental additions
+- Start with a header: # Ramble - ${headerDate}
+- Organize thoughts thematically, not chronologically
 - Add [[wikilinks]] to existing notes when referencing related concepts
-- Structure with headers, bullets as appropriate
-- Be concise - capture the essence
-- This will be APPENDED to the note, so don't repeat prior content
-- Output ONLY the processed content (no meta-commentary)
+- Use headers, bullets, and structure as appropriate
+- Be concise but preserve the essence of all ideas
+- Later thoughts may clarify or modify earlier ones - restructure accordingly
+- Output ONLY the note content (no meta-commentary)
 
-Existing notes in vault: ${notesList}
-Previous processed content (for context): ${existingContent.slice(-1000)}`;
+Existing notes in vault (for wikilinks): ${notesList}`;
 
     const messages: Message[] = [
-      { role: 'user', timestamp: new Date().toISOString(), content: `New raw input to process:\n\n${input}` }
+      { role: 'user', timestamp: new Date().toISOString(), content: `Raw stream of consciousness to crystallize:\n\n${allRawInput}` }
     ];
 
     // Stream the response
-    let processedContent = '';
+    let crystallized = '';
     await provider.sendMessage(messages, {
       model: modelId,
       onChunk: (chunk: string) => {
-        processedContent += chunk;
+        crystallized += chunk;
       },
       signal,
       systemPrompt,
     });
 
-    // Append to the ramble note
-    if (processedContent.trim()) {
-      const updatedContent = existingContent + '\n' + processedContent.trim() + '\n';
-      await writeTextFile(fullPath, updatedContent);
+    // Rewrite the entire ramble note
+    if (crystallized.trim()) {
+      await writeTextFile(fullPath, crystallized.trim() + '\n');
     }
   }
 

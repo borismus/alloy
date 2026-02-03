@@ -8,9 +8,9 @@ type RamblePhase = 'idle' | 'rambling' | 'integrating' | 'approving';
 interface RambleState {
   isRambling: boolean;
   currentRambleNote: string | null;  // e.g., "rambles/2026-02-02-143052.md"
-  rawInput: string;                   // accumulated raw input from sidebar
-  lastProcessedIndex: number;         // track what's been processed
-  lastProcessedTime: number;          // timestamp of last process
+  rawInput: string;                   // accumulated raw input (scratch buffer)
+  lastCrystallizedInput: string;      // input at last crystallization (to detect changes)
+  lastCrystallizeTime: number;        // timestamp of last crystallization
   phase: RamblePhase;
   isProcessing: boolean;
   proposedChanges: ProposedChange[];
@@ -19,8 +19,8 @@ interface RambleState {
 interface RambleContextValue extends RambleState {
   startRamble: () => Promise<string>;     // creates timestamped ramble note, returns filename
   updateRawInput: (text: string) => void; // called on every keystroke
-  processInputNow: (model: string, notes: NoteInfo[]) => Promise<void>; // process accumulated input
-  finishRamble: (model: string, notes: NoteInfo[]) => Promise<void>;    // triggered by Enter key
+  crystallizeNow: (model: string, notes: NoteInfo[]) => Promise<void>; // rewrite entire note
+  finishRamble: (model: string, notes: NoteInfo[]) => Promise<void>;   // triggered by Enter key
   applyChanges: () => Promise<void>;
   cancelIntegration: () => void;
   reset: () => void;
@@ -30,8 +30,8 @@ const initialState: RambleState = {
   isRambling: false,
   currentRambleNote: null,
   rawInput: '',
-  lastProcessedIndex: 0,
-  lastProcessedTime: 0,
+  lastCrystallizedInput: '',
+  lastCrystallizeTime: 0,
   phase: 'idle',
   isProcessing: false,
   proposedChanges: [],
@@ -63,8 +63,8 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
       isRambling: true,
       currentRambleNote: filename,
       rawInput: '',
-      lastProcessedIndex: 0,
-      lastProcessedTime: Date.now(),
+      lastCrystallizedInput: '',
+      lastCrystallizeTime: Date.now(),
       phase: 'rambling',
     }));
 
@@ -80,40 +80,39 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     setState(prev => ({ ...prev, rawInput: text }));
   }, []);
 
-  // Check if we should trigger processing
-  const shouldProcess = useCallback(() => {
+  // Check if we should trigger crystallization
+  const shouldCrystallize = useCallback(() => {
     const current = stateRef.current;
     const now = Date.now();
-    const timeSinceLastProcess = now - current.lastProcessedTime;
-    const newChars = current.rawInput.length - current.lastProcessedIndex;
+    const timeSinceLastCrystallize = now - current.lastCrystallizeTime;
+    const inputChanged = current.rawInput !== current.lastCrystallizedInput;
+    const hasContent = current.rawInput.trim().length > 0;
 
-    // Primary trigger: (2+ sec since last) AND (50+ new chars)
-    const primaryTrigger = timeSinceLastProcess >= 2000 && newChars >= 50;
+    // Crystallize if: input has changed AND (5+ seconds passed OR significant new content)
+    const significantChange = current.rawInput.length - current.lastCrystallizedInput.length >= 100;
+    const timeBasedTrigger = timeSinceLastCrystallize >= 5000 && inputChanged;
+    const contentBasedTrigger = timeSinceLastCrystallize >= 2000 && significantChange;
 
-    // Fallback trigger: (5+ sec since last) AND (any new input)
-    const fallbackTrigger = timeSinceLastProcess >= 5000 && newChars > 0;
-
-    return primaryTrigger || fallbackTrigger;
+    return hasContent && (timeBasedTrigger || contentBasedTrigger);
   }, []);
 
-  // Process accumulated input - called by NoteChatSidebar with current model
-  const processInputNow = useCallback(async (model: string, notes: NoteInfo[]) => {
+  // Crystallize: rewrite entire note from all accumulated input
+  const crystallizeNow = useCallback(async (model: string, notes: NoteInfo[]) => {
     const current = stateRef.current;
     if (current.isProcessing || !current.currentRambleNote) return;
-
-    const newInput = current.rawInput.slice(current.lastProcessedIndex);
-    if (!newInput.trim()) return;
+    if (!current.rawInput.trim()) return;
 
     // Check trigger conditions
-    if (!shouldProcess()) return;
+    if (!shouldCrystallize()) return;
 
     setState(prev => ({ ...prev, isProcessing: true }));
 
     try {
       abortControllerRef.current = new AbortController();
 
-      await rambleService.processRambleInput(
-        newInput,
+      // Crystallize ALL accumulated input into a coherent note
+      await rambleService.crystallize(
+        current.rawInput,
         current.currentRambleNote,
         notes,
         model,
@@ -122,17 +121,17 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
 
       setState(prev => ({
         ...prev,
-        lastProcessedIndex: prev.rawInput.length,
-        lastProcessedTime: Date.now(),
+        lastCrystallizedInput: prev.rawInput,
+        lastCrystallizeTime: Date.now(),
         isProcessing: false,
       }));
     } catch (error: any) {
       if (error?.name !== 'AbortError') {
-        console.error('[RambleContext] Processing error:', error);
+        console.error('[RambleContext] Crystallization error:', error);
       }
       setState(prev => ({ ...prev, isProcessing: false }));
     }
-  }, [shouldProcess]);
+  }, [shouldCrystallize]);
 
   const finishRamble = useCallback(async (model: string, notes: NoteInfo[]) => {
     const current = stateRef.current;
@@ -140,19 +139,18 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     // Cancel any ongoing processing
     abortControllerRef.current?.abort();
 
-    // Process any remaining input
-    const newInput = current.rawInput.slice(current.lastProcessedIndex);
-    if (newInput.trim() && current.currentRambleNote) {
+    // Final crystallization if there's unprocessed input
+    if (current.rawInput.trim() && current.rawInput !== current.lastCrystallizedInput && current.currentRambleNote) {
       setState(prev => ({ ...prev, isProcessing: true }));
       try {
-        await rambleService.processRambleInput(
-          newInput,
+        await rambleService.crystallize(
+          current.rawInput,
           current.currentRambleNote,
           notes,
           model
         );
       } catch (error) {
-        console.error('[RambleContext] Final processing error:', error);
+        console.error('[RambleContext] Final crystallization error:', error);
       }
     }
 
@@ -224,7 +222,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     ...state,
     startRamble,
     updateRawInput,
-    processInputNow,
+    crystallizeNow,
     finishRamble,
     applyChanges,
     cancelIntegration,

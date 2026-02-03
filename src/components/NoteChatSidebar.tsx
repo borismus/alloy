@@ -135,7 +135,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
     }
   }, [hasCompletedContent, lastMessage?.role, clearStreaming]);
 
-  // Set up ramble mode processing interval
+  // Set up ramble mode crystallization interval
   useEffect(() => {
     if (mode !== 'ramble' || !rambleContext?.isRambling) {
       if (processingIntervalRef.current) {
@@ -145,11 +145,12 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
       return;
     }
 
+    // Check for crystallization every second
     processingIntervalRef.current = window.setInterval(() => {
       if (selectedModel && rambleContext) {
-        rambleContext.processInputNow(selectedModel, notes);
+        rambleContext.crystallizeNow(selectedModel, notes);
       }
-    }, 500);
+    }, 1000);
 
     return () => {
       if (processingIntervalRef.current) {
