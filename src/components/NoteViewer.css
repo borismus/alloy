@@ -6,6 +6,36 @@
   background: white;
 }
 
+.ramble-integrate-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-bottom: 1px solid #bae6fd;
+}
+
+.ramble-integrate-bar .integrate-hint {
+  font-size: 14px;
+  color: #0369a1;
+}
+
+.ramble-integrate-bar .integrate-btn {
+  padding: 8px 16px;
+  background: #0284c7;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ramble-integrate-bar .integrate-btn:hover {
+  background: #0369a1;
+}
+
 .note-header {
   display: flex;
   align-items: center;

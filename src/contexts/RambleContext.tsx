@@ -21,6 +21,7 @@ interface RambleContextValue extends RambleState {
   updateRawInput: (text: string) => void; // called on every keystroke
   crystallizeNow: (model: string, notes: NoteInfo[]) => Promise<void>; // rewrite entire note
   finishRamble: (model: string, notes: NoteInfo[]) => Promise<void>;   // triggered by Enter key
+  integrateExistingRamble: (ramblePath: string, model: string, notes: NoteInfo[]) => Promise<void>; // integrate an old ramble
   applyChanges: () => Promise<void>;
   cancelIntegration: () => void;
   reset: () => void;
@@ -193,6 +194,38 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     }
   }, []);
 
+  // Integrate an existing ramble note (not from active rambling session)
+  const integrateExistingRamble = useCallback(async (ramblePath: string, model: string, notes: NoteInfo[]) => {
+    setState(prev => ({
+      ...prev,
+      currentRambleNote: ramblePath,
+      phase: 'integrating',
+      isProcessing: true,
+    }));
+
+    try {
+      const proposals = await rambleService.generateIntegrationProposal(
+        ramblePath,
+        notes,
+        model
+      );
+
+      setState(prev => ({
+        ...prev,
+        phase: 'approving',
+        isProcessing: false,
+        proposedChanges: proposals,
+      }));
+    } catch (error) {
+      console.error('[RambleContext] Integration proposal error:', error);
+      setState(prev => ({
+        ...prev,
+        phase: 'idle',
+        isProcessing: false,
+      }));
+    }
+  }, []);
+
   const applyChanges = useCallback(async () => {
     if (stateRef.current.proposedChanges.length === 0) {
       setState(initialState);
@@ -235,6 +268,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     updateRawInput,
     crystallizeNow,
     finishRamble,
+    integrateExistingRamble,
     applyChanges,
     cancelIntegration,
     reset,

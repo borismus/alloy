@@ -104,11 +104,32 @@ export class RambleService {
 
     const fullPath = await join(this.vaultPath, filename);
 
-    // Create the file with a header
-    const initialContent = `# Ramble - ${now.toLocaleDateString()} ${now.toLocaleTimeString()}\n\n`;
+    // Create the file with frontmatter and header
+    const initialContent = `---
+integrated: false
+---
+# Ramble - ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
+
+`;
     await writeTextFile(fullPath, initialContent);
 
     return filename;
+  }
+
+  // Mark a ramble note as integrated
+  async markRambleIntegrated(rambleNotePath: string): Promise<void> {
+    if (!this.vaultPath) throw new Error('Vault path not set');
+
+    const fullPath = await join(this.vaultPath, rambleNotePath);
+    const content = await readTextFile(fullPath);
+
+    // Update frontmatter
+    const updatedContent = content.replace(
+      /^---\nintegrated: false\n---/,
+      '---\nintegrated: true\n---'
+    );
+
+    await writeTextFile(fullPath, updatedContent);
   }
 
   // Crystallize: rewrite the entire ramble note based on ALL accumulated input
@@ -166,6 +187,16 @@ Existing notes in vault (for wikilinks): ${notesList}`;
       { role: 'user', timestamp: new Date().toISOString(), content: `Raw stream of consciousness to crystallize:\n\n${allRawInput}` }
     ];
 
+    // Read existing frontmatter to preserve it
+    let frontmatter = '---\nintegrated: false\n---\n';
+    if (await exists(fullPath)) {
+      const existingContent = await readTextFile(fullPath);
+      const fmMatch = existingContent.match(/^---\n[\s\S]*?\n---\n/);
+      if (fmMatch) {
+        frontmatter = fmMatch[0];
+      }
+    }
+
     // Stream the response
     let crystallized = '';
     await provider.sendMessage(messages, {
@@ -177,9 +208,9 @@ Existing notes in vault (for wikilinks): ${notesList}`;
       systemPrompt,
     });
 
-    // Rewrite the entire ramble note
+    // Rewrite the entire ramble note, preserving frontmatter
     if (crystallized.trim()) {
-      await writeTextFile(fullPath, crystallized.trim() + '\n');
+      await writeTextFile(fullPath, frontmatter + crystallized.trim() + '\n');
     }
   }
 
@@ -317,6 +348,15 @@ Return ONLY the JSON array, no other text.`;
         }
       } catch (error) {
         console.error(`[RambleService] Failed to apply change to ${change.path}:`, error);
+      }
+    }
+
+    // Mark the ramble as integrated
+    if (rambleNotePath) {
+      try {
+        await this.markRambleIntegrated(rambleNotePath);
+      } catch (error) {
+        console.error('[RambleService] Failed to mark ramble as integrated:', error);
       }
     }
   }

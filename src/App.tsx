@@ -48,6 +48,46 @@ const RambleApprovalModal: React.FC = () => {
   );
 };
 
+// Wrapper to provide ramble integration to NoteViewer
+interface NoteViewerWithIntegrateProps {
+  content: string;
+  filename: string;
+  onNavigateToNote: (filename: string) => void;
+  onNavigateToConversation: (conversationId: string, messageId?: string) => void;
+  conversations: { id: string; title?: string }[];
+  notes: NoteInfo[];
+  selectedModel: string;
+}
+
+const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
+  content,
+  filename,
+  onNavigateToNote,
+  onNavigateToConversation,
+  conversations,
+  notes,
+  selectedModel,
+}) => {
+  const rambleContext = useRambleContext();
+
+  const handleIntegrate = useCallback(() => {
+    if (selectedModel && filename) {
+      rambleContext.integrateExistingRamble(filename, selectedModel, notes);
+    }
+  }, [rambleContext, filename, selectedModel, notes]);
+
+  return (
+    <NoteViewer
+      content={content}
+      filename={filename}
+      onNavigateToNote={onNavigateToNote}
+      onNavigateToConversation={onNavigateToConversation}
+      onIntegrate={handleIntegrate}
+      conversations={conversations}
+    />
+  );
+};
+
 // Generate unique message ID for provenance tracking
 const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
 
@@ -1236,7 +1276,7 @@ function AppContent() {
           </div>
         ) : sidebarTab === 'notes' ? (
           selectedNote ? (
-            <NoteViewer
+            <NoteViewerWithIntegrate
               content={selectedNote.content}
               filename={selectedNote.filename}
               onNavigateToNote={handleSelectNote}
@@ -1245,6 +1285,8 @@ function AppContent() {
                 handleSelectConversation(conversationId, true, messageId);
               }}
               conversations={conversations}
+              notes={notes}
+              selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
             />
           ) : (
             <div className="main-content no-note-selected">
