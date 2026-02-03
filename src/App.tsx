@@ -430,11 +430,13 @@ function AppContent() {
   }, [isMobile, mobileView, currentConversation, config, availableModels.length]);
 
   const handleSelectNote = async (filename: string, addToHistory = true) => {
+    console.log('[App] handleSelectNote called:', filename);
     const vaultPathStr = vaultService.getVaultPath();
     const notesPath = vaultService.getNotesPath();
     if (vaultPathStr && notesPath) {
       // Don't navigate to the same note we're already viewing
       if (selectedNote?.filename === filename) {
+        console.log('[App] Skipping - same note already selected');
         return;
       }
 
@@ -443,6 +445,7 @@ function AppContent() {
         ? `${vaultPathStr}/${filename}`
         : `${notesPath}/${filename}`;
       try {
+        console.log('[App] Reading note from:', notePath);
         const content = await readTextFile(notePath);
         // Push current view to history before navigating
         if (addToHistory) {
@@ -455,9 +458,10 @@ function AppContent() {
         // Clear conversation selection and switch to notes tab
         setCurrentConversation(null);
         setSidebarTab('notes');
+        console.log('[App] Setting selectedNote:', { filename, contentLength: content.length });
         setSelectedNote({ filename, content });
       } catch (error) {
-        console.error('Failed to load note:', error);
+        console.error('[App] Failed to load note:', error);
       }
     }
   };
