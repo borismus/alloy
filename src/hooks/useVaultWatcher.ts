@@ -133,8 +133,9 @@ export function useVaultWatcher(
         const isMemoryFile = filePath.endsWith('memory.md');
         const isConfigFile = filePath.endsWith('config.yaml');
         const isNoteFile =
-          filePath.includes('/notes/') &&
+          (filePath.includes('/notes/') || filePath.includes('/rambles/')) &&
           filePath.endsWith('.md');
+        const isRambleFile = filePath.includes('/rambles/');
         const isTriggerFile =
           filePath.includes('/triggers/') &&
           filePath.endsWith('.yaml') &&
@@ -180,7 +181,9 @@ export function useVaultWatcher(
             callbacksRef.current.onConfigChanged();
           }
         } else if (isNoteFile) {
-          const filename = filePath.split('/').pop() || '';
+          // For ramble files, include the rambles/ prefix in filename
+          const baseFilename = filePath.split('/').pop() || '';
+          const filename = isRambleFile ? `rambles/${baseFilename}` : baseFilename;
           console.log('[VaultWatcher] Note event:', { eventType, filename, filePath });
 
           // For rename events (macOS deletion), check if file still exists

@@ -779,6 +779,27 @@ export class VaultService {
       }
     }
 
+    // Load ramble notes from rambles/ directory
+    const ramblesPath = await join(this.vaultPath, 'rambles');
+    if (await exists(ramblesPath)) {
+      const rambleEntries = await readDir(ramblesPath);
+      for (const entry of rambleEntries) {
+        if (entry.name?.endsWith('.md')) {
+          const filePath = await join(ramblesPath, entry.name);
+          const fileStat = await stat(filePath);
+          const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
+          const content = await readTextFile(filePath);
+          const hasSkillContent = content.includes('&[[');
+
+          notes.push({
+            filename: `rambles/${entry.name}`,
+            lastModified,
+            hasSkillContent,
+          });
+        }
+      }
+    }
+
     // Sort by lastModified descending (newest first), but keep memory.md at top
     const sortedNotes = notes.sort((a, b) => {
       // memory.md always comes first

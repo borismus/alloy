@@ -183,7 +183,8 @@ function AppContent() {
         const vaultPathStr = vaultService.getVaultPath();
         const notesPath = vaultService.getNotesPath();
         if (vaultPathStr && notesPath) {
-          const notePath = filename === 'memory.md'
+          // memory.md and rambles/ are at vault root, other notes are in notes/
+          const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
             ? `${vaultPathStr}/${filename}`
             : `${notesPath}/${filename}`;
           readTextFile(notePath).then(content => {
@@ -432,8 +433,8 @@ function AppContent() {
         return;
       }
 
-      // memory.md is at vault root, other notes are in notes/
-      const notePath = filename === 'memory.md'
+      // memory.md and rambles/ are at vault root, other notes are in notes/
+      const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
         ? `${vaultPathStr}/${filename}`
         : `${notesPath}/${filename}`;
       try {
