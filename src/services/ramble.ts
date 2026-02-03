@@ -282,27 +282,45 @@ Return ONLY the JSON array, no other text.`;
   }
 
   // Apply approved changes to notes
-  async applyProposedChanges(changes: ProposedChange[], vaultPath: string): Promise<void> {
+  // Ensures provenance marker is added to all content
+  async applyProposedChanges(
+    changes: ProposedChange[],
+    vaultPath: string,
+    rambleNotePath?: string
+  ): Promise<void> {
+    // Extract ramble filename for provenance (e.g., "2026-02-02-143052" from "rambles/2026-02-02-143052.md")
+    const rambleFilename = rambleNotePath
+      ? rambleNotePath.split('/').pop()?.replace('.md', '') || ''
+      : '';
+    const provenanceMarker = rambleFilename ? ` &[[rambles/${rambleFilename}]]` : '';
+
     for (const change of changes) {
       try {
         const notePath = change.path.startsWith('notes/') || change.path === 'memory.md'
           ? await join(vaultPath, change.path)
           : await join(vaultPath, 'notes', change.path);
 
+        // Ensure provenance marker is present in content
+        let contentWithProvenance = change.newContent;
+        if (provenanceMarker && !contentWithProvenance.includes('&[[rambles/')) {
+          // Add provenance at end of content
+          contentWithProvenance = contentWithProvenance.trimEnd() + provenanceMarker;
+        }
+
         if (change.type === 'create') {
           // Create new file
-          await writeTextFile(notePath, change.newContent);
+          await writeTextFile(notePath, contentWithProvenance);
         } else if (change.type === 'append') {
           // Append to existing file
           let existingContent = '';
           if (await exists(notePath)) {
             existingContent = await readTextFile(notePath);
           }
-          const updatedContent = existingContent.trimEnd() + '\n\n' + change.newContent;
+          const updatedContent = existingContent.trimEnd() + '\n\n' + contentWithProvenance;
           await writeTextFile(notePath, updatedContent);
         } else if (change.type === 'update') {
           // Replace entire file content
-          await writeTextFile(notePath, change.newContent);
+          await writeTextFile(notePath, contentWithProvenance);
         }
       } catch (error) {
         console.error(`[RambleService] Failed to apply change to ${change.path}:`, error);

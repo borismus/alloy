@@ -198,7 +198,12 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     try {
       const vaultPath = vaultService.getVaultPath();
       if (vaultPath) {
-        await rambleService.applyProposedChanges(stateRef.current.proposedChanges, vaultPath);
+        // Pass ramble note path for provenance tracking
+        await rambleService.applyProposedChanges(
+          stateRef.current.proposedChanges,
+          vaultPath,
+          stateRef.current.currentRambleNote || undefined
+        );
       }
 
       // Reset state after successful apply
