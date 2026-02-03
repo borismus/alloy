@@ -95,12 +95,13 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
     clear: clearStreaming,
   } = useConversationStreaming(RAMBLE_CONVERSATION_ID);
 
-  // Initialize model selection
+  // Initialize model selection with random favorite
   useEffect(() => {
     if (!selectedModel && availableModels.length > 0) {
-      // Prefer first favorite, otherwise first available
+      // Pick a random favorite, otherwise first available
       if (favoriteModels && favoriteModels.length > 0) {
-        setSelectedModel(favoriteModels[0]);
+        const randomFavorite = favoriteModels[Math.floor(Math.random() * favoriteModels.length)];
+        setSelectedModel(randomFavorite);
       } else {
         setSelectedModel(availableModels[0].key);
       }
