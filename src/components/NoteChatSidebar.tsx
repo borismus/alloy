@@ -8,6 +8,7 @@ import { Message, ModelInfo, NoteInfo, getModelIdFromModel } from '../types';
 import { BUILTIN_TOOLS } from '../types/tools';
 import { ConversationView, ConversationViewHandle } from './ConversationView';
 import { ModelSelector } from './ModelSelector';
+import { AppendOnlyTextarea } from './AppendOnlyTextarea';
 import './NoteChatSidebar.css';
 
 // Filter to only note-focused tools
@@ -70,7 +71,7 @@ export interface NoteChatSidebarHandle {
 const RAMBLE_CONVERSATION_ID = 'ramble_history';
 
 export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatSidebarProps>(({ isOpen, availableModels, favoriteModels, notes = [], onNavigateToNote }, ref) => {
-  const [mode, setMode] = useState<SidebarMode>('chat');
+  const [mode, setMode] = useState<SidebarMode>('ramble');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -168,23 +169,27 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
     },
   }), []);
 
-  // Auto-resize textarea
+  // Auto-resize textarea (for chat mode)
   const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     setInputValue(newValue);
     const textarea = e.target;
     textarea.style.height = 'auto';
     textarea.style.height = `${Math.min(textarea.scrollHeight, 300)}px`;
+  };
 
-    // In ramble mode, update context and start ramble if first input
-    if (mode === 'ramble' && rambleContext) {
+  // Handle ramble mode input changes (from AppendOnlyTextarea)
+  const handleRambleInputChange = useCallback(async (newValue: string) => {
+    setInputValue(newValue);
+
+    if (rambleContext) {
       if (!rambleContext.isRambling && newValue.trim()) {
         // Start ramble on first input
         await rambleContext.startRamble();
       }
       rambleContext.updateRawInput(newValue);
     }
-  };
+  }, [rambleContext]);
 
   const handleStop = useCallback(() => {
     stopStreaming();
@@ -294,25 +299,15 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
     }
   };
 
+  // Key handler for chat mode textarea only (ramble mode uses AppendOnlyTextarea)
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    const isRambleMode = mode === 'ramble';
-
-    if (isRambleMode) {
-      // Ramble mode: modifier+Enter to process, plain Enter for newline
-      if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        handleSend();
-      }
-      // Plain Enter = default newline behavior
-    } else {
-      // Chat mode: Enter to send, Shift+Enter for newline
-      if (e.key === 'Enter' && e.shiftKey) {
-        return; // Allow default newline behavior
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleSend();
-      }
+    // Chat mode: Enter to send, Shift+Enter for newline
+    if (e.key === 'Enter' && e.shiftKey) {
+      return; // Allow default newline behavior
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSend();
     }
 
     // Escape to cancel streaming
@@ -348,17 +343,17 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
       {/* Mode toggle */}
       <div className="note-chat-mode-toggle">
         <button
-          className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
-          onClick={() => handleModeChange('chat')}
-        >
-          Chat
-        </button>
-        <button
           className={`mode-btn ${mode === 'ramble' ? 'active' : ''}`}
           onClick={() => handleModeChange('ramble')}
           disabled={!rambleContext}
         >
           Ramble
+        </button>
+        <button
+          className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
+          onClick={() => handleModeChange('chat')}
+        >
+          Chat
         </button>
       </div>
 
@@ -382,16 +377,16 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           }
         />
       ) : (
-        // Ramble mode: just a big textarea
+        // Ramble mode: append-only textarea
         <div className="note-chat-ramble-area">
-          <textarea
-            ref={textareaRef}
+          <AppendOnlyTextarea
             value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
+            onChange={handleRambleInputChange}
+            lockedLength={rambleContext?.lastCrystallizedInput.length ?? 0}
             placeholder="Start typing your thoughts..."
             className="note-chat-ramble-textarea"
             disabled={isStreaming}
+            onSubmit={handleSend}
           />
           {isRambleProcessing && (
             <div className="ramble-processing-indicator">crystallizing...</div>
@@ -410,6 +405,10 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           className="note-chat-textarea"
           rows={3}
           disabled={isStreaming}
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
         />
         <div className="note-chat-input-controls">
           <ModelSelector
