@@ -294,18 +294,27 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Shift+Enter for newline in both modes
-    if (e.key === 'Enter' && e.shiftKey) {
-      return; // Allow default newline behavior
+    const isRambleMode = mode === 'ramble';
+
+    if (isRambleMode) {
+      // Ramble mode: modifier+Enter to process, plain Enter for newline
+      if (e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleSend();
+      }
+      // Plain Enter = default newline behavior
+    } else {
+      // Chat mode: Enter to send, Shift+Enter for newline
+      if (e.key === 'Enter' && e.shiftKey) {
+        return; // Allow default newline behavior
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSend();
+      }
     }
 
-    // Enter to send/finish
-    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault();
-      handleSend();
-    }
-
-    // Escape to cancel (chat mode only)
+    // Escape to cancel streaming
     if (e.key === 'Escape' && isStreaming) {
       e.preventDefault();
       handleStop();
@@ -331,7 +340,6 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   if (!isOpen) return null;
 
   const isRambleMode = mode === 'ramble';
-  const isRambling = isRambleMode && rambleContext?.isRambling;
   const isRambleProcessing = isRambleMode && rambleContext?.isProcessing;
 
   return (
@@ -373,29 +381,31 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           }
         />
       ) : (
-        // Ramble mode: show instructions
+        // Ramble mode: just a big textarea
         <div className="note-chat-ramble-area">
-          <div className="note-chat-empty">
-            <p>Ramble Mode</p>
-            <p className="hint">
-              {isRambling
-                ? 'Keep typing... AI processes every ~5 seconds'
-                : 'Start typing your thoughts. A ramble note will be created.'}
-            </p>
-            {isRambleProcessing && (
-              <p className="processing-indicator">Processing...</p>
-            )}
-          </div>
+          <textarea
+            ref={textareaRef}
+            value={inputValue}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Start typing your thoughts..."
+            className="note-chat-ramble-textarea"
+            disabled={isStreaming}
+          />
+          {isRambleProcessing && (
+            <div className="ramble-processing-indicator">crystallizing...</div>
+          )}
         </div>
       )}
 
+      {!isRambleMode && (
       <div className="note-chat-input-area">
         <textarea
           ref={textareaRef}
           value={inputValue}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder={isRambleMode ? 'Type your thoughts... (Enter to integrate)' : 'Chat with your notes...'}
+          placeholder="Chat with your notes..."
           className="note-chat-textarea"
           rows={3}
           disabled={isStreaming}
@@ -404,7 +414,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           <ModelSelector
             value={selectedModel}
             onChange={setSelectedModel}
-            disabled={isStreaming || !!isRambling}
+            disabled={isStreaming}
             models={availableModels}
             favoriteModels={favoriteModels}
           />
@@ -421,13 +431,28 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
               className="note-chat-send-btn"
               onClick={handleSend}
               disabled={!inputValue.trim() || !selectedModel}
-              title={isRambleMode ? 'Integrate (Enter)' : 'Send (Enter)'}
+              title="Send (Enter)"
             >
-              {isRambleMode ? 'Done' : 'Go'}
+              Go
             </button>
           )}
         </div>
       </div>
+      )}
+
+      {/* Ramble mode controls */}
+      {isRambleMode && (
+        <div className="note-chat-input-controls ramble-controls">
+          <button
+            className="note-chat-send-btn"
+            onClick={handleSend}
+            disabled={!inputValue.trim()}
+            title="Integrate (⌘+Enter)"
+          >
+            Integrate
+          </button>
+        </div>
+      )}
     </div>
   );
 });
