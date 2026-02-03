@@ -132,10 +132,10 @@ integrated: false
     await writeTextFile(fullPath, updatedContent);
   }
 
-  // Crystallize: rewrite the entire ramble note based on ALL accumulated input
-  // This allows restructuring earlier content as new thoughts emerge
+  // Crystallize: incrementally extend the note with new thoughts
+  // Only processes new text since last crystallization, using existing note as context
   async crystallize(
-    allRawInput: string,
+    newIncrementalText: string,  // Only the new text since last crystallize
     rambleNotePath: string,
     existingNotes: NoteInfo[],
     model: string,
@@ -159,7 +159,19 @@ integrated: false
       .map(n => n.filename.replace('.md', ''))
       .join(', ');
 
-    // Get timestamp from filename for the header
+    // Read existing crystallized content for context
+    let existingContent = '';
+    let frontmatter = '---\nintegrated: false\n---\n';
+    if (await exists(fullPath)) {
+      const fileContent = await readTextFile(fullPath);
+      const fmMatch = fileContent.match(/^---\n[\s\S]*?\n---\n/);
+      if (fmMatch) {
+        frontmatter = fmMatch[0];
+        existingContent = fileContent.slice(fmMatch[0].length);
+      }
+    }
+
+    // Get timestamp from filename for the header (only used if starting fresh)
     const filename = rambleNotePath.split('/').pop()?.replace('.md', '') || '';
     const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})-(\d{6})/);
     let headerDate = new Date().toLocaleString();
@@ -169,33 +181,29 @@ integrated: false
       headerDate = `${date} ${timeFormatted}`;
     }
 
-    const systemPrompt = `You are crystallizing a stream of consciousness into a coherent note. The user has been typing raw thoughts continuously - your job is to structure ALL of it into clear, organized markdown.
+    const systemPrompt = `You are extending a ramble note with new thoughts. The user is continuously typing - you receive only the NEW text since the last crystallization.
+
+EXISTING NOTE:
+${existingContent || `# Ramble - ${headerDate}\n\n(empty - start fresh)`}
+
+NEW RAW INPUT to incorporate:
+${newIncrementalText}
 
 Rules:
-- Produce a COMPLETE note structure, not incremental additions
-- Start with a header: # Ramble - ${headerDate}
-- Organize thoughts thematically, not chronologically
-- Add [[wikilinks]] to existing notes when referencing related concepts
-- Use headers, bullets, and structure as appropriate
+- Output the COMPLETE updated note (existing content + new thoughts woven in)
+- Preserve the existing structure and all existing content
+- Add new thoughts in appropriate sections or create new sections as needed
+- You may reorganize slightly to maintain coherence, but don't lose information
+- Use Obsidian-style wikilinks: [[Note Name]] or [[Note Name|display text]]
+- Do NOT use markdown link syntax for wikilinks (no [text](wikilink:...) format)
 - Be concise but preserve the essence of all ideas
-- Later thoughts may clarify or modify earlier ones - restructure accordingly
 - Output ONLY the note content (no meta-commentary)
 
 Existing notes in vault (for wikilinks): ${notesList}`;
 
     const messages: Message[] = [
-      { role: 'user', timestamp: new Date().toISOString(), content: `Raw stream of consciousness to crystallize:\n\n${allRawInput}` }
+      { role: 'user', timestamp: new Date().toISOString(), content: `Incorporate the new input into the note.` }
     ];
-
-    // Read existing frontmatter to preserve it
-    let frontmatter = '---\nintegrated: false\n---\n';
-    if (await exists(fullPath)) {
-      const existingContent = await readTextFile(fullPath);
-      const fmMatch = existingContent.match(/^---\n[\s\S]*?\n---\n/);
-      if (fmMatch) {
-        frontmatter = fmMatch[0];
-      }
-    }
 
     // Stream the response
     let crystallized = '';
@@ -208,7 +216,7 @@ Existing notes in vault (for wikilinks): ${notesList}`;
       systemPrompt,
     });
 
-    // Rewrite the entire ramble note, preserving frontmatter
+    // Write the updated note, preserving frontmatter
     if (crystallized.trim()) {
       await writeTextFile(fullPath, frontmatter + crystallized.trim() + '\n');
     }
@@ -262,11 +270,13 @@ Return ONLY a valid JSON array of proposed changes. Each object must have:
 - "type": "append" | "update" | "create"
 - "path": filename (e.g., "notes/topic.md" or "memory.md")
 - "description": brief description of the change
-- "newContent": the actual content to add (with [[wikilinks]] and provenance marker)
+- "newContent": the actual content to add (with Obsidian wikilinks and provenance marker)
 - "reasoning": why this integration makes sense
 
 Rules:
 - Prefer appending to existing notes over creating new ones
+- Use Obsidian-style wikilinks: [[Note Name]] or [[Note Name|display text]]
+- Do NOT use markdown link syntax (no [text](wikilink:...) format)
 - Add provenance marker at the end: &[[rambles/${rambleFilename}]]
 - Only propose meaningful integrations - don't force it
 - If no good integrations exist, return an empty array []

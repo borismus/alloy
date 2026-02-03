@@ -712,13 +712,21 @@ export class VaultService {
 
   async getNoteFilePath(filename: string): Promise<string | null> {
     if (!this.vaultPath) return null;
+    // Rambles are stored at rambles/, regular notes at notes/
+    if (filename.startsWith('rambles/')) {
+      return await join(this.vaultPath, filename);
+    }
     return await join(this.vaultPath, 'notes', filename);
   }
 
   async deleteNote(filename: string): Promise<boolean> {
     if (!this.vaultPath) return false;
 
-    const notePath = await join(this.vaultPath, 'notes', filename);
+    // Rambles are stored at rambles/, regular notes at notes/
+    const notePath = filename.startsWith('rambles/')
+      ? await join(this.vaultPath, filename)
+      : await join(this.vaultPath, 'notes', filename);
+
     if (await exists(notePath)) {
       await remove(notePath);
       return true;

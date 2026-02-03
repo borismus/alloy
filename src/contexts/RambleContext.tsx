@@ -27,6 +27,16 @@ interface RambleContextValue extends RambleState {
   reset: () => void;
 }
 
+// Number of words from crystallized text to include as context overlap
+const CONTEXT_OVERLAP_WORDS = 15;
+
+// Get the last N words from a string (for context overlap)
+const getLastNWords = (text: string, n: number): string => {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= n) return text;
+  return words.slice(-n).join(' ');
+};
+
 const initialState: RambleState = {
   isRambling: false,
   currentRambleNote: null,
@@ -103,7 +113,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     return hasContent && (timeBasedTrigger || contentBasedTrigger);
   }, []);
 
-  // Crystallize: rewrite entire note from all accumulated input
+  // Crystallize: incrementally extend note with new input only
   const crystallizeNow = useCallback(async (model: string, notes: NoteInfo[]) => {
     const current = stateRef.current;
     if (current.isProcessing || !current.currentRambleNote) return;
@@ -112,14 +122,22 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     // Check trigger conditions
     if (!shouldCrystallize()) return;
 
+    // Calculate incremental text (only what's new since last crystallization)
+    const incrementalText = current.rawInput.slice(current.lastCrystallizedInput.length);
+    if (!incrementalText.trim()) return;  // Nothing new to crystallize
+
     setState(prev => ({ ...prev, isProcessing: true }));
 
     try {
       abortControllerRef.current = new AbortController();
 
-      // Crystallize ALL accumulated input into a coherent note
+      // Include context overlap from crystallized text for better LLM understanding
+      const contextOverlap = getLastNWords(current.lastCrystallizedInput, CONTEXT_OVERLAP_WORDS);
+      const textWithContext = contextOverlap ? `${contextOverlap} ${incrementalText}` : incrementalText;
+
+      // Crystallize with context overlap
       await rambleService.crystallize(
-        current.rawInput,
+        textWithContext,
         current.currentRambleNote,
         notes,
         model,
@@ -128,7 +146,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
 
       setState(prev => ({
         ...prev,
-        lastCrystallizedInput: prev.rawInput,
+        lastCrystallizedInput: prev.rawInput,  // Mark all current input as crystallized
         lastCrystallizeTime: Date.now(),
         isProcessing: false,
       }));
@@ -147,11 +165,16 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     abortControllerRef.current?.abort();
 
     // Final crystallization if there's unprocessed input
-    if (current.rawInput.trim() && current.rawInput !== current.lastCrystallizedInput && current.currentRambleNote) {
+    const incrementalText = current.rawInput.slice(current.lastCrystallizedInput.length);
+    if (incrementalText.trim() && current.currentRambleNote) {
       setState(prev => ({ ...prev, isProcessing: true }));
       try {
+        // Include context overlap from crystallized text
+        const contextOverlap = getLastNWords(current.lastCrystallizedInput, CONTEXT_OVERLAP_WORDS);
+        const textWithContext = contextOverlap ? `${contextOverlap} ${incrementalText}` : incrementalText;
+
         await rambleService.crystallize(
-          current.rawInput,
+          textWithContext,
           current.currentRambleNote,
           notes,
           model
