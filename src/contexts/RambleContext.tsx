@@ -7,7 +7,9 @@ type RamblePhase = 'idle' | 'rambling' | 'integrating' | 'approving';
 
 interface RambleState {
   isRambling: boolean;
-  currentRambleNote: string | null;  // e.g., "rambles/2026-02-02-143052.md"
+  isRambleMode: boolean;              // true when viewing ramble log (cold or with draft)
+  activeDraftFilename: string | null; // currently active draft being updated by rambling
+  currentRambleNote: string | null;   // e.g., "rambles/2026-02-02-143052.md" (kept for compatibility)
   rawInput: string;                   // accumulated raw input (scratch buffer)
   lastCrystallizedInput: string;      // input at last crystallization (to detect changes)
   lastCrystallizeTime: number;        // timestamp of last crystallization
@@ -25,6 +27,11 @@ interface RambleContextValue extends RambleState {
   applyChanges: () => Promise<void>;
   cancelIntegration: () => void;
   reset: () => void;
+  // New ramble mode methods
+  enterRambleMode: (draftFilename?: string) => void; // enter cold or with draft
+  exitRambleMode: () => void;                        // exit ramble mode
+  ripDraft: () => void;                              // detach active draft, stay in ramble mode
+  setActiveDraft: (filename: string | null) => void; // set the active draft
 }
 
 // Number of words from crystallized text to include as context overlap
@@ -39,6 +46,8 @@ const getLastNWords = (text: string, n: number): string => {
 
 const initialState: RambleState = {
   isRambling: false,
+  isRambleMode: false,
+  activeDraftFilename: null,
   currentRambleNote: null,
   rawInput: '',
   lastCrystallizedInput: '',
@@ -285,6 +294,54 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     setState(initialState);
   }, []);
 
+  // Enter ramble mode - cold (no draft) or with an existing draft
+  const enterRambleMode = useCallback((draftFilename?: string) => {
+    setState(prev => ({
+      ...prev,
+      isRambleMode: true,
+      activeDraftFilename: draftFilename || null,
+      currentRambleNote: draftFilename || null,
+      phase: draftFilename ? 'rambling' : 'idle',
+    }));
+  }, []);
+
+  // Exit ramble mode
+  const exitRambleMode = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setState(prev => ({
+      ...prev,
+      isRambleMode: false,
+      activeDraftFilename: null,
+      rawInput: '',
+      lastCrystallizedInput: '',
+      phase: 'idle',
+    }));
+  }, []);
+
+  // Rip draft - detach the active draft but stay in ramble mode (cold)
+  const ripDraft = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      activeDraftFilename: null,
+      currentRambleNote: null,
+      rawInput: '',
+      lastCrystallizedInput: '',
+      lastCrystallizeTime: Date.now(),
+      isRambling: false,
+      phase: 'idle',
+    }));
+  }, []);
+
+  // Set active draft
+  const setActiveDraft = useCallback((filename: string | null) => {
+    setState(prev => ({
+      ...prev,
+      activeDraftFilename: filename,
+      currentRambleNote: filename,
+      phase: filename ? 'rambling' : 'idle',
+    }));
+  }, []);
+
   const value: RambleContextValue = {
     ...state,
     startRamble,
@@ -295,6 +352,10 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     applyChanges,
     cancelIntegration,
     reset,
+    enterRambleMode,
+    exitRambleMode,
+    ripDraft,
+    setActiveDraft,
   };
 
   return (
