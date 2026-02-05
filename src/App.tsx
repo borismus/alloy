@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
@@ -8,7 +8,7 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
 import { ApprovalProvider } from './contexts/ApprovalContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, SidebarTab, Trigger } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, ComparisonMetadata, CouncilMetadata, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, TimelineFilter, TimelineItem, Trigger, SelectedItem } from './types';
 import { useToolExecution } from './hooks/useToolExecution';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
@@ -19,9 +19,8 @@ import { CouncilChatInterface, CouncilChatInterfaceHandle } from './components/C
 import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import { TriggerConfigModal } from './components/TriggerConfigModal';
-import { TriggerManagementView } from './components/TriggerManagementView';
+import { TriggerDetailView } from './components/TriggerDetailView';
 import { NoteViewer } from './components/NoteViewer';
-import { NoteChatSidebar, NoteChatSidebarHandle } from './components/NoteChatSidebar';
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
 import { UpdateChecker } from './components/UpdateChecker';
 import { readTextFile } from '@tauri-apps/plugin-fs';
@@ -29,6 +28,7 @@ import { isServerMode } from './mocks';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RambleProvider, useRambleContext } from './contexts/RambleContext';
 import { RambleBatchApprovalModal } from './components/RambleBatchApprovalModal';
+import { RambleView } from './components/RambleView';
 import { ContextMenu } from './components/ContextMenu';
 import './App.css';
 
@@ -48,6 +48,93 @@ const RambleApprovalModal: React.FC = () => {
   );
 };
 
+// Wrapper component for main panel that can access RambleContext
+interface MainPanelWithRambleProps {
+  notes: NoteInfo[];
+  selectedModel: string;
+  onNavigateToNote: (filename: string) => void;
+  selectedNote: { filename: string; content: string } | null;
+  hasNonRambleSelection: boolean; // true if user selected conversation or trigger (not note)
+  onClearNote: () => void; // clear the selected note when entering ramble mode
+  children: React.ReactNode;
+}
+
+const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
+  notes,
+  selectedModel,
+  onNavigateToNote,
+  selectedNote,
+  hasNonRambleSelection,
+  onClearNote,
+  children,
+}) => {
+  const rambleContext = useRambleContext();
+
+  // Check if selected note is a ramble/draft (not integrated)
+  const isRambleNote = selectedNote?.filename.startsWith('rambles/') &&
+    !selectedNote.content.includes('integrated: true');
+
+  console.log('[MainPanelWithRamble]', {
+    isRambleMode: rambleContext.isRambleMode,
+    activeDraftFilename: rambleContext.activeDraftFilename,
+    selectedNote: selectedNote?.filename,
+    isRambleNote,
+    hasNonRambleSelection,
+  });
+
+  // Auto-enter ramble mode when viewing a draft note, or switch drafts if already in ramble mode
+  useEffect(() => {
+    if (isRambleNote && selectedNote) {
+      // Either entering ramble mode, or switching to a different draft
+      if (!rambleContext.isRambleMode || rambleContext.activeDraftFilename !== selectedNote.filename) {
+        console.log('[MainPanelWithRamble] Entering/switching ramble mode with draft:', selectedNote.filename);
+        rambleContext.enterRambleMode(selectedNote.filename);
+        onClearNote(); // Clear note selection so ramble mode takes over
+      }
+    }
+  }, [isRambleNote, selectedNote, rambleContext.isRambleMode, rambleContext.activeDraftFilename, onClearNote]);
+
+  // Auto-exit ramble mode when user navigates to non-ramble content
+  useEffect(() => {
+    if (rambleContext.isRambleMode && hasNonRambleSelection) {
+      rambleContext.ripDraft();
+      rambleContext.exitRambleMode();
+    }
+  }, [hasNonRambleSelection, rambleContext]);
+
+  // Show RambleView when in ramble mode
+  if (rambleContext.isRambleMode && !hasNonRambleSelection) {
+    console.log('[MainPanelWithRamble] Showing RambleView');
+    return (
+      <div className="main-panel">
+        <RambleView
+          notes={notes}
+          model={selectedModel}
+          onNavigateToNote={onNavigateToNote}
+          onExit={() => rambleContext.exitRambleMode()}
+        />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+};
+
+// Wrapper to get onNewRamble handler for Sidebar
+type SidebarWithRambleProps = Omit<React.ComponentProps<typeof Sidebar>, 'onNewRamble'>;
+
+const SidebarWithRamble = forwardRef<SidebarHandle, SidebarWithRambleProps>(
+  function SidebarWithRamble(props: SidebarWithRambleProps, ref: React.Ref<SidebarHandle>) {
+    const rambleContext = useRambleContext();
+
+    const handleNewRamble = useCallback(() => {
+      rambleContext.enterRambleMode();
+    }, [rambleContext]);
+
+    return <Sidebar ref={ref} {...props} onNewRamble={handleNewRamble} />;
+  }
+);
+
 // Wrapper to provide ramble integration to NoteViewer
 interface NoteViewerWithIntegrateProps {
   content: string;
@@ -57,6 +144,8 @@ interface NoteViewerWithIntegrateProps {
   conversations: { id: string; title?: string }[];
   notes: NoteInfo[];
   selectedModel: string;
+  canGoBack?: boolean;
+  onGoBack?: () => void;
 }
 
 const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
@@ -67,6 +156,8 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
   conversations,
   notes,
   selectedModel,
+  canGoBack,
+  onGoBack,
 }) => {
   const rambleContext = useRambleContext();
 
@@ -84,6 +175,8 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
       onNavigateToConversation={onNavigateToConversation}
       onIntegrate={handleIntegrate}
       conversations={conversations}
+      canGoBack={canGoBack}
+      onGoBack={onGoBack}
     />
   );
 };
@@ -93,7 +186,6 @@ const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
 
 function AppContent() {
   const [config, setConfig] = useState<Config | null>(null);
-  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,11 +194,28 @@ function AppContent() {
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const [showCouncilSelector, setShowCouncilSelector] = useState(false);
   const [showTriggerConfig, setShowTriggerConfig] = useState(false);
-  const [showTriggerManagementView, setShowTriggerManagementView] = useState(false);
   const [editingTriggerConversation, setEditingTriggerConversation] = useState<Conversation | null>(null);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chats');
-  const [selectedNote, setSelectedNote] = useState<{ filename: string; content: string } | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
+  const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
+  // Unified selection state - single source of truth for what's selected
+  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
+  // Cached note content (loaded on demand when note is selected)
+  const [noteContent, setNoteContent] = useState<string | null>(null);
+  // Transient conversation state for new/unsaved conversations
+  const [draftConversation, setDraftConversation] = useState<Conversation | null>(null);
+
+  // Derive selected items from lists based on selectedItem
+  const currentConversation = selectedItem?.type === 'conversation'
+    ? (draftConversation?.id === selectedItem.id ? draftConversation : conversations.find(c => c.id === selectedItem.id)) ?? null
+    : null;
+  const selectedTrigger = selectedItem?.type === 'trigger'
+    ? triggers.find(t => t.id === selectedItem.id) ?? null
+    : null;
+  const selectedNote = selectedItem?.type === 'note' && noteContent !== null
+    ? { filename: selectedItem.id, content: noteContent }
+    : null;
+
   // Navigation history for back button support
   type NavigationEntry =
     | { type: 'note'; filename: string; content: string }
@@ -123,7 +232,6 @@ function AppContent() {
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
   const councilChatInterfaceRef = useRef<CouncilChatInterfaceHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
-  const noteChatSidebarRef = useRef<NoteChatSidebarHandle>(null);
   const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse } = useStreamingContext();
   const { execute: executeWithTools } = useToolExecution();
 
@@ -143,7 +251,9 @@ function AppContent() {
 
   const handleConversationRemoved = useCallback((id: string) => {
     setConversations(prev => prev.filter(c => c.id !== id));
-    setCurrentConversation(prev => prev?.id === id ? null : prev);
+    // Clear selection if removed conversation was selected
+    setSelectedItem(prev => prev?.type === 'conversation' && prev.id === id ? null : prev);
+    setDraftConversation(prev => prev?.id === id ? null : prev);
   }, []);
 
   const handleConversationModified = useCallback(async (id: string) => {
@@ -153,8 +263,9 @@ function AppContent() {
     setConversations(prev =>
       prev.map(c => c.id === id ? updated : c)
     );
-
-    setCurrentConversation(prev => prev?.id === id ? updated : prev);
+    // currentConversation is derived from conversations, so no need to update separately
+    // But if it's a draft conversation, update that too
+    setDraftConversation(prev => prev?.id === id ? updated : prev);
   }, []);
 
   // Handler for trigger updates (called by TriggerContext)
@@ -219,9 +330,8 @@ function AppContent() {
     setNotes(loadedNotes);
 
     // If the modified note is currently selected, refresh its content
-    setSelectedNote(prev => {
-      console.log('[App] Checking if should refresh:', { selectedFilename: prev?.filename, modifiedFilename: filename });
-      if (prev && prev.filename === filename) {
+    setSelectedItem(prev => {
+      if (prev?.type === 'note' && prev.id === filename) {
         // Re-read the file content asynchronously
         const vaultPathStr = vaultService.getVaultPath();
         const notesPath = vaultService.getNotesPath();
@@ -233,13 +343,13 @@ function AppContent() {
           console.log('[App] Refreshing note content from:', notePath);
           readTextFile(notePath).then(content => {
             console.log('[App] Note content refreshed, length:', content.length);
-            setSelectedNote({ filename, content });
+            setNoteContent(content);
           }).catch(error => {
             console.error('Failed to refresh note content:', error);
           });
         }
       }
-      return prev; // Return prev for now, update happens async
+      return prev; // Don't change selection, just trigger content refresh
     });
   }, []);
 
@@ -345,6 +455,60 @@ function AppContent() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showSettings, config]);
+
+  // Build unified timeline whenever data changes
+  useEffect(() => {
+    const items = vaultService.buildTimeline(conversations, notes, triggers);
+    items.then(setTimelineItems);
+  }, [conversations, notes, triggers]);
+
+  // Compute selected item ID for sidebar highlighting
+  const selectedItemId = selectedItem?.id ?? null;
+
+  // Handle selecting an item from the timeline
+  const handleSelectItem = useCallback(async (item: TimelineItem) => {
+    // Set unified selection state
+    const newSelection: SelectedItem = item.type === 'ramble'
+      ? { type: 'note', id: item.id }
+      : { type: item.type, id: item.id };
+    setSelectedItem(newSelection);
+
+    // Clear draft conversation when switching away from it
+    setDraftConversation(null);
+
+    if (item.type === 'conversation') {
+      // Mark as read when user selects the conversation
+      markAsRead(item.id);
+    } else if (item.type === 'note' || item.type === 'ramble') {
+      // Load note content
+      const vaultPathStr = vaultService.getVaultPath();
+      const notesPath = vaultService.getNotesPath();
+      if (vaultPathStr && notesPath) {
+        const notePath = item.id === 'memory.md' || item.id.startsWith('rambles/')
+          ? `${vaultPathStr}/${item.id}`
+          : `${notesPath}/${item.id}`;
+        try {
+          const content = await readTextFile(notePath);
+          setNoteContent(content);
+        } catch (error) {
+          console.error('[App] Failed to load note:', error);
+          setNoteContent(null);
+        }
+      }
+    }
+    // For triggers, no additional loading needed - derived from triggers list
+  }, [markAsRead]);
+
+  // Handle deleting a note
+  const handleDeleteNote = useCallback(async (filename: string) => {
+    await vaultService.deleteNote(filename);
+    // If this is the selected note, clear the selection
+    setSelectedItem(prev => prev?.type === 'note' && prev.id === filename ? null : prev);
+    setNoteContent(null);
+    // Reload notes list
+    const loadedNotes = await vaultService.loadNotes();
+    setNotes(loadedNotes);
+  }, []);
 
   const loadVault = async (path: string) => {
     try {
@@ -455,7 +619,10 @@ function AppContent() {
       model: model,
       messages: [],
     };
-    setCurrentConversation(newConversation);
+    // Store as draft until first message is sent
+    setDraftConversation(newConversation);
+    setNoteContent(null);
+    setSelectedItem({ type: 'conversation', id: newConversation.id });
   };
 
   // Auto-create a new conversation when entering mobile conversation view without one
@@ -471,7 +638,7 @@ function AppContent() {
     const notesPath = vaultService.getNotesPath();
     if (vaultPathStr && notesPath) {
       // Don't navigate to the same note we're already viewing
-      if (selectedNote?.filename === filename) {
+      if (selectedItem?.type === 'note' && selectedItem.id === filename) {
         console.log('[App] Skipping - same note already selected');
         return;
       }
@@ -485,25 +652,21 @@ function AppContent() {
         const content = await readTextFile(notePath);
         // Push current view to history before navigating
         if (addToHistory) {
-          if (selectedNote) {
-            setNavigationHistory(prev => [...prev, { type: 'note', filename: selectedNote.filename, content: selectedNote.content }]);
-          } else if (currentConversation) {
-            setNavigationHistory(prev => [...prev, { type: 'conversation', id: currentConversation.id }]);
+          if (selectedItem?.type === 'note' && noteContent) {
+            setNavigationHistory(prev => [...prev, { type: 'note', filename: selectedItem.id, content: noteContent }]);
+          } else if (selectedItem?.type === 'conversation') {
+            setNavigationHistory(prev => [...prev, { type: 'conversation', id: selectedItem.id }]);
           }
         }
-        // Clear conversation selection and switch to notes tab
-        setCurrentConversation(null);
-        setSidebarTab('notes');
-        console.log('[App] Setting selectedNote:', { filename, contentLength: content.length });
-        setSelectedNote({ filename, content });
+        // Clear draft conversation and update selection
+        setDraftConversation(null);
+        setSelectedItem({ type: 'note', id: filename });
+        console.log('[App] Setting note content:', { filename, contentLength: content.length });
+        setNoteContent(content);
       } catch (error) {
         console.error('[App] Failed to load note:', error);
       }
     }
-  };
-
-  const handleNewNotesChat = () => {
-    handleNewConversation();
   };
 
   const handleNewComparison = () => {
@@ -544,7 +707,9 @@ function AppContent() {
       comparison: comparisonMetadata,
     };
 
-    setCurrentConversation(newConversation);
+    setDraftConversation(newConversation);
+    setNoteContent(null);
+    setSelectedItem({ type: 'conversation', id: newConversation.id });
     setShowComparisonSelector(false);
   };
 
@@ -571,12 +736,16 @@ function AppContent() {
       council: councilMetadata,
     };
 
-    setCurrentConversation(newConversation);
+    setDraftConversation(newConversation);
+    setNoteContent(null);
+    setSelectedItem({ type: 'conversation', id: newConversation.id });
     setShowCouncilSelector(false);
   };
 
   const handleUpdateCouncilConversation = async (updatedConversation: Conversation) => {
-    setCurrentConversation(updatedConversation);
+    // Update draft or conversation in list
+    setDraftConversation(prev => prev?.id === updatedConversation.id ? updatedConversation : prev);
+    setConversations(prev => prev.map(c => c.id === updatedConversation.id ? updatedConversation : c));
 
     // Check if this is the first message (conversation needs to be added to list)
     const existingConversation = conversations.find(c => c.id === updatedConversation.id);
@@ -618,7 +787,9 @@ function AppContent() {
   };
 
   const handleUpdateComparisonConversation = async (updatedConversation: Conversation) => {
-    setCurrentConversation(updatedConversation);
+    // Update draft or conversation in list
+    setDraftConversation(prev => prev?.id === updatedConversation.id ? updatedConversation : prev);
+    setConversations(prev => prev.map(c => c.id === updatedConversation.id ? updatedConversation : c));
 
     // Check if this is the first message (conversation needs to be added to list)
     const existingConversation = conversations.find(c => c.id === updatedConversation.id);
@@ -677,7 +848,9 @@ function AppContent() {
         model: modelKey,
         messages: [...currentConversation.messages, logMessage],
       };
-      setCurrentConversation(updatedConversation);
+      // Update draft or conversation in list
+      setDraftConversation(prev => prev?.id === updatedConversation.id ? updatedConversation : prev);
+      setConversations(prev => prev.map(c => c.id === updatedConversation.id ? updatedConversation : c));
     }
   };
 
@@ -731,10 +904,13 @@ function AppContent() {
       updated: new Date().toISOString(),
     };
 
-    setCurrentConversation(updatedConversation);
+    // Update draft or conversation in list
+    setDraftConversation(prev => prev?.id === updatedConversation.id ? updatedConversation : prev);
 
     if (isFirstMessage) {
       setConversations((prev) => [updatedConversation, ...prev]);
+    } else {
+      setConversations(prev => prev.map(c => c.id === updatedConversation.id ? updatedConversation : c));
     }
 
     // Save immediately when user sends a message (so it pops to top of list)
@@ -815,10 +991,9 @@ function AppContent() {
         }
       }
 
-      // Only update current conversation if user is still viewing it
-      setCurrentConversation((prev) =>
-        prev?.id === finalConversation.id ? finalConversation : prev
-      );
+      // Only update if user is still viewing this conversation
+      setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
+      setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
 
       try {
         // Mark as self-write to avoid watcher triggering on our own save
@@ -865,26 +1040,17 @@ function AppContent() {
       alert(errorMessage);
 
       // Only revert if user is still viewing this conversation
-      setCurrentConversation((prev) =>
-        prev?.id === currentConversation.id ? currentConversation : prev
-      );
+      setDraftConversation(prev => prev?.id === currentConversation.id ? currentConversation : prev);
       if (isFirstMessage) {
         setConversations((prev) => prev.filter(c => c.id !== currentConversation.id));
+      } else {
+        setConversations(prev => prev.map(c => c.id === currentConversation.id ? currentConversation : c));
       }
     }
   };
 
   const handleSelectConversation = async (id: string, addToHistory = true, messageId?: string) => {
     console.log('[App] handleSelectConversation called with id:', id, 'messageId:', messageId);
-
-    // Handle ramble_history specially - it's the Note Chat sidebar, not a loadable conversation
-    if (id === 'ramble_history') {
-      // Scroll Note Chat sidebar to the message if provided
-      if (messageId) {
-        noteChatSidebarRef.current?.scrollToMessage(messageId);
-      }
-      return;
-    }
 
     // Store messageId for scrolling after conversation loads
     setPendingScrollToMessageId(messageId || null);
@@ -906,33 +1072,17 @@ function AppContent() {
       }
     }
 
-    // Close any open selectors/views and clear note selection
-    setShowTriggerManagementView(false);
+    // Close any open selectors/views and clear other selections
     setShowComparisonSelector(false);
     setShowCouncilSelector(false);
-    setSelectedNote(null);
-    setSidebarTab('chats');
+    setNoteContent(null);
+    setDraftConversation(null);
+    setSelectedItem({ type: 'conversation', id });
 
-    // First try loading as a regular conversation
-    let conversation = await vaultService.loadConversation(id);
-
-    // If not found, try loading as a trigger (triggers are in triggers/ directory)
-    if (!conversation) {
-      const trigger = await vaultService.loadTrigger(id);
-      if (trigger) {
-        // Cast trigger to Conversation for display
-        conversation = trigger as unknown as Conversation;
-      }
-    }
-
-    console.log('[App] Loaded conversation:', conversation ? conversation.id : 'NOT FOUND');
-    if (conversation) {
-      // Migration is now handled in vault.ts migrateConversationFormat
-      setCurrentConversation(conversation);
-      setTimeout(() => {
-        chatInterfaceRef.current?.focusInput();
-      }, 0);
-    }
+    // Focus input after selection
+    setTimeout(() => {
+      chatInterfaceRef.current?.focusInput();
+    }, 0);
   };
 
   const handleGoBack = async () => {
@@ -943,9 +1093,9 @@ function AppContent() {
 
     if (previousEntry.type === 'note') {
       // Navigate back to note without adding to history
-      setCurrentConversation(null);
-      setSidebarTab('notes');
-      setSelectedNote({ filename: previousEntry.filename, content: previousEntry.content });
+      setDraftConversation(null);
+      setSelectedItem({ type: 'note', id: previousEntry.filename });
+      setNoteContent(previousEntry.content);
     } else if (previousEntry.type === 'conversation') {
       // Navigate back to conversation without adding to history
       await handleSelectConversation(previousEntry.id, false);
@@ -974,10 +1124,8 @@ function AppContent() {
         setConversations((prev) =>
           prev.map((c) => (c.id === oldId ? updatedConversation : c))
         );
-
-        if (currentConversation?.id === oldId) {
-          setCurrentConversation(updatedConversation);
-        }
+        // Also update draft if it's the renamed conversation
+        setDraftConversation(prev => prev?.id === oldId ? updatedConversation : prev);
       }
     } catch (error) {
       console.error('Error renaming conversation:', error);
@@ -1002,9 +1150,10 @@ function AppContent() {
       const deleted = await vaultService.deleteConversation(id);
       if (deleted) {
         setConversations((prev) => prev.filter((c) => c.id !== id));
+        setDraftConversation(prev => prev?.id === id ? null : prev);
 
-        if (currentConversation?.id === id) {
-          setCurrentConversation(null);
+        if (selectedItem?.type === 'conversation' && selectedItem.id === id) {
+          setSelectedItem(null);
         }
       }
     } catch (error) {
@@ -1037,9 +1186,6 @@ function AppContent() {
   const isComparisonConversation = currentConversation?.comparison !== undefined;
   const isCouncilConversation = currentConversation?.council !== undefined;
 
-  // Triggers are now loaded separately from conversations
-  const regularConversations = conversations;
-
   // Handle deleting a trigger
   const handleDeleteTrigger = async (triggerId: string) => {
     const vaultPathForDelete = vaultService.getVaultPath();
@@ -1056,6 +1202,47 @@ function AppContent() {
     } catch (error) {
       console.error('Error deleting trigger:', error);
     }
+  };
+
+  // Handle "Ask about this" from trigger detail view - creates a spinoff conversation
+  const handleAskAboutTrigger = async (trigger: Trigger) => {
+    // Get the latest triggered response (most recent assistant message)
+    const latestResponse = trigger.messages
+      ?.filter(m => m.role === 'assistant')
+      .pop();
+
+    if (!latestResponse) {
+      console.warn('No response to ask about');
+      return;
+    }
+
+    // Create a new conversation with the trigger response as context
+    const newId = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const now = new Date().toISOString();
+    const defaultModel = config?.favoriteModels?.[0] || availableModels[0]?.key || trigger.model;
+
+    const newConversation: Conversation = {
+      id: newId,
+      created: now,
+      updated: now,
+      model: defaultModel,
+      title: `Re: ${trigger.title || 'Trigger'}`,
+      messages: [
+        {
+          role: 'log',
+          content: `Context from monitor "${trigger.title}":\n\n${latestResponse.content}`,
+          timestamp: now,
+        },
+      ],
+    };
+
+    // Save the new conversation
+    await vaultService.saveConversation(newConversation);
+
+    // Update state
+    setConversations(prev => [newConversation, ...prev]);
+    setDraftConversation(null);
+    setSelectedItem({ type: 'conversation', id: newConversation.id });
   };
 
   // Handle updating a trigger on an existing conversation
@@ -1077,9 +1264,7 @@ function AppContent() {
 
         // Update state with the result
         setConversations(prev => prev.map(c => c.id === conversationId ? updated : c));
-        if (currentConversation?.id === conversationId) {
-          setCurrentConversation(updated);
-        }
+        setDraftConversation(prev => prev?.id === conversationId ? updated : prev);
       }
     } catch (error) {
       console.error('Error updating trigger:', error);
@@ -1125,7 +1310,9 @@ function AppContent() {
 
       // Update state
       setConversations(prev => [newConversation, ...prev]);
-      setCurrentConversation(newConversation);
+      setDraftConversation(null);
+      setNoteContent(null);
+      setSelectedItem({ type: 'conversation', id: newConversation.id });
     } catch (error) {
       console.error('Error creating triggered conversation:', error);
     }
@@ -1144,20 +1331,21 @@ function AppContent() {
         {isMobile ? (
           // Mobile layout - show one view at a time
           mobileView === 'list' ? (
-            <Sidebar
+            <SidebarWithRamble
               ref={sidebarRef}
               fullScreen
               onMobileBack={() => setMobileView('conversation')}
-              conversations={regularConversations}
-              triggers={triggers}
-              currentConversationId={currentConversation?.id || null}
+              timelineItems={timelineItems}
+              activeFilter={timelineFilter}
+              onFilterChange={setTimelineFilter}
+              selectedItemId={selectedItemId}
+              onSelectItem={(item) => {
+                handleSelectItem(item);
+                setMobileView('conversation');
+              }}
               streamingConversationIds={getStreamingConversationIds()}
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
-              onSelectConversation={(id) => {
-                handleSelectConversation(id);
-                setMobileView('conversation');
-              }}
               onNewConversation={() => {
                 handleNewConversation();
                 setMobileView('conversation');
@@ -1168,15 +1356,7 @@ function AppContent() {
               onRenameConversation={handleRenameConversation}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
-              onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
-              notes={notes}
-              activeTab={sidebarTab}
-              selectedNoteFilename={selectedNote?.filename || null}
-              onSelectNote={handleSelectNote}
-              onNewNotesChat={handleNewNotesChat}
-              onTabChange={setSidebarTab}
-              canGoBack={navigationHistory.length > 0}
-              onGoBack={handleGoBack}
+              onDeleteNote={handleDeleteNote}
             />
           ) : (
             // mobileView === 'conversation'
@@ -1190,10 +1370,7 @@ function AppContent() {
               onModelChange={handleModelChange}
               availableModels={availableModels}
               favoriteModels={config?.favoriteModels}
-              onNavigateToNote={(noteFilename) => {
-                setSidebarTab('notes');
-                handleSelectNote(noteFilename);
-              }}
+              onNavigateToNote={handleSelectNote}
               onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
               scrollToMessageId={pendingScrollToMessageId}
               onScrollComplete={() => setPendingScrollToMessageId(null)}
@@ -1203,15 +1380,16 @@ function AppContent() {
         ) : (
           // Desktop layout - sidebar + main panel
           <>
-            <Sidebar
+            <SidebarWithRamble
               ref={sidebarRef}
-              conversations={regularConversations}
-              triggers={triggers}
-              currentConversationId={currentConversation?.id || null}
+              timelineItems={timelineItems}
+              activeFilter={timelineFilter}
+              onFilterChange={setTimelineFilter}
+              selectedItemId={selectedItemId}
+              onSelectItem={handleSelectItem}
               streamingConversationIds={getStreamingConversationIds()}
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
-              onSelectConversation={handleSelectConversation}
               onNewConversation={handleNewConversation}
               onNewComparison={handleNewComparison}
               onNewCouncil={handleNewCouncil}
@@ -1219,39 +1397,42 @@ function AppContent() {
               onRenameConversation={handleRenameConversation}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
-              onOpenTriggerManagement={() => setShowTriggerManagementView(true)}
-              notes={notes}
-              activeTab={sidebarTab}
-              selectedNoteFilename={selectedNote?.filename || null}
-              onSelectNote={handleSelectNote}
-              onNewNotesChat={handleNewNotesChat}
-              onTabChange={setSidebarTab}
-              canGoBack={navigationHistory.length > 0}
-              onGoBack={handleGoBack}
+              onDeleteNote={handleDeleteNote}
             />
+      <MainPanelWithRamble
+        notes={notes}
+        selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+        onNavigateToNote={handleSelectNote}
+        selectedNote={selectedNote}
+        hasNonRambleSelection={!!(currentConversation || selectedTrigger)}
+        onClearNote={() => {
+          setNoteContent(null);
+          setSelectedItem(null);
+        }}
+      >
       <div className="main-panel">
-        {showTriggerManagementView ? (
-          <div className="main-content">
-            <TriggerManagementView
-              triggers={triggers}
-              onNewTrigger={() => {
-                setShowTriggerManagementView(false);
-                setEditingTriggerConversation(null);
-                setShowTriggerConfig(true);
-              }}
-              onEditTrigger={(trigger) => {
-                setShowTriggerManagementView(false);
-                // Convert trigger to conversation-like shape for editing
-                setEditingTriggerConversation(trigger as unknown as Conversation);
-                setShowTriggerConfig(true);
-              }}
-              onDeleteTrigger={handleDeleteTrigger}
-              onSelectTrigger={() => {
-                // TODO: Open trigger view
-                setShowTriggerManagementView(false);
-              }}
-            />
-          </div>
+        {selectedTrigger ? (
+          <TriggerDetailView
+            trigger={selectedTrigger}
+            onBack={handleGoBack}
+            canGoBack={navigationHistory.length > 0}
+            onDelete={async () => {
+              await handleDeleteTrigger(selectedTrigger.id);
+              setSelectedItem(null);
+            }}
+            onRunNow={async () => {
+              // Refresh trigger data after manual run
+              const refreshed = await vaultService.loadTrigger(selectedTrigger.id);
+              if (refreshed) {
+                setTriggers(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
+              }
+            }}
+            onAskAbout={handleAskAboutTrigger}
+            onTriggerUpdated={(updated) => {
+              // Update triggers list - selectedTrigger will auto-update since it's derived
+              setTriggers(prev => prev.map(t => t.id === updated.id ? updated : t));
+            }}
+          />
         ) : showComparisonSelector ? (
           <div className="main-content">
             <ComparisonModelSelector
@@ -1270,28 +1451,21 @@ function AppContent() {
               onCancel={() => setShowCouncilSelector(false)}
             />
           </div>
-        ) : sidebarTab === 'notes' ? (
-          selectedNote ? (
-            <NoteViewerWithIntegrate
-              content={selectedNote.content}
-              filename={selectedNote.filename}
-              onNavigateToNote={handleSelectNote}
-              onNavigateToConversation={(conversationId: string, messageId?: string) => {
-                console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId, messageId);
-                handleSelectConversation(conversationId, true, messageId);
-              }}
-              conversations={conversations}
-              notes={notes}
-              selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
-            />
-          ) : (
-            <div className="main-content no-note-selected">
-              <div className="empty-state">
-                <p>No note selected</p>
-                <p className="hint">Select a note from the sidebar or start rambling</p>
-              </div>
-            </div>
-          )
+        ) : selectedNote ? (
+          <NoteViewerWithIntegrate
+            content={selectedNote.content}
+            filename={selectedNote.filename}
+            onNavigateToNote={handleSelectNote}
+            onNavigateToConversation={(conversationId: string, messageId?: string) => {
+              console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId, messageId);
+              handleSelectConversation(conversationId, true, messageId);
+            }}
+            conversations={conversations}
+            notes={notes}
+            selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+            canGoBack={navigationHistory.length > 0}
+            onGoBack={handleGoBack}
+          />
         ) : isCouncilConversation && currentConversation ? (
           <CouncilChatInterface
             ref={councilChatInterfaceRef}
@@ -1317,17 +1491,16 @@ function AppContent() {
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
-            onNavigateToNote={(noteFilename) => {
-              // Switch to notes tab and open the note
-              setSidebarTab('notes');
-              handleSelectNote(noteFilename);
-            }}
+            onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             scrollToMessageId={pendingScrollToMessageId}
             onScrollComplete={() => setPendingScrollToMessageId(null)}
+            onBack={handleGoBack}
+            canGoBack={navigationHistory.length > 0}
           />
         )}
       </div>
+      </MainPanelWithRamble>
           </>
         )}
       {showSettings && (
@@ -1349,7 +1522,6 @@ function AppContent() {
           availableModels={availableModels}
           favoriteModels={config?.favoriteModels}
           onSave={async (newTriggerConfig, title) => {
-            const wasEditing = !!editingTriggerConversation;
             if (editingTriggerConversation) {
               // Editing existing trigger
               await handleUpdateTrigger(editingTriggerConversation.id, newTriggerConfig);
@@ -1359,24 +1531,13 @@ function AppContent() {
             }
             setEditingTriggerConversation(null);
             setShowTriggerConfig(false);
-            // If we were editing, return to the management view
-            if (wasEditing) {
-              setShowTriggerManagementView(true);
-            }
           }}
           onClose={() => {
             setShowTriggerConfig(false);
-            // If we were editing, return to the management view
-            if (editingTriggerConversation) {
-              setShowTriggerManagementView(true);
-            }
             setEditingTriggerConversation(null);
           }}
         />
       )}
-        {sidebarTab === 'notes' && (
-          <NoteChatSidebar ref={noteChatSidebarRef} isOpen={true} availableModels={availableModels} favoriteModels={config?.favoriteModels} notes={notes} onNavigateToNote={handleSelectNote} />
-        )}
       </div>
       </RambleProvider>
     </TriggerProvider>
