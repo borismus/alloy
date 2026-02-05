@@ -1,0 +1,235 @@
+.trigger-detail-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #fff);
+}
+
+.trigger-detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+/* Latest Response Section - Prominent */
+.trigger-latest-section {
+  margin-bottom: 2rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.trigger-latest-section h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.latest-time {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #999);
+}
+
+.latest-response-content {
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 1.25rem;
+  font-size: 0.9rem;
+  color: var(--text-primary, #333);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  margin-bottom: 1rem;
+}
+
+.btn-ask-about {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.btn-ask-about:hover {
+  opacity: 0.9;
+  transform: translateX(2px);
+}
+
+.btn-ask-about svg {
+  transition: transform 0.15s ease;
+}
+
+.btn-ask-about:hover svg {
+  transform: translateX(3px);
+}
+
+/* No response state */
+.no-response {
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px dashed var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary, #666);
+}
+
+.no-response p {
+  margin: 0 0 0.5rem 0;
+}
+
+.no-response-hint {
+  font-size: 0.85rem;
+  color: var(--text-tertiary, #999);
+}
+
+.no-response-hint em {
+  font-style: normal;
+  color: var(--text-secondary, #666);
+}
+
+/* History Section */
+.trigger-history-section {
+  margin-bottom: 2rem;
+}
+
+.trigger-history-section h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 1rem 0;
+}
+
+.trigger-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-entry {
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.history-entry.triggered {
+  border-left: 3px solid #10b981;
+}
+
+.history-entry.skipped {
+  border-left: 3px solid #f59e0b;
+}
+
+.history-entry.error {
+  border-left: 3px solid #ef4444;
+}
+
+.history-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.history-time {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #999);
+}
+
+.history-result {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.history-result.triggered {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+
+.history-result.skipped {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+}
+
+.history-result.error {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+}
+
+.history-reasoning {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #666);
+  line-height: 1.4;
+}
+
+/* Button styles */
+.btn-small {
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-primary, white);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  color: var(--text-primary, #333);
+}
+
+.btn-small:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.btn-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-small.btn-accent {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.btn-small.btn-accent:hover {
+  opacity: 0.9;
+}
+
+.btn-small.btn-accent:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-small.btn-muted {
+  background: var(--bg-secondary, #f0f0f0);
+  color: var(--text-secondary, #666);
+}
+
+.btn-small.btn-danger {
+  background: #dc3545;
+  color: white;
+  border-color: transparent;
+}
+
+.btn-small.btn-danger:hover {
+  background: #c82333;
+}
