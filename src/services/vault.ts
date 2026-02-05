@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile, stat } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger } from '../types';
+import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger, TimelineItem } from '../types';
 
 export class VaultService {
   private vaultPath: string | null = null;
@@ -799,24 +799,112 @@ export class VaultService {
           const content = await readTextFile(filePath);
           const hasSkillContent = content.includes('&[[');
 
+          // Parse frontmatter to get integrated status
+          let isIntegrated = false;
+          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          if (frontmatterMatch) {
+            try {
+              const frontmatter = yaml.load(frontmatterMatch[1]) as Record<string, unknown>;
+              isIntegrated = frontmatter.integrated === true;
+            } catch {
+              // Ignore frontmatter parse errors
+            }
+          }
+
           notes.push({
             filename: `rambles/${entry.name}`,
             lastModified,
             hasSkillContent,
+            isRamble: true,
+            isIntegrated,
           });
         }
       }
     }
 
-    // Sort by lastModified descending (newest first), but keep memory.md at top
-    const sortedNotes = notes.sort((a, b) => {
-      // memory.md always comes first
-      if (a.filename === 'memory.md') return -1;
-      if (b.filename === 'memory.md') return 1;
-      return b.lastModified - a.lastModified;
-    });
+    // Sort by lastModified descending (newest first)
+    const sortedNotes = notes.sort((a, b) => b.lastModified - a.lastModified);
     console.log('[VaultService] loadNotes: Found', sortedNotes.length, 'notes:', sortedNotes.map(n => n.filename));
     return sortedNotes;
+  }
+
+  /**
+   * Build a unified timeline of all content types, sorted by last updated.
+   * Returns conversations, notes (excluding rambles), triggers, and rambles as TimelineItems.
+   */
+  async buildTimeline(
+    conversations: Conversation[],
+    notes: NoteInfo[],
+    triggers: Trigger[]
+  ): Promise<TimelineItem[]> {
+    const items: TimelineItem[] = [];
+
+    // Add conversations
+    for (const conv of conversations) {
+      // Get last message preview
+      const lastMessage = conv.messages.filter(m => m.role !== 'log').pop();
+      const preview = lastMessage?.content?.slice(0, 100) || '';
+
+      items.push({
+        type: 'conversation',
+        id: conv.id,
+        title: conv.title || 'New conversation',
+        lastUpdated: new Date(conv.updated || conv.created).getTime(),
+        preview,
+        conversation: conv,
+      });
+    }
+
+    // Add notes (separate regular notes from rambles)
+    for (const note of notes) {
+      if (note.isRamble) {
+        // Ramble items
+        const dateMatch = note.filename.match(/rambles\/(\d{4}-\d{2}-\d{2})-(\d{6})\.md/);
+        const title = dateMatch
+          ? `Ramble ${dateMatch[1]} ${dateMatch[2].slice(0, 2)}:${dateMatch[2].slice(2, 4)}`
+          : note.filename.replace('rambles/', '').replace('.md', '');
+
+        items.push({
+          type: 'ramble',
+          id: note.filename,
+          title,
+          lastUpdated: note.lastModified,
+          preview: note.isIntegrated ? 'Integrated' : 'Draft',
+          note,
+        });
+      } else {
+        // Regular note items
+        items.push({
+          type: 'note',
+          id: note.filename,
+          title: note.filename.replace('.md', ''),
+          lastUpdated: note.lastModified,
+          note,
+        });
+      }
+    }
+
+    // Add triggers
+    for (const trigger of triggers) {
+      const lastFiring = trigger.trigger.lastTriggered
+        ? new Date(trigger.trigger.lastTriggered).getTime()
+        : 0;
+      const preview = trigger.trigger.enabled
+        ? (lastFiring ? `Last fired: ${new Date(lastFiring).toLocaleDateString()}` : 'Never fired')
+        : 'Disabled';
+
+      items.push({
+        type: 'trigger',
+        id: trigger.id,
+        title: trigger.title,
+        lastUpdated: new Date(trigger.updated || trigger.created).getTime(),
+        preview,
+        trigger,
+      });
+    }
+
+    // Sort by lastUpdated descending (newest first)
+    return items.sort((a, b) => b.lastUpdated - a.lastUpdated);
   }
 
   async loadRawConfig(): Promise<string> {
