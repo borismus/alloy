@@ -1,23 +1,16 @@
 import { useState, useRef, useLayoutEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
-import { Conversation, ModelInfo, NoteInfo, SidebarTab, Trigger } from '../types';
+import { ModelInfo, TimelineItem, TimelineFilter } from '../types';
 import { vaultService } from '../services/vault';
-import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTriggerContext } from '../contexts/TriggerContext';
 import './Sidebar.css';
 
 // FLIP animation helper - stores previous positions of items
-function useFLIPAnimation(items: Conversation[]) {
+function useFLIPAnimation(items: TimelineItem[]) {
   const positionsRef = useRef<Map<string, DOMRect>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const prevItemsRef = useRef<string[]>([]);
-
-  // Capture positions before render (using the previous items order)
-  useLayoutEffect(() => {
-    // This runs synchronously after DOM mutations but before paint
-    // We need to capture positions BEFORE this effect runs, so we do it
-    // at the end of the previous effect cycle
-  }, []);
 
   // After DOM update, animate from old to new positions
   useLayoutEffect(() => {
@@ -30,9 +23,9 @@ function useFLIPAnimation(items: Conversation[]) {
     const orderChanged = currentIds.some((id, idx) => prevIds[idx] !== id);
 
     if (orderChanged && positionsRef.current.size > 0) {
-      const elements = containerRef.current.querySelectorAll('[data-conversation-id]');
+      const elements = containerRef.current.querySelectorAll('[data-item-id]');
       elements.forEach((el) => {
-        const id = el.getAttribute('data-conversation-id');
+        const id = el.getAttribute('data-item-id');
         if (!id) return;
 
         const oldRect = positionsRef.current.get(id);
@@ -42,14 +35,11 @@ function useFLIPAnimation(items: Conversation[]) {
           const deltaY = oldRect.top - newRect.top;
 
           if (Math.abs(deltaY) > 1) {
-            // Apply inverse transform to start from old position
             (el as HTMLElement).style.transform = `translateY(${deltaY}px)`;
             (el as HTMLElement).style.transition = 'none';
 
-            // Force reflow
             el.getBoundingClientRect();
 
-            // Animate to new position
             requestAnimationFrame(() => {
               (el as HTMLElement).style.transform = '';
               (el as HTMLElement).style.transition = 'transform 0.3s ease-out';
@@ -58,21 +48,18 @@ function useFLIPAnimation(items: Conversation[]) {
         }
       });
 
-      // Clean up transitions after animation
       const cleanup = setTimeout(() => {
         elements.forEach((el) => {
           (el as HTMLElement).style.transition = '';
         });
       }, 350);
 
-      // Capture new positions for next animation
       captureCurrentPositions();
       prevItemsRef.current = currentIds;
 
       return () => clearTimeout(cleanup);
     }
 
-    // Always update positions and prev items after render
     captureCurrentPositions();
     prevItemsRef.current = currentIds;
   }, [items]);
@@ -80,9 +67,9 @@ function useFLIPAnimation(items: Conversation[]) {
   const captureCurrentPositions = () => {
     if (!containerRef.current) return;
     const newPositions = new Map<string, DOMRect>();
-    const elements = containerRef.current.querySelectorAll('[data-conversation-id]');
+    const elements = containerRef.current.querySelectorAll('[data-item-id]');
     elements.forEach((el) => {
-      const id = el.getAttribute('data-conversation-id');
+      const id = el.getAttribute('data-item-id');
       if (id) {
         newPositions.set(id, el.getBoundingClientRect());
       }
@@ -90,7 +77,6 @@ function useFLIPAnimation(items: Conversation[]) {
     positionsRef.current = newPositions;
   };
 
-  // Capture positions synchronously before state updates
   const capturePositions = () => {
     captureCurrentPositions();
   };
@@ -99,31 +85,23 @@ function useFLIPAnimation(items: Conversation[]) {
 }
 
 interface SidebarProps {
-  conversations: Conversation[];
-  triggers: Trigger[];
-  currentConversationId: string | null;
+  timelineItems: TimelineItem[];
+  activeFilter: TimelineFilter;
+  onFilterChange: (filter: TimelineFilter) => void;
+  selectedItemId: string | null;
+  onSelectItem: (item: TimelineItem) => void;
   streamingConversationIds: string[];
   unreadConversationIds: string[];
   availableModels: ModelInfo[];
-  onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onNewComparison: () => void;
   onNewCouncil: () => void;
   onNewTrigger: () => void;
+  onNewRamble: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onDeleteConversation: (id: string) => void;
   onDeleteTrigger: (id: string) => void;
-  onOpenTriggerManagement: () => void;
-  // Notes tab props
-  notes: NoteInfo[];
-  activeTab: SidebarTab;
-  selectedNoteFilename: string | null;
-  onSelectNote: (filename: string) => void;
-  onNewNotesChat: () => void;
-  onTabChange: (tab: SidebarTab) => void;
-  // Navigation
-  canGoBack: boolean;
-  onGoBack: () => void;
+  onDeleteNote: (filename: string) => void;
   // Mobile props
   fullScreen?: boolean;
   onMobileBack?: () => void;
@@ -134,29 +112,23 @@ export interface SidebarHandle {
 }
 
 export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar({
-  conversations,
-  triggers,
-  currentConversationId,
+  timelineItems,
+  activeFilter,
+  onFilterChange,
+  selectedItemId,
+  onSelectItem,
   streamingConversationIds,
   unreadConversationIds,
   availableModels,
-  onSelectConversation,
   onNewConversation,
   onNewComparison,
   onNewCouncil,
   onNewTrigger,
+  onNewRamble,
   onRenameConversation,
   onDeleteConversation,
   onDeleteTrigger,
-  onOpenTriggerManagement,
-  notes,
-  activeTab,
-  selectedNoteFilename,
-  onSelectNote,
-  onNewNotesChat: _onNewNotesChat,
-  onTabChange,
-  canGoBack,
-  onGoBack,
+  onDeleteNote,
   fullScreen,
   onMobileBack,
 }, ref) {
@@ -165,7 +137,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger'; id: string } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger' | 'ramble'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -176,23 +148,22 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   }));
 
   // FLIP animation for smooth list reordering
-  const { containerRef, capturePositions } = useFLIPAnimation(conversations);
+  const { containerRef, capturePositions } = useFLIPAnimation(timelineItems);
 
-  // Capture positions before any state update that might reorder
-  const handleSelectConversation = (id: string) => {
+  const handleSelectItem = (item: TimelineItem) => {
     capturePositions();
-    // Dismiss fired trigger indicator when opening the conversation
-    if (firedTriggerIds.includes(id)) {
-      dismissFiredTrigger(id);
+    // Dismiss fired trigger indicator when opening
+    if (item.type === 'conversation' && firedTriggerIds.includes(item.id)) {
+      dismissFiredTrigger(item.id);
     }
-    onSelectConversation(id);
+    onSelectItem(item);
   };
 
   const startRename = (conversationId: string) => {
-    const conversation = conversations.find(c => c.id === conversationId);
-    if (!conversation) return;
+    const item = timelineItems.find(i => i.id === conversationId && i.type === 'conversation');
+    if (!item?.conversation) return;
 
-    const currentTitle = conversation.title || 'New conversation';
+    const currentTitle = item.conversation.title || 'New conversation';
     setRenamingId(conversationId);
     setRenameValue(currentTitle);
   };
@@ -216,8 +187,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         onDeleteConversation(deletingItem.id);
       } else if (deletingItem.type === 'trigger') {
         onDeleteTrigger(deletingItem.id);
-      } else if (deletingItem.type === 'note') {
-        await vaultService.deleteNote(deletingItem.id);
+      } else if (deletingItem.type === 'note' || deletingItem.type === 'ramble') {
+        onDeleteNote(deletingItem.id);
       }
     }
     setDeletingItem(null);
@@ -227,27 +198,31 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     setDeletingItem(null);
   };
 
-  const handleContextMenu = async (e: React.MouseEvent, conversationId: string) => {
+  const handleContextMenu = async (e: React.MouseEvent, item: TimelineItem) => {
     e.preventDefault();
 
-    // Try conversation first, then trigger
-    let filePath = await vaultService.getConversationFilePath(conversationId);
-    const isTrigger = !filePath;
-    if (!filePath) {
-      filePath = await vaultService.getTriggerFilePath(conversationId);
+    let filePath: string | null = null;
+
+    if (item.type === 'conversation') {
+      filePath = await vaultService.getConversationFilePath(item.id);
+    } else if (item.type === 'trigger') {
+      filePath = await vaultService.getTriggerFilePath(item.id);
+    } else if (item.type === 'note' || item.type === 'ramble') {
+      filePath = await vaultService.getNoteFilePath(item.id);
     }
+
     if (!filePath) return;
 
     try {
       const menuItems = [];
 
-      // Rename is only available for conversations, not triggers
-      if (!isTrigger) {
+      // Rename is only available for conversations
+      if (item.type === 'conversation') {
         menuItems.push({
           id: 'rename',
           text: 'Rename',
           action: () => {
-            startRename(conversationId);
+            startRename(item.id);
           }
         });
       }
@@ -256,7 +231,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         id: 'delete',
         text: 'Delete',
         action: () => {
-          setDeletingItem({ type: isTrigger ? 'trigger' : 'conversation', id: conversationId });
+          setDeletingItem({ type: item.type, id: item.id });
         }
       });
 
@@ -272,40 +247,17 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         }
       });
 
-      const menu = await Menu.new({ items: menuItems });
-      await menu.popup();
-    } catch (error) {
-      console.error('Failed to show context menu:', error);
-    }
-  };
-
-  const handleNoteContextMenu = async (e: React.MouseEvent, filename: string) => {
-    e.preventDefault();
-
-    const filePath = await vaultService.getNoteFilePath(filename);
-    if (!filePath) return;
-
-    try {
-      const menuItems = [
-        {
-          id: 'delete',
-          text: 'Delete',
-          action: () => {
-            setDeletingItem({ type: 'note', id: filename });
-          }
-        },
-        {
-          id: 'reveal',
-          text: 'Reveal in Finder',
-          action: async () => {
-            try {
-              await revealItemInDir(filePath);
-            } catch (error) {
-              console.error('Failed to reveal file in Finder:', error);
-            }
+      menuItems.push({
+        id: 'edit',
+        text: 'Edit',
+        action: async () => {
+          try {
+            await openPath(filePath);
+          } catch (error) {
+            console.error('Failed to open file in editor:', error);
           }
         }
-      ];
+      });
 
       const menu = await Menu.new({ items: menuItems });
       await menu.popup();
@@ -347,10 +299,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             }
           },
           {
-            id: 'manage-triggers',
-            text: 'Manage Triggers',
+            id: 'new-ramble',
+            text: 'New Ramble',
             action: () => {
-              onOpenTriggerManagement();
+              onNewRamble();
             }
           }
         ]
@@ -362,102 +314,95 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+  const formatDate = (timestamp: number) => {
+    const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
 
-    // Today: show relative time
     if (date.toDateString() === now.toDateString()) {
       if (diffMins < 1) return 'Just now';
       if (diffMins < 60) return `${diffMins} min ago`;
       return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     }
 
-    // Yesterday
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday';
     }
 
-    // Older
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const getConversationTitle = (conversation: Conversation) => {
-    // Use the title if available, otherwise fall back to preview
-    if (conversation.title) {
-      return conversation.title;
-    }
-    if (conversation.messages.length === 0) {
-      return 'New conversation';
-    }
-    const firstMessage = conversation.messages[0];
-    const preview = firstMessage.content.slice(0, 50);
-    const lastSpace = preview.lastIndexOf(' ');
-    return lastSpace > 20 ? preview.slice(0, lastSpace) : preview;
-  };
-
   const getModelDisplayName = (modelString: string) => {
-    // modelString is in format "provider/model-id" - same as model.key
     const model = availableModels.find(m => m.key === modelString);
     if (model) return model.name;
-    // Fallback: extract model ID from string for display
     const slashIndex = modelString.indexOf('/');
     return slashIndex !== -1 ? modelString.slice(slashIndex + 1) : modelString;
   };
 
-  // Combine conversations with triggers that have fired
-  // Triggers are stored separately but displayed in the same list
-  const visibleConversations = useMemo(() => {
-    // Regular conversations (no trigger field)
-    const regularConvs = conversations.filter(c => !c.trigger);
+  // Filter items by type and search query
+  const filteredItems = useMemo(() => {
+    return timelineItems.filter(item => {
+      // Apply type filter
+      if (activeFilter !== 'all') {
+        if (activeFilter === 'conversations' && item.type !== 'conversation') return false;
+        if (activeFilter === 'notes' && item.type !== 'note') return false;
+        if (activeFilter === 'triggers' && item.type !== 'trigger') return false;
+        if (activeFilter === 'rambles' && item.type !== 'ramble') return false;
+      }
 
-    // Triggers that have fired (shown as conversations)
-    const firedTriggers = triggers
-      .filter(t => t.trigger.lastTriggered !== undefined)
-      .map(t => ({
-        ...t,
-        // Ensure trigger conversations have the trigger field for display logic
-      } as Conversation));
+      // Apply search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesTitle = item.title.toLowerCase().includes(query);
+        const matchesId = item.id.toLowerCase().includes(query);
+        const matchesPreview = item.preview?.toLowerCase().includes(query);
 
-    // Combine and sort by updated date
-    return [...regularConvs, ...firedTriggers].sort((a, b) =>
-      new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
-    );
-  }, [conversations, triggers]);
+        // For conversations, also search message content
+        if (item.type === 'conversation' && item.conversation) {
+          const hasMatchingMessage = item.conversation.messages.some(
+            msg => msg.content.toLowerCase().includes(query)
+          );
+          if (hasMatchingMessage) return true;
+        }
 
-  const filteredConversations = visibleConversations.filter((conversation) => {
-    if (!searchQuery.trim()) return true;
+        if (!matchesTitle && !matchesId && !matchesPreview) return false;
+      }
 
-    const query = searchQuery.toLowerCase();
+      return true;
+    });
+  }, [timelineItems, activeFilter, searchQuery]);
 
-    // Search in title
-    const matchesTitle = conversation.title?.toLowerCase().includes(query);
-
-    // Search in message content
-    const hasMatchingMessage = conversation.messages.some((message) =>
-      message.content.toLowerCase().includes(query)
-    );
-
-    // Search in conversation ID (which includes date)
-    const matchesId = conversation.id.toLowerCase().includes(query);
-
-    return matchesTitle || hasMatchingMessage || matchesId;
-  });
-
-  // Filter notes by search query (filename only)
-  const filteredNotes = notes.filter((note) => {
-    if (!searchQuery.trim()) return true;
-    return note.filename.toLowerCase().includes(searchQuery.toLowerCase());
-  });
-
-  // Split into regular notes and rambles
-  const regularNotes = filteredNotes.filter(note => !note.filename.startsWith('rambles/'));
-  const rambleNotes = filteredNotes.filter(note => note.filename.startsWith('rambles/'));
+  const getTypeBadge = (item: TimelineItem) => {
+    switch (item.type) {
+      case 'conversation':
+        if (item.conversation?.comparison) {
+          return <span className="type-badge comparison">Compare</span>;
+        }
+        if (item.conversation?.council) {
+          return <span className="type-badge council">Council</span>;
+        }
+        if (item.conversation?.trigger) {
+          return <span className="type-badge trigger">Trigger</span>;
+        }
+        return null;
+      case 'note':
+        return <span className="type-badge note">Note</span>;
+      case 'trigger':
+        return <span className="type-badge trigger">Trigger</span>;
+      case 'ramble':
+        return (
+          <span className={`type-badge ramble ${item.note?.isIntegrated ? 'integrated' : 'draft'}`}>
+            {item.note?.isIntegrated ? 'Ramble' : 'Draft'}
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className={`sidebar ${fullScreen ? 'full-screen' : ''}`}>
@@ -468,25 +413,15 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               <path d="M19 12H5M12 19l-7-7 7-7"/>
             </svg>
           </button>
-          <h2>Conversations</h2>
+          <h2>Timeline</h2>
         </div>
       )}
       <div className="search-box" data-tauri-drag-region>
-        <button
-          className={`back-button ${!canGoBack ? 'disabled' : ''}`}
-          onClick={onGoBack}
-          disabled={!canGoBack}
-          title="Go back"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-        </button>
         <div className="search-input-wrapper">
           <input
             ref={searchInputRef}
             type="text"
-            placeholder={activeTab === 'chats' ? "Search conversations..." : "Search notes..."}
+            placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
@@ -510,137 +445,66 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         </button>
       </div>
 
-      <div className="sidebar-tabs">
-        <button
-          className={`sidebar-tab ${activeTab === 'chats' ? 'active' : ''}`}
-          onClick={() => onTabChange('chats')}
+      <div className="filter-dropdown-container">
+        <select
+          className="filter-dropdown"
+          value={activeFilter}
+          onChange={(e) => onFilterChange(e.target.value as TimelineFilter)}
         >
-          Chats
-        </button>
-        <button
-          className={`sidebar-tab ${activeTab === 'notes' ? 'active' : ''}`}
-          onClick={() => onTabChange('notes')}
-        >
-          Notes
-        </button>
+          <option value="all">All</option>
+          <option value="conversations">Conversations</option>
+          <option value="notes">Notes</option>
+          <option value="triggers">Triggers</option>
+          <option value="rambles">Rambles</option>
+        </select>
       </div>
 
-      {activeTab === 'chats' ? (
-      <div className="conversations-list" ref={containerRef}>
-        {filteredConversations.length === 0 && conversations.length === 0 ? (
+      <div className="timeline-list" ref={containerRef}>
+        {filteredItems.length === 0 && timelineItems.length === 0 ? (
           <div className="no-conversations">
-            <p>No conversations yet</p>
+            <p>No items yet</p>
             <p className="hint">Click + to start</p>
           </div>
-        ) : filteredConversations.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <div className="no-conversations">
             <p>No results found</p>
-            <p className="hint">Try a different search</p>
+            <p className="hint">Try a different search or filter</p>
           </div>
         ) : (
-          filteredConversations.map((conversation) => (
+          filteredItems.map((item) => (
             <div
-              key={conversation.id}
-              data-conversation-id={conversation.id}
-              className={`conversation-item ${
-                conversation.id === currentConversationId ? 'active' : ''
-              }${conversation.comparison ? ' comparison' : ''}${conversation.council ? ' council' : ''}${conversation.trigger ? ' trigger' : ''}${
-                streamingConversationIds.includes(conversation.id) ? ' streaming' : ''
-              }`}
-              onClick={() => handleSelectConversation(conversation.id)}
-              onContextMenu={(e) => handleContextMenu(e, conversation.id)}
+              key={item.id}
+              data-item-id={item.id}
+              className={`timeline-item ${item.type} ${
+                item.id === selectedItemId ? 'active' : ''
+              }${streamingConversationIds.includes(item.id) ? ' streaming' : ''}`}
+              onClick={() => handleSelectItem(item)}
+              onContextMenu={(e) => handleContextMenu(e, item)}
             >
-              <div className="conversation-preview">
-                {streamingConversationIds.includes(conversation.id) && (
+              <div className="item-preview">
+                {streamingConversationIds.includes(item.id) && (
                   <span className="streaming-indicator" title="Streaming...">●</span>
                 )}
-                {!streamingConversationIds.includes(conversation.id) && (unreadConversationIds.includes(conversation.id) || firedTriggerIds.includes(conversation.id)) && (
-                  <span className="unread-indicator" title={firedTriggerIds.includes(conversation.id) ? "Trigger fired" : "New response"}>●</span>
+                {!streamingConversationIds.includes(item.id) &&
+                 (unreadConversationIds.includes(item.id) || firedTriggerIds.includes(item.id)) && (
+                  <span className="unread-indicator" title={firedTriggerIds.includes(item.id) ? "Trigger fired" : "New response"}>●</span>
                 )}
-                {conversation.comparison && <span className="comparison-badge">Compare</span>}
-                {conversation.council && <span className="council-badge">Council</span>}
-                {conversation.trigger && <span className="trigger-badge">Trigger</span>}
-                {getConversationTitle(conversation)}
+                {getTypeBadge(item)}
+                {item.title}
               </div>
-              <div className="conversation-meta">
-                <span className="conversation-date">{formatDate(conversation.updated || conversation.created)}</span>
-                {!conversation.comparison && !conversation.council && !conversation.trigger && (
-                  <span className="conversation-model" title={conversation.model}>
-                    {getModelDisplayName(conversation.model)}
+              <div className="item-meta">
+                <span className="item-date">{formatDate(item.lastUpdated)}</span>
+                {item.type === 'conversation' && item.conversation &&
+                 !item.conversation.comparison && !item.conversation.council && !item.conversation.trigger && (
+                  <span className="item-model" title={item.conversation.model}>
+                    {getModelDisplayName(item.conversation.model)}
                   </span>
                 )}
-                {conversation.trigger && (
-                  <button
-                    className="trigger-settings-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenTriggerManagement();
-                    }}
-                    title="Manage triggers"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3"></circle>
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                  </button>
-                )}
-              </div>
+                              </div>
             </div>
           ))
         )}
       </div>
-      ) : (
-      <div className="notes-list">
-        {filteredNotes.length === 0 && notes.length === 0 ? (
-          <div className="no-conversations">
-            <p>No notes yet</p>
-            <p className="hint">Notes will appear here</p>
-          </div>
-        ) : filteredNotes.length === 0 ? (
-          <div className="no-conversations">
-            <p>No results found</p>
-            <p className="hint">Try a different search</p>
-          </div>
-        ) : (
-          <>
-            {/* Regular notes */}
-            {regularNotes.map((note) => (
-              <div
-                key={note.filename}
-                className={`note-item ${selectedNoteFilename === note.filename ? 'active' : ''}`}
-                onClick={() => onSelectNote(note.filename)}
-                onContextMenu={(e) => handleNoteContextMenu(e, note.filename)}
-              >
-                {note.hasSkillContent && (
-                  <span className="skill-indicator" title="Contains AI content">●</span>
-                )}
-                <span className="note-title">{note.filename.replace(/\.md$/, '')}</span>
-              </div>
-            ))}
-
-            {/* Rambles section */}
-            {rambleNotes.length > 0 && (
-              <>
-                <div className="notes-section-header">Rambles</div>
-                {rambleNotes.map((note) => (
-                  <div
-                    key={note.filename}
-                    className={`note-item ${selectedNoteFilename === note.filename ? 'active' : ''}`}
-                    onClick={() => onSelectNote(note.filename)}
-                    onContextMenu={(e) => handleNoteContextMenu(e, note.filename)}
-                  >
-                    {note.hasSkillContent && (
-                      <span className="skill-indicator" title="Contains AI content">●</span>
-                    )}
-                    <span className="note-title">{note.filename.replace('rambles/', '').replace(/\.md$/, '')}</span>
-                  </div>
-                ))}
-              </>
-            )}
-          </>
-        )}
-      </div>
-      )}
 
       {renamingId && (
         <div className="rename-modal" onClick={cancelRename}>
@@ -675,7 +539,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       {deletingItem && (
         <div className="rename-modal" onClick={cancelDelete}>
           <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : 'Note'}</h3>
+            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'trigger' ? 'Trigger' : deletingItem.type === 'ramble' ? 'Ramble' : 'Note'}</h3>
             <p className="delete-warning">
               Are you sure you want to delete this {deletingItem.type}? This action cannot be undone.
             </p>
