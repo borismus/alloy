@@ -8,6 +8,7 @@ import { useScrollToMessage } from '../hooks/useScrollToMessage';
 import { ModelSelector } from './ModelSelector';
 import { FindInConversation, FindInConversationHandle } from './FindInConversation';
 import { AgentResponseView } from './AgentResponseView';
+import { ItemHeader } from './ItemHeader';
 import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
 import './ChatInterface.css';
 import 'highlight.js/styles/github-dark.css';
@@ -238,7 +239,8 @@ interface ChatInterfaceProps {
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   scrollToMessageId?: string | null;  // Message ID to scroll to (from provenance links)
   onScrollComplete?: () => void;  // Called after scrolling to message
-  onBack?: () => void;  // Mobile back button callback
+  onBack?: () => void;  // Back button callback (mobile: shows menu icon, desktop: shows back arrow)
+  canGoBack?: boolean;  // Whether there's navigation history to go back to
 }
 
 export interface ChatInterfaceHandle {
@@ -283,6 +285,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   scrollToMessageId,
   onScrollComplete,
   onBack,
+  canGoBack,
 }, ref) => {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -585,22 +588,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     if (onBack) {
       return (
         <div
-          className={`chat-interface ${isDragging ? 'drag-over' : ''} has-mobile-header`}
+          className={`chat-interface ${isDragging ? 'drag-over' : ''} has-header`}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          <div className="mobile-chat-header">
-            <button className="mobile-back-button" onClick={onBack}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <line x1="3" y1="12" x2="21" y2="12"/>
-                <line x1="3" y1="18" x2="21" y2="18"/>
-              </svg>
-            </button>
-            <h2 className="mobile-chat-title">New Conversation</h2>
-          </div>
+          <ItemHeader
+            title="New Conversation"
+            onBack={onBack}
+            canGoBack={true}
+          />
           <div className="messages-container" ref={messagesContainerRef}>
             <div className="welcome-message">
               <h2>Start a conversation</h2>
@@ -633,32 +631,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   return (
     <div
-      className={`chat-interface ${isDragging ? 'drag-over' : ''} ${onBack ? 'has-mobile-header' : ''}`}
+      className={`chat-interface ${isDragging ? 'drag-over' : ''} has-header`}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {onBack && (
-        <div className="mobile-chat-header">
-          <button className="mobile-back-button" onClick={onBack}>
-            {conversation ? (
-              // Back arrow when viewing a conversation
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-              </svg>
-            ) : (
-              // Menu icon when in welcome state
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <line x1="3" y1="12" x2="21" y2="12"/>
-                <line x1="3" y1="18" x2="21" y2="18"/>
-              </svg>
-            )}
-          </button>
-          <h2 className="mobile-chat-title">{conversation?.title || 'New Conversation'}</h2>
-        </div>
-      )}
+      <ItemHeader
+        title={conversation?.title || 'New Conversation'}
+        onBack={onBack}
+        canGoBack={canGoBack}
+      />
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {showFind && (
           <FindInConversation

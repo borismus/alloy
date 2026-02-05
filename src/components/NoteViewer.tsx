@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
+import { ItemHeader } from './ItemHeader';
 import './NoteViewer.css';
 import './MarkdownContent.css';
 import 'highlight.js/styles/github-dark.css';
@@ -55,6 +56,9 @@ interface NoteViewerProps {
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   onIntegrate?: () => void; // Called when user wants to integrate a ramble
   conversations?: ConversationInfo[]; // For looking up conversation titles
+  // Navigation
+  canGoBack?: boolean;
+  onGoBack?: () => void;
 }
 
 export const NoteViewer: React.FC<NoteViewerProps> = ({
@@ -64,6 +68,8 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   onNavigateToConversation,
   onIntegrate,
   conversations,
+  canGoBack,
+  onGoBack,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const prevContentLengthRef = useRef<number>(0);
@@ -101,8 +107,18 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
     return createMarkdownComponents({ onNavigateToNote, onNavigateToConversation, conversations });
   }, [onNavigateToNote, onNavigateToConversation, conversations]);
 
+  // Get display name from filename
+  const displayName = filename
+    ? filename.replace(/^(notes\/|rambles\/)/, '').replace(/\.md$/, '')
+    : 'Note';
+
   return (
     <div className="note-viewer">
+      <ItemHeader
+        title={displayName}
+        onBack={onGoBack}
+        canGoBack={canGoBack}
+      />
       {isUnintegrated && onIntegrate && (
         <div className="ramble-integrate-bar">
           <span className="integrate-hint">This ramble hasn't been integrated yet</span>

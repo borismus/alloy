@@ -905,53 +905,6 @@
   }
 }
 
-/* Mobile header styles */
-.mobile-chat-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  padding-top: calc(12px + env(safe-area-inset-top, 0px));
-  background: white;
-  border-bottom: 1px solid #e0e0e0;
-  min-height: 56px;
-  flex-shrink: 0;
-  touch-action: none;
-  user-select: none;
-}
-
-.mobile-chat-header .mobile-back-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #666;
-}
-
-.mobile-chat-header .mobile-back-button:hover {
-  background: #f0f0f0;
-}
-
-.mobile-chat-header .mobile-back-button:active {
-  background: #e0e0e0;
-}
-
-.mobile-chat-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
 /* Mobile input form layout */
 @media (max-width: 768px) {
   .input-form {
