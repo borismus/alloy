@@ -177,15 +177,37 @@ export interface ConversationStreamingState {
   error?: string;
 }
 
-// Sidebar tab type
-export type SidebarTab = 'chats' | 'notes';
+// Timeline filter type (replaces old SidebarTab)
+export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'triggers' | 'rambles';
 
 // Note metadata for sidebar display
 export interface NoteInfo {
   filename: string;        // e.g., "my-note.md"
   lastModified: number;    // Unix timestamp for sorting
   hasSkillContent: boolean; // true if contains &[[...]] markers
+  isRamble?: boolean;      // true if in rambles/ directory
+  isIntegrated?: boolean;  // for rambles: whether integrated into notes
 }
+
+// Unified timeline item for sidebar display
+export interface TimelineItem {
+  type: 'conversation' | 'note' | 'trigger' | 'ramble';
+  id: string;              // conversation id, note filename, or trigger id
+  title: string;           // display title
+  lastUpdated: number;     // unix timestamp for sorting
+  preview?: string;        // optional preview text
+  // Type-specific data (one will be set based on type)
+  conversation?: Conversation;
+  note?: NoteInfo;
+  trigger?: Trigger;
+}
+
+// Selection state for main panel routing
+export type SelectedItem =
+  | { type: 'conversation'; id: string }
+  | { type: 'note'; id: string }      // id = filename
+  | { type: 'trigger'; id: string }
+  | null;
 
 // Ramble mode: proposed changes to integrate into other notes
 export interface ProposedChange {
