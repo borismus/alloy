@@ -10,6 +10,7 @@ interface RambleHistoryFile {
 
 const MAX_MESSAGES = 50;
 const RAMBLE_FILENAME = 'ramble_history.yaml';
+const RAMBLE_LOG_FILENAME = '_log.md';
 
 // Terse system prompt for action-focused responses
 export const RAMBLE_SYSTEM_PROMPT = `You are a quick-action assistant. Be extremely terse. Focus on doing, not explaining.
@@ -36,6 +37,47 @@ export class RambleService {
   async getRambleFilePath(): Promise<string | null> {
     if (!this.vaultPath) return null;
     return await join(this.vaultPath, RAMBLE_FILENAME);
+  }
+
+  // Get the ramble log file path (append-only journal)
+  async getRambleLogPath(): Promise<string | null> {
+    if (!this.vaultPath) return null;
+    const ramblesPath = await join(this.vaultPath, 'rambles');
+    return await join(ramblesPath, RAMBLE_LOG_FILENAME);
+  }
+
+  // Read the entire ramble log (append-only journal)
+  async getRambleLog(): Promise<string> {
+    const logPath = await this.getRambleLogPath();
+    if (!logPath || !(await exists(logPath))) {
+      return '';
+    }
+    try {
+      return await readTextFile(logPath);
+    } catch (error) {
+      console.error('[RambleService] Failed to read ramble log:', error);
+      return '';
+    }
+  }
+
+  // Write the full log content (replaces file)
+  async writeLog(content: string): Promise<void> {
+    if (!this.vaultPath) return;
+
+    // Ensure rambles directory exists
+    const ramblesPath = await join(this.vaultPath, 'rambles');
+    if (!(await exists(ramblesPath))) {
+      await mkdir(ramblesPath, { recursive: true });
+    }
+
+    const logPath = await this.getRambleLogPath();
+    if (!logPath) return;
+
+    try {
+      await writeTextFile(logPath, content);
+    } catch (error) {
+      console.error('[RambleService] Failed to write ramble log:', error);
+    }
   }
 
   async loadHistory(): Promise<Message[]> {
@@ -87,7 +129,7 @@ export class RambleService {
   }
 
   // Get or create a timestamped ramble note
-  async getOrCreateRambleNote(): Promise<string> {
+  async getOrCreateRambleNote(initialRawInput = ''): Promise<string> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
     // Ensure rambles directory exists
@@ -104,9 +146,15 @@ export class RambleService {
 
     const fullPath = await join(this.vaultPath, filename);
 
-    // Create the file with frontmatter and header
+    // Create the file with frontmatter (including rawInput) and header
+    // Use YAML literal block scalar for multi-line rawInput
+    const rawInputYaml = initialRawInput
+      ? `rawInput: |\n${initialRawInput.split('\n').map(line => '  ' + line).join('\n')}`
+      : 'rawInput: ""';
+
     const initialContent = `---
 integrated: false
+${rawInputYaml}
 ---
 # Ramble - ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
 
@@ -114,6 +162,85 @@ integrated: false
     await writeTextFile(fullPath, initialContent);
 
     return filename;
+  }
+
+  // Get the rawInput from a draft's frontmatter
+  async getDraftRawInput(rambleNotePath: string): Promise<string> {
+    if (!this.vaultPath) return '';
+
+    try {
+      const fullPath = await join(this.vaultPath, rambleNotePath);
+      if (!(await exists(fullPath))) return '';
+
+      const content = await readTextFile(fullPath);
+      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!fmMatch) return '';
+
+      // Parse rawInput from frontmatter (handles YAML literal block scalar)
+      const frontmatter = fmMatch[1];
+      const rawInputMatch = frontmatter.match(/rawInput:\s*\|?\n?([\s\S]*?)(?=\n\w+:|$)/);
+      if (!rawInputMatch) return '';
+
+      // If it's a literal block scalar, remove the 2-space indentation
+      const rawValue = rawInputMatch[1];
+      if (rawValue.startsWith('  ')) {
+        return rawValue.split('\n').map(line => line.slice(2)).join('\n').trim();
+      }
+      return rawValue.replace(/^["']|["']$/g, '').trim();
+    } catch (error) {
+      console.error('[RambleService] Failed to get draft rawInput:', error);
+      return '';
+    }
+  }
+
+  // Update the rawInput in a draft's frontmatter
+  async updateDraftRawInput(rambleNotePath: string, rawInput: string): Promise<void> {
+    if (!this.vaultPath) throw new Error('Vault path not set');
+
+    const fullPath = await join(this.vaultPath, rambleNotePath);
+    if (!(await exists(fullPath))) return;
+
+    const content = await readTextFile(fullPath);
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (!fmMatch) return;
+
+    const [, frontmatter, body] = fmMatch;
+
+    // Build new frontmatter with updated rawInput
+    const rawInputYaml = rawInput
+      ? `rawInput: |\n${rawInput.split('\n').map(line => '  ' + line).join('\n')}`
+      : 'rawInput: ""';
+
+    // Replace or add rawInput in frontmatter
+    let newFrontmatter: string;
+    if (frontmatter.includes('rawInput:')) {
+      // Replace existing rawInput (handles multi-line)
+      newFrontmatter = frontmatter.replace(/rawInput:[\s\S]*?(?=\n\w+:|$)/, rawInputYaml);
+    } else {
+      // Add rawInput
+      newFrontmatter = frontmatter.trim() + '\n' + rawInputYaml;
+    }
+
+    await writeTextFile(fullPath, `---\n${newFrontmatter}\n---\n${body}`);
+  }
+
+  // Update draft content directly (preserves frontmatter)
+  async updateDraft(rambleNotePath: string, content: string): Promise<void> {
+    if (!this.vaultPath) throw new Error('Vault path not set');
+
+    const fullPath = await join(this.vaultPath, rambleNotePath);
+
+    // Preserve frontmatter if it exists
+    let frontmatter = '---\nintegrated: false\n---\n';
+    if (await exists(fullPath)) {
+      const existingContent = await readTextFile(fullPath);
+      const fmMatch = existingContent.match(/^---\n[\s\S]*?\n---\n/);
+      if (fmMatch) {
+        frontmatter = fmMatch[0];
+      }
+    }
+
+    await writeTextFile(fullPath, frontmatter + content);
   }
 
   // Mark a ramble note as integrated
