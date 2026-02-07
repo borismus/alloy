@@ -1,14 +1,8 @@
-import React, { useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
+import React from 'react';
 import { ToolUse, SkillUse } from '../types';
 import { ToolUseIndicator } from './ToolUseIndicator';
 import { SkillUseIndicator } from './SkillUseIndicator';
-import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
-
-const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
+import { MarkdownContent } from './MarkdownContent';
 
 export type AgentStatus = 'pending' | 'streaming' | 'complete' | 'error';
 
@@ -68,15 +62,6 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
 
   const isStreaming = status === 'streaming';
 
-  // Process wiki-links in content
-  const processedContent = useMemo(() => processWikiLinks(content), [content]);
-
-  // Create markdown components with wiki-link handling
-  const markdownComponents = useMemo(
-    () => createMarkdownComponents({ onNavigateToNote, onNavigateToConversation }),
-    [onNavigateToNote, onNavigateToConversation]
-  );
-
   return (
     <div className={`response-summary status-${status} ${className}`}>
       {showHeader && (
@@ -107,13 +92,11 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
           </div>
         )}
         {content && (
-          <ReactMarkdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={rehypePlugins}
-            components={markdownComponents}
-          >
-            {processedContent}
-          </ReactMarkdown>
+          <MarkdownContent
+            content={content}
+            onNavigateToNote={onNavigateToNote}
+            onNavigateToConversation={onNavigateToConversation}
+          />
         )}
         {status === 'error' && (
           <span className="error-text">{error || 'An error occurred'}</span>

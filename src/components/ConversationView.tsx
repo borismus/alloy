@@ -1,15 +1,9 @@
 import React, { useRef, useEffect, useMemo, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { Message, ToolUse } from '../types';
 import { AgentResponseView } from './AgentResponseView';
-import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
+import { MarkdownContent } from './MarkdownContent';
 import { useScrollToMessageCallback } from '../hooks/useScrollToMessage';
 import './ChatInterface.css';
-
-const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
 
 interface UserMessageProps {
   message: Message;
@@ -26,12 +20,6 @@ const UserMessage = React.memo(({
   onNavigateToConversation,
   compact
 }: UserMessageProps) => {
-  const processedContent = useMemo(() => processWikiLinks(message.content), [message.content]);
-  const markdownComponents = useMemo(
-    () => createMarkdownComponents({ onNavigateToNote, onNavigateToConversation }),
-    [onNavigateToNote, onNavigateToConversation]
-  );
-
   return (
     <div className={`message user ${compact ? 'compact' : ''}`}>
       <div className="message-content">
@@ -43,9 +31,11 @@ const UserMessage = React.memo(({
             </div>
           );
         })}
-        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
-          {processedContent}
-        </ReactMarkdown>
+        <MarkdownContent
+          content={message.content}
+          onNavigateToNote={onNavigateToNote}
+          onNavigateToConversation={onNavigateToConversation}
+        />
       </div>
     </div>
   );
