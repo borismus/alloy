@@ -1,15 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
 import { ItemHeader } from './ItemHeader';
+import { MarkdownContent } from './MarkdownContent';
 import './NoteViewer.css';
-import './MarkdownContent.css';
-import 'highlight.js/styles/github-dark.css';
-
-const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
 
 // Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
 function urlTransform(url: string): string {
@@ -90,23 +82,6 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
     }
   }, [body, isRambleNote]);
 
-  // Process wiki-links in content (use body without frontmatter)
-  const processedContent = useMemo(() => {
-    const result = processWikiLinks(body);
-    console.log('[NoteViewer] Content processing:', { original: body, processed: result });
-    return result;
-  }, [body]);
-
-  // Create markdown components with wiki-link handling
-  const markdownComponents = useMemo(() => {
-    console.log('[NoteViewer] Creating markdown components with callbacks:', {
-      hasOnNavigateToNote: !!onNavigateToNote,
-      hasOnNavigateToConversation: !!onNavigateToConversation,
-      conversationsCount: conversations?.length
-    });
-    return createMarkdownComponents({ onNavigateToNote, onNavigateToConversation, conversations });
-  }, [onNavigateToNote, onNavigateToConversation, conversations]);
-
   // Get display name from filename
   const displayName = filename
     ? filename.replace(/^(notes\/|rambles\/)/, '').replace(/\.md$/, '')
@@ -128,16 +103,14 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
         </div>
       )}
       <div className="note-content-container" ref={contentRef}>
-        <div className="note-content markdown-content">
-          <ReactMarkdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={rehypePlugins}
-            components={markdownComponents}
-            urlTransform={urlTransform}
-          >
-            {processedContent}
-          </ReactMarkdown>
-        </div>
+        <MarkdownContent
+          content={body}
+          className="note-content"
+          onNavigateToNote={onNavigateToNote}
+          onNavigateToConversation={onNavigateToConversation}
+          conversations={conversations}
+          urlTransform={urlTransform}
+        />
       </div>
     </div>
   );

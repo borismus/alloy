@@ -1,21 +1,19 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { Conversation, Message, ModelInfo, ProviderType, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
+import { useChatKeyboard } from '../hooks/useChatKeyboard';
+import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useGlobalEscape } from '../hooks/useGlobalEscape';
+import { TEXTAREA_PROPS } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
 import { FindInConversation, FindInConversationHandle } from './FindInConversation';
 import { AgentResponseView } from './AgentResponseView';
 import { ItemHeader } from './ItemHeader';
-import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
+import { MarkdownContent } from './MarkdownContent';
 import './ChatInterface.css';
-import 'highlight.js/styles/github-dark.css';
-
-// Hoist plugin arrays to avoid recreation on each render
-const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
 
 interface UserMessageProps {
   message: Message;
@@ -26,12 +24,6 @@ interface UserMessageProps {
 
 // UserMessage handles user messages with image attachments
 const UserMessage = React.memo(({ message, getImageUrl, onNavigateToNote, onNavigateToConversation }: UserMessageProps) => {
-  const processedContent = useMemo(() => processWikiLinks(message.content), [message.content]);
-  const markdownComponents = useMemo(
-    () => createMarkdownComponents({ onNavigateToNote, onNavigateToConversation }),
-    [onNavigateToNote, onNavigateToConversation]
-  );
-
   return (
     <div className="message user">
       <div className="message-content">
@@ -43,9 +35,11 @@ const UserMessage = React.memo(({ message, getImageUrl, onNavigateToNote, onNavi
             </div>
           );
         })}
-        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
-          {processedContent}
-        </ReactMarkdown>
+        <MarkdownContent
+          content={message.content}
+          onNavigateToNote={onNavigateToNote}
+          onNavigateToConversation={onNavigateToConversation}
+        />
       </div>
     </div>
   );
@@ -92,32 +86,14 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(max-width: 767px)');
-    const handleChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    setIsMobile(mediaQuery.matches);
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
+  const isMobile = useIsMobile();
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
     addImages: (images: PendingImage[]) => setPendingImages(prev => [...prev, ...images]),
   }));
 
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const rafId = requestAnimationFrame(() => {
-      textarea.style.height = 'auto';
-      textarea.style.height = textarea.scrollHeight + 'px';
-    });
-
-    return () => cancelAnimationFrame(rafId);
-  }, [input]);
+  useAutoResizeTextarea(textareaRef, input);
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -148,8 +124,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const doSubmit = useCallback(() => {
     if ((!input.trim() && pendingImages.length === 0) || isStreaming) return;
 
     const message = input.trim();
@@ -158,19 +133,19 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
     setInput('');
     setPendingImages([]);
 
-    await onSubmit(message, images);
+    onSubmit(message, images);
+  }, [input, pendingImages, isStreaming, onSubmit]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    doSubmit();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
-    if (e.key === 'Escape' && isStreaming) {
-      e.preventDefault();
-      onStop();
-    }
-  };
+  const handleKeyDown = useChatKeyboard({
+    onSubmit: doSubmit,
+    onStop,
+    isStreaming,
+  });
 
   return (
     <form onSubmit={handleSubmit} className="input-form">
@@ -200,10 +175,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
           placeholder={isMobile ? "Send a message..." : "Send a message... (drop or paste images)"}
           disabled={isStreaming}
           rows={1}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
+          {...TEXTAREA_PROPS}
         />
         <ModelSelector
           value={model}
@@ -287,7 +259,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onBack,
   canGoBack,
 }, ref) => {
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [showFind, setShowFind] = useState(false);
@@ -311,6 +282,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     complete: completeStreaming,
     clear: clearStreaming,
   } = useConversationStreaming(conversation?.id ?? null);
+
+  const { setShouldAutoScroll, handleScroll } = useAutoScroll({
+    endRef: messagesEndRef,
+    dependencies: [conversation?.messages, streamingContent],
+  });
 
   // Clear streaming content once the assistant message appears in the conversation
   const lastMessage = conversation?.messages[conversation.messages.length - 1];
@@ -390,20 +366,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       }
     }
   }));
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const element = e.currentTarget;
-    const threshold = 50;
-    const isNearBottom =
-      element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
-    setShouldAutoScroll(isNearBottom);
-  };
-
-  useEffect(() => {
-    if (shouldAutoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [conversation?.messages, streamingContent, shouldAutoScroll]);
 
   // Scroll to bottom when switching conversations (unless scrollToMessageId is set)
   useEffect(() => {
@@ -531,17 +493,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   }, [conversation, onSaveImage, onSendMessage, startStreaming, updateContent, completeStreaming]);
 
   // Global Escape key handler for stopping streaming
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isStreaming) {
-        e.preventDefault();
-        handleStop();
-      }
-    };
-
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isStreaming]);
+  useGlobalEscape(handleStop, isStreaming);
 
   // Load image URLs for displaying in messages
   useEffect(() => {

@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useRef, KeyboardEvent, useCallback, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle } from 'react';
 import { rambleService } from '../services/ramble';
 import { providerRegistry } from '../services/providers';
 import { useToolExecution } from '../hooks/useToolExecution';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
+import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
+import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useRambleContextOptional } from '../contexts/RambleContext';
 import { Message, ModelInfo, NoteInfo, getModelIdFromModel } from '../types';
 import { BUILTIN_TOOLS } from '../types/tools';
+import { TEXTAREA_PROPS } from '../utils/textareaProps';
 import { ConversationView, ConversationViewHandle } from './ConversationView';
 import { ModelSelector } from './ModelSelector';
 import { AppendOnlyTextarea } from './AppendOnlyTextarea';
@@ -170,12 +173,10 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   }), []);
 
   // Auto-resize textarea (for chat mode)
-  const handleInputChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
-    setInputValue(newValue);
-    const textarea = e.target;
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 300)}px`;
+  useAutoResizeTextarea(textareaRef, inputValue);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputValue(e.target.value);
   };
 
   // Handle ramble mode input changes (from AppendOnlyTextarea)
@@ -300,22 +301,11 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   };
 
   // Key handler for chat mode textarea only (ramble mode uses AppendOnlyTextarea)
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Chat mode: Enter to send, Shift+Enter for newline
-    if (e.key === 'Enter' && e.shiftKey) {
-      return; // Allow default newline behavior
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleSend();
-    }
-
-    // Escape to cancel streaming
-    if (e.key === 'Escape' && isStreaming) {
-      e.preventDefault();
-      handleStop();
-    }
-  };
+  const handleKeyDown = useChatKeyboard({
+    onSubmit: handleSend,
+    onStop: handleStop,
+    isStreaming,
+  });
 
   const handleModeChange = (newMode: SidebarMode) => {
     if (newMode === mode) return;
@@ -405,10 +395,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           className="note-chat-textarea"
           rows={3}
           disabled={isStreaming}
-          autoCorrect="off"
-          autoCapitalize="off"
-          autoComplete="off"
-          spellCheck={false}
+          {...TEXTAREA_PROPS}
         />
         <div className="note-chat-input-controls">
           <ModelSelector

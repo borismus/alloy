@@ -1,17 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { NoteInfo } from '../types';
 import { rambleService } from '../services/ramble';
 import { useRambleContext } from '../contexts/RambleContext';
-import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
+import { MarkdownContent } from './MarkdownContent';
 import { AppendOnlyTextarea } from './AppendOnlyTextarea';
 import './RambleView.css';
-import './MarkdownContent.css';
-
-const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeHighlight];
 
 interface RambleViewProps {
   notes: NoteInfo[];
@@ -227,14 +220,6 @@ export const RambleView: React.FC<RambleViewProps> = ({
   // Parse draft frontmatter
   const { body: draftBody } = useMemo(() => parseFrontmatter(draftContent), [draftContent]);
 
-  // Process wiki-links in draft content
-  const processedDraftContent = useMemo(() => processWikiLinks(draftBody), [draftBody]);
-
-  // Create markdown components
-  const markdownComponents = useMemo(() => {
-    return createMarkdownComponents({ onNavigateToNote });
-  }, [onNavigateToNote]);
-
   // Combined value for AppendOnlyTextarea (log + current input)
   const combinedValue = rambleLog + localInput;
 
@@ -299,14 +284,11 @@ export const RambleView: React.FC<RambleViewProps> = ({
           <div className="ramble-draft-header">
             <h3>Draft</h3>
           </div>
-          <div className="ramble-draft-content markdown-content" ref={draftContentRef}>
-            <ReactMarkdown
-              remarkPlugins={remarkPlugins}
-              rehypePlugins={rehypePlugins}
-              components={markdownComponents}
-            >
-              {processedDraftContent}
-            </ReactMarkdown>
+          <div className="ramble-draft-content" ref={draftContentRef}>
+            <MarkdownContent
+              content={draftBody}
+              onNavigateToNote={onNavigateToNote}
+            />
           </div>
         </div>
       )}

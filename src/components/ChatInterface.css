@@ -551,7 +551,8 @@
   margin: 1rem 0;
   border-radius: 8px;
   overflow-x: auto;
-  background: #1e1e1e !important;
+  background: #eef1f5;
+  border: 1px solid #d8dce3;
 }
 
 .message-content pre code,
@@ -560,7 +561,7 @@
   display: block;
   padding: 1rem;
   background: transparent;
-  color: #d4d4d4;
+  color: #24292e;
   font-size: 0.875rem;
   line-height: 1.5;
 }

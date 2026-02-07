@@ -1,31 +1,16 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
-import ReactMarkdown, { Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { Conversation, ModelInfo, ComparisonResponse, ProviderType, getProviderFromModel, getModelIdFromModel } from '../types';
 import { useComparisonStreaming } from '../hooks/useComparisonStreaming';
+import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
+import { useChatKeyboard } from '../hooks/useChatKeyboard';
+import { useGlobalEscape } from '../hooks/useGlobalEscape';
+import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useClickOutside } from '../hooks/useClickOutside';
+import { TEXTAREA_PROPS } from '../utils/textareaProps';
 import { skillRegistry } from '../services/skills';
 import { AgentResponseView } from './AgentResponseView';
+import { MarkdownContent } from './MarkdownContent';
 import './ChatInterface.css';
-import 'highlight.js/styles/github-dark.css';
-
-// Custom link renderer that opens URLs in system browser
-const markdownComponents: Components = {
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      onClick={(e) => {
-        e.preventDefault();
-        if (href) {
-          openUrl(href);
-        }
-      }}
-    >
-      {children}
-    </a>
-  ),
-};
 
 const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
@@ -38,6 +23,7 @@ interface ComparisonChatInterfaceProps {
   conversation: Conversation;
   availableModels: ModelInfo[];
   onUpdateConversation: (conversation: Conversation) => void;
+  memoryContent?: string;
 }
 
 export interface ComparisonChatInterfaceHandle {
@@ -50,12 +36,12 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
   conversation,
   availableModels,
   onUpdateConversation,
+  memoryContent,
 }, ref) => {
   const [input, setInput] = useState('');
   const [hasSubmittedFirst, setHasSubmittedFirst] = useState(conversation.messages.length > 0);
   const [showModelsDropdown, setShowModelsDropdown] = useState(false);
   const [currentUserMessage, setCurrentUserMessage] = useState<string | null>(null);
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -70,7 +56,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
   const systemPrompt = skillRegistry.buildSystemPrompt({
     id: conversation.id,
     title: conversation.title,
-  });
+  }, memoryContent);
 
   const {
     streamingContents,
@@ -99,39 +85,14 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     }
   }, [conversation?.id]);
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-    }
-  }, [input]);
+  useAutoResizeTextarea(textareaRef, input);
+  useGlobalEscape(stopAll, isAnyStreaming);
+  useClickOutside(dropdownRef, () => setShowModelsDropdown(false), showModelsDropdown);
 
-  // Global Escape key handler for stopping streaming
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isAnyStreaming) {
-        e.preventDefault();
-        stopAll();
-      }
-    };
-
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isAnyStreaming, stopAll]);
-
-  // Click outside handler for models dropdown
-  const handleClickOutside = useCallback((e: MouseEvent) => {
-    if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-      setShowModelsDropdown(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (showModelsDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showModelsDropdown, handleClickOutside]);
+  const { setShouldAutoScroll, handleScroll } = useAutoScroll({
+    endRef: messagesEndRef,
+    dependencies: [conversation.messages, streamingContents, isAnyStreaming],
+  });
 
   // Clear current user message when streaming ends
   useEffect(() => {
@@ -140,24 +101,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     }
   }, [isAnyStreaming]);
 
-  // Handle scroll to detect if user scrolled away from bottom
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const element = e.currentTarget;
-    const threshold = 50;
-    const isNearBottom =
-      element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
-    setShouldAutoScroll(isNearBottom);
-  }, []);
-
-  // Auto-scroll to bottom when messages change or during streaming (only if user hasn't scrolled up)
-  useEffect(() => {
-    if (shouldAutoScroll && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [conversation.messages, streamingContents, isAnyStreaming, shouldAutoScroll]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const doSubmit = useCallback(async () => {
     if (!input.trim() || isAnyStreaming) return;
 
     const userMessage = input.trim();
@@ -199,18 +143,18 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
       messages: [...updatedConversation.messages, ...assistantMessages],
     };
     onUpdateConversation(finalConversation);
+  }, [input, isAnyStreaming, conversation, onUpdateConversation, startStreaming, comparisonModels, setShouldAutoScroll]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    doSubmit();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
-    if (e.key === 'Escape' && isAnyStreaming) {
-      e.preventDefault();
-      stopAll();
-    }
-  };
+  const handleKeyDown = useChatKeyboard({
+    onSubmit: doSubmit,
+    onStop: stopAll,
+    isStreaming: isAnyStreaming,
+  });
 
   // Show model names in header
   const modelNames = comparisonModels.map(m => m.name).join(' vs ');
@@ -234,13 +178,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                 <div className="message user">
                   <div className="message-role">You</div>
                   <div className="message-content">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeHighlight]}
-                      components={markdownComponents}
-                    >
-                      {group.userMessage}
-                    </ReactMarkdown>
+                    <MarkdownContent content={group.userMessage} />
                   </div>
                 </div>
                 <div className="comparison-responses-summary">
@@ -264,13 +202,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
                 <div className="message user">
                   <div className="message-role">You</div>
                   <div className="message-content">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeHighlight]}
-                      components={markdownComponents}
-                    >
-                      {currentUserMessage}
-                    </ReactMarkdown>
+                    <MarkdownContent content={currentUserMessage} />
                   </div>
                 </div>
                 <div className="comparison-responses-summary">
@@ -302,10 +234,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
             placeholder="Send a message to compare..."
             disabled={isAnyStreaming}
             rows={1}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
+            {...TEXTAREA_PROPS}
           />
           <div className="comparison-model-indicator-wrapper" ref={dropdownRef}>
             <button
