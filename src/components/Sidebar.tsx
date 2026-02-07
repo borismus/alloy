@@ -385,9 +385,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         if (item.conversation?.council) {
           return <span className="type-badge council">Council</span>;
         }
-        if (item.conversation?.trigger) {
-          return <span className="type-badge trigger">Trigger</span>;
-        }
         return null;
       case 'note':
         return <span className="type-badge note">Note</span>;
@@ -495,7 +492,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               <div className="item-meta">
                 <span className="item-date">{formatDate(item.lastUpdated)}</span>
                 {item.type === 'conversation' && item.conversation &&
-                 !item.conversation.comparison && !item.conversation.council && !item.conversation.trigger && (
+                 !item.conversation.comparison && !item.conversation.council && (
                   <span className="item-model" title={item.conversation.model}>
                     {getModelDisplayName(item.conversation.model)}
                   </span>
