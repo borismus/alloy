@@ -18,3 +18,14 @@ allowedTools:
   - Bash(pwd)
   - Bash(which *)
   - Bash(echo *)
+
+## Releasing
+
+To bump the version and create a release:
+
+```bash
+./scripts/bump-version.sh <version>        # e.g., ./scripts/bump-version.sh 0.1.22
+./scripts/bump-version.sh <version> --push # also push to remote
+```
+
+This updates version in package.json, tauri.conf.json, Cargo.toml, syncs package-lock.json, and creates a git commit + tag.
