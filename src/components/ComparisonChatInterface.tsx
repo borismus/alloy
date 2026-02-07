@@ -1,23 +1,14 @@
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { Conversation, ModelInfo, ComparisonResponse, ProviderType, getProviderFromModel, getModelIdFromModel } from '../types';
+import { forwardRef, useImperativeHandle, useCallback } from 'react';
+import { Conversation, ModelInfo, ComparisonResponse } from '../types';
 import { useComparisonStreaming } from '../hooks/useComparisonStreaming';
-import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
-import { useChatKeyboard } from '../hooks/useChatKeyboard';
-import { useGlobalEscape } from '../hooks/useGlobalEscape';
-import { useAutoScroll } from '../hooks/useAutoScroll';
-import { useClickOutside } from '../hooks/useClickOutside';
-import { TEXTAREA_PROPS } from '../utils/textareaProps';
+import { useMultiModelChat } from '../hooks/useMultiModelChat';
 import { skillRegistry } from '../services/skills';
 import { AgentResponseView } from './AgentResponseView';
 import { MarkdownContent } from './MarkdownContent';
+import { MultiModelInputForm } from './MultiModelInputForm';
+import { ModelDropdownItem } from './ModelDropdownItem';
+import { getModelDisplayName, ResponseWithModel } from '../utils/models';
 import './ChatInterface.css';
-
-const PROVIDER_NAMES: Record<ProviderType, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  ollama: 'Ollama',
-  gemini: 'Gemini',
-};
 
 interface ComparisonChatInterfaceProps {
   conversation: Conversation;
@@ -30,25 +21,13 @@ export interface ComparisonChatInterfaceHandle {
   focusInput: () => void;
 }
 
-// Use model.key directly - no need for helper function
-
 export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle, ComparisonChatInterfaceProps>(({
   conversation,
   availableModels,
   onUpdateConversation,
   memoryContent,
 }, ref) => {
-  const [input, setInput] = useState('');
-  const [hasSubmittedFirst, setHasSubmittedFirst] = useState(conversation.messages.length > 0);
-  const [showModelsDropdown, setShowModelsDropdown] = useState(false);
-  const [currentUserMessage, setCurrentUserMessage] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
   // Get the ModelInfo objects for the comparison models
-  // conversation.comparison.models are in "provider/model-id" format, same as model.key
   const comparisonModels = conversation.comparison?.models.map(modelString => {
     return availableModels.find(am => am.key === modelString);
   }).filter((m): m is ModelInfo => m !== undefined) || [];
@@ -68,47 +47,40 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
     isAnyStreaming,
   } = useComparisonStreaming({
     conversationId: conversation.id,
-    isCurrentConversation: true, // Component is only mounted when it's the current conversation
+    isCurrentConversation: true,
     systemPrompt,
     existingMessages: conversation.messages,
   });
 
-  useImperativeHandle(ref, () => ({
-    focusInput: () => {
-      textareaRef.current?.focus();
-    }
-  }));
-
-  useEffect(() => {
-    if (conversation.messages.length === 0 && textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  }, [conversation?.id]);
-
-  useAutoResizeTextarea(textareaRef, input);
-  useGlobalEscape(stopAll, isAnyStreaming);
-  useClickOutside(dropdownRef, () => setShowModelsDropdown(false), showModelsDropdown);
-
-  const { setShouldAutoScroll, handleScroll } = useAutoScroll({
-    endRef: messagesEndRef,
-    dependencies: [conversation.messages, streamingContents, isAnyStreaming],
+  const {
+    input,
+    setInput,
+    hasSubmittedFirst,
+    showModelsDropdown,
+    setShowModelsDropdown,
+    currentUserMessage,
+    textareaRef,
+    dropdownRef,
+    messagesContainerRef,
+    messagesEndRef,
+    handleScroll,
+    focusInput,
+    prepareSubmit,
+  } = useMultiModelChat({
+    conversationId: conversation.id,
+    hasMessages: conversation.messages.length > 0,
+    isAnyStreaming,
+    stopAll,
+    autoScrollDependencies: [conversation.messages, streamingContents, isAnyStreaming],
   });
 
-  // Clear current user message when streaming ends
-  useEffect(() => {
-    if (!isAnyStreaming) {
-      setCurrentUserMessage(null);
-    }
-  }, [isAnyStreaming]);
+  useImperativeHandle(ref, () => ({ focusInput }));
 
   const doSubmit = useCallback(async () => {
     if (!input.trim() || isAnyStreaming) return;
 
     const userMessage = input.trim();
-    setInput('');
-    setHasSubmittedFirst(true);
-    setCurrentUserMessage(userMessage);
-    setShouldAutoScroll(true);
+    prepareSubmit(userMessage);
 
     // Add user message to conversation
     const userMessageObj = {
@@ -143,18 +115,7 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
       messages: [...updatedConversation.messages, ...assistantMessages],
     };
     onUpdateConversation(finalConversation);
-  }, [input, isAnyStreaming, conversation, onUpdateConversation, startStreaming, comparisonModels, setShouldAutoScroll]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    doSubmit();
-  };
-
-  const handleKeyDown = useChatKeyboard({
-    onSubmit: doSubmit,
-    onStop: stopAll,
-    isStreaming: isAnyStreaming,
-  });
+  }, [input, isAnyStreaming, conversation, onUpdateConversation, startStreaming, comparisonModels, prepareSubmit]);
 
   // Show model names in header
   const modelNames = comparisonModels.map(m => m.name).join(' vs ');
@@ -224,66 +185,29 @@ export const ComparisonChatInterface = forwardRef<ComparisonChatInterfaceHandle,
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="input-form">
-        <div className="input-row">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Send a message to compare..."
-            disabled={isAnyStreaming}
-            rows={1}
-            {...TEXTAREA_PROPS}
-          />
-          <div className="comparison-model-indicator-wrapper" ref={dropdownRef}>
-            <button
-              type="button"
-              className="comparison-model-indicator"
-              onClick={() => setShowModelsDropdown(!showModelsDropdown)}
-            >
-              {comparisonModels.length} models
-              <svg className={`dropdown-arrow ${showModelsDropdown ? 'open' : ''}`} width="12" height="8" viewBox="0 0 12 8" fill="none">
-                <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-            {showModelsDropdown && (
-              <div className="comparison-models-dropdown">
-                {comparisonModels.map((model) => {
-                  const provider = getProviderFromModel(model.key);
-                  return (
-                    <div key={model.key} className="comparison-model-item">
-                      <span className="comparison-model-name">{model.name}</span>
-                      <span className={`comparison-model-provider provider-${provider}`}>
-                        {PROVIDER_NAMES[provider]}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+      <MultiModelInputForm
+        input={input}
+        onInputChange={setInput}
+        onSubmit={doSubmit}
+        onStop={stopAll}
+        isStreaming={isAnyStreaming}
+        placeholder="Send a message to compare..."
+        textareaRef={textareaRef}
+        dropdownRef={dropdownRef}
+        showDropdown={showModelsDropdown}
+        onToggleDropdown={() => setShowModelsDropdown(!showModelsDropdown)}
+        dropdownButtonContent={<>{comparisonModels.length} models</>}
+        dropdownContent={
+          <div className="comparison-models-dropdown">
+            {comparisonModels.map((model) => (
+              <ModelDropdownItem key={model.key} model={model} />
+            ))}
           </div>
-          {isAnyStreaming ? (
-            <button type="button" onClick={stopAll} className="send-button stop-button">
-              ■
-            </button>
-          ) : (
-            <button type="submit" disabled={!input.trim()} className="send-button">
-              ↑
-            </button>
-          )}
-        </div>
-      </form>
+        }
+      />
     </div>
   );
 });
-
-interface ResponseWithModel {
-  content: string;
-  model?: string;  // Format: "provider/model-id"
-  toolUse?: import('../types').ToolUse[];
-  skillUse?: import('../types').SkillUse[];
-}
 
 interface MessageGroup {
   userMessage: string;
@@ -328,37 +252,4 @@ function groupMessagesByPrompt(messages: Conversation['messages'], modelCount: n
   }
 
   return groups;
-}
-
-// Get display name for a model, with fallback
-function getModelDisplayName(
-  response: ResponseWithModel,
-  index: number,
-  comparisonModels: ModelInfo[],
-  conversationModels?: string[]  // In "provider/model-id" format
-): string {
-  // First try: look up by model string from the message itself
-  if (response.model) {
-    // response.model is in "provider/model-id" format, same as model.key
-    const matchedModel = comparisonModels.find(m => m.key === response.model);
-    if (matchedModel) return matchedModel.name;
-    // Model not in availableModels, use raw model string
-    return response.model;
-  }
-
-  // Fallback: use positional matching with conversation metadata
-  if (conversationModels && conversationModels[index]) {
-    const modelString = conversationModels[index];
-    const matchedModel = comparisonModels.find(m => m.key === modelString);
-    if (matchedModel) return matchedModel.name;
-    // Return just the model ID part
-    return getModelIdFromModel(modelString);
-  }
-
-  // Last resort: use comparisonModels by index
-  if (comparisonModels[index]) {
-    return comparisonModels[index].name;
-  }
-
-  return `Model ${index + 1}`;
 }

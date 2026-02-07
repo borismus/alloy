@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
-import { Conversation, Message, ModelInfo, ProviderType, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
+import { Conversation, Message, ModelInfo, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
+import { PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -219,13 +220,6 @@ export interface ChatInterfaceHandle {
   focusInput: () => void;
   openFind: () => void;
 }
-
-const PROVIDER_NAMES: Record<ProviderType, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  ollama: 'Ollama',
-  gemini: 'Gemini',
-};
 
 const getAssistantName = (model: string): string => {
   const provider = getProviderFromModel(model);

@@ -1,8 +1,17 @@
-import { ModelInfo } from '../types';
+import { ModelInfo, ProviderType, ToolUse, SkillUse, getModelIdFromModel } from '../types';
 
-interface ResponseWithModel {
+export const PROVIDER_NAMES: Record<ProviderType, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  ollama: 'Ollama',
+  gemini: 'Gemini',
+};
+
+export interface ResponseWithModel {
   content: string;
   model?: string;
+  toolUse?: ToolUse[];
+  skillUse?: SkillUse[];
 }
 
 export function getModelDisplayName(
@@ -22,11 +31,37 @@ export function getModelDisplayName(
 
   // Fall back to positional matching with conversation models
   if (conversationModels && conversationModels[index]) {
-    const modelId = conversationModels[index];
-    const match = availableModels.find((m) => m.key === modelId);
+    const modelString = conversationModels[index];
+    const match = availableModels.find((m) => m.key === modelString);
     if (match) return match.name;
-    return modelId;
+    // Return just the model ID part for cleaner display
+    return getModelIdFromModel(modelString);
+  }
+
+  // Last resort: use availableModels by index
+  if (availableModels[index]) {
+    return availableModels[index].name;
   }
 
   return `Model ${index + 1}`;
+}
+
+export function getChairmanDisplayName(
+  response: ResponseWithModel,
+  chairman: ModelInfo | undefined,
+  conversationChairman?: string
+): string {
+  if (chairman) {
+    return chairman.name;
+  }
+
+  if (response.model) {
+    return response.model;
+  }
+
+  if (conversationChairman) {
+    return conversationChairman;
+  }
+
+  return 'Chairman';
 }
