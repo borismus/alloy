@@ -18,11 +18,12 @@ import { CouncilModelSelector } from './components/CouncilModelSelector';
 import { CouncilChatInterface, CouncilChatInterfaceHandle } from './components/CouncilChatInterface';
 import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
-import { TriggerConfigModal } from './components/TriggerConfigModal';
+import { TriggerConfigModal, TriggerFormData } from './components/TriggerConfigModal';
 import { TriggerDetailView } from './components/TriggerDetailView';
 import { NoteViewer } from './components/NoteViewer';
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
 import { UpdateChecker } from './components/UpdateChecker';
+import { MemoryWarning } from './components/MemoryWarning';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { isServerMode } from './mocks';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
@@ -194,7 +195,7 @@ function AppContent() {
   const [showComparisonSelector, setShowComparisonSelector] = useState(false);
   const [showCouncilSelector, setShowCouncilSelector] = useState(false);
   const [showTriggerConfig, setShowTriggerConfig] = useState(false);
-  const [editingTriggerConversation, setEditingTriggerConversation] = useState<Conversation | null>(null);
+  const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
@@ -204,6 +205,8 @@ function AppContent() {
   const [noteContent, setNoteContent] = useState<string | null>(null);
   // Transient conversation state for new/unsaved conversations
   const [draftConversation, setDraftConversation] = useState<Conversation | null>(null);
+  // Memory content and size for system prompt injection
+  const [memory, setMemory] = useState<{ content: string; sizeBytes: number } | null>(null);
 
   // Derive selected items from lists based on selectedItem
   const currentConversation = selectedItem?.type === 'conversation'
@@ -279,13 +282,10 @@ function AppContent() {
         updated: updatedTrigger.updated,
         // Use messages from the update (trigger appends new messages)
         messages: updatedTrigger.messages,
-        // Merge trigger config: preserve user-edited config, apply scheduler's runtime fields
-        trigger: {
-          ...fresh.trigger, // Preserve config: prompts, models, interval, enabled
-          lastChecked: updatedTrigger.trigger.lastChecked,
-          lastTriggered: updatedTrigger.trigger.lastTriggered,
-          history: updatedTrigger.trigger.history,
-        },
+        // Apply scheduler's runtime fields (flat structure now)
+        lastChecked: updatedTrigger.lastChecked,
+        lastTriggered: updatedTrigger.lastTriggered,
+        history: updatedTrigger.history,
       }));
 
       if (merged) {
@@ -328,6 +328,12 @@ function AppContent() {
     // Reload the notes list
     const loadedNotes = await vaultService.loadNotes();
     setNotes(loadedNotes);
+
+    // Refresh memory if memory.md was modified
+    if (filename === 'memory.md') {
+      const loadedMemory = await vaultService.loadMemory();
+      setMemory(loadedMemory);
+    }
 
     // If the modified note is currently selected, refresh its content
     setSelectedItem(prev => {
@@ -543,6 +549,10 @@ function AppContent() {
 
         // Initialize ramble service
         rambleService.setVaultPath(path);
+
+        // Load memory for system prompt injection
+        const loadedMemory = await vaultService.loadMemory();
+        setMemory(loadedMemory);
       } else {
         localStorage.removeItem('vaultPath');
       }
@@ -775,8 +785,6 @@ function AppContent() {
         await vaultService.updateConversation(updatedConversation.id, (fresh) => ({
           ...fresh,
           ...updatedConversation,
-          // Preserve trigger config if it exists (shouldn't for council, but defensive)
-          trigger: fresh.trigger ? { ...fresh.trigger, ...updatedConversation.trigger } : updatedConversation.trigger,
         }));
       }
       const loadedConversations = await vaultService.loadConversations();
@@ -821,8 +829,6 @@ function AppContent() {
         await vaultService.updateConversation(updatedConversation.id, (fresh) => ({
           ...fresh,
           ...updatedConversation,
-          // Preserve trigger config if it exists (shouldn't for comparison, but defensive)
-          trigger: fresh.trigger ? { ...fresh.trigger, ...updatedConversation.trigger } : updatedConversation.trigger,
         }));
       }
       const loadedConversations = await vaultService.loadConversations();
@@ -935,11 +941,11 @@ function AppContent() {
     }
 
     try {
-      // Build system prompt with skill descriptions and conversation context
+      // Build system prompt with skill descriptions, conversation context, and memory
       const systemPrompt = skillRegistry.buildSystemPrompt({
         id: currentConversation.id,
         title: currentConversation.title,
-      });
+      }, memory?.content);
 
       const imageLoader = async (relativePath: string) => {
         return await vaultService.loadImageAsBase64(relativePath);
@@ -1245,76 +1251,70 @@ function AppContent() {
     setSelectedItem({ type: 'conversation', id: newConversation.id });
   };
 
-  // Handle updating a trigger on an existing conversation
-  const handleUpdateTrigger = async (conversationId: string, config: import('./types').TriggerConfig) => {
+  // Handle updating an existing trigger
+  const handleUpdateTrigger = async (triggerId: string, data: TriggerFormData) => {
     const vaultPathForUpdate = vaultService.getVaultPath();
     if (!vaultPathForUpdate) return;
 
     try {
       // Atomic read-modify-write to avoid race conditions
-      const updated = await vaultService.updateConversation(conversationId, (fresh) => ({
+      const updated = await vaultService.updateTrigger(triggerId, (fresh) => ({
         ...fresh,
-        trigger: config,
+        model: data.model,
+        enabled: data.enabled,
+        triggerPrompt: data.triggerPrompt,
+        intervalMinutes: data.intervalMinutes,
       }));
 
       if (updated) {
-        const filename = vaultService.generateFilename(updated.id, updated.title);
-        const filePath = `${vaultPathForUpdate}/conversations/${filename}`;
-        markSelfWrite(filePath);
+        const filePath = await vaultService.getTriggerFilePath(triggerId);
+        if (filePath) markSelfWrite(filePath);
 
         // Update state with the result
-        setConversations(prev => prev.map(c => c.id === conversationId ? updated : c));
-        setDraftConversation(prev => prev?.id === conversationId ? updated : prev);
+        setTriggers(prev => prev.map(t => t.id === triggerId ? updated : t));
       }
     } catch (error) {
       console.error('Error updating trigger:', error);
     }
   };
 
-  // Handle creating a new triggered conversation
-  const handleCreateTrigger = async (config: import('./types').TriggerConfig, title?: string) => {
+  // Handle creating a new trigger
+  const handleCreateTrigger = async (data: TriggerFormData) => {
     const vaultPathForCreate = vaultService.getVaultPath();
     if (!vaultPathForCreate) return;
 
-    // Generate conversation ID
+    // Generate trigger ID
     const now = new Date();
     const date = now.toISOString().split('T')[0];
     const time = now.toTimeString().slice(0, 5).replace(':', '');
     const hash = Math.random().toString(16).slice(2, 6);
 
-    // Seed the conversation with the baseline message (the trigger prompt)
-    const baselineMessage: import('./types').Message = {
-      role: 'user',
-      timestamp: now.toISOString(),
-      content: config.triggerPrompt,
-    };
-
-    // Create a new conversation with the trigger
-    // The model is already in unified format from TriggerConfig
-    const newConversation: Conversation = {
+    // Create a new trigger (flat structure)
+    const newTrigger: Trigger = {
       id: `${date}-${time}-${hash}`,
       created: now.toISOString(),
       updated: now.toISOString(),
-      model: config.model,  // Already in "provider/model" format
-      title: title || 'Triggered Conversation',
-      messages: [baselineMessage],
-      trigger: config,
+      title: data.title,
+      model: data.model,
+      enabled: data.enabled,
+      triggerPrompt: data.triggerPrompt,
+      intervalMinutes: data.intervalMinutes,
+      messages: [],
     };
 
-    // Save to vault
+    // Save to vault (triggers/ directory)
     try {
-      const filename = vaultService.generateFilename(newConversation.id, newConversation.title);
-      const filePath = `${vaultPathForCreate}/conversations/${filename}`;
+      const filePath = `${vaultPathForCreate}/triggers/${newTrigger.id}.yaml`;
       markSelfWrite(filePath);
-      await vaultService.saveConversation(newConversation);
+      await vaultService.saveTrigger(newTrigger);
 
       // Update state
-      setConversations(prev => [newConversation, ...prev]);
+      setTriggers(prev => [newTrigger, ...prev]);
       setDraftConversation(null);
       setNoteContent(null);
-      setSelectedItem({ type: 'conversation', id: newConversation.id });
+      setSelectedItem({ type: 'trigger', id: newTrigger.id });
     } catch (error) {
-      console.error('Error creating triggered conversation:', error);
+      console.error('Error creating trigger:', error);
     }
   };
 
@@ -1326,6 +1326,12 @@ function AppContent() {
     >
       <RambleProvider onSelectNote={handleSelectNote}>
         <UpdateChecker />
+        {memory && (
+          <MemoryWarning
+            sizeBytes={memory.sizeBytes}
+            onEdit={() => handleSelectNote('memory.md')}
+          />
+        )}
         <RambleApprovalModal />
         <div className="app">
         {isMobile ? (
@@ -1472,6 +1478,7 @@ function AppContent() {
             conversation={currentConversation}
             availableModels={availableModels}
             onUpdateConversation={handleUpdateCouncilConversation}
+            memoryContent={memory?.content}
           />
         ) : isComparisonConversation && currentConversation ? (
           <ComparisonChatInterface
@@ -1479,6 +1486,7 @@ function AppContent() {
             conversation={currentConversation}
             availableModels={availableModels}
             onUpdateConversation={handleUpdateComparisonConversation}
+            memoryContent={memory?.content}
           />
         ) : (
           <ChatInterface
@@ -1518,23 +1526,23 @@ function AppContent() {
       )}
       {showTriggerConfig && (
         <TriggerConfigModal
-          conversation={editingTriggerConversation}
+          trigger={editingTrigger}
           availableModels={availableModels}
           favoriteModels={config?.favoriteModels}
-          onSave={async (newTriggerConfig, title) => {
-            if (editingTriggerConversation) {
+          onSave={async (data) => {
+            if (editingTrigger) {
               // Editing existing trigger
-              await handleUpdateTrigger(editingTriggerConversation.id, newTriggerConfig);
+              await handleUpdateTrigger(editingTrigger.id, data);
             } else {
               // Creating new trigger
-              await handleCreateTrigger(newTriggerConfig, title);
+              await handleCreateTrigger(data);
             }
-            setEditingTriggerConversation(null);
+            setEditingTrigger(null);
             setShowTriggerConfig(false);
           }}
           onClose={() => {
             setShowTriggerConfig(false);
-            setEditingTriggerConversation(null);
+            setEditingTrigger(null);
           }}
         />
       )}
