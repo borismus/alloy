@@ -48,10 +48,16 @@ export class SkillRegistry {
 
   // Build system prompt with skill summaries (frontmatter only)
   // Full instructions are loaded on-demand when a skill is used via use_skill tool
-  buildSystemPrompt(conversationContext?: { id: string; title?: string }): string {
+  buildSystemPrompt(conversationContext?: { id: string; title?: string }, memoryContent?: string): string {
     const skills = this.getSkills();
     console.log('[buildSystemPrompt] skills count:', skills.length, 'names:', skills.map(s => s.name));
     let prompt = '';
+
+    // Inject memory content at the top if provided
+    if (memoryContent) {
+      prompt += '# Memory\n\n';
+      prompt += memoryContent.trim() + '\n\n';
+    }
 
     // Add conversation context for provenance markers
     if (conversationContext) {
