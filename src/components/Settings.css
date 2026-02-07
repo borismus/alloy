@@ -116,4 +116,32 @@
 .settings-button-group {
   display: flex;
   gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settings-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.update-status {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.update-status-current {
+  color: #059669;
+  background: #ecfdf5;
+}
+
+.update-status-available {
+  color: #4f46e5;
+  background: #eef2ff;
+}
+
+.update-status-error {
+  color: #dc2626;
+  background: #fef2f2;
 }

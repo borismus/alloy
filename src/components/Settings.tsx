@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { vaultService } from '../services/vault';
+import { CheckResult } from './UpdateChecker';
 import './Settings.css';
 
 interface SettingsProps {
@@ -10,6 +12,18 @@ interface SettingsProps {
 }
 
 export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _onConfigReload }: SettingsProps) {
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | CheckResult>('idle');
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus('checking');
+    const result = await (window as any).checkForUpdates?.();
+    if (result) {
+      setUpdateStatus(result);
+    } else {
+      setUpdateStatus('idle');
+    }
+  };
+
   const handleRevealVaultInFinder = async () => {
     try {
       if (!vaultPath) {
@@ -116,12 +130,27 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
             <p className="settings-description">
               Check for new versions of Orchestra.
             </p>
-            <button
-              onClick={() => (window as any).checkForUpdates?.()}
-              className="settings-button"
-            >
-              Check for Updates
-            </button>
+            <div className="settings-button-group">
+              <button
+                onClick={handleCheckForUpdates}
+                className="settings-button"
+                disabled={updateStatus === 'checking'}
+              >
+                {updateStatus === 'checking' ? 'Checking...' : 'Check for Updates'}
+              </button>
+              {updateStatus !== 'idle' && updateStatus !== 'checking' && (
+                <span className={`update-status ${
+                  'error' in updateStatus ? 'update-status-error' :
+                  updateStatus.available ? 'update-status-available' : 'update-status-current'
+                }`}>
+                  {'error' in updateStatus
+                    ? `Error: ${updateStatus.error}`
+                    : updateStatus.available
+                      ? `Version ${updateStatus.version} available`
+                      : 'You\'re up to date'}
+                </span>
+              )}
+            </div>
           </div>
 
         </div>

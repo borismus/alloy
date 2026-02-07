@@ -8,12 +8,9 @@ export type CheckResult = { available: true; version: string } | { available: fa
 
 export function UpdateChecker() {
   const [update, setUpdate] = useState<Update | null>(null);
-  const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const [showNoUpdate, setShowNoUpdate] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
 
@@ -27,10 +24,9 @@ export function UpdateChecker() {
 
   const checkForUpdates = async (manual = false): Promise<CheckResult> => {
     console.log('[Updater] Checking for updates...', manual ? '(manual)' : '(auto)');
-    setChecking(true);
-    setError(null);
-    setShowNoUpdate(false);
-    setDismissed(false); // Reset dismissed state on manual check
+    if (manual) {
+      setDismissed(false); // Reset dismissed state on manual check
+    }
     try {
       const available = await check();
       console.log('[Updater] Check result:', available);
@@ -40,22 +36,12 @@ export function UpdateChecker() {
         return { available: true, version: available.version };
       } else {
         console.log('[Updater] No update available');
-        if (manual) {
-          setShowNoUpdate(true);
-          // Auto-hide after 5 seconds
-          setTimeout(() => setShowNoUpdate(false), 5000);
-        }
         return { available: false };
       }
     } catch (err) {
       console.error('[Updater] Failed to check for updates:', err);
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      if (manual) {
-        setError(`Failed to check for updates: ${errorMsg}`);
-      }
       return { error: errorMsg };
-    } finally {
-      setChecking(false);
     }
   };
 
@@ -64,7 +50,6 @@ export function UpdateChecker() {
 
     setDownloading(true);
     setProgress(0);
-    setError(null);
 
     try {
       let downloaded = 0;
@@ -100,60 +85,6 @@ export function UpdateChecker() {
   const dismiss = () => {
     setDismissed(true);
   };
-
-  // Show checking state
-  if (checking) {
-    return (
-      <div className="update-banner update-banner-checking">
-        <div className="update-content">
-          <div className="update-info">
-            <span className="update-icon">⟳</span>
-            <span className="update-text">Checking for updates...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show "no updates" message after manual check
-  if (showNoUpdate && !update) {
-    return (
-      <div className="update-banner update-banner-success">
-        <div className="update-content">
-          <div className="update-info">
-            <span className="update-icon">✓</span>
-            <span className="update-text">You're up to date!</span>
-          </div>
-          <button
-            className="update-button update-button-secondary"
-            onClick={() => setShowNoUpdate(false)}
-          >
-            Dismiss
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error if present
-  if (error && !update) {
-    return (
-      <div className="update-banner update-banner-error">
-        <div className="update-content">
-          <div className="update-info">
-            <span className="update-icon">!</span>
-            <span className="update-text">{error}</span>
-          </div>
-          <button
-            className="update-button update-button-secondary"
-            onClick={() => setError(null)}
-          >
-            Dismiss
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // Don't render if no update or dismissed
   if (!update || dismissed) {
