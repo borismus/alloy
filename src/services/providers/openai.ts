@@ -6,12 +6,10 @@ import { openaiToolAdapter } from './tool-adapters/openai';
 
 const OPENAI_MODELS: ModelInfo[] = [
   { key: 'openai/gpt-5.2', name: 'GPT-5.2' },
+  { key: 'openai/gpt-5', name: 'GPT-5' },
   { key: 'openai/gpt-5-mini', name: 'GPT-5 Mini' },
+  { key: 'openai/o3-pro', name: 'o3 Pro' },
   { key: 'openai/o3', name: 'o3' },
-  { key: 'openai/o4-mini', name: 'o4 Mini' },
-  { key: 'openai/gpt-4.1', name: 'GPT-4.1' },
-  { key: 'openai/gpt-4o', name: 'GPT-4o' },
-  { key: 'openai/gpt-4o-mini', name: 'GPT-4o Mini' },
 ];
 
 export class OpenAIService implements IProviderService {
