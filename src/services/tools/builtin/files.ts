@@ -78,21 +78,15 @@ function validateTriggerYaml(content: string): string | null {
     return 'Invalid model format: must be "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")';
   }
 
-  // Check trigger config
-  if (!trigger.trigger || typeof trigger.trigger !== 'object') {
-    return 'Missing or invalid field: trigger (must be an object)';
+  // Check trigger config fields (now flat, at top level)
+  if (typeof trigger.enabled !== 'boolean') {
+    return 'Missing or invalid field: enabled (must be a boolean)';
   }
-
-  const triggerConfig = trigger.trigger as Record<string, unknown>;
-
-  if (typeof triggerConfig.enabled !== 'boolean') {
-    return 'Missing or invalid field: trigger.enabled (must be a boolean)';
+  if (!trigger.triggerPrompt || typeof trigger.triggerPrompt !== 'string') {
+    return 'Missing or invalid field: triggerPrompt (must be a non-empty string)';
   }
-  if (!triggerConfig.triggerPrompt || typeof triggerConfig.triggerPrompt !== 'string') {
-    return 'Missing or invalid field: trigger.triggerPrompt (must be a non-empty string)';
-  }
-  if (typeof triggerConfig.intervalMinutes !== 'number' || triggerConfig.intervalMinutes < 1) {
-    return 'Missing or invalid field: trigger.intervalMinutes (must be a positive number)';
+  if (typeof trigger.intervalMinutes !== 'number' || (trigger.intervalMinutes as number) < 1) {
+    return 'Missing or invalid field: intervalMinutes (must be a positive number)';
   }
 
   // Check messages array exists (can be empty)

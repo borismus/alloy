@@ -1,4 +1,4 @@
-import { Message, ProviderType, TriggerConfig, TriggerResult } from '../../types';
+import { Message, ProviderType, Trigger, TriggerResult } from '../../types';
 import { providerRegistry } from '../providers/registry';
 import { executeWithTools, buildSystemPromptWithSkills } from '../tools/executor';
 import { truncateToTokenBudget } from '../context';
@@ -77,16 +77,16 @@ export class TriggerExecutor {
    * The baseline is the assistant response from when the trigger last fired.
    */
   private extractBaseline(
-    triggerConfig: TriggerConfig,
+    trigger: Trigger,
     conversationMessages: Message[]
   ): string | undefined {
-    if (!triggerConfig.lastTriggered) {
+    if (!trigger.lastTriggered) {
       return undefined;
     }
 
     // Find the assistant message from when the trigger last fired
     // The message timestamp should match lastTriggered
-    const lastTriggeredTime = triggerConfig.lastTriggered;
+    const lastTriggeredTime = trigger.lastTriggered;
     const baselineMessage = conversationMessages.find(
       m => m.role === 'assistant' && m.timestamp === lastTriggeredTime
     );
@@ -99,17 +99,18 @@ export class TriggerExecutor {
    * Baseline is inferred from conversation history based on lastTriggered.
    */
   async executeTrigger(
-    triggerConfig: TriggerConfig,
-    conversationMessages: Message[]
+    trigger: Trigger
   ): Promise<TriggerResult> {
-    const { provider: providerType, model: modelId } = parseModelString(triggerConfig.model);
+    // Use trigger's model directly (flat structure)
+    const { provider: providerType, model: modelId } = parseModelString(trigger.model);
     const provider = providerRegistry.getProvider(providerType);
     if (!provider || !provider.isInitialized()) {
       throw new Error(`Provider ${providerType} is not available`);
     }
 
-    // Extract baseline from conversation history
-    const baseline = this.extractBaseline(triggerConfig, conversationMessages);
+    // Extract baseline from trigger's messages
+    const conversationMessages = trigger.messages.filter(m => m.role !== 'log');
+    const baseline = this.extractBaseline(trigger, conversationMessages);
     const hasBaseline = !!baseline;
 
     const messages: Message[] = [];
@@ -133,7 +134,7 @@ export class TriggerExecutor {
     messages.push({
       role: 'user',
       timestamp: new Date().toISOString(),
-      content: triggerConfig.triggerPrompt,
+      content: trigger.triggerPrompt,
     });
 
     // Build system prompt with skills included

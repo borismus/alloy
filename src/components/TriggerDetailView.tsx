@@ -3,6 +3,7 @@ import { Trigger } from '../types';
 import { vaultService } from '../services/vault';
 import { useTriggerContext } from '../contexts/TriggerContext';
 import { ItemHeader } from './ItemHeader';
+import { MarkdownContent } from './MarkdownContent';
 import './TriggerDetailView.css';
 
 interface TriggerDetailViewProps {
@@ -38,7 +39,6 @@ export function TriggerDetailView({
   const [isRunning, setIsRunning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
-  const triggerConfig = trigger.trigger;
 
   const isChecking = activeChecks.includes(trigger.id) || isRunning;
 
@@ -65,10 +65,7 @@ export function TriggerDetailView({
     try {
       const updatedTrigger = await vaultService.updateTrigger(trigger.id, (t) => ({
         ...t,
-        trigger: {
-          ...t.trigger,
-          enabled: !t.trigger.enabled,
-        },
+        enabled: !t.enabled,
       }));
       if (updatedTrigger) {
         onTriggerUpdated(updatedTrigger);
@@ -104,11 +101,11 @@ export function TriggerDetailView({
           {isChecking ? 'Running...' : 'Run Now'}
         </button>
         <button
-          className={`btn-small ${triggerConfig.enabled ? '' : 'btn-muted'}`}
+          className={`btn-small ${trigger.enabled ? '' : 'btn-muted'}`}
           onClick={handleToggleEnabled}
           disabled={isToggling}
         >
-          {triggerConfig.enabled ? 'Disable' : 'Enable'}
+          {trigger.enabled ? 'Disable' : 'Enable'}
         </button>
         {showDeleteConfirm ? (
           <>
@@ -131,9 +128,10 @@ export function TriggerDetailView({
           </div>
           {latestResponse ? (
             <>
-              <div className="latest-response-content">
-                {latestResponse.content}
-              </div>
+              <MarkdownContent
+                content={latestResponse.content}
+                className="latest-response-content"
+              />
               <button className="btn-ask-about" onClick={handleAskAbout}>
                 Ask about this
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -145,18 +143,18 @@ export function TriggerDetailView({
             <div className="no-response">
               <p>No response yet. This monitor hasn't triggered.</p>
               <p className="no-response-hint">
-                Watching for: <em>{triggerConfig.triggerPrompt}</em>
+                Watching for: <em>{trigger.triggerPrompt}</em>
               </p>
             </div>
           )}
         </section>
 
         {/* History Section */}
-        {triggerConfig.history && triggerConfig.history.length > 0 && (
+        {trigger.history && trigger.history.length > 0 && (
           <section className="trigger-history-section">
             <h3>History</h3>
             <div className="trigger-history-list">
-              {triggerConfig.history.slice(0, 50).map((attempt, index) => (
+              {trigger.history.slice(0, 50).map((attempt, index) => (
                 <div key={index} className={`history-entry ${attempt.result}`}>
                   <div className="history-entry-header">
                     <span className="history-time">{formatDate(attempt.timestamp)}</span>

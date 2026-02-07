@@ -1,12 +1,24 @@
 import React, { useState } from 'react';
-import { Conversation, TriggerConfig, ModelInfo } from '../types';
+import { Trigger, ModelInfo } from '../types';
 import './TriggerConfigModal.css';
 
+// Partial trigger data returned by the modal (excludes id, created, updated, messages)
+export interface TriggerFormData {
+  title: string;
+  model: string;
+  enabled: boolean;
+  triggerPrompt: string;
+  intervalMinutes: number;
+  lastChecked?: string;
+  lastTriggered?: string;
+  history?: Trigger['history'];
+}
+
 interface TriggerConfigModalProps {
-  conversation?: Conversation | null;  // null for new trigger, existing for edit
+  trigger?: Trigger | null;  // null for new trigger, existing for edit
   availableModels: ModelInfo[];
   favoriteModels?: string[];  // Format: "provider/model-id"
-  onSave: (config: TriggerConfig, title?: string) => void;
+  onSave: (data: TriggerFormData) => void;
   onClose: () => void;
 }
 
@@ -22,29 +34,26 @@ const INTERVAL_OPTIONS = [
 ];
 
 export function TriggerConfigModal({
-  conversation,
+  trigger,
   availableModels,
   favoriteModels = [],
   onSave,
   onClose,
 }: TriggerConfigModalProps) {
-  const existingTrigger = conversation?.trigger;
-  const isEditing = !!existingTrigger;
+  const isEditing = !!trigger;
 
   // Default model - prefer sonnet for quality
-  const defaultModel = conversation?.model
+  const defaultModel = trigger?.model
     || availableModels.find(m => m.key.includes('sonnet'))?.key
     || availableModels[0]?.key
     || 'anthropic/claude-sonnet-4-5-20250929';
 
-  // Form state
-  const [title, setTitle] = useState(conversation?.title || '');
-  const [triggerPrompt, setTriggerPrompt] = useState(existingTrigger?.triggerPrompt || '');
-  const [model, setModel] = useState(existingTrigger?.model || defaultModel);
-  const [intervalMinutes, setIntervalMinutes] = useState(
-    existingTrigger?.intervalMinutes || 60
-  );
-  const [enabled, setEnabled] = useState(existingTrigger?.enabled ?? true);
+  // Form state (flat trigger fields)
+  const [title, setTitle] = useState(trigger?.title || '');
+  const [triggerPrompt, setTriggerPrompt] = useState(trigger?.triggerPrompt || '');
+  const [model, setModel] = useState(trigger?.model || defaultModel);
+  const [intervalMinutes, setIntervalMinutes] = useState(trigger?.intervalMinutes || 60);
+  const [enabled, setEnabled] = useState(trigger?.enabled ?? true);
 
   // Check if a model is in the favorites list
   const isFavorite = (m: ModelInfo) => favoriteModels.includes(m.key);
@@ -58,17 +67,18 @@ export function TriggerConfigModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const config: TriggerConfig = {
+    const data: TriggerFormData = {
+      title: isEditing ? trigger.title : title,
+      model,
       enabled,
       triggerPrompt,
-      model,
       intervalMinutes,
-      lastChecked: existingTrigger?.lastChecked,
-      lastTriggered: existingTrigger?.lastTriggered,
-      history: existingTrigger?.history,
+      lastChecked: trigger?.lastChecked,
+      lastTriggered: trigger?.lastTriggered,
+      history: trigger?.history,
     };
 
-    onSave(config, isEditing ? undefined : title);
+    onSave(data);
   };
 
   const isValid = triggerPrompt.trim() && (isEditing || title.trim());

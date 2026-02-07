@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { Conversation, Message, TriggerAttempt, Trigger } from '../types';
+import { Message, TriggerAttempt, Trigger } from '../types';
 import { triggerScheduler } from '../services/triggers/scheduler';
 import { vaultService } from '../services/vault';
 
@@ -53,8 +53,8 @@ export function TriggerProvider({
     return getTriggersRef.current().find(t => t.id === triggerId);
   };
 
-  const addHistoryEntry = (trigger: Conversation['trigger'], attempt: TriggerAttempt): TriggerAttempt[] => {
-    const existing = trigger?.history || [];
+  const addHistoryEntry = (trigger: Trigger, attempt: TriggerAttempt): TriggerAttempt[] => {
+    const existing = trigger.history || [];
     return [attempt, ...existing].slice(0, MAX_HISTORY_ENTRIES);
   };
 
@@ -62,19 +62,18 @@ export function TriggerProvider({
     if (isSchedulerRunning) return;
 
     triggerScheduler.start({
-      getConversations: () => getTriggersRef.current() as Conversation[],
+      getTriggers: () => getTriggersRef.current(),
 
       reloadTrigger: async (id: string) => {
         // Load fresh from disk for multi-instance coordination
-        return await vaultService.loadTrigger(id) as Conversation | null;
+        return await vaultService.loadTrigger(id);
       },
 
       onTriggerFired: async (triggerDoc, result) => {
         // Re-fetch fresh trigger to avoid race conditions
         const freshTrigger = getFreshTrigger(triggerDoc.id);
-        if (!freshTrigger?.trigger) return;
+        if (!freshTrigger) return;
 
-        const triggerConfig = freshTrigger.trigger;
         const now = new Date().toISOString();
 
         // Create history entry for this trigger firing
@@ -88,17 +87,17 @@ export function TriggerProvider({
         const triggerPromptMsg: Message = {
           role: 'user',
           timestamp: now,
-          content: triggerConfig.triggerPrompt,
+          content: freshTrigger.triggerPrompt,
         };
 
         const triggerResponseMsg: Message = {
           role: 'assistant',
           timestamp: now,
           content: result.response,
-          model: triggerConfig.model,
+          model: freshTrigger.model,
         };
 
-        // Update trigger with new messages, timestamps, and history
+        // Update trigger with new messages, timestamps, and history (flat structure)
         const updatedTrigger: Trigger = {
           ...freshTrigger,
           updated: now,
@@ -107,12 +106,9 @@ export function TriggerProvider({
             triggerPromptMsg,
             triggerResponseMsg,
           ],
-          trigger: {
-            ...triggerConfig,
-            lastChecked: now,
-            lastTriggered: now,
-            history: addHistoryEntry(triggerConfig, historyEntry),
-          },
+          lastChecked: now,
+          lastTriggered: now,
+          history: addHistoryEntry(freshTrigger, historyEntry),
         };
 
         await onTriggerUpdatedRef.current(updatedTrigger);
@@ -132,9 +128,8 @@ export function TriggerProvider({
       onTriggerSkipped: async (triggerDoc, result) => {
         // Re-fetch fresh trigger to avoid race conditions
         const freshTrigger = getFreshTrigger(triggerDoc.id);
-        if (!freshTrigger?.trigger) return;
+        if (!freshTrigger) return;
 
-        const triggerConfig = freshTrigger.trigger;
         const now = new Date().toISOString();
 
         const historyEntry: TriggerAttempt = {
@@ -143,15 +138,12 @@ export function TriggerProvider({
           reasoning: result.response,
         };
 
+        // Update trigger (flat structure) - preserve original updated timestamp
         const updatedTrigger: Trigger = {
           ...freshTrigger,
-          // Preserve the original updated timestamp so skipped triggers don't bump the trigger
           updated: freshTrigger.updated,
-          trigger: {
-            ...triggerConfig,
-            lastChecked: now,
-            history: addHistoryEntry(triggerConfig, historyEntry),
-          },
+          lastChecked: now,
+          history: addHistoryEntry(freshTrigger, historyEntry),
         };
         await onTriggerUpdatedRef.current(updatedTrigger);
       },
@@ -169,9 +161,8 @@ export function TriggerProvider({
 
         // Re-fetch fresh trigger to avoid race conditions
         const freshTrigger = getFreshTrigger(triggerDoc.id);
-        if (!freshTrigger?.trigger) return;
+        if (!freshTrigger) return;
 
-        const triggerConfig = freshTrigger.trigger;
         const now = new Date().toISOString();
 
         const historyEntry: TriggerAttempt = {
@@ -181,14 +172,12 @@ export function TriggerProvider({
           error: error.message,
         };
 
+        // Update trigger (flat structure)
         const updatedTrigger: Trigger = {
           ...freshTrigger,
           updated: freshTrigger.updated,
-          trigger: {
-            ...triggerConfig,
-            lastChecked: now,
-            history: addHistoryEntry(triggerConfig, historyEntry),
-          },
+          lastChecked: now,
+          history: addHistoryEntry(freshTrigger, historyEntry),
         };
         await onTriggerUpdatedRef.current(updatedTrigger);
       },

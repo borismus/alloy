@@ -1,14 +1,14 @@
-import { Conversation, TriggerConfig, TriggerResult } from '../../types';
+import { Trigger, TriggerResult } from '../../types';
 import { triggerExecutor } from './executor';
 
 export interface TriggerSchedulerCallbacks {
-  getConversations: () => Conversation[];
-  reloadTrigger: (id: string) => Promise<Conversation | null>;
-  onTriggerFired: (conversation: Conversation, result: TriggerResult) => Promise<void>;
-  onTriggerSkipped: (conversation: Conversation, result: TriggerResult) => void;
-  onTriggerChecking: (conversationId: string) => void;
-  onTriggerCheckComplete: (conversationId: string) => void;
-  onError: (conversation: Conversation, error: Error) => void;
+  getTriggers: () => Trigger[];
+  reloadTrigger: (id: string) => Promise<Trigger | null>;
+  onTriggerFired: (trigger: Trigger, result: TriggerResult) => Promise<void>;
+  onTriggerSkipped: (trigger: Trigger, result: TriggerResult) => void;
+  onTriggerChecking: (triggerId: string) => void;
+  onTriggerCheckComplete: (triggerId: string) => void;
+  onError: (trigger: Trigger, error: Error) => void;
 }
 
 // Use a global key to track the interval across HMR reloads
@@ -70,78 +70,73 @@ export class TriggerScheduler {
   }
 
   /**
-   * Manually trigger a check for a specific conversation (for testing/debugging)
+   * Manually trigger a check for a specific trigger (for testing/debugging)
    */
-  async manualCheck(conversation: Conversation): Promise<TriggerResult | null> {
-    if (!conversation.trigger?.enabled) {
+  async manualCheck(trigger: Trigger): Promise<TriggerResult | null> {
+    if (!trigger.enabled) {
       return null;
     }
-    return this.checkConversation(conversation);
+    return this.checkTrigger(trigger);
   }
 
   private async runScheduledChecks(): Promise<void> {
     if (!this.callbacks) return;
 
-    const conversations = this.callbacks.getConversations();
-    const triggeredConversations = conversations.filter(
-      (c) => c.trigger?.enabled
-    );
+    const triggers = this.callbacks.getTriggers();
+    const enabledTriggers = triggers.filter((t) => t.enabled);
 
-    for (const conv of triggeredConversations) {
+    for (const trigger of enabledTriggers) {
       // Skip if already checking
-      if (this.activeChecks.has(conv.id)) {
-        console.log(`TriggerScheduler: Skipping ${conv.id}, LLM check already in progress`);
+      if (this.activeChecks.has(trigger.id)) {
+        console.log(`TriggerScheduler: Skipping ${trigger.id}, LLM check already in progress`);
         continue;
       }
 
       // Reload from disk to get latest timestamps (multi-instance coordination)
-      const freshConv = await this.callbacks.reloadTrigger(conv.id);
-      if (!freshConv?.trigger?.enabled) continue;
+      const freshTrigger = await this.callbacks.reloadTrigger(trigger.id);
+      if (!freshTrigger?.enabled) continue;
 
-      if (!this.isDueForCheck(freshConv.trigger)) {
+      if (!this.isDueForCheck(freshTrigger)) {
         continue;
       }
 
       // Don't await - run checks concurrently
-      this.checkConversation(freshConv);
+      this.checkTrigger(freshTrigger);
     }
   }
 
-  private async checkConversation(conversation: Conversation): Promise<TriggerResult> {
-    const trigger = conversation.trigger!;
-
-    this.activeChecks.add(conversation.id);
-    this.callbacks?.onTriggerChecking(conversation.id);
+  private async checkTrigger(trigger: Trigger): Promise<TriggerResult> {
+    this.activeChecks.add(trigger.id);
+    this.callbacks?.onTriggerChecking(trigger.id);
 
     try {
-      console.log(`TriggerScheduler: Executing LLM check for "${conversation.title}"`);
+      console.log(`TriggerScheduler: Executing LLM check for "${trigger.title}"`);
 
-      // Pass conversation messages - executor extracts baseline based on triggerConfig.lastTriggered
-      const messages = conversation.messages.filter(m => m.role !== 'log');
-      const result = await triggerExecutor.executeTrigger(trigger, messages);
+      // Executor now takes the full trigger object
+      const result = await triggerExecutor.executeTrigger(trigger);
 
       if (result.result === 'triggered') {
         console.log(
-          `TriggerScheduler: LLM returned TRIGGERED for "${conversation.title}"`
+          `TriggerScheduler: LLM returned TRIGGERED for "${trigger.title}"`
         );
-        await this.callbacks?.onTriggerFired(conversation, result);
+        await this.callbacks?.onTriggerFired(trigger, result);
       } else if (result.result === 'skipped') {
         console.log(
-          `TriggerScheduler: LLM returned SKIPPED for "${conversation.title}": ${result.response}`
+          `TriggerScheduler: LLM returned SKIPPED for "${trigger.title}": ${result.response}`
         );
-        await this.callbacks?.onTriggerSkipped(conversation, result);
+        await this.callbacks?.onTriggerSkipped(trigger, result);
       } else {
         // result.result === 'error'
         console.error(
-          `TriggerScheduler: LLM check failed for "${conversation.title}": ${result.error}`
+          `TriggerScheduler: LLM check failed for "${trigger.title}": ${result.error}`
         );
-        this.callbacks?.onError(conversation, new Error(result.error || 'Unknown error'));
+        this.callbacks?.onError(trigger, new Error(result.error || 'Unknown error'));
       }
 
       return result;
     } catch (error) {
-      console.error(`TriggerScheduler: LLM check error for "${conversation.title}":`, error);
-      this.callbacks?.onError(conversation, error instanceof Error ? error : new Error('Unknown error'));
+      console.error(`TriggerScheduler: LLM check error for "${trigger.title}":`, error);
+      this.callbacks?.onError(trigger, error instanceof Error ? error : new Error('Unknown error'));
 
       return {
         result: 'error',
@@ -149,12 +144,12 @@ export class TriggerScheduler {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     } finally {
-      this.activeChecks.delete(conversation.id);
-      this.callbacks?.onTriggerCheckComplete(conversation.id);
+      this.activeChecks.delete(trigger.id);
+      this.callbacks?.onTriggerCheckComplete(trigger.id);
     }
   }
 
-  private isDueForCheck(trigger: TriggerConfig): boolean {
+  private isDueForCheck(trigger: Trigger): boolean {
     if (!trigger.lastChecked) {
       return true;
     }

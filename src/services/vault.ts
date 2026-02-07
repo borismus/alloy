@@ -147,8 +147,8 @@ export class VaultService {
     // Filter out empty or undefined messages (can happen when aborting a streaming response)
     const filteredMessages = conversation.messages.filter(m => m && m.content?.trim() !== '');
 
-    // Don't save conversations with no actual messages (unless it's a trigger conversation)
-    if (filteredMessages.length === 0 && !conversation.trigger) return;
+    // Don't save conversations with no actual messages
+    if (filteredMessages.length === 0) return;
 
     const conversationToSave = {
       ...conversation,
@@ -354,11 +354,14 @@ export class VaultService {
       try {
         const filePath = await join(triggersPath, entry.name);
         const content = await readTextFile(filePath);
-        const trigger = yaml.load(content) as Trigger;
+        let trigger = yaml.load(content) as any;
 
-        // Basic validation - ensure required fields exist
-        if (trigger.id && trigger.trigger?.triggerPrompt) {
-          triggers.push(trigger);
+        // Migrate old nested format to flat format
+        trigger = this.migrateTriggerFormat(trigger);
+
+        // Basic validation - ensure required fields exist (now flat)
+        if (trigger.id && trigger.triggerPrompt) {
+          triggers.push(trigger as Trigger);
         }
       } catch (error) {
         console.error(`[VaultService] Failed to load trigger ${entry.name}:`, error);
@@ -424,13 +427,43 @@ export class VaultService {
     if (filePath) {
       try {
         const content = await readTextFile(filePath);
-        return yaml.load(content) as Trigger;
+        let trigger = yaml.load(content) as any;
+        // Migrate old nested format to flat format
+        return this.migrateTriggerFormat(trigger);
       } catch (error) {
         console.error(`[VaultService] Failed to load trigger ${id}:`, error);
       }
     }
 
     return null;
+  }
+
+  /**
+   * Migrate old nested trigger format to flat format.
+   * Old: { trigger: { enabled, triggerPrompt, ... } }
+   * New: { enabled, triggerPrompt, ... }
+   */
+  private migrateTriggerFormat(trigger: any): Trigger {
+    // If already flat (has top-level triggerPrompt), return as-is
+    if ('triggerPrompt' in trigger && typeof trigger.triggerPrompt === 'string') {
+      return trigger as Trigger;
+    }
+
+    // Migrate from nested format
+    if (trigger.trigger && typeof trigger.trigger === 'object') {
+      const { trigger: config, ...rest } = trigger;
+      return {
+        ...rest,
+        enabled: config.enabled,
+        triggerPrompt: config.triggerPrompt,
+        intervalMinutes: config.intervalMinutes,
+        lastChecked: config.lastChecked,
+        lastTriggered: config.lastTriggered,
+        history: config.history,
+      } as Trigger;
+    }
+
+    return trigger as Trigger;
   }
 
   /**
@@ -502,30 +535,6 @@ export class VaultService {
           delete msg.provider;
         }
       }
-    }
-
-    // Migrate trigger format
-    const trigger = conv.trigger;
-    if (trigger) {
-      // Old format: triggerProvider + triggerModel → triggerModel (unified)
-      if (trigger.triggerProvider && !trigger.triggerModel?.includes('/')) {
-        trigger.triggerModel = formatModelId(trigger.triggerProvider, trigger.triggerModel);
-        delete trigger.triggerProvider;
-      }
-      if (trigger.mainProvider && !trigger.mainModel?.includes('/')) {
-        trigger.mainModel = formatModelId(trigger.mainProvider, trigger.mainModel);
-        delete trigger.mainProvider;
-      }
-
-      // New simplified format: triggerModel/mainModel → model
-      // Prefer mainModel (quality) over triggerModel (cheap) since we now use a single model
-      if (!trigger.model) {
-        trigger.model = trigger.mainModel || trigger.triggerModel;
-      }
-      // Clean up old fields
-      delete trigger.triggerModel;
-      delete trigger.mainModel;
-      delete trigger.mainPrompt;
     }
   }
 
@@ -690,6 +699,22 @@ export class VaultService {
     }
 
     return null;
+  }
+
+  /**
+   * Load memory.md content and size.
+   * Returns null if no vault or memory file doesn't exist.
+   */
+  async loadMemory(): Promise<{ content: string; sizeBytes: number } | null> {
+    if (!this.vaultPath) return null;
+
+    const memoryPath = await join(this.vaultPath, 'memory.md');
+    if (!(await exists(memoryPath))) return null;
+
+    const content = await readTextFile(memoryPath);
+    const sizeBytes = new TextEncoder().encode(content).length;
+
+    return { content, sizeBytes };
   }
 
   async getConfigFilePath(): Promise<string | null> {
@@ -886,10 +911,10 @@ export class VaultService {
 
     // Add triggers
     for (const trigger of triggers) {
-      const lastFiring = trigger.trigger.lastTriggered
-        ? new Date(trigger.trigger.lastTriggered).getTime()
+      const lastFiring = trigger.lastTriggered
+        ? new Date(trigger.lastTriggered).getTime()
         : 0;
-      const preview = trigger.trigger.enabled
+      const preview = trigger.enabled
         ? (lastFiring ? `Last fired: ${new Date(lastFiring).toLocaleDateString()}` : 'Never fired')
         : 'Disabled';
 

@@ -45,7 +45,6 @@
   font-size: 0.9rem;
   color: var(--text-primary, #333);
   line-height: 1.6;
-  white-space: pre-wrap;
   margin-bottom: 1rem;
 }
 

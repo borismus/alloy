@@ -98,17 +98,6 @@ export interface TriggerAttempt {
   error?: string;     // Error message when result is 'error'
 }
 
-// Trigger configuration for automated background execution
-export interface TriggerConfig {
-  enabled: boolean;
-  triggerPrompt: string;           // The prompt to evaluate and respond to
-  model: string;                   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
-  intervalMinutes: number;         // e.g., 60 for hourly
-  lastChecked?: string;            // ISO timestamp
-  lastTriggered?: string;          // ISO timestamp
-  history?: TriggerAttempt[];      // Recent trigger attempts (most recent first)
-}
-
 // Result of a trigger check
 export interface TriggerResult {
   result: 'triggered' | 'skipped' | 'error';
@@ -126,14 +115,21 @@ export interface TriggerLogEntry {
   error?: string;
 }
 
-// Standalone trigger stored in triggers/ directory
+// Standalone trigger stored in triggers/ directory (flat structure)
 export interface Trigger {
   id: string;
   created: string;
   updated: string;
   title: string;
   model: string;  // Format: "provider/model-id"
-  trigger: TriggerConfig;  // Required for triggers
+  // Trigger configuration (previously nested under trigger:)
+  enabled: boolean;
+  triggerPrompt: string;           // The prompt to evaluate and respond to
+  intervalMinutes: number;         // e.g., 60 for hourly
+  lastChecked?: string;            // ISO timestamp
+  lastTriggered?: string;          // ISO timestamp
+  history?: TriggerAttempt[];      // Recent trigger attempts (most recent first)
+  // Messages
   messages: Message[];
 }
 
@@ -147,7 +143,6 @@ export interface Conversation {
   messages: Message[];
   comparison?: ComparisonMetadata;
   council?: CouncilMetadata;
-  trigger?: TriggerConfig;  // If set, conversation runs as a triggered background task
 }
 
 export interface Config {

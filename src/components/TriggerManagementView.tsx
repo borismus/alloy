@@ -100,10 +100,9 @@ export function TriggerManagementView({
         ) : (
           <div className="trigger-list">
             {triggers.map(trigger => {
-              const triggerConfig = trigger.trigger;
               const isRunning = runningTriggers.has(trigger.id) || activeChecks.includes(trigger.id);
               const isDeleting = deleteConfirmId === trigger.id;
-              const hasFired = triggerConfig.lastTriggered !== undefined;
+              const hasFired = trigger.lastTriggered !== undefined;
 
               return (
                 <div key={trigger.id} className="trigger-item">
@@ -115,14 +114,14 @@ export function TriggerManagementView({
                     >
                       {trigger.title || 'Untitled'}
                     </span>
-                    <span className={`trigger-status ${triggerConfig.enabled ? 'enabled' : 'disabled'}`}>
-                      {triggerConfig.enabled ? 'Enabled' : 'Disabled'}
+                    <span className={`trigger-status ${trigger.enabled ? 'enabled' : 'disabled'}`}>
+                      {trigger.enabled ? 'Enabled' : 'Disabled'}
                     </span>
-                    <span className="trigger-interval">{formatInterval(triggerConfig.intervalMinutes)}</span>
+                    <span className="trigger-interval">{formatInterval(trigger.intervalMinutes)}</span>
                   </div>
                   <div className="trigger-item-meta">
-                    <span>Last checked: {formatTimeAgo(triggerConfig.lastChecked)}</span>
-                    <span>Last triggered: {formatTimeAgo(triggerConfig.lastTriggered)}</span>
+                    <span>Last checked: {formatTimeAgo(trigger.lastChecked)}</span>
+                    <span>Last triggered: {formatTimeAgo(trigger.lastTriggered)}</span>
                   </div>
                   <div className="trigger-item-actions">
                     <button
