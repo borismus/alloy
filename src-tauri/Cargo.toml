@@ -1,6 +1,6 @@
 [package]
 name = "Orchestra"
-version = "0.1.0"
+version = "0.1.22"
 description = "Own your AI conversations"
 authors = ["you"]
 edition = "2021"
