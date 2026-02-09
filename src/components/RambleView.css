@@ -5,14 +5,13 @@
   background: var(--bg-primary, #fff);
 }
 
-/* Draft indicator badge */
+/* Draft indicator status */
 .ramble-view .draft-indicator {
   font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  font-weight: 500;
+  color: var(--text-tertiary, #999);
+  font-style: italic;
+  display: flex;
+  align-items: center;
 }
 
 /* Button styles */
