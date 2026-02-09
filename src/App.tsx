@@ -24,13 +24,14 @@ import { NoteViewer } from './components/NoteViewer';
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
 import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
-import { readTextFile } from '@tauri-apps/plugin-fs';
+import { readTextFile, exists } from '@tauri-apps/plugin-fs';
 import { isServerMode } from './mocks';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RambleProvider, useRambleContext } from './contexts/RambleContext';
 import { RambleBatchApprovalModal } from './components/RambleBatchApprovalModal';
 import { RambleView } from './components/RambleView';
 import { ContextMenu } from './components/ContextMenu';
+import { ToastContainer, ToastMessage } from './components/Toast';
 import './App.css';
 
 // Wrapper component to access RambleContext and show approval modal
@@ -204,6 +205,17 @@ function AppContent() {
   const [draftConversation, setDraftConversation] = useState<Conversation | null>(null);
   // Memory content and size for system prompt injection
   const [memory, setMemory] = useState<{ content: string; sizeBytes: number } | null>(null);
+  // Toast notifications
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const showToast = useCallback((message: string, type: ToastMessage['type'] = 'info') => {
+    const id = `toast-${Date.now()}`;
+    setToasts(prev => [...prev, { id, message, type }]);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
 
   // Derive selected items from lists based on selectedItem
   const currentConversation = selectedItem?.type === 'conversation'
@@ -655,6 +667,14 @@ function AppContent() {
         ? `${vaultPathStr}/${filename}`
         : `${notesPath}/${filename}`;
       try {
+        // Check if the note exists before trying to read it
+        const noteExists = await exists(notePath);
+        if (!noteExists) {
+          const displayName = filename.replace(/\.md$/, '');
+          showToast(`Note "${displayName}" doesn't exist`, 'warning');
+          return;
+        }
+
         console.log('[App] Reading note from:', notePath);
         const content = await readTextFile(notePath);
         // Push current view to history before navigating
@@ -672,6 +692,7 @@ function AppContent() {
         setNoteContent(content);
       } catch (error) {
         console.error('[App] Failed to load note:', error);
+        showToast(`Failed to load note`, 'error');
       }
     }
   };
@@ -1543,6 +1564,7 @@ function AppContent() {
           }}
         />
       )}
+      <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
       </RambleProvider>
     </TriggerProvider>
