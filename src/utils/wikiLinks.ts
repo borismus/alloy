@@ -29,7 +29,8 @@ export function processWikiLinks(content: string): string {
   let result = content.replace(/&\[\[([^\]]+)\]\]/g, (match, linkTarget) => {
     const displayName = extractDisplayName(linkTarget);
     console.log('[processWikiLinks] Found provenance marker:', { match, linkTarget, displayName });
-    return `[${displayName}](provenance:${linkTarget})`;
+    // URL-encode the target to handle spaces and special characters in markdown links
+    return `[${displayName}](provenance:${encodeURIComponent(linkTarget)})`;
   });
 
   // Then handle regular [[...]] wiki-links
@@ -40,7 +41,8 @@ export function processWikiLinks(content: string): string {
       ? linkTarget.replace('conversations/', '').replace(/^\d{4}-\d{2}-\d{2}-\d{4}-[a-f0-9]+-?/, '')
       : linkTarget;
     console.log('[processWikiLinks] Found wiki-link:', { match, linkTarget, displayName, isConversation });
-    return `[${displayName || linkTarget}](wikilink:${linkTarget})`;
+    // URL-encode the target to handle spaces and special characters in markdown links
+    return `[${displayName || linkTarget}](wikilink:${encodeURIComponent(linkTarget)})`;
   });
 
   return result;
