@@ -8,12 +8,12 @@ import './TriggerDetailView.css';
 
 interface TriggerDetailViewProps {
   trigger: Trigger;
-  onBack: () => void;
-  canGoBack?: boolean;
   onDelete: () => void;
   onRunNow: () => void;
   onAskAbout: (trigger: Trigger) => void;
   onTriggerUpdated: (trigger: Trigger) => void;
+  onBack?: () => void;
+  canGoBack?: boolean;
 }
 
 function formatDate(isoString: string): string {
@@ -28,12 +28,12 @@ function formatDate(isoString: string): string {
 
 export function TriggerDetailView({
   trigger,
-  onBack,
-  canGoBack,
   onDelete,
   onRunNow,
   onAskAbout,
   onTriggerUpdated,
+  onBack,
+  canGoBack = false,
 }: TriggerDetailViewProps) {
   const { activeChecks } = useTriggerContext();
   const [isRunning, setIsRunning] = useState(false);

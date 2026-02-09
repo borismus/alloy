@@ -60,6 +60,8 @@ interface MainPanelWithRambleProps {
   selectedNote: { filename: string; content: string } | null;
   hasAnySelection: boolean; // true if user selected conversation, trigger, or non-ramble note
   children: React.ReactNode;
+  onBack?: () => void;
+  canGoBack?: boolean;
 }
 
 const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
@@ -71,6 +73,8 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
   selectedNote,
   hasAnySelection,
   children,
+  onBack,
+  canGoBack,
 }) => {
   const rambleContext = useRambleContext();
 
@@ -104,7 +108,8 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
           onNavigateToNote={onNavigateToNote}
           onNavigateToConversation={onNavigateToConversation}
           conversations={conversations}
-          onExit={() => rambleContext.exitRambleMode()}
+          onBack={onBack}
+          canGoBack={canGoBack}
         />
       </div>
     );
@@ -140,8 +145,8 @@ interface NoteViewerWithIntegrateProps {
   conversations: { id: string; title?: string }[];
   notes: NoteInfo[];
   selectedModel: string;
+  onBack?: () => void;
   canGoBack?: boolean;
-  onGoBack?: () => void;
 }
 
 const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
@@ -152,8 +157,8 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
   conversations,
   notes,
   selectedModel,
+  onBack,
   canGoBack,
-  onGoBack,
 }) => {
   const rambleContext = useRambleContext();
 
@@ -174,8 +179,8 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
       onNavigateToConversation={onNavigateToConversation}
       onIntegrate={handleIntegrate}
       conversations={conversations}
+      onBack={onBack}
       canGoBack={canGoBack}
-      onGoBack={onGoBack}
     />
   );
 };
@@ -197,8 +202,50 @@ function AppContent() {
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
-  // Unified selection state - single source of truth for what's selected
+
+  // Selected item and navigation history
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
+  const [previousItem, setPreviousItem] = useState<SelectedItem>(null);
+
+  // Navigate to a new item, saving current as previous (for back button)
+  const navigateTo = useCallback((item: SelectedItem) => {
+    if (selectedItem) {
+      setPreviousItem(selectedItem);
+    }
+    setSelectedItem(item);
+  }, [selectedItem]);
+
+  // Go back to previous item
+  const goBack = useCallback(async () => {
+    if (!previousItem) return;
+
+    // If going back to a note, we need to load its content
+    if (previousItem.type === 'note') {
+      const filename = previousItem.id;
+      const vaultPathStr = vaultService.getVaultPath();
+      const notesPath = vaultService.getNotesPath();
+      if (vaultPathStr && notesPath) {
+        const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
+          ? `${vaultPathStr}/${filename}`
+          : `${notesPath}/${filename}`;
+        try {
+          const content = await readTextFile(notePath);
+          setNoteContent(content);
+        } catch (error) {
+          console.error('[App] Failed to load note on back:', error);
+        }
+      }
+    } else {
+      setNoteContent(null);
+    }
+
+    setSelectedItem(previousItem);
+    setPreviousItem(null);
+    setDraftConversation(null);
+  }, [previousItem]);
+
+  const canGoBack = previousItem !== null;
+
   // Cached note content (loaded on demand when note is selected)
   const [noteContent, setNoteContent] = useState<string | null>(null);
   // Transient conversation state for new/unsaved conversations
@@ -228,11 +275,6 @@ function AppContent() {
     ? { filename: selectedItem.id, content: noteContent }
     : null;
 
-  // Navigation history for back button support
-  type NavigationEntry =
-    | { type: 'note'; filename: string; content: string }
-    | { type: 'conversation'; id: string };
-  const [navigationHistory, setNavigationHistory] = useState<NavigationEntry[]>([]);
   // Mobile navigation state
   const isMobile = useIsMobile();
   type MobileView = 'list' | 'conversation';
@@ -264,9 +306,11 @@ function AppContent() {
   const handleConversationRemoved = useCallback((id: string) => {
     setConversations(prev => prev.filter(c => c.id !== id));
     // Clear selection if removed conversation was selected
-    setSelectedItem(prev => prev?.type === 'conversation' && prev.id === id ? null : prev);
+    if (selectedItem?.type === 'conversation' && selectedItem.id === id) {
+      setSelectedItem(null);
+    }
     setDraftConversation(prev => prev?.id === id ? null : prev);
-  }, []);
+  }, [selectedItem]);
 
   const handleConversationModified = useCallback(async (id: string) => {
     const updated = await vaultService.loadConversation(id);
@@ -345,28 +389,24 @@ function AppContent() {
     }
 
     // If the modified note is currently selected, refresh its content
-    setSelectedItem(prev => {
-      if (prev?.type === 'note' && prev.id === filename) {
-        // Re-read the file content asynchronously
-        const vaultPathStr = vaultService.getVaultPath();
-        const notesPath = vaultService.getNotesPath();
-        if (vaultPathStr && notesPath) {
-          // memory.md and rambles/ are at vault root, other notes are in notes/
-          const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
-            ? `${vaultPathStr}/${filename}`
-            : `${notesPath}/${filename}`;
-          console.log('[App] Refreshing note content from:', notePath);
-          readTextFile(notePath).then(content => {
-            console.log('[App] Note content refreshed, length:', content.length);
-            setNoteContent(content);
-          }).catch(error => {
-            console.error('Failed to refresh note content:', error);
-          });
-        }
+    if (selectedItem?.type === 'note' && selectedItem.id === filename) {
+      const vaultPathStr = vaultService.getVaultPath();
+      const notesPath = vaultService.getNotesPath();
+      if (vaultPathStr && notesPath) {
+        // memory.md and rambles/ are at vault root, other notes are in notes/
+        const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
+          ? `${vaultPathStr}/${filename}`
+          : `${notesPath}/${filename}`;
+        console.log('[App] Refreshing note content from:', notePath);
+        readTextFile(notePath).then(content => {
+          console.log('[App] Note content refreshed, length:', content.length);
+          setNoteContent(content);
+        }).catch(error => {
+          console.error('Failed to refresh note content:', error);
+        });
       }
-      return prev; // Don't change selection, just trigger content refresh
-    });
-  }, []);
+    }
+  }, [selectedItem]);
 
   // Trigger watcher callbacks
   const handleTriggerAdded = useCallback(async (id: string) => {
@@ -482,11 +522,20 @@ function AppContent() {
 
   // Handle selecting an item from the timeline
   const handleSelectItem = useCallback(async (item: TimelineItem) => {
-    // Set unified selection state
-    const newSelection: SelectedItem = item.type === 'ramble'
-      ? { type: 'note', id: item.id }
-      : { type: item.type, id: item.id };
-    setSelectedItem(newSelection);
+    // Navigate to the selected item
+    if (item.type === 'ramble') {
+      navigateTo({ type: 'note', id: item.id });
+    } else if (item.type === 'note') {
+      navigateTo({ type: 'note', id: item.id });
+    } else if (item.type === 'conversation') {
+      navigateTo({ type: 'conversation', id: item.id });
+      // Focus input after selection
+      setTimeout(() => {
+        chatInterfaceRef.current?.focusInput();
+      }, 0);
+    } else if (item.type === 'trigger') {
+      navigateTo({ type: 'trigger', id: item.id });
+    }
 
     // Clear draft conversation when switching away from it
     setDraftConversation(null);
@@ -512,18 +561,20 @@ function AppContent() {
       }
     }
     // For triggers, no additional loading needed - derived from triggers list
-  }, [markAsRead]);
+  }, [markAsRead, navigateTo]);
 
   // Handle deleting a note
   const handleDeleteNote = useCallback(async (filename: string) => {
     await vaultService.deleteNote(filename);
     // If this is the selected note, clear the selection
-    setSelectedItem(prev => prev?.type === 'note' && prev.id === filename ? null : prev);
+    if (selectedItem?.type === 'note' && selectedItem.id === filename) {
+      setSelectedItem(null);
+    }
     setNoteContent(null);
     // Reload notes list
     const loadedNotes = await vaultService.loadNotes();
     setNotes(loadedNotes);
-  }, []);
+  }, [selectedItem]);
 
   const loadVault = async (path: string) => {
     try {
@@ -641,7 +692,11 @@ function AppContent() {
     // Store as draft until first message is sent
     setDraftConversation(newConversation);
     setNoteContent(null);
-    setSelectedItem({ type: 'conversation', id: newConversation.id });
+    navigateTo({ type: 'conversation', id: newConversation.id });
+    // Focus input after creation
+    setTimeout(() => {
+      chatInterfaceRef.current?.focusInput();
+    }, 0);
   };
 
   // Auto-create a new conversation when entering mobile conversation view without one
@@ -651,7 +706,7 @@ function AppContent() {
     }
   }, [isMobile, mobileView, currentConversation, config, availableModels.length]);
 
-  const handleSelectNote = async (filename: string, addToHistory = true) => {
+  const handleSelectNote = async (filename: string) => {
     console.log('[App] handleSelectNote called:', filename);
     const vaultPathStr = vaultService.getVaultPath();
     const notesPath = vaultService.getNotesPath();
@@ -677,17 +732,9 @@ function AppContent() {
 
         console.log('[App] Reading note from:', notePath);
         const content = await readTextFile(notePath);
-        // Push current view to history before navigating
-        if (addToHistory) {
-          if (selectedItem?.type === 'note' && noteContent) {
-            setNavigationHistory(prev => [...prev, { type: 'note', filename: selectedItem.id, content: noteContent }]);
-          } else if (selectedItem?.type === 'conversation') {
-            setNavigationHistory(prev => [...prev, { type: 'conversation', id: selectedItem.id }]);
-          }
-        }
-        // Clear draft conversation and update selection
+        // Clear draft conversation and select note
         setDraftConversation(null);
-        setSelectedItem({ type: 'note', id: filename });
+        navigateTo({ type: 'note', id: filename });
         console.log('[App] Setting note content:', { filename, contentLength: content.length });
         setNoteContent(content);
       } catch (error) {
@@ -737,7 +784,7 @@ function AppContent() {
 
     setDraftConversation(newConversation);
     setNoteContent(null);
-    setSelectedItem({ type: 'conversation', id: newConversation.id });
+    navigateTo({ type: 'conversation', id: newConversation.id });
     setShowComparisonSelector(false);
   };
 
@@ -766,7 +813,7 @@ function AppContent() {
 
     setDraftConversation(newConversation);
     setNoteContent(null);
-    setSelectedItem({ type: 'conversation', id: newConversation.id });
+    navigateTo({ type: 'conversation', id: newConversation.id });
     setShowCouncilSelector(false);
   };
 
@@ -1073,7 +1120,7 @@ function AppContent() {
     }
   };
 
-  const handleSelectConversation = async (id: string, addToHistory = true, messageId?: string) => {
+  const handleSelectConversation = async (id: string, _addToHistory = true, messageId?: string) => {
     console.log('[App] handleSelectConversation called with id:', id, 'messageId:', messageId);
 
     // Store messageId for scrolling after conversation loads
@@ -1087,43 +1134,17 @@ function AppContent() {
     // Mark as read when user selects the conversation
     markAsRead(id);
 
-    // Push current view to history before navigating
-    if (addToHistory) {
-      if (selectedNote) {
-        setNavigationHistory(prev => [...prev, { type: 'note', filename: selectedNote.filename, content: selectedNote.content }]);
-      } else if (currentConversation) {
-        setNavigationHistory(prev => [...prev, { type: 'conversation', id: currentConversation.id }]);
-      }
-    }
-
     // Close any open selectors/views and clear other selections
     setShowComparisonSelector(false);
     setShowCouncilSelector(false);
     setNoteContent(null);
     setDraftConversation(null);
-    setSelectedItem({ type: 'conversation', id });
+    navigateTo({ type: 'conversation', id });
 
     // Focus input after selection
     setTimeout(() => {
       chatInterfaceRef.current?.focusInput();
     }, 0);
-  };
-
-  const handleGoBack = async () => {
-    if (navigationHistory.length === 0) return;
-
-    const previousEntry = navigationHistory[navigationHistory.length - 1];
-    setNavigationHistory(prev => prev.slice(0, -1));
-
-    if (previousEntry.type === 'note') {
-      // Navigate back to note without adding to history
-      setDraftConversation(null);
-      setSelectedItem({ type: 'note', id: previousEntry.filename });
-      setNoteContent(previousEntry.content);
-    } else if (previousEntry.type === 'conversation') {
-      // Navigate back to conversation without adding to history
-      await handleSelectConversation(previousEntry.id, false);
-    }
   };
 
   const handleRenameConversation = async (oldId: string, newTitle: string) => {
@@ -1154,6 +1175,34 @@ function AppContent() {
     } catch (error) {
       console.error('Error renaming conversation:', error);
       alert('Failed to rename conversation. Please try again.');
+    }
+  };
+
+  const handleRenameRamble = async (oldFilename: string, newName: string) => {
+    try {
+      const vaultPathForRename = vaultService.getVaultPath();
+      if (vaultPathForRename) {
+        // Mark old file for self-write
+        markSelfWrite(`${vaultPathForRename}/${oldFilename}`);
+        // Mark new file path
+        const sanitizedName = newName.replace(/\.md$/, '').replace(/[/\\:*?"<>|]/g, '-').trim();
+        markSelfWrite(`${vaultPathForRename}/rambles/${sanitizedName}.md`);
+      }
+
+      const newFilename = await vaultService.renameRamble(oldFilename, newName);
+      if (newFilename) {
+        // Reload notes to get updated list
+        const updatedNotes = await vaultService.loadNotes();
+        setNotes(updatedNotes);
+
+        // Update selection if this ramble was selected
+        if (selectedItem?.type === 'note' && selectedItem.id === oldFilename) {
+          setSelectedItem({ type: 'note', id: newFilename });
+        }
+      }
+    } catch (error) {
+      console.error('Error renaming ramble:', error);
+      alert('Failed to rename ramble. Please try again.');
     }
   };
 
@@ -1266,7 +1315,7 @@ function AppContent() {
     // Update state
     setConversations(prev => [newConversation, ...prev]);
     setDraftConversation(null);
-    setSelectedItem({ type: 'conversation', id: newConversation.id });
+    navigateTo({ type: 'conversation', id: newConversation.id });
   };
 
   // Handle updating an existing trigger
@@ -1330,7 +1379,7 @@ function AppContent() {
       setTriggers(prev => [newTrigger, ...prev]);
       setDraftConversation(null);
       setNoteContent(null);
-      setSelectedItem({ type: 'trigger', id: newTrigger.id });
+      navigateTo({ type: 'trigger', id: newTrigger.id });
     } catch (error) {
       console.error('Error creating trigger:', error);
     }
@@ -1379,6 +1428,7 @@ function AppContent() {
               onNewCouncil={handleNewCouncil}
               onNewTrigger={() => setShowTriggerConfig(true)}
               onRenameConversation={handleRenameConversation}
+              onRenameRamble={handleRenameRamble}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
@@ -1399,7 +1449,7 @@ function AppContent() {
               onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
               scrollToMessageId={pendingScrollToMessageId}
               onScrollComplete={() => setPendingScrollToMessageId(null)}
-              onBack={() => setMobileView('list')}
+              onMobileBack={() => setMobileView('list')}
             />
           )
         ) : (
@@ -1421,6 +1471,7 @@ function AppContent() {
               onNewCouncil={handleNewCouncil}
               onNewTrigger={() => setShowTriggerConfig(true)}
               onRenameConversation={handleRenameConversation}
+              onRenameRamble={handleRenameRamble}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
@@ -1433,13 +1484,15 @@ function AppContent() {
         conversations={conversations}
         selectedNote={selectedNote}
         hasAnySelection={!!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('rambles/') || selectedNote.content.includes('integrated: true'))))}
+        onBack={goBack}
+        canGoBack={canGoBack}
       >
       <div className="main-panel">
         {selectedTrigger ? (
           <TriggerDetailView
             trigger={selectedTrigger}
-            onBack={handleGoBack}
-            canGoBack={navigationHistory.length > 0}
+            onBack={goBack}
+            canGoBack={canGoBack}
             onDelete={async () => {
               await handleDeleteTrigger(selectedTrigger.id);
               setSelectedItem(null);
@@ -1487,8 +1540,8 @@ function AppContent() {
             conversations={conversations}
             notes={notes}
             selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
-            canGoBack={navigationHistory.length > 0}
-            onGoBack={handleGoBack}
+            onBack={goBack}
+            canGoBack={canGoBack}
           />
         ) : isCouncilConversation && currentConversation ? (
           <CouncilChatInterface
@@ -1521,8 +1574,8 @@ function AppContent() {
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             scrollToMessageId={pendingScrollToMessageId}
             onScrollComplete={() => setPendingScrollToMessageId(null)}
-            onBack={handleGoBack}
-            canGoBack={navigationHistory.length > 0}
+            onBack={goBack}
+            canGoBack={canGoBack}
           />
         )}
       </div>

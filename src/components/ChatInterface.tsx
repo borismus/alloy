@@ -87,6 +87,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
   useImperativeHandle(ref, () => ({
@@ -100,18 +101,22 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
     const items = e.clipboardData?.items;
     if (!items) return;
 
+    // Valid image MIME types
+    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
+
     for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const blob = item.getAsFile();
-        if (!blob) continue;
+      // Ensure we have a valid, complete MIME type
+      if (!validImageTypes.includes(item.type)) continue;
 
-        const arrayBuffer = await blob.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        const preview = URL.createObjectURL(blob);
+      e.preventDefault();
+      const blob = item.getAsFile();
+      if (!blob) continue;
 
-        setPendingImages(prev => [...prev, { data, mimeType: item.type, preview }]);
-      }
+      const arrayBuffer = await blob.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      const preview = URL.createObjectURL(blob);
+
+      setPendingImages(prev => [...prev, { data, mimeType: item.type, preview }]);
     }
   };
 
@@ -123,6 +128,47 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
       }
       return prev.filter((_, i) => i !== index);
     });
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Valid image MIME types
+    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    // Fallback: check extension if MIME type is missing/incorrect
+    const imageExtensions = /\.(png|jpe?g|webp)$/i;
+
+    for (const file of Array.from(files)) {
+      // Check MIME type first
+      let mimeType = file.type;
+      const isValidMime = validImageTypes.includes(mimeType);
+      const hasImageExtension = imageExtensions.test(file.name);
+
+      // Skip if neither MIME type nor extension indicates an image
+      if (!isValidMime && !hasImageExtension) continue;
+
+      // If MIME type is missing/invalid but extension is valid, infer MIME type
+      if (!isValidMime && hasImageExtension) {
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else if (ext === 'webp') mimeType = 'image/webp';
+        else continue; // Unknown extension
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      const preview = URL.createObjectURL(file);
+      setPendingImages(prev => [...prev, { data, mimeType, preview }]);
+    }
+
+    // Reset input so same file can be selected again
+    e.target.value = '';
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
   };
 
   const doSubmit = useCallback(() => {
@@ -167,6 +213,23 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
         </div>
       )}
       <div className="input-row">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+          multiple
+          onChange={handleFileSelect}
+          style={{ display: 'none' }}
+        />
+        <button
+          type="button"
+          className="attach-button"
+          onClick={handleAttachClick}
+          disabled={isStreaming}
+          aria-label="Attach image"
+        >
+          +
+        </button>
         <textarea
           ref={textareaRef}
           value={input}
@@ -212,8 +275,9 @@ interface ChatInterfaceProps {
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   scrollToMessageId?: string | null;  // Message ID to scroll to (from provenance links)
   onScrollComplete?: () => void;  // Called after scrolling to message
-  onBack?: () => void;  // Back button callback (mobile: shows menu icon, desktop: shows back arrow)
-  canGoBack?: boolean;  // Whether there's navigation history to go back to
+  onMobileBack?: () => void;  // Mobile-specific back (e.g., show sidebar)
+  onBack?: () => void;
+  canGoBack?: boolean;
 }
 
 export interface ChatInterfaceHandle {
@@ -250,9 +314,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onNavigateToConversation,
   scrollToMessageId,
   onScrollComplete,
+  onMobileBack,
   onBack,
-  canGoBack,
+  canGoBack = false,
 }, ref) => {
+  // On mobile, use mobile-specific back if provided, otherwise use onBack prop
+  const handleBack = onMobileBack || onBack;
+  const showBackButton = onMobileBack ? true : canGoBack;
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [showFind, setShowFind] = useState(false);
@@ -432,14 +500,34 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
 
+    // Valid image MIME types
+    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    // Fallback: check extension if MIME type is missing/incorrect
+    const imageExtensions = /\.(png|jpe?g|webp)$/i;
+
     const newImages: PendingImage[] = [];
     for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) {
-        const arrayBuffer = await file.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        const preview = URL.createObjectURL(file);
-        newImages.push({ data, mimeType: file.type, preview });
+      // Check MIME type first
+      let mimeType = file.type;
+      const isValidMime = validImageTypes.includes(mimeType);
+      const hasImageExtension = imageExtensions.test(file.name);
+
+      // Skip if neither MIME type nor extension indicates an image
+      if (!isValidMime && !hasImageExtension) continue;
+
+      // If MIME type is missing/invalid but extension is valid, infer MIME type
+      if (!isValidMime && hasImageExtension) {
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else if (ext === 'webp') mimeType = 'image/webp';
+        else continue; // Unknown extension
       }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      const preview = URL.createObjectURL(file);
+      newImages.push({ data, mimeType, preview });
     }
     if (newImages.length > 0) {
       chatInputRef.current?.addImages(newImages);
@@ -530,8 +618,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   }
 
   if (!conversation) {
-    // On mobile with onBack, show full interface with input form for new conversations
-    if (onBack) {
+    // On mobile, show full interface with input form for new conversations
+    if (showBackButton) {
       return (
         <div
           className={`chat-interface ${isDragging ? 'drag-over' : ''} has-header`}
@@ -542,8 +630,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         >
           <ItemHeader
             title="New Conversation"
-            onBack={onBack}
-            canGoBack={true}
+            onBack={handleBack}
+            canGoBack={showBackButton}
           />
           <div className="messages-container" ref={messagesContainerRef}>
             <div className="welcome-message">
@@ -585,8 +673,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     >
       <ItemHeader
         title={conversation?.title || 'New Conversation'}
-        onBack={onBack}
-        canGoBack={canGoBack}
+        onBack={handleBack}
+        canGoBack={showBackButton}
       />
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {showFind && (

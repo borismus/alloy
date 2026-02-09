@@ -182,6 +182,7 @@ export interface NoteInfo {
   hasSkillContent: boolean; // true if contains &[[...]] markers
   isRamble?: boolean;      // true if in rambles/ directory
   isIntegrated?: boolean;  // for rambles: whether integrated into notes
+  title?: string;          // for rambles: custom title from frontmatter
 }
 
 // Unified timeline item for sidebar display

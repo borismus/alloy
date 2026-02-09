@@ -182,13 +182,13 @@ app.post('/api/path/join', (req: Request, res: Response) => {
   res.json({ path: path.join(...segments) });
 });
 
-// Serve static files from dist/
-app.use(express.static(path.join(process.cwd(), 'dist')));
+// Serve static files from dist-web/
+app.use(express.static(path.join(process.cwd(), 'dist-web')));
 
 // SPA fallback - serve index.html for non-API routes
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (!req.path.startsWith('/api') && req.method === 'GET') {
-    res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
+    res.sendFile(path.join(process.cwd(), 'dist-web', 'index.html'));
   } else {
     next();
   }

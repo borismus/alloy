@@ -10,6 +10,11 @@ const isServerMode = process.env.SERVER_MODE === 'true';
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // Build to different directory for server mode
+  build: isServerMode ? {
+    outDir: 'dist-web',
+  } : {},
+
   // Pass server mode flag to runtime code
   define: isServerMode ? {
     'import.meta.env.VITE_SERVER_MODE': JSON.stringify('true'),

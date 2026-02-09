@@ -26,7 +26,8 @@
   white-space: nowrap;
 }
 
-.item-header .btn-back {
+.item-header .btn-back,
+.item-header .btn-forward {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -41,12 +42,14 @@
   flex-shrink: 0;
 }
 
-.item-header .btn-back:hover:not(:disabled) {
+.item-header .btn-back:hover:not(:disabled),
+.item-header .btn-forward:hover:not(:disabled) {
   background: var(--bg-hover, #e0e0e0);
   color: var(--text-primary, #333);
 }
 
-.item-header .btn-back:disabled {
+.item-header .btn-back:disabled,
+.item-header .btn-forward:disabled {
   color: var(--text-tertiary, #ccc);
   cursor: default;
 }

@@ -11,6 +11,19 @@ const GEMINI_MODELS: ModelInfo[] = [
   { key: 'gemini/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
 ];
 
+// Ensure we have a valid MIME type (Gemini requires full type like 'image/png')
+function normalizeImageMimeType(mimeType: string | undefined, filePath: string): string {
+  if (mimeType && mimeType.includes('/')) {
+    return mimeType;
+  }
+  // Infer from file extension
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'webp') return 'image/webp';
+  return 'image/png'; // Default fallback
+}
+
 export class GeminiService implements IProviderService {
   readonly providerType = 'gemini' as const;
   private client: GoogleGenerativeAI | null = null;
@@ -69,10 +82,35 @@ export class GeminiService implements IProviderService {
 
     for (const msg of filteredMessages) {
       const role = msg.role === 'assistant' ? 'model' : 'user';
-      geminiHistory.push({
-        role,
-        parts: [{ text: msg.content }],
-      });
+      const parts: Part[] = [];
+
+      // Check for image attachments
+      const hasImages = msg.attachments?.some(a => a.type === 'image') && options.imageLoader;
+
+      if (hasImages) {
+        // Add images first
+        for (const attachment of msg.attachments || []) {
+          if (attachment.type === 'image' && options.imageLoader) {
+            const base64 = await options.imageLoader(attachment.path);
+            parts.push({
+              inlineData: {
+                mimeType: normalizeImageMimeType(attachment.mimeType, attachment.path),
+                data: base64,
+              },
+            });
+          }
+        }
+      }
+
+      // Add text content
+      if (msg.content) {
+        parts.push({ text: msg.content });
+      }
+
+      // Only add if we have parts
+      if (parts.length > 0) {
+        geminiHistory.push({ role, parts });
+      }
     }
 
     // Get the last user message to send
@@ -197,10 +235,35 @@ export class GeminiService implements IProviderService {
 
     for (const msg of filteredMessages) {
       const role = msg.role === 'assistant' ? 'model' : 'user';
-      geminiHistory.push({
-        role,
-        parts: [{ text: msg.content }],
-      });
+      const parts: Part[] = [];
+
+      // Check for image attachments
+      const hasImages = msg.attachments?.some(a => a.type === 'image') && options.imageLoader;
+
+      if (hasImages) {
+        // Add images first
+        for (const attachment of msg.attachments || []) {
+          if (attachment.type === 'image' && options.imageLoader) {
+            const base64 = await options.imageLoader(attachment.path);
+            parts.push({
+              inlineData: {
+                mimeType: normalizeImageMimeType(attachment.mimeType, attachment.path),
+                data: base64,
+              },
+            });
+          }
+        }
+      }
+
+      // Add text content
+      if (msg.content) {
+        parts.push({ text: msg.content });
+      }
+
+      // Only add if we have parts
+      if (parts.length > 0) {
+        geminiHistory.push({ role, parts });
+      }
     }
 
     // Add all tool rounds to the history (except the last one which we'll send as the message)

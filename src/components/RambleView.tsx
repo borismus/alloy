@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import { NoteInfo } from '../types';
 import { rambleService } from '../services/ramble';
 import { useRambleContext } from '../contexts/RambleContext';
 import { MarkdownContent } from './MarkdownContent';
-import { AppendOnlyTextarea } from './AppendOnlyTextarea';
+import { AppendOnlyTextarea, AppendOnlyTextareaHandle } from './AppendOnlyTextarea';
 import { ItemHeader } from './ItemHeader';
 import './RambleView.css';
 
@@ -18,7 +18,8 @@ interface RambleViewProps {
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   conversations?: ConversationInfo[];
-  onExit?: () => void;
+  onBack?: () => void;
+  canGoBack?: boolean;
 }
 
 // Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
@@ -57,7 +58,8 @@ export const RambleView: React.FC<RambleViewProps> = ({
   onNavigateToNote,
   onNavigateToConversation,
   conversations,
-  onExit,
+  onBack,
+  canGoBack = false,
 }) => {
   const {
     rawLog,
@@ -66,6 +68,7 @@ export const RambleView: React.FC<RambleViewProps> = ({
     isRambleMode,
     isCrystallizing,
     isProcessing,
+    crystallizationCount,
     setRawLog,
     exitRambleMode,
     integrateNow,
@@ -73,12 +76,26 @@ export const RambleView: React.FC<RambleViewProps> = ({
   } = useRambleContext();
 
   const [draftContent, setDraftContent] = useState('');
+  const [justCrystallized, setJustCrystallized] = useState(false);
   const draftContentRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<AppendOnlyTextareaHandle>(null);
+  const prevCrystallizationCountRef = useRef<number>(0);
 
   // Keep config updated
   useEffect(() => {
     setConfig(model, notes);
   }, [model, notes, setConfig]);
+
+  // Focus and scroll to bottom when entering ramble mode or switching drafts
+  useLayoutEffect(() => {
+    if (isRambleMode) {
+      // Small delay to ensure the textarea is rendered
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.scrollToBottom();
+      }, 0);
+    }
+  }, [isRambleMode, draftFilename]);
 
   // Load draft content when draftFilename changes
   useEffect(() => {
@@ -117,6 +134,32 @@ export const RambleView: React.FC<RambleViewProps> = ({
     }
   }, [draftContent]);
 
+  // Detect crystallization completion and trigger highlight + scroll
+  useEffect(() => {
+    if (crystallizationCount > prevCrystallizationCountRef.current) {
+      // Crystallization just completed - show highlight animation
+      setJustCrystallized(true);
+
+      // Smooth scroll to bottom to show new content
+      if (draftContentRef.current) {
+        draftContentRef.current.scrollTo({
+          top: draftContentRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+
+      // Clear highlight after animation completes
+      const timer = setTimeout(() => {
+        setJustCrystallized(false);
+      }, 3000);
+
+      prevCrystallizationCountRef.current = crystallizationCount;
+      return () => clearTimeout(timer);
+    }
+
+    prevCrystallizationCountRef.current = crystallizationCount;
+  }, [crystallizationCount]);
+
   // Handle input changes - pass full value to context
   const handleInputChange = useCallback((newValue: string) => {
     setRawLog(newValue);
@@ -127,25 +170,22 @@ export const RambleView: React.FC<RambleViewProps> = ({
     integrateNow();
   }, [integrateNow]);
 
-  // Handle exit
-  const handleExit = useCallback(() => {
+  // Handle back navigation
+  const handleBack = useCallback(() => {
     exitRambleMode();
-    onExit?.();
-  }, [exitRambleMode, onExit]);
+    onBack?.();
+  }, [exitRambleMode, onBack]);
 
   // Parse draft frontmatter
-  const { body: draftBody } = useMemo(() => parseFrontmatter(draftContent), [draftContent]);
+  const draftBody = useMemo(() => {
+    const { body } = parseFrontmatter(draftContent);
+    return body;
+  }, [draftContent]);
 
-  // Format the draft filename for display (e.g., "2026-02-08-182702" -> "2026-02-08 at 18:27")
+  // Title is the filename without path and extension
   const headerTitle = useMemo(() => {
     if (!draftFilename) return 'Ramble';
-    const basename = draftFilename.split('/').pop()?.replace('.md', '') || '';
-    const match = basename.match(/(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})/);
-    if (match) {
-      const [, year, month, day, hour, minute] = match;
-      return `${year}-${month}-${day} at ${hour}:${minute}`;
-    }
-    return basename;
+    return draftFilename.split('/').pop()?.replace('.md', '') || 'Ramble';
   }, [draftFilename]);
 
   if (!isRambleMode) {
@@ -154,7 +194,11 @@ export const RambleView: React.FC<RambleViewProps> = ({
 
   return (
     <div className="ramble-view">
-      <ItemHeader title={headerTitle} onBack={handleExit}>
+      <ItemHeader
+        title={headerTitle}
+        onBack={handleBack}
+        canGoBack={canGoBack}
+      >
         {draftFilename && (
           <>
             <span className="draft-indicator">
@@ -178,7 +222,10 @@ export const RambleView: React.FC<RambleViewProps> = ({
           <div className="ramble-draft-header">
             <h3>Draft</h3>
           </div>
-          <div className="ramble-draft-content" ref={draftContentRef}>
+          <div
+            className={`ramble-draft-content ${justCrystallized ? 'just-crystallized' : ''}`}
+            ref={draftContentRef}
+          >
             <MarkdownContent
               content={draftBody}
               className="note-content"
@@ -203,6 +250,7 @@ export const RambleView: React.FC<RambleViewProps> = ({
         </div>
         <div className="ramble-log-input">
           <AppendOnlyTextarea
+            ref={textareaRef}
             value={rawLog}
             onChange={handleInputChange}
             lockedLength={crystallizedOffset}

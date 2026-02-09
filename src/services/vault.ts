@@ -759,6 +759,39 @@ export class VaultService {
     return false;
   }
 
+  async renameRamble(oldFilename: string, newName: string): Promise<string | null> {
+    if (!this.vaultPath) return null;
+    if (!oldFilename.startsWith('rambles/')) return null;
+
+    // Sanitize new name - remove .md if provided, sanitize for filesystem
+    const sanitizedName = newName
+      .replace(/\.md$/, '')
+      .replace(/[/\\:*?"<>|]/g, '-')
+      .trim();
+
+    if (!sanitizedName) return null;
+
+    const oldPath = await join(this.vaultPath, oldFilename);
+    const newFilename = `rambles/${sanitizedName}.md`;
+    const newPath = await join(this.vaultPath, newFilename);
+
+    // Don't rename if same name
+    if (oldFilename === newFilename) return oldFilename;
+
+    // Check if target already exists
+    if (await exists(newPath)) return null;
+
+    // Read content, write to new path, delete old
+    if (await exists(oldPath)) {
+      const content = await readTextFile(oldPath);
+      await writeTextFile(newPath, content);
+      await remove(oldPath);
+      return newFilename;
+    }
+
+    return null;
+  }
+
   async loadNotes(): Promise<NoteInfo[]> {
     if (!this.vaultPath) {
       console.log('[VaultService] loadNotes: No vault path set');
@@ -824,13 +857,17 @@ export class VaultService {
           const content = await readTextFile(filePath);
           const hasSkillContent = content.includes('&[[');
 
-          // Parse frontmatter to get integrated status
+          // Parse frontmatter to get integrated status and title
           let isIntegrated = false;
+          let title: string | undefined;
           const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
           if (frontmatterMatch) {
             try {
               const frontmatter = yaml.load(frontmatterMatch[1]) as Record<string, unknown>;
               isIntegrated = frontmatter.integrated === true;
+              if (typeof frontmatter.title === 'string') {
+                title = frontmatter.title;
+              }
             } catch {
               // Ignore frontmatter parse errors
             }
@@ -842,6 +879,7 @@ export class VaultService {
             hasSkillContent,
             isRamble: true,
             isIntegrated,
+            title,
           });
         }
       }
@@ -883,11 +921,8 @@ export class VaultService {
     // Add notes (separate regular notes from rambles)
     for (const note of notes) {
       if (note.isRamble) {
-        // Ramble items
-        const dateMatch = note.filename.match(/rambles\/(\d{4}-\d{2}-\d{2})-(\d{6})\.md/);
-        const title = dateMatch
-          ? `Ramble ${dateMatch[1]} ${dateMatch[2].slice(0, 2)}:${dateMatch[2].slice(2, 4)}`
-          : note.filename.replace('rambles/', '').replace('.md', '');
+        // Ramble items - title is the filename without extension
+        const title = note.filename.replace('rambles/', '').replace('.md', '');
 
         items.push({
           type: 'ramble',

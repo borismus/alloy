@@ -48,9 +48,8 @@ interface NoteViewerProps {
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   onIntegrate?: () => void; // Called when user wants to integrate a ramble
   conversations?: ConversationInfo[]; // For looking up conversation titles
-  // Navigation
+  onBack?: () => void;
   canGoBack?: boolean;
-  onGoBack?: () => void;
 }
 
 export const NoteViewer: React.FC<NoteViewerProps> = ({
@@ -60,8 +59,8 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   onNavigateToConversation,
   onIntegrate,
   conversations,
-  canGoBack,
-  onGoBack,
+  onBack,
+  canGoBack = false,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const prevContentLengthRef = useRef<number>(0);
@@ -91,7 +90,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
     <div className="note-viewer">
       <ItemHeader
         title={displayName}
-        onBack={onGoBack}
+        onBack={onBack}
         canGoBack={canGoBack}
       />
       {isUnintegrated && onIntegrate && (

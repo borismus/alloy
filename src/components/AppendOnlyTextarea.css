@@ -8,30 +8,6 @@
   overflow: hidden;
 }
 
-/* Background overlay for crystallized text */
-.append-only-overlay {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  background-color: #f0f0f0;
-  border-radius: 4px 4px 0 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-
-/* Gradient fade at the bottom of the overlay */
-.append-only-overlay::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 24px;
-  background: linear-gradient(to bottom, #f0f0f0, white);
-  pointer-events: none;
-}
-
 .append-only-textarea {
   flex: 1;
   padding: 8px;
@@ -42,10 +18,8 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
   line-height: 24px;
-  background: transparent !important;
-  background-color: transparent !important;
-  position: relative;
-  z-index: 1;
+  background: transparent;
+  color: #000;
 }
 
 .append-only-textarea:disabled {
@@ -59,11 +33,7 @@
     background: var(--bg-primary, #1a1a1a);
   }
 
-  .append-only-overlay {
-    background-color: #2a2a2a;
-  }
-
-  .append-only-overlay::after {
-    background: linear-gradient(to bottom, #2a2a2a, var(--bg-primary, #1a1a1a));
+  .append-only-textarea {
+    color: #fff;
   }
 }

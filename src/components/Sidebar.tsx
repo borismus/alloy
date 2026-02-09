@@ -99,6 +99,7 @@ interface SidebarProps {
   onNewTrigger: () => void;
   onNewRamble: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
+  onRenameRamble: (oldFilename: string, newName: string) => void;
   onDeleteConversation: (id: string) => void;
   onDeleteTrigger: (id: string) => void;
   onDeleteNote: (filename: string) => void;
@@ -126,6 +127,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onNewTrigger,
   onNewRamble,
   onRenameConversation,
+  onRenameRamble,
   onDeleteConversation,
   onDeleteTrigger,
   onDeleteNote,
@@ -136,6 +138,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const firedTriggerIds = firedTriggers.map(f => f.conversationId);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renamingType, setRenamingType] = useState<'conversation' | 'ramble' | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger' | 'ramble'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -159,25 +162,39 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     onSelectItem(item);
   };
 
-  const startRename = (conversationId: string) => {
-    const item = timelineItems.find(i => i.id === conversationId && i.type === 'conversation');
-    if (!item?.conversation) return;
+  const startRename = (id: string, type: 'conversation' | 'ramble') => {
+    const item = timelineItems.find(i => i.id === id && i.type === type);
+    if (!item) return;
 
-    const currentTitle = item.conversation.title || 'New conversation';
-    setRenamingId(conversationId);
+    let currentTitle: string;
+    if (type === 'conversation') {
+      currentTitle = item.conversation?.title || 'New conversation';
+    } else {
+      // For rambles, title is the filename without path and extension
+      currentTitle = item.title;
+    }
+
+    setRenamingId(id);
+    setRenamingType(type);
     setRenameValue(currentTitle);
   };
 
   const confirmRename = () => {
     if (renamingId && renameValue.trim() !== '') {
-      onRenameConversation(renamingId, renameValue.trim());
+      if (renamingType === 'conversation') {
+        onRenameConversation(renamingId, renameValue.trim());
+      } else if (renamingType === 'ramble') {
+        onRenameRamble(renamingId, renameValue.trim());
+      }
     }
     setRenamingId(null);
+    setRenamingType(null);
     setRenameValue('');
   };
 
   const cancelRename = () => {
     setRenamingId(null);
+    setRenamingType(null);
     setRenameValue('');
   };
 
@@ -216,13 +233,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     try {
       const menuItems = [];
 
-      // Rename is only available for conversations
-      if (item.type === 'conversation') {
+      // Rename is available for conversations and rambles
+      if (item.type === 'conversation' || item.type === 'ramble') {
         menuItems.push({
           id: 'rename',
           text: 'Rename',
           action: () => {
-            startRename(item.id);
+            startRename(item.id, item.type as 'conversation' | 'ramble');
           }
         });
       }
@@ -506,7 +523,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       {renamingId && (
         <div className="rename-modal" onClick={cancelRename}>
           <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Rename Conversation</h3>
+            <h3>Rename {renamingType === 'ramble' ? 'Ramble' : 'Conversation'}</h3>
             <input
               type="text"
               value={renameValue}

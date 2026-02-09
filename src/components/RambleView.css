@@ -78,6 +78,34 @@
   line-height: 1.6;
 }
 
+/* Highlight animation for recently crystallized content */
+.ramble-draft-content.just-crystallized {
+  animation: crystallize-fade 3s ease-out forwards;
+}
+
+.ramble-draft-content.just-crystallized .markdown-content {
+  animation: crystallize-glow 3s ease-out forwards;
+}
+
+@keyframes crystallize-fade {
+  0% {
+    background-color: rgba(102, 126, 234, 0.08);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes crystallize-glow {
+  0% {
+    box-shadow: inset 0 0 0 2px rgba(102, 126, 234, 0.4);
+    border-radius: 6px;
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+
 /* Log section */
 .ramble-log-section {
   flex: 1;
@@ -150,5 +178,25 @@
 
   .ramble-view .btn-small:hover {
     background: var(--bg-hover, #3a3a3a);
+  }
+
+  /* Dark mode highlight colors */
+  @keyframes crystallize-fade {
+    0% {
+      background-color: rgba(102, 126, 234, 0.15);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  @keyframes crystallize-glow {
+    0% {
+      box-shadow: inset 0 0 0 2px rgba(102, 126, 234, 0.5);
+      border-radius: 6px;
+    }
+    100% {
+      box-shadow: inset 0 0 0 2px transparent;
+    }
   }
 }

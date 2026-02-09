@@ -216,7 +216,7 @@ ${rawInputYaml}
       }
 
       // Parse crystallizedOffset
-      let crystallizedOffset = rawInput.length; // Default to all crystallized
+      let crystallizedOffset = 0; // Default to nothing crystallized (allow editing)
       const offsetMatch = frontmatter.match(/crystallizedOffset:\s*(\d+)/);
       if (offsetMatch) {
         crystallizedOffset = parseInt(offsetMatch[1], 10);

@@ -10,7 +10,7 @@
     "build:web": "SERVER_MODE=true vite build",
     "build:web:watch": "SERVER_MODE=true vite build --watch",
     "preview": "vite preview",
-    "server": "node --import tsx server/index.ts",
+    "server": "npm run build:web && node --import tsx server/index.ts",
     "server:dev": "node --import tsx --watch server/index.ts",
     "web": "concurrently -n server,vite -c blue,green \"node --import tsx server/index.ts\" \"SERVER_MODE=true VITE_API_URL=http://localhost:3001 vite\"",
     "tauri": "tauri",

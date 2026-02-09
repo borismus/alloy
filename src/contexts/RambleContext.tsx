@@ -17,6 +17,7 @@ interface RambleState {
   isCrystallizing: boolean;
   isProcessing: boolean;         // Blocks UI (integration, apply)
   phase: RamblePhase;
+  crystallizationCount: number;  // Increments each time crystallization completes
 
   // Integration state
   proposedChanges: ProposedChange[];
@@ -48,6 +49,7 @@ const initialState: RambleState = {
   isCrystallizing: false,
   isProcessing: false,
   phase: 'idle',
+  crystallizationCount: 0,
   proposedChanges: [],
 };
 
@@ -71,6 +73,9 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
   const persistTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
+  // Synchronous ref for crystallizing flag - prevents race conditions
+  // (setState is async, so stateRef.current.isCrystallizing can be stale)
+  const isCrystallizingRef = useRef(false);
 
   // Config refs (model and notes for crystallization)
   const modelRef = useRef<string>('');
@@ -116,23 +121,22 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
   const crystallizeNow = useCallback(async () => {
     const current = stateRef.current;
 
-    // Guards
-    if (current.isCrystallizing) return;
+    // Guards - use synchronous ref to prevent race conditions
+    // (setState is async, so checking state.isCrystallizing can allow duplicates)
+    if (isCrystallizingRef.current) return;
     if (!current.draftFilename) return;
 
     const pendingText = current.rawLog.slice(current.crystallizedOffset);
     if (!pendingText.trim()) return;
+
+    // Set flag synchronously BEFORE any async work
+    isCrystallizingRef.current = true;
 
     // Capture the target offset NOW, before async work
     // This is the length of rawLog at crystallization start - any text added
     // during crystallization should NOT be marked as crystallized
     const targetOffset = current.rawLog.length;
 
-    console.log('[RambleContext] Crystallizing:', {
-      pendingLength: pendingText.length,
-      offset: current.crystallizedOffset,
-      targetOffset
-    });
 
     setState(prev => ({ ...prev, isCrystallizing: true }));
 
@@ -150,14 +154,16 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
       // Advance the offset to mark only the text that was actually crystallized
       // Use the captured targetOffset, not prev.rawLog.length, to avoid marking
       // text typed during crystallization as already processed
+      isCrystallizingRef.current = false;
       setState(prev => ({
         ...prev,
         crystallizedOffset: targetOffset,
         isCrystallizing: false,
+        crystallizationCount: prev.crystallizationCount + 1,
       }));
 
-      console.log('[RambleContext] Crystallization complete');
     } catch (error: any) {
+      isCrystallizingRef.current = false;
       if (error?.name !== 'AbortError') {
         console.error('[RambleContext] Crystallization error:', error);
       }
@@ -202,16 +208,28 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
 
   // Update the raw log (allows editing pending text, but not crystallized text)
   const setRawLog = useCallback((newLog: string) => {
+    const current = stateRef.current.rawLog;
+    const addedText = newLog.slice(current.length);
+
+    // macOS dictation duplicate: added text equals existing content
+    if (addedText.length > 20 && addedText === current) {
+      console.warn('[RambleContext] Duplicate rejected');
+      return;
+    }
+
     let didChange = false;
     setState(prev => {
+      // Clamp crystallizedOffset to actual content length (handles edge cases)
+      const effectiveOffset = Math.min(prev.crystallizedOffset, prev.rawLog.length);
+
       // Can't shrink below crystallizedOffset (protect crystallized text)
-      if (newLog.length < prev.crystallizedOffset) {
-        const fixedLog = prev.rawLog.slice(0, prev.crystallizedOffset) + newLog.slice(prev.crystallizedOffset);
+      if (newLog.length < effectiveOffset) {
+        const fixedLog = prev.rawLog.slice(0, effectiveOffset) + newLog.slice(effectiveOffset);
         didChange = fixedLog !== prev.rawLog;
         return { ...prev, rawLog: fixedLog, isDirty: prev.isDirty || didChange };
       }
       // Can't modify crystallized portion
-      if (!newLog.startsWith(prev.rawLog.slice(0, prev.crystallizedOffset))) {
+      if (!newLog.startsWith(prev.rawLog.slice(0, effectiveOffset))) {
         return prev; // Reject modification to crystallized text
       }
       didChange = newLog !== prev.rawLog;
