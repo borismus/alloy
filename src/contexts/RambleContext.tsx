@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { ProposedChange, NoteInfo } from '../types';
 import { rambleService } from '../services/ramble';
 import { vaultService } from '../services/vault';
@@ -6,240 +6,344 @@ import { vaultService } from '../services/vault';
 type RamblePhase = 'idle' | 'rambling' | 'integrating' | 'approving';
 
 interface RambleState {
-  isRambling: boolean;
-  isRambleMode: boolean;              // true when viewing ramble log (cold or with draft)
-  activeDraftFilename: string | null; // currently active draft being updated by rambling
-  currentRambleNote: string | null;   // e.g., "rambles/2026-02-02-143052.md" (kept for compatibility)
-  rawInput: string;                   // accumulated raw input (scratch buffer)
-  lastCrystallizedInput: string;      // input at last crystallization (to detect changes)
-  lastCrystallizeTime: number;        // timestamp of last crystallization
+  // Core ramble state (simplified)
+  rawLog: string;                // The full user input, append-only
+  crystallizedOffset: number;    // How many chars have been processed
+  draftFilename: string | null;  // Active draft being updated
+  isDirty: boolean;              // True if user has typed since opening draft
+
+  // UI state
+  isRambleMode: boolean;
+  isCrystallizing: boolean;
+  isProcessing: boolean;         // Blocks UI (integration, apply)
   phase: RamblePhase;
-  isProcessing: boolean;
+
+  // Integration state
   proposedChanges: ProposedChange[];
 }
 
 interface RambleContextValue extends RambleState {
-  startRamble: () => Promise<string>;     // creates timestamped ramble note, returns filename
-  updateRawInput: (text: string) => void; // called on every keystroke
-  crystallizeNow: (model: string, notes: NoteInfo[]) => Promise<void>; // rewrite entire note
-  finishRamble: (model: string, notes: NoteInfo[]) => Promise<void>;   // triggered by Enter key
-  integrateExistingRamble: (ramblePath: string, model: string, notes: NoteInfo[]) => Promise<void>; // integrate an old ramble
+  // Core methods
+  setRawLog: (newLog: string) => void;
+
+  // Mode management
+  enterRambleMode: (draftFilename?: string) => void;
+  exitRambleMode: () => void;
+
+  // Integration
+  integrateNow: () => Promise<void>;
   applyChanges: () => Promise<void>;
   cancelIntegration: () => void;
-  reset: () => void;
-  // New ramble mode methods
-  enterRambleMode: (draftFilename?: string) => void; // enter cold or with draft
-  exitRambleMode: () => void;                        // exit ramble mode
-  ripDraft: () => void;                              // detach active draft, stay in ramble mode
-  setActiveDraft: (filename: string | null) => void; // set the active draft
+
+  // Config (must be set before entering ramble mode)
+  setConfig: (model: string, notes: NoteInfo[]) => void;
 }
 
-// Number of words from crystallized text to include as context overlap
-const CONTEXT_OVERLAP_WORDS = 15;
-
-// Get the last N words from a string (for context overlap)
-const getLastNWords = (text: string, n: number): string => {
-  const words = text.trim().split(/\s+/);
-  if (words.length <= n) return text;
-  return words.slice(-n).join(' ');
-};
-
 const initialState: RambleState = {
-  isRambling: false,
+  rawLog: '',
+  crystallizedOffset: 0,
+  draftFilename: null,
+  isDirty: false,
   isRambleMode: false,
-  activeDraftFilename: null,
-  currentRambleNote: null,
-  rawInput: '',
-  lastCrystallizedInput: '',
-  lastCrystallizeTime: 0,
-  phase: 'idle',
+  isCrystallizing: false,
   isProcessing: false,
+  phase: 'idle',
   proposedChanges: [],
 };
 
 const RambleContext = createContext<RambleContextValue | null>(null);
 
+// Thresholds
+const PAUSE_DELAY_MS = 800;       // Crystallize after this pause
+const MIN_CHARS_TO_CRYSTALLIZE = 20;
+const EMERGENCY_THRESHOLD = 200;  // Crystallize immediately if this many chars pending
+const PERSIST_DELAY_MS = 2000;    // Save to disk after this pause
+
 interface RambleProviderProps {
   children: React.ReactNode;
-  onSelectNote?: (filename: string) => void;
 }
 
-export const RambleProvider: React.FC<RambleProviderProps> = ({
-  children,
-  onSelectNote,
-}) => {
+export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
   const [state, setState] = useState<RambleState>(initialState);
+
+  // Refs for timers and config
+  const crystallizeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const persistTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
 
-  // Keep ref in sync with state
+  // Config refs (model and notes for crystallization)
+  const modelRef = useRef<string>('');
+  const notesRef = useRef<NoteInfo[]>([]);
+
+  // Keep stateRef in sync
   stateRef.current = state;
 
-  const startRamble = useCallback(async (): Promise<string> => {
-    // Guard: ensure vault is loaded
-    if (!rambleService.getVaultPath()) {
-      console.warn('[RambleContext] Cannot start ramble: vault path not set');
-      return '';
-    }
-
-    const filename = await rambleService.getOrCreateRambleNote();
-
-    setState(prev => ({
-      ...prev,
-      isRambling: true,
-      currentRambleNote: filename,
-      rawInput: '',
-      lastCrystallizedInput: '',
-      lastCrystallizeTime: Date.now(),
-      phase: 'rambling',
-    }));
-
-    // Auto-select the ramble note
-    if (onSelectNote) {
-      onSelectNote(filename);
-    }
-
-    return filename;
-  }, [onSelectNote]);
-
-  const updateRawInput = useCallback((text: string) => {
-    setState(prev => ({ ...prev, rawInput: text }));
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      abortControllerRef.current?.abort();
+    };
   }, []);
 
-  // Check if we should trigger crystallization
-  const shouldCrystallize = useCallback(() => {
-    const current = stateRef.current;
-    const now = Date.now();
-    const timeSinceLastCrystallize = now - current.lastCrystallizeTime;
-    const inputChanged = current.rawInput !== current.lastCrystallizedInput;
-    const hasContent = current.rawInput.trim().length > 0;
-
-    // Crystallize if: input has changed AND (5+ seconds passed OR significant new content)
-    const significantChange = current.rawInput.length - current.lastCrystallizedInput.length >= 100;
-    const timeBasedTrigger = timeSinceLastCrystallize >= 5000 && inputChanged;
-    const contentBasedTrigger = timeSinceLastCrystallize >= 2000 && significantChange;
-
-    return hasContent && (timeBasedTrigger || contentBasedTrigger);
+  // Set config (model and notes) - must be called before rambling
+  const setConfig = useCallback((model: string, notes: NoteInfo[]) => {
+    modelRef.current = model;
+    notesRef.current = notes;
   }, []);
 
-  // Crystallize: incrementally extend note with new input only
-  const crystallizeNow = useCallback(async (model: string, notes: NoteInfo[]) => {
+  // Get pending text (not yet crystallized)
+  const getPendingText = useCallback((): string => {
+    return stateRef.current.rawLog.slice(stateRef.current.crystallizedOffset);
+  }, []);
+
+  // Persist rawLog and crystallizedOffset to draft frontmatter (for crash recovery)
+  const persistToDraft = useCallback(async () => {
+    const { draftFilename, rawLog, crystallizedOffset, isDirty } = stateRef.current;
+    // Only persist if user has actually typed something
+    if (!draftFilename || !rawLog || !isDirty) return;
+
+    try {
+      await rambleService.updateDraftRawInput(draftFilename, rawLog, crystallizedOffset);
+    } catch (error) {
+      console.error('[RambleContext] Failed to persist:', error);
+    }
+  }, []);
+
+  // Crystallize pending text
+  const crystallizeNow = useCallback(async () => {
     const current = stateRef.current;
-    if (current.isProcessing || !current.currentRambleNote) return;
-    if (!current.rawInput.trim()) return;
 
-    // Check trigger conditions
-    if (!shouldCrystallize()) return;
+    // Guards
+    if (current.isCrystallizing) return;
+    if (!current.draftFilename) return;
 
-    // Calculate incremental text (only what's new since last crystallization)
-    const incrementalText = current.rawInput.slice(current.lastCrystallizedInput.length);
-    if (!incrementalText.trim()) return;  // Nothing new to crystallize
+    const pendingText = current.rawLog.slice(current.crystallizedOffset);
+    if (!pendingText.trim()) return;
 
-    setState(prev => ({ ...prev, isProcessing: true }));
+    // Capture the target offset NOW, before async work
+    // This is the length of rawLog at crystallization start - any text added
+    // during crystallization should NOT be marked as crystallized
+    const targetOffset = current.rawLog.length;
+
+    console.log('[RambleContext] Crystallizing:', {
+      pendingLength: pendingText.length,
+      offset: current.crystallizedOffset,
+      targetOffset
+    });
+
+    setState(prev => ({ ...prev, isCrystallizing: true }));
 
     try {
       abortControllerRef.current = new AbortController();
 
-      // Include context overlap from crystallized text for better LLM understanding
-      const contextOverlap = getLastNWords(current.lastCrystallizedInput, CONTEXT_OVERLAP_WORDS);
-      const textWithContext = contextOverlap ? `${contextOverlap} ${incrementalText}` : incrementalText;
-
-      // Crystallize with context overlap
       await rambleService.crystallize(
-        textWithContext,
-        current.currentRambleNote,
-        notes,
-        model,
+        pendingText,
+        current.draftFilename,
+        notesRef.current,
+        modelRef.current,
         abortControllerRef.current.signal
       );
 
+      // Advance the offset to mark only the text that was actually crystallized
+      // Use the captured targetOffset, not prev.rawLog.length, to avoid marking
+      // text typed during crystallization as already processed
       setState(prev => ({
         ...prev,
-        lastCrystallizedInput: prev.rawInput,  // Mark all current input as crystallized
-        lastCrystallizeTime: Date.now(),
-        isProcessing: false,
+        crystallizedOffset: targetOffset,
+        isCrystallizing: false,
       }));
+
+      console.log('[RambleContext] Crystallization complete');
     } catch (error: any) {
       if (error?.name !== 'AbortError') {
         console.error('[RambleContext] Crystallization error:', error);
       }
-      setState(prev => ({ ...prev, isProcessing: false }));
-    }
-  }, [shouldCrystallize]);
-
-  const finishRamble = useCallback(async (model: string, notes: NoteInfo[]) => {
-    const current = stateRef.current;
-
-    // Cancel any ongoing processing
-    abortControllerRef.current?.abort();
-
-    // Final crystallization if there's unprocessed input
-    const incrementalText = current.rawInput.slice(current.lastCrystallizedInput.length);
-    if (incrementalText.trim() && current.currentRambleNote) {
-      setState(prev => ({ ...prev, isProcessing: true }));
-      try {
-        // Include context overlap from crystallized text
-        const contextOverlap = getLastNWords(current.lastCrystallizedInput, CONTEXT_OVERLAP_WORDS);
-        const textWithContext = contextOverlap ? `${contextOverlap} ${incrementalText}` : incrementalText;
-
-        await rambleService.crystallize(
-          textWithContext,
-          current.currentRambleNote,
-          notes,
-          model
-        );
-      } catch (error) {
-        console.error('[RambleContext] Final crystallization error:', error);
-      }
-    }
-
-    // Switch to integrating phase
-    setState(prev => ({
-      ...prev,
-      phase: 'integrating',
-      isProcessing: true,
-    }));
-
-    // Generate integration proposals
-    if (current.currentRambleNote) {
-      try {
-        const proposals = await rambleService.generateIntegrationProposal(
-          current.currentRambleNote,
-          notes,
-          model
-        );
-
-        setState(prev => ({
-          ...prev,
-          phase: 'approving',
-          isProcessing: false,
-          proposedChanges: proposals,
-        }));
-      } catch (error) {
-        console.error('[RambleContext] Integration proposal error:', error);
-        setState(prev => ({
-          ...prev,
-          phase: 'idle',
-          isProcessing: false,
-        }));
-      }
+      setState(prev => ({ ...prev, isCrystallizing: false }));
     }
   }, []);
 
-  // Integrate an existing ramble note (not from active rambling session)
-  const integrateExistingRamble = useCallback(async (ramblePath: string, model: string, notes: NoteInfo[]) => {
-    setState(prev => ({
-      ...prev,
-      currentRambleNote: ramblePath,
-      phase: 'integrating',
-      isProcessing: true,
-    }));
+  // Schedule crystallization with debounce
+  const schedulecrystallization = useCallback(() => {
+    // Clear existing timer
+    if (crystallizeTimerRef.current) {
+      clearTimeout(crystallizeTimerRef.current);
+      crystallizeTimerRef.current = null;
+    }
+
+    const pending = getPendingText();
+
+    // Emergency valve - too much text, crystallize now
+    if (pending.length >= EMERGENCY_THRESHOLD) {
+      crystallizeNow();
+      return;
+    }
+
+    // Normal pause-based trigger
+    if (pending.trim().length >= MIN_CHARS_TO_CRYSTALLIZE) {
+      crystallizeTimerRef.current = setTimeout(() => {
+        crystallizeNow();
+      }, PAUSE_DELAY_MS);
+    }
+  }, [getPendingText, crystallizeNow]);
+
+  // Schedule persistence with debounce
+  const schedulePersistence = useCallback(() => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+    }
+
+    persistTimerRef.current = setTimeout(() => {
+      persistToDraft();
+    }, PERSIST_DELAY_MS);
+  }, [persistToDraft]);
+
+  // Update the raw log (allows editing pending text, but not crystallized text)
+  const setRawLog = useCallback((newLog: string) => {
+    let didChange = false;
+    setState(prev => {
+      // Can't shrink below crystallizedOffset (protect crystallized text)
+      if (newLog.length < prev.crystallizedOffset) {
+        const fixedLog = prev.rawLog.slice(0, prev.crystallizedOffset) + newLog.slice(prev.crystallizedOffset);
+        didChange = fixedLog !== prev.rawLog;
+        return { ...prev, rawLog: fixedLog, isDirty: prev.isDirty || didChange };
+      }
+      // Can't modify crystallized portion
+      if (!newLog.startsWith(prev.rawLog.slice(0, prev.crystallizedOffset))) {
+        return prev; // Reject modification to crystallized text
+      }
+      didChange = newLog !== prev.rawLog;
+      return { ...prev, rawLog: newLog, isDirty: prev.isDirty || didChange };
+    });
+
+    // Only schedule crystallization and persistence if something changed
+    // Note: didChange may not reflect the actual state change due to React batching,
+    // but the schedulers check pending text anyway
+    schedulecrystallization();
+    schedulePersistence();
+  }, [schedulecrystallization, schedulePersistence]);
+
+  // Create draft if needed (when enough text accumulates)
+  useEffect(() => {
+    const createDraftIfNeeded = async () => {
+      const { rawLog, draftFilename, isRambleMode, isDirty } = stateRef.current;
+
+      // Only create draft if in ramble mode, no draft yet, user has typed, and enough content
+      if (!isRambleMode || draftFilename || !isDirty || rawLog.trim().length < 10) return;
+
+      try {
+        const filename = await rambleService.getOrCreateRambleNote(rawLog);
+        setState(prev => ({
+          ...prev,
+          draftFilename: filename,
+          phase: 'rambling',
+        }));
+        console.log('[RambleContext] Created draft:', filename);
+      } catch (error) {
+        console.error('[RambleContext] Failed to create draft:', error);
+      }
+    };
+
+    createDraftIfNeeded();
+  }, [state.rawLog, state.draftFilename, state.isRambleMode, state.isDirty]);
+
+  // Enter ramble mode
+  const enterRambleMode = useCallback(async (existingDraftFilename?: string) => {
+    // Clear any existing timers
+    if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+
+    if (existingDraftFilename) {
+      // Resume existing draft - load rawInput and crystallizedOffset from frontmatter
+      try {
+        const { rawInput, crystallizedOffset } = await rambleService.getDraftRawInput(existingDraftFilename);
+        setState(prev => ({
+          ...prev,
+          isRambleMode: true,
+          draftFilename: existingDraftFilename,
+          rawLog: rawInput,
+          crystallizedOffset,
+          isDirty: false,
+          phase: 'rambling',
+        }));
+      } catch (error) {
+        console.error('[RambleContext] Failed to load rawInput:', error);
+        setState(prev => ({
+          ...prev,
+          isRambleMode: true,
+          draftFilename: existingDraftFilename,
+          rawLog: '',
+          crystallizedOffset: 0,
+          isDirty: false,
+          phase: 'rambling',
+        }));
+      }
+    } else {
+      // Fresh start - empty input
+      setState(prev => ({
+        ...prev,
+        isRambleMode: true,
+        draftFilename: null,
+        rawLog: '',
+        crystallizedOffset: 0,
+        isDirty: false,
+        phase: 'idle',
+      }));
+    }
+  }, []);
+
+  // Exit ramble mode
+  const exitRambleMode = useCallback(async () => {
+    // Cancel timers and abort any ongoing crystallization
+    if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    abortControllerRef.current?.abort();
+
+    // Persist before exiting
+    await persistToDraft();
+
+    setState(initialState);
+  }, [persistToDraft]);
+
+  // Integrate - crystallize remaining and generate proposals
+  const integrateNow = useCallback(async () => {
+    const current = stateRef.current;
+    if (!current.draftFilename) return;
+
+    // Cancel any pending crystallization
+    if (crystallizeTimerRef.current) {
+      clearTimeout(crystallizeTimerRef.current);
+      crystallizeTimerRef.current = null;
+    }
+
+    setState(prev => ({ ...prev, isProcessing: true }));
 
     try {
+      // Final crystallization if there's pending text
+      const pending = current.rawLog.slice(current.crystallizedOffset);
+      const targetOffset = current.rawLog.length; // Capture before async work
+      if (pending.trim()) {
+        await rambleService.crystallize(
+          pending,
+          current.draftFilename,
+          notesRef.current,
+          modelRef.current
+        );
+        setState(prev => ({ ...prev, crystallizedOffset: targetOffset }));
+      }
+
+      // Persist
+      await persistToDraft();
+
+      // Generate integration proposals
+      setState(prev => ({ ...prev, phase: 'integrating' }));
+
       const proposals = await rambleService.generateIntegrationProposal(
-        ramblePath,
-        notes,
-        model
+        current.draftFilename,
+        notesRef.current,
+        modelRef.current
       );
 
       setState(prev => ({
@@ -249,17 +353,19 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
         proposedChanges: proposals,
       }));
     } catch (error) {
-      console.error('[RambleContext] Integration proposal error:', error);
+      console.error('[RambleContext] Integration error:', error);
       setState(prev => ({
         ...prev,
-        phase: 'idle',
+        phase: 'rambling',
         isProcessing: false,
       }));
     }
-  }, []);
+  }, [persistToDraft]);
 
+  // Apply proposed changes
   const applyChanges = useCallback(async () => {
-    if (stateRef.current.proposedChanges.length === 0) {
+    const { proposedChanges, draftFilename } = stateRef.current;
+    if (proposedChanges.length === 0) {
       setState(initialState);
       return;
     }
@@ -269,15 +375,13 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     try {
       const vaultPath = vaultService.getVaultPath();
       if (vaultPath) {
-        // Pass ramble note path for provenance tracking
         await rambleService.applyProposedChanges(
-          stateRef.current.proposedChanges,
+          proposedChanges,
           vaultPath,
-          stateRef.current.currentRambleNote || undefined
+          draftFilename || undefined
         );
       }
 
-      // Reset state after successful apply
       setState(initialState);
     } catch (error) {
       console.error('[RambleContext] Apply changes error:', error);
@@ -285,77 +389,25 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({
     }
   }, []);
 
+  // Cancel integration
   const cancelIntegration = useCallback(() => {
-    setState(initialState);
-  }, []);
-
-  const reset = useCallback(() => {
-    abortControllerRef.current?.abort();
-    setState(initialState);
-  }, []);
-
-  // Enter ramble mode - cold (no draft) or with an existing draft
-  const enterRambleMode = useCallback((draftFilename?: string) => {
     setState(prev => ({
       ...prev,
-      isRambleMode: true,
-      activeDraftFilename: draftFilename || null,
-      currentRambleNote: draftFilename || null,
-      phase: draftFilename ? 'rambling' : 'idle',
-    }));
-  }, []);
-
-  // Exit ramble mode
-  const exitRambleMode = useCallback(() => {
-    abortControllerRef.current?.abort();
-    setState(prev => ({
-      ...prev,
-      isRambleMode: false,
-      activeDraftFilename: null,
-      rawInput: '',
-      lastCrystallizedInput: '',
-      phase: 'idle',
-    }));
-  }, []);
-
-  // Rip draft - detach the active draft but stay in ramble mode (cold)
-  const ripDraft = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      activeDraftFilename: null,
-      currentRambleNote: null,
-      rawInput: '',
-      lastCrystallizedInput: '',
-      lastCrystallizeTime: Date.now(),
-      isRambling: false,
-      phase: 'idle',
-    }));
-  }, []);
-
-  // Set active draft
-  const setActiveDraft = useCallback((filename: string | null) => {
-    setState(prev => ({
-      ...prev,
-      activeDraftFilename: filename,
-      currentRambleNote: filename,
-      phase: filename ? 'rambling' : 'idle',
+      phase: 'rambling',
+      isProcessing: false,
+      proposedChanges: [],
     }));
   }, []);
 
   const value: RambleContextValue = {
     ...state,
-    startRamble,
-    updateRawInput,
-    crystallizeNow,
-    finishRamble,
-    integrateExistingRamble,
-    applyChanges,
-    cancelIntegration,
-    reset,
+    setRawLog,
     enterRambleMode,
     exitRambleMode,
-    ripDraft,
-    setActiveDraft,
+    integrateNow,
+    applyChanges,
+    cancelIntegration,
+    setConfig,
   };
 
   return (
@@ -373,7 +425,6 @@ export const useRambleContext = (): RambleContextValue => {
   return context;
 };
 
-// Hook that returns null if not inside provider (for optional usage)
 export const useRambleContextOptional = (): RambleContextValue | null => {
   return useContext(RambleContext);
 };

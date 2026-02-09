@@ -73,14 +73,13 @@ export interface NoteChatSidebarHandle {
 
 const RAMBLE_CONVERSATION_ID = 'ramble_history';
 
-export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatSidebarProps>(({ isOpen, availableModels, favoriteModels, notes = [], onNavigateToNote }, ref) => {
+export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatSidebarProps>(({ isOpen, availableModels, favoriteModels, notes: _notes = [], onNavigateToNote }, ref) => {
   const [mode, setMode] = useState<SidebarMode>('ramble');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationRef = useRef<ConversationViewHandle>(null);
-  const processingIntervalRef = useRef<number | null>(null);
   const { execute: executeWithTools } = useToolExecution();
 
   // Ramble context (optional - might be outside provider)
@@ -140,30 +139,8 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
     }
   }, [hasCompletedContent, lastMessage?.role, clearStreaming]);
 
-  // Set up ramble mode crystallization interval
-  useEffect(() => {
-    if (mode !== 'ramble' || !rambleContext?.isRambling) {
-      if (processingIntervalRef.current) {
-        window.clearInterval(processingIntervalRef.current);
-        processingIntervalRef.current = null;
-      }
-      return;
-    }
-
-    // Check for crystallization every second
-    processingIntervalRef.current = window.setInterval(() => {
-      if (selectedModel && rambleContext) {
-        rambleContext.crystallizeNow(selectedModel, notes);
-      }
-    }, 1000);
-
-    return () => {
-      if (processingIntervalRef.current) {
-        window.clearInterval(processingIntervalRef.current);
-        processingIntervalRef.current = null;
-      }
-    };
-  }, [mode, rambleContext?.isRambling, selectedModel, notes, rambleContext]);
+  // Crystallization is now handled automatically by the context
+  // No interval needed here
 
   // Expose scrollToMessage via ref
   useImperativeHandle(ref, () => ({
@@ -180,16 +157,10 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   };
 
   // Handle ramble mode input changes (from AppendOnlyTextarea)
-  const handleRambleInputChange = useCallback(async (newValue: string) => {
+  const handleRambleInputChange = useCallback((newValue: string) => {
     setInputValue(newValue);
-
-    if (rambleContext) {
-      if (!rambleContext.isRambling && newValue.trim()) {
-        // Start ramble on first input
-        await rambleContext.startRamble();
-      }
-      rambleContext.updateRawInput(newValue);
-    }
+    // Pass full value to context (it handles protecting crystallized text)
+    rambleContext?.setRawLog(newValue);
   }, [rambleContext]);
 
   const handleStop = useCallback(() => {
@@ -199,9 +170,9 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
   const handleSend = async () => {
     if (!inputValue.trim() || isStreaming || !selectedModel) return;
 
-    // In ramble mode, Enter triggers finish
+    // In ramble mode, Enter triggers integration
     if (mode === 'ramble' && rambleContext) {
-      await rambleContext.finishRamble(selectedModel, notes);
+      await rambleContext.integrateNow();
       setInputValue('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -312,8 +283,8 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
 
     // Reset state when switching modes
     if (newMode === 'chat') {
-      // Switching to chat mode - reset ramble context
-      rambleContext?.reset();
+      // Switching to chat mode - exit ramble mode
+      rambleContext?.exitRambleMode();
     }
 
     setMode(newMode);
@@ -372,7 +343,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           <AppendOnlyTextarea
             value={inputValue}
             onChange={handleRambleInputChange}
-            lockedLength={rambleContext?.lastCrystallizedInput.length ?? 0}
+            lockedLength={rambleContext?.crystallizedOffset ?? 0}
             placeholder="Start typing your thoughts..."
             className="note-chat-ramble-textarea"
             disabled={isStreaming}

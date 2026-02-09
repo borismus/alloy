@@ -10,7 +10,7 @@ interface RambleHistoryFile {
 
 const MAX_MESSAGES = 50;
 const RAMBLE_FILENAME = 'ramble_history.yaml';
-const RAMBLE_LOG_FILENAME = '_log.md';
+const RAMBLE_LOG_FILENAME = 'raw_input';
 
 // Terse system prompt for action-focused responses
 export const RAMBLE_SYSTEM_PROMPT = `You are a quick-action assistant. Be extremely terse. Focus on doing, not explaining.
@@ -77,6 +77,31 @@ export class RambleService {
       await writeTextFile(logPath, content);
     } catch (error) {
       console.error('[RambleService] Failed to write ramble log:', error);
+    }
+  }
+
+  // Append text to the global log (more efficient than full rewrite)
+  async appendToLog(text: string): Promise<void> {
+    if (!this.vaultPath || !text) return;
+
+    // Ensure rambles directory exists
+    const ramblesPath = await join(this.vaultPath, 'rambles');
+    if (!(await exists(ramblesPath))) {
+      await mkdir(ramblesPath, { recursive: true });
+    }
+
+    const logPath = await this.getRambleLogPath();
+    if (!logPath) return;
+
+    try {
+      // Read existing content and append
+      let existingContent = '';
+      if (await exists(logPath)) {
+        existingContent = await readTextFile(logPath);
+      }
+      await writeTextFile(logPath, existingContent + text);
+    } catch (error) {
+      console.error('[RambleService] Failed to append to ramble log:', error);
     }
   }
 
@@ -164,37 +189,48 @@ ${rawInputYaml}
     return filename;
   }
 
-  // Get the rawInput from a draft's frontmatter
-  async getDraftRawInput(rambleNotePath: string): Promise<string> {
-    if (!this.vaultPath) return '';
+  // Get the rawInput and crystallizedOffset from a draft's frontmatter
+  async getDraftRawInput(rambleNotePath: string): Promise<{ rawInput: string; crystallizedOffset: number }> {
+    if (!this.vaultPath) return { rawInput: '', crystallizedOffset: 0 };
 
     try {
       const fullPath = await join(this.vaultPath, rambleNotePath);
-      if (!(await exists(fullPath))) return '';
+      if (!(await exists(fullPath))) return { rawInput: '', crystallizedOffset: 0 };
 
       const content = await readTextFile(fullPath);
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) return '';
+      if (!fmMatch) return { rawInput: '', crystallizedOffset: 0 };
 
-      // Parse rawInput from frontmatter (handles YAML literal block scalar)
       const frontmatter = fmMatch[1];
-      const rawInputMatch = frontmatter.match(/rawInput:\s*\|?\n?([\s\S]*?)(?=\n\w+:|$)/);
-      if (!rawInputMatch) return '';
 
-      // If it's a literal block scalar, remove the 2-space indentation
-      const rawValue = rawInputMatch[1];
-      if (rawValue.startsWith('  ')) {
-        return rawValue.split('\n').map(line => line.slice(2)).join('\n').trim();
+      // Parse rawInput (handles YAML literal block scalar)
+      let rawInput = '';
+      const rawInputMatch = frontmatter.match(/rawInput:\s*\|?\n?([\s\S]*?)(?=\n\w+:|$)/);
+      if (rawInputMatch) {
+        const rawValue = rawInputMatch[1];
+        if (rawValue.startsWith('  ')) {
+          rawInput = rawValue.split('\n').map(line => line.slice(2)).join('\n').trim();
+        } else {
+          rawInput = rawValue.replace(/^["']|["']$/g, '').trim();
+        }
       }
-      return rawValue.replace(/^["']|["']$/g, '').trim();
+
+      // Parse crystallizedOffset
+      let crystallizedOffset = rawInput.length; // Default to all crystallized
+      const offsetMatch = frontmatter.match(/crystallizedOffset:\s*(\d+)/);
+      if (offsetMatch) {
+        crystallizedOffset = parseInt(offsetMatch[1], 10);
+      }
+
+      return { rawInput, crystallizedOffset };
     } catch (error) {
       console.error('[RambleService] Failed to get draft rawInput:', error);
-      return '';
+      return { rawInput: '', crystallizedOffset: 0 };
     }
   }
 
-  // Update the rawInput in a draft's frontmatter
-  async updateDraftRawInput(rambleNotePath: string, rawInput: string): Promise<void> {
+  // Update the rawInput and crystallizedOffset in a draft's frontmatter
+  async updateDraftRawInput(rambleNotePath: string, rawInput: string, crystallizedOffset?: number): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
     const fullPath = await join(this.vaultPath, rambleNotePath);
@@ -206,19 +242,25 @@ ${rawInputYaml}
 
     const [, frontmatter, body] = fmMatch;
 
-    // Build new frontmatter with updated rawInput
+    // Build new frontmatter with updated rawInput and crystallizedOffset
     const rawInputYaml = rawInput
       ? `rawInput: |\n${rawInput.split('\n').map(line => '  ' + line).join('\n')}`
       : 'rawInput: ""';
+    const offsetYaml = `crystallizedOffset: ${crystallizedOffset ?? rawInput.length}`;
 
     // Replace or add rawInput in frontmatter
     let newFrontmatter: string;
     if (frontmatter.includes('rawInput:')) {
-      // Replace existing rawInput (handles multi-line)
       newFrontmatter = frontmatter.replace(/rawInput:[\s\S]*?(?=\n\w+:|$)/, rawInputYaml);
     } else {
-      // Add rawInput
       newFrontmatter = frontmatter.trim() + '\n' + rawInputYaml;
+    }
+
+    // Replace or add crystallizedOffset
+    if (newFrontmatter.includes('crystallizedOffset:')) {
+      newFrontmatter = newFrontmatter.replace(/crystallizedOffset:\s*\d+/, offsetYaml);
+    } else {
+      newFrontmatter = newFrontmatter.trim() + '\n' + offsetYaml;
     }
 
     await writeTextFile(fullPath, `---\n${newFrontmatter}\n---\n${body}`);
@@ -321,12 +363,15 @@ Rules:
 - Preserve the existing structure and all existing content
 - Add new thoughts in appropriate sections or create new sections as needed
 - You may reorganize slightly to maintain coherence, but don't lose information
-- Use Obsidian-style wikilinks: [[Note Name]] or [[Note Name|display text]]
-- Do NOT use markdown link syntax for wikilinks (no [text](wikilink:...) format)
 - Be concise but preserve the essence of all ideas
 - Output ONLY the note content (no meta-commentary)
 
-Existing notes in vault (for wikilinks): ${notesList}`;
+WIKILINK FORMAT (MUST FOLLOW EXACTLY):
+- Use ONLY double-bracket syntax: [[Note Name]]
+- WRONG: [text](wikilink:Note) or [text](Note Name)
+- RIGHT: [[Note Name]]
+
+Existing notes in vault: ${notesList}`;
 
     const messages: Message[] = [
       { role: 'user', timestamp: new Date().toISOString(), content: `Incorporate the new input into the note.` }
@@ -402,11 +447,14 @@ Return ONLY a valid JSON array of proposed changes. Each object must have:
 
 Rules:
 - Prefer appending to existing notes over creating new ones
-- Use Obsidian-style wikilinks: [[Note Name]] or [[Note Name|display text]]
-- Do NOT use markdown link syntax (no [text](wikilink:...) format)
 - Add provenance marker at the end: &[[rambles/${rambleFilename}]]
 - Only propose meaningful integrations - don't force it
 - If no good integrations exist, return an empty array []
+
+WIKILINK FORMAT (MUST FOLLOW EXACTLY):
+- Use ONLY double-bracket syntax: [[Note Name]]
+- WRONG: [text](wikilink:Note) or [text](Note Name)
+- RIGHT: [[Note Name]]
 
 Return ONLY the JSON array, no other text.`;
 

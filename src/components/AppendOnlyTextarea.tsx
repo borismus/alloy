@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, KeyboardEvent, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useCallback, KeyboardEvent } from 'react';
 import './AppendOnlyTextarea.css';
 
 interface AppendOnlyTextareaProps {
@@ -13,8 +13,6 @@ interface AppendOnlyTextareaProps {
 
 /**
  * Textarea that locks the first N characters from editing.
- * Uses a backdrop div to show locked text with gray background,
- * unlocked text with white background, and a gradient transition line.
  */
 export const AppendOnlyTextarea: React.FC<AppendOnlyTextareaProps> = ({
   value,
@@ -26,7 +24,6 @@ export const AppendOnlyTextarea: React.FC<AppendOnlyTextareaProps> = ({
   onSubmit,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const backdropRef = useRef<HTMLDivElement>(null);
   const lastValidValue = useRef(value);
 
   // Keep track of valid value
@@ -34,33 +31,22 @@ export const AppendOnlyTextarea: React.FC<AppendOnlyTextareaProps> = ({
     lastValidValue.current = value;
   }, [value]);
 
-  // Focus on mount
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
-
-  // Auto-resize textarea and sync backdrop height
+  // Focus and scroll to bottom on mount
   useEffect(() => {
     const textarea = textareaRef.current;
-    const backdrop = backdropRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
-      const newHeight = `${textarea.scrollHeight}px`;
-      textarea.style.height = newHeight;
-      if (backdrop) {
-        backdrop.style.height = newHeight;
-      }
+      textarea.focus();
+      textarea.scrollTop = textarea.scrollHeight;
+    }
+  }, []);
+
+  // Scroll to bottom when content changes
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.scrollTop = textarea.scrollHeight;
     }
   }, [value]);
-
-  // Sync backdrop scroll with textarea
-  const handleScroll = useCallback(() => {
-    const textarea = textareaRef.current;
-    const backdrop = backdropRef.current;
-    if (textarea && backdrop) {
-      backdrop.scrollTop = textarea.scrollTop;
-    }
-  }, []);
 
   // Prevent selection from starting in locked region
   const handleSelect = useCallback(() => {
@@ -146,86 +132,52 @@ export const AppendOnlyTextarea: React.FC<AppendOnlyTextareaProps> = ({
     }
   }, [lockedLength, value, onChange]);
 
-  // Split text into regions for rendering
-  const textRegions = useMemo(() => {
-    if (lockedLength === 0) {
-      // No locked content
-      return {
-        fullyLockedLines: '',
-        transitionLineLocked: '',
-        transitionLineUnlocked: '',
-        fullyUnlockedLines: value,
-        hasTransitionLine: false,
-      };
+  // Calculate the height for the crystallized background overlay
+  const [overlayHeight, setOverlayHeight] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+
+  // Measure crystallized text height by counting lines
+  useEffect(() => {
+    if (!textareaRef.current || lockedLength <= 0) {
+      setOverlayHeight(0);
+      return;
     }
 
-    const lockedText = value.slice(0, lockedLength);
-    const unlockedText = value.slice(lockedLength);
+    const crystallizedText = value.slice(0, lockedLength);
+    const lineHeight = 24; // Match CSS line-height
 
-    // Find the last newline in locked text
-    const lastNewlineInLocked = lockedText.lastIndexOf('\n');
-
-    // Find the first newline in unlocked text
-    const firstNewlineInUnlocked = unlockedText.indexOf('\n');
-
-    if (lastNewlineInLocked === -1) {
-      // No complete locked lines - everything is on the transition line
-      return {
-        fullyLockedLines: '',
-        transitionLineLocked: lockedText,
-        transitionLineUnlocked: firstNewlineInUnlocked === -1 ? unlockedText : unlockedText.slice(0, firstNewlineInUnlocked),
-        fullyUnlockedLines: firstNewlineInUnlocked === -1 ? '' : unlockedText.slice(firstNewlineInUnlocked),
-        hasTransitionLine: true,
-      };
+    // Estimate wrapped lines based on average chars per line
+    const textarea = textareaRef.current;
+    const charsPerLine = Math.floor(textarea.clientWidth / 9); // ~9px per char
+    const lines = crystallizedText.split('\n');
+    let totalLines = 0;
+    for (const line of lines) {
+      totalLines += Math.max(1, Math.ceil(line.length / charsPerLine));
     }
 
-    // We have complete locked lines
-    const fullyLockedLines = lockedText.slice(0, lastNewlineInLocked + 1); // Include the newline
-    const transitionLineLocked = lockedText.slice(lastNewlineInLocked + 1);
-
-    if (firstNewlineInUnlocked === -1) {
-      // No complete unlocked lines
-      return {
-        fullyLockedLines,
-        transitionLineLocked,
-        transitionLineUnlocked: unlockedText,
-        fullyUnlockedLines: '',
-        hasTransitionLine: transitionLineLocked.length > 0 || unlockedText.length > 0,
-      };
-    }
-
-    return {
-      fullyLockedLines,
-      transitionLineLocked,
-      transitionLineUnlocked: unlockedText.slice(0, firstNewlineInUnlocked),
-      fullyUnlockedLines: unlockedText.slice(firstNewlineInUnlocked),
-      hasTransitionLine: true,
-    };
+    const height = totalLines * lineHeight;
+    setOverlayHeight(height);
   }, [value, lockedLength]);
+
+  const handleScroll = useCallback(() => {
+    if (textareaRef.current) {
+      setScrollOffset(textareaRef.current.scrollTop);
+    }
+  }, []);
 
   return (
     <div className={`append-only-wrapper ${className || ''}`}>
-      {/* Backdrop showing styled text */}
-      <div
-        ref={backdropRef}
-        className="append-only-backdrop"
-        aria-hidden="true"
-      >
-        {textRegions.fullyLockedLines && (
-          <span className="fully-locked">{textRegions.fullyLockedLines}</span>
-        )}
-        {textRegions.hasTransitionLine && (
-          <span className="transition-line">
-            <span className="locked-part">{textRegions.transitionLineLocked}</span>
-            <span className="unlocked-part">{textRegions.transitionLineUnlocked}</span>
-          </span>
-        )}
-        {textRegions.fullyUnlockedLines && (
-          <span className="fully-unlocked">{textRegions.fullyUnlockedLines}</span>
-        )}
-        {!value && <span className="placeholder-text">{placeholder}</span>}
-      </div>
-      {/* Actual textarea (text is transparent, caret visible) */}
+      {/* Background overlay for crystallized region */}
+      {lockedLength > 0 && overlayHeight > 0 && (
+        <div
+          className="append-only-overlay"
+          style={{
+            height: overlayHeight,
+            top: 8 - scrollOffset, // Match textarea padding, scroll with content
+          }}
+          aria-hidden="true"
+        />
+      )}
       <textarea
         ref={textareaRef}
         value={value}

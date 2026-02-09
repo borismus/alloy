@@ -2,85 +2,50 @@
   position: relative;
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: white;
   overflow: hidden;
 }
 
-/* Backdrop showing styled text behind transparent textarea */
-.append-only-backdrop {
+/* Background overlay for crystallized text */
+.append-only-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: 8px;
-  font-family: inherit;
-  font-size: 15px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
+  left: 8px;
+  right: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px 4px 0 0;
   pointer-events: none;
-  overflow: hidden;
   z-index: 0;
+  overflow: hidden;
 }
 
-/* Fully locked lines - gray background */
-.append-only-backdrop .fully-locked {
-  color: #666;
-  background: #f0f0f0;
-}
-
-/* Transition line - gradient from gray to white */
-.append-only-backdrop .transition-line {
-  display: inline;
-  background: linear-gradient(to bottom, #f0f0f0, #fff);
-}
-
-.append-only-backdrop .transition-line .locked-part {
-  color: #666;
-}
-
-.append-only-backdrop .transition-line .unlocked-part {
-  color: #000;
-}
-
-/* Fully unlocked lines - white background */
-.append-only-backdrop .fully-unlocked {
-  color: #000;
-  background: #fff;
-}
-
-.append-only-backdrop .placeholder-text {
-  color: #999;
-  font-style: italic;
-}
-
-.append-only-textarea {
+/* Gradient fade at the bottom of the overlay */
+.append-only-overlay::after {
+  content: '';
   position: absolute;
-  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 1;
-  overflow-y: auto;
+  height: 24px;
+  background: linear-gradient(to bottom, #f0f0f0, white);
+  pointer-events: none;
+}
+
+.append-only-textarea {
+  flex: 1;
   padding: 8px;
   border: none;
-  background: transparent;
+  outline: none;
   resize: none;
-  font-family: inherit;
+  overflow-y: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 15px;
-  line-height: 1.6;
-  color: transparent;
-  caret-color: #000;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.append-only-textarea::selection {
-  background: rgba(59, 130, 246, 0.3);
-}
-
-.append-only-textarea:focus {
-  outline: none;
+  line-height: 24px;
+  background: transparent !important;
+  background-color: transparent !important;
+  position: relative;
+  z-index: 1;
 }
 
 .append-only-textarea:disabled {
@@ -88,6 +53,17 @@
   cursor: not-allowed;
 }
 
-.append-only-textarea::placeholder {
-  color: transparent;
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .append-only-wrapper {
+    background: var(--bg-primary, #1a1a1a);
+  }
+
+  .append-only-overlay {
+    background-color: #2a2a2a;
+  }
+
+  .append-only-overlay::after {
+    background: linear-gradient(to bottom, #2a2a2a, var(--bg-primary, #1a1a1a));
+  }
 }

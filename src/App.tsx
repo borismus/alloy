@@ -54,9 +54,10 @@ interface MainPanelWithRambleProps {
   notes: NoteInfo[];
   selectedModel: string;
   onNavigateToNote: (filename: string) => void;
+  onNavigateToConversation: (conversationId: string, messageId?: string) => void;
+  conversations: { id: string; title?: string }[];
   selectedNote: { filename: string; content: string } | null;
-  hasNonRambleSelection: boolean; // true if user selected conversation or trigger (not note)
-  onClearNote: () => void; // clear the selected note when entering ramble mode
+  hasAnySelection: boolean; // true if user selected conversation, trigger, or non-ramble note
   children: React.ReactNode;
 }
 
@@ -64,9 +65,10 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
   notes,
   selectedModel,
   onNavigateToNote,
+  onNavigateToConversation,
+  conversations,
   selectedNote,
-  hasNonRambleSelection,
-  onClearNote,
+  hasAnySelection,
   children,
 }) => {
   const rambleContext = useRambleContext();
@@ -75,43 +77,32 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
   const isRambleNote = selectedNote?.filename.startsWith('rambles/') &&
     !selectedNote.content.includes('integrated: true');
 
-  console.log('[MainPanelWithRamble]', {
-    isRambleMode: rambleContext.isRambleMode,
-    activeDraftFilename: rambleContext.activeDraftFilename,
-    selectedNote: selectedNote?.filename,
-    isRambleNote,
-    hasNonRambleSelection,
-  });
-
-  // Auto-enter ramble mode when viewing a draft note, or switch drafts if already in ramble mode
+  // Auto-enter ramble mode when viewing a draft note
   useEffect(() => {
     if (isRambleNote && selectedNote) {
-      // Either entering ramble mode, or switching to a different draft
-      if (!rambleContext.isRambleMode || rambleContext.activeDraftFilename !== selectedNote.filename) {
-        console.log('[MainPanelWithRamble] Entering/switching ramble mode with draft:', selectedNote.filename);
+      if (!rambleContext.isRambleMode || rambleContext.draftFilename !== selectedNote.filename) {
         rambleContext.enterRambleMode(selectedNote.filename);
-        onClearNote(); // Clear note selection so ramble mode takes over
       }
     }
-  }, [isRambleNote, selectedNote, rambleContext.isRambleMode, rambleContext.activeDraftFilename, onClearNote]);
+  }, [isRambleNote, selectedNote, rambleContext.isRambleMode, rambleContext.draftFilename]);
 
-  // Auto-exit ramble mode when user navigates to non-ramble content
+  // Auto-exit ramble mode when user navigates away
   useEffect(() => {
-    if (rambleContext.isRambleMode && hasNonRambleSelection) {
-      rambleContext.ripDraft();
+    if (rambleContext.isRambleMode && hasAnySelection) {
       rambleContext.exitRambleMode();
     }
-  }, [hasNonRambleSelection, rambleContext]);
+  }, [hasAnySelection, rambleContext]);
 
-  // Show RambleView when in ramble mode
-  if (rambleContext.isRambleMode && !hasNonRambleSelection) {
-    console.log('[MainPanelWithRamble] Showing RambleView');
+  // Show RambleView when viewing a draft OR in fresh ramble mode (nothing selected)
+  if (isRambleNote || (rambleContext.isRambleMode && !hasAnySelection)) {
     return (
       <div className="main-panel">
         <RambleView
           notes={notes}
           model={selectedModel}
           onNavigateToNote={onNavigateToNote}
+          onNavigateToConversation={onNavigateToConversation}
+          conversations={conversations}
           onExit={() => rambleContext.exitRambleMode()}
         />
       </div>
@@ -122,15 +113,18 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
 };
 
 // Wrapper to get onNewRamble handler for Sidebar
-type SidebarWithRambleProps = Omit<React.ComponentProps<typeof Sidebar>, 'onNewRamble'>;
+type SidebarWithRambleProps = Omit<React.ComponentProps<typeof Sidebar>, 'onNewRamble'> & {
+  onClearSelection: () => void;
+};
 
 const SidebarWithRamble = forwardRef<SidebarHandle, SidebarWithRambleProps>(
-  function SidebarWithRamble(props: SidebarWithRambleProps, ref: React.Ref<SidebarHandle>) {
+  function SidebarWithRamble({ onClearSelection, ...props }: SidebarWithRambleProps, ref: React.Ref<SidebarHandle>) {
     const rambleContext = useRambleContext();
 
-    const handleNewRamble = useCallback(() => {
-      rambleContext.enterRambleMode();
-    }, [rambleContext]);
+    const handleNewRamble = useCallback(async () => {
+      onClearSelection();
+      await rambleContext.enterRambleMode();
+    }, [rambleContext, onClearSelection]);
 
     return <Sidebar ref={ref} {...props} onNewRamble={handleNewRamble} />;
   }
@@ -162,9 +156,12 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
 }) => {
   const rambleContext = useRambleContext();
 
-  const handleIntegrate = useCallback(() => {
+  const handleIntegrate = useCallback(async () => {
     if (selectedModel && filename) {
-      rambleContext.integrateExistingRamble(filename, selectedModel, notes);
+      // Set config and enter ramble mode with this draft, then integrate
+      rambleContext.setConfig(selectedModel, notes);
+      await rambleContext.enterRambleMode(filename);
+      await rambleContext.integrateNow();
     }
   }, [rambleContext, filename, selectedModel, notes]);
 
@@ -1324,7 +1321,7 @@ function AppContent() {
       onTriggerUpdated={handleTriggerUpdated}
       vaultPath={vaultPath}
     >
-      <RambleProvider onSelectNote={handleSelectNote}>
+      <RambleProvider>
         <UpdateChecker />
         {memory && (
           <MemoryWarning
@@ -1341,6 +1338,7 @@ function AppContent() {
               ref={sidebarRef}
               fullScreen
               onMobileBack={() => setMobileView('conversation')}
+              onClearSelection={() => { setSelectedItem(null); setNoteContent(null); }}
               timelineItems={timelineItems}
               activeFilter={timelineFilter}
               onFilterChange={setTimelineFilter}
@@ -1388,6 +1386,7 @@ function AppContent() {
           <>
             <SidebarWithRamble
               ref={sidebarRef}
+              onClearSelection={() => { setSelectedItem(null); setNoteContent(null); }}
               timelineItems={timelineItems}
               activeFilter={timelineFilter}
               onFilterChange={setTimelineFilter}
@@ -1409,12 +1408,10 @@ function AppContent() {
         notes={notes}
         selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
         onNavigateToNote={handleSelectNote}
+        onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+        conversations={conversations}
         selectedNote={selectedNote}
-        hasNonRambleSelection={!!(currentConversation || selectedTrigger)}
-        onClearNote={() => {
-          setNoteContent(null);
-          setSelectedItem(null);
-        }}
+        hasAnySelection={!!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('rambles/') || selectedNote.content.includes('integrated: true'))))}
       >
       <div className="main-panel">
         {selectedTrigger ? (

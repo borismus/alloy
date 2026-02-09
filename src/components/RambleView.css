@@ -5,41 +5,14 @@
   background: var(--bg-primary, #fff);
 }
 
-/* Header */
-.ramble-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  background: var(--bg-secondary, #f8f9fa);
-}
-
-.ramble-header-title {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.ramble-header-title h2 {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--text-primary, #333);
-}
-
-.draft-indicator {
+/* Draft indicator badge */
+.ramble-view .draft-indicator {
   font-size: 0.75rem;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   font-weight: 500;
-}
-
-.ramble-header-actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 /* Button styles */
@@ -111,7 +84,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 200px;
+  min-height: 0;
 }
 
 .ramble-log-header {
@@ -143,6 +116,7 @@
   display: flex;
   flex-direction: column;
   padding: 1rem 1.5rem;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -157,15 +131,6 @@
 @media (prefers-color-scheme: dark) {
   .ramble-view {
     background: var(--bg-primary, #1a1a1a);
-  }
-
-  .ramble-header {
-    background: var(--bg-secondary, #2a2a2a);
-    border-color: var(--border-color, #404040);
-  }
-
-  .ramble-header-title h2 {
-    color: var(--text-primary, #e0e0e0);
   }
 
   .ramble-draft-header,

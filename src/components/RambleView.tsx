@@ -4,13 +4,29 @@ import { rambleService } from '../services/ramble';
 import { useRambleContext } from '../contexts/RambleContext';
 import { MarkdownContent } from './MarkdownContent';
 import { AppendOnlyTextarea } from './AppendOnlyTextarea';
+import { ItemHeader } from './ItemHeader';
 import './RambleView.css';
+
+interface ConversationInfo {
+  id: string;
+  title?: string;
+}
 
 interface RambleViewProps {
   notes: NoteInfo[];
   model: string;
   onNavigateToNote?: (noteFilename: string) => void;
+  onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
+  conversations?: ConversationInfo[];
   onExit?: () => void;
+}
+
+// Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
+function urlTransform(url: string): string {
+  if (url.startsWith('wikilink:') || url.startsWith('provenance:')) {
+    return url;
+  }
+  return url;
 }
 
 // Parse frontmatter from content
@@ -39,58 +55,34 @@ export const RambleView: React.FC<RambleViewProps> = ({
   notes,
   model,
   onNavigateToNote,
+  onNavigateToConversation,
+  conversations,
   onExit,
 }) => {
   const {
+    rawLog,
+    crystallizedOffset,
+    draftFilename,
     isRambleMode,
-    activeDraftFilename,
+    isCrystallizing,
     isProcessing,
-    updateRawInput,
-    crystallizeNow,
-    ripDraft,
-    setActiveDraft,
+    setRawLog,
     exitRambleMode,
-    integrateExistingRamble,
+    integrateNow,
+    setConfig,
   } = useRambleContext();
 
   const [draftContent, setDraftContent] = useState('');
-  const [rambleLog, setRambleLog] = useState('');
-  const [lockedLogLength, setLockedLogLength] = useState(0);
-  const [localInput, setLocalInput] = useState('');
-  const crystallizeTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastCrystallizeTimeRef = useRef<number>(0);
   const draftContentRef = useRef<HTMLDivElement>(null);
-  const initialDraftLoadedRef = useRef<string | null>(null);
 
-  // Load ramble log on mount, or load draft's rawInput if entering with a draft
+  // Keep config updated
   useEffect(() => {
-    const loadInitialContent = async () => {
-      // If we have an active draft and haven't loaded its rawInput yet, load it
-      if (activeDraftFilename && initialDraftLoadedRef.current !== activeDraftFilename) {
-        const rawInput = await rambleService.getDraftRawInput(activeDraftFilename);
-        if (rawInput) {
-          // Use the draft's rawInput as the initial log content
-          setRambleLog(rawInput);
-          setLockedLogLength(rawInput.length);
-          initialDraftLoadedRef.current = activeDraftFilename;
-          return;
-        }
-      }
+    setConfig(model, notes);
+  }, [model, notes, setConfig]);
 
-      // Otherwise load the global ramble log
-      if (!activeDraftFilename) {
-        const log = await rambleService.getRambleLog();
-        setRambleLog(log);
-        setLockedLogLength(log.length);
-        initialDraftLoadedRef.current = null;
-      }
-    };
-    loadInitialContent();
-  }, [activeDraftFilename]);
-
-  // Load draft content when activeDraftFilename changes
+  // Load draft content when draftFilename changes
   useEffect(() => {
-    if (!activeDraftFilename) {
+    if (!draftFilename) {
       setDraftContent('');
       return;
     }
@@ -102,7 +94,7 @@ export const RambleView: React.FC<RambleViewProps> = ({
       try {
         const { join } = await import('@tauri-apps/api/path');
         const { readTextFile, exists } = await import('@tauri-apps/plugin-fs');
-        const fullPath = await join(vaultPath, activeDraftFilename);
+        const fullPath = await join(vaultPath, draftFilename);
         if (await exists(fullPath)) {
           const content = await readTextFile(fullPath);
           setDraftContent(content);
@@ -113,10 +105,10 @@ export const RambleView: React.FC<RambleViewProps> = ({
     };
 
     loadDraft();
-    // Poll for updates while processing
+    // Poll for updates while crystallizing or processing
     const interval = setInterval(loadDraft, 1000);
     return () => clearInterval(interval);
-  }, [activeDraftFilename, isProcessing]);
+  }, [draftFilename, isCrystallizing, isProcessing]);
 
   // Auto-scroll draft content when it updates
   useEffect(() => {
@@ -125,111 +117,36 @@ export const RambleView: React.FC<RambleViewProps> = ({
     }
   }, [draftContent]);
 
-  // Handle input changes - append to log and trigger crystallization
-  const handleInputChange = useCallback(async (newValue: string) => {
-    // Get the new text that was added
-    const newText = newValue.slice(lockedLogLength);
-    setLocalInput(newText);
-    updateRawInput(newText);
-
-    // Clear existing timer
-    if (crystallizeTimerRef.current) {
-      clearTimeout(crystallizeTimerRef.current);
-    }
-
-    // If no active draft and we have content, create one with initial rawInput
-    if (!activeDraftFilename && newText.trim().length > 10) {
-      try {
-        const fullInput = rambleLog + newText;
-        const filename = await rambleService.getOrCreateRambleNote(fullInput);
-        setActiveDraft(filename);
-        initialDraftLoadedRef.current = filename;
-      } catch (error) {
-        console.error('[RambleView] Failed to create draft:', error);
-      }
-    }
-
-    // Schedule crystallization (debounced)
-    const now = Date.now();
-    const timeSinceLastCrystallize = now - lastCrystallizeTimeRef.current;
-    const delay = timeSinceLastCrystallize < 2000 ? 3000 : 1500;
-
-    crystallizeTimerRef.current = setTimeout(async () => {
-      if (activeDraftFilename && newText.trim()) {
-        lastCrystallizeTimeRef.current = Date.now();
-        await crystallizeNow(model, notes);
-        // After crystallization, move processed text to "locked" portion
-        // This grays it out visually while keeping the full text visible
-        setRambleLog(prev => prev + newText);
-        setLockedLogLength(prev => prev + newText.length);
-        setLocalInput('');
-      }
-    }, delay);
-  }, [lockedLogLength, activeDraftFilename, model, notes, updateRawInput, crystallizeNow, setActiveDraft]);
-
-  // Handle rip - detach the draft
-  const handleRip = useCallback(async () => {
-    // Save rawInput to the draft's frontmatter before detaching
-    const fullContent = rambleLog + localInput;
-    if (activeDraftFilename && fullContent.trim()) {
-      await rambleService.updateDraftRawInput(activeDraftFilename, fullContent);
-    }
-
-    // Save full log with separator marking end of this draft session
-    if (fullContent.trim()) {
-      const contentWithSeparator = fullContent + '\n\n---\n\n';
-      await rambleService.writeLog(contentWithSeparator);
-      setRambleLog(contentWithSeparator);
-      setLockedLogLength(contentWithSeparator.length);
-      setLocalInput('');
-      updateRawInput('');
-    }
-    initialDraftLoadedRef.current = null;
-    ripDraft();
-  }, [rambleLog, localInput, activeDraftFilename, ripDraft, updateRawInput]);
+  // Handle input changes - pass full value to context
+  const handleInputChange = useCallback((newValue: string) => {
+    setRawLog(newValue);
+  }, [setRawLog]);
 
   // Handle integrate
-  const handleIntegrate = useCallback(async () => {
-    if (activeDraftFilename) {
-      // Save full log and rawInput first
-      const fullContent = rambleLog + localInput;
-      if (fullContent.trim()) {
-        await rambleService.writeLog(fullContent);
-        await rambleService.updateDraftRawInput(activeDraftFilename, fullContent);
-      }
-      await integrateExistingRamble(activeDraftFilename, model, notes);
-    }
-  }, [activeDraftFilename, rambleLog, localInput, model, notes, integrateExistingRamble]);
+  const handleIntegrate = useCallback(() => {
+    integrateNow();
+  }, [integrateNow]);
 
   // Handle exit
-  const handleExit = useCallback(async () => {
-    // Save full log and rawInput to draft
-    const fullContent = rambleLog + localInput;
-    if (fullContent.trim()) {
-      await rambleService.writeLog(fullContent);
-      // Also save rawInput to draft's frontmatter if we have an active draft
-      if (activeDraftFilename) {
-        await rambleService.updateDraftRawInput(activeDraftFilename, fullContent);
-      }
-    }
-    initialDraftLoadedRef.current = null;
+  const handleExit = useCallback(() => {
     exitRambleMode();
     onExit?.();
-  }, [rambleLog, localInput, activeDraftFilename, exitRambleMode, onExit]);
+  }, [exitRambleMode, onExit]);
 
   // Parse draft frontmatter
   const { body: draftBody } = useMemo(() => parseFrontmatter(draftContent), [draftContent]);
 
-  // Combined value for AppendOnlyTextarea (log + current input)
-  const combinedValue = rambleLog + localInput;
-
-  console.log('[RambleView] Rendering', {
-    isRambleMode,
-    activeDraftFilename,
-    draftContentLength: draftContent.length,
-    draftBody: draftBody?.slice(0, 100),
-    rambleLogLength: rambleLog.length,
-  });
+  // Format the draft filename for display (e.g., "2026-02-08-182702" -> "2026-02-08 at 18:27")
+  const headerTitle = useMemo(() => {
+    if (!draftFilename) return 'Ramble';
+    const basename = draftFilename.split('/').pop()?.replace('.md', '') || '';
+    const match = basename.match(/(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})/);
+    if (match) {
+      const [, year, month, day, hour, minute] = match;
+      return `${year}-${month}-${day} at ${hour}:${minute}`;
+    }
+    return basename;
+  }, [draftFilename]);
 
   if (!isRambleMode) {
     return null;
@@ -237,49 +154,26 @@ export const RambleView: React.FC<RambleViewProps> = ({
 
   return (
     <div className="ramble-view">
-      {/* Header */}
-      <div className="ramble-header">
-        <div className="ramble-header-title">
-          <h2>Ramble</h2>
-          {activeDraftFilename && (
+      <ItemHeader title={headerTitle} onBack={handleExit}>
+        {draftFilename && (
+          <>
             <span className="draft-indicator">
-              {isProcessing ? 'Processing...' : 'Draft active'}
+              {isProcessing ? 'Integrating...' : isCrystallizing ? 'Crystallizing...' : 'Draft'}
             </span>
-          )}
-        </div>
-        <div className="ramble-header-actions">
-          {activeDraftFilename && (
-            <>
-              <button
-                className="btn-small"
-                onClick={handleRip}
-                disabled={isProcessing}
-                title="Detach this draft and start fresh"
-              >
-                Rip
-              </button>
-              <button
-                className="btn-small btn-accent"
-                onClick={handleIntegrate}
-                disabled={isProcessing}
-                title="Integrate draft into notes"
-              >
-                Integrate
-              </button>
-            </>
-          )}
-          <button
-            className="btn-small"
-            onClick={handleExit}
-            title="Exit ramble mode"
-          >
-            Done
-          </button>
-        </div>
-      </div>
+            <button
+              className="btn-small btn-accent"
+              onClick={handleIntegrate}
+              disabled={isProcessing}
+              title="Integrate draft into notes"
+            >
+              Integrate
+            </button>
+          </>
+        )}
+      </ItemHeader>
 
       {/* Draft content area - only shown when there's an active draft */}
-      {activeDraftFilename && draftBody && (
+      {draftFilename && draftBody && (
         <div className="ramble-draft-section">
           <div className="ramble-draft-header">
             <h3>Draft</h3>
@@ -287,7 +181,11 @@ export const RambleView: React.FC<RambleViewProps> = ({
           <div className="ramble-draft-content" ref={draftContentRef}>
             <MarkdownContent
               content={draftBody}
+              className="note-content"
               onNavigateToNote={onNavigateToNote}
+              onNavigateToConversation={onNavigateToConversation}
+              conversations={conversations}
+              urlTransform={urlTransform}
             />
           </div>
         </div>
@@ -298,16 +196,16 @@ export const RambleView: React.FC<RambleViewProps> = ({
         <div className="ramble-log-header">
           <h3>Log</h3>
           <span className="ramble-log-hint">
-            {activeDraftFilename
+            {draftFilename
               ? 'Type to update the draft...'
               : 'Start typing to create a draft...'}
           </span>
         </div>
         <div className="ramble-log-input">
           <AppendOnlyTextarea
-            value={combinedValue}
+            value={rawLog}
             onChange={handleInputChange}
-            lockedLength={lockedLogLength}
+            lockedLength={crystallizedOffset}
             placeholder="What's on your mind? Start typing..."
             disabled={isProcessing}
           />
