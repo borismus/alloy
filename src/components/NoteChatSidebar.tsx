@@ -8,7 +8,7 @@ import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useRambleContextOptional } from '../contexts/RambleContext';
 import { Message, ModelInfo, NoteInfo, getModelIdFromModel } from '../types';
 import { BUILTIN_TOOLS } from '../types/tools';
-import { TEXTAREA_PROPS } from '../utils/textareaProps';
+import { useTextareaProps } from '../utils/textareaProps';
 import { ConversationView, ConversationViewHandle } from './ConversationView';
 import { ModelSelector } from './ModelSelector';
 import { AppendOnlyTextarea } from './AppendOnlyTextarea';
@@ -74,6 +74,7 @@ export interface NoteChatSidebarHandle {
 const RAMBLE_CONVERSATION_ID = 'ramble_history';
 
 export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatSidebarProps>(({ isOpen, availableModels, favoriteModels, notes: _notes = [], onNavigateToNote }, ref) => {
+  const textareaProps = useTextareaProps();
   const [mode, setMode] = useState<SidebarMode>('ramble');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -366,7 +367,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
           className="note-chat-textarea"
           rows={3}
           disabled={isStreaming}
-          {...TEXTAREA_PROPS}
+          {...textareaProps}
         />
         <div className="note-chat-input-controls">
           <ModelSelector

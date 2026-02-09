@@ -8,7 +8,7 @@ import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useGlobalEscape } from '../hooks/useGlobalEscape';
-import { TEXTAREA_PROPS } from '../utils/textareaProps';
+import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
 import { FindInConversation, FindInConversationHandle } from './FindInConversation';
 import { AgentResponseView } from './AgentResponseView';
@@ -89,6 +89,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
+  const textareaProps = useTextareaProps();
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -239,7 +240,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
           placeholder={isMobile ? "Send a message..." : "Send a message... (drop or paste images)"}
           disabled={isStreaming}
           rows={1}
-          {...TEXTAREA_PROPS}
+          {...textareaProps}
         />
         <ModelSelector
           value={model}

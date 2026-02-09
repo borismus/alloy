@@ -1,6 +1,6 @@
 import React from 'react';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
-import { TEXTAREA_PROPS } from '../utils/textareaProps';
+import { useTextareaProps } from '../utils/textareaProps';
 
 interface MultiModelInputFormProps {
   input: string;
@@ -38,6 +38,8 @@ export const MultiModelInputForm: React.FC<MultiModelInputFormProps> = ({
     onSubmit();
   };
 
+  const textareaProps = useTextareaProps();
+
   const handleKeyDown = useChatKeyboard({
     onSubmit,
     onStop,
@@ -55,7 +57,7 @@ export const MultiModelInputForm: React.FC<MultiModelInputFormProps> = ({
           placeholder={placeholder}
           disabled={isStreaming}
           rows={1}
-          {...TEXTAREA_PROPS}
+          {...textareaProps}
         />
         <div className={dropdownClassName} ref={dropdownRef}>
           <button

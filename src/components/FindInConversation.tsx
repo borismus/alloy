@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { useTextareaProps } from '../utils/textareaProps';
 import './FindInConversation.css';
 
 interface FindInConversationProps {
@@ -55,6 +56,7 @@ function highlightSearchTerm(container: HTMLElement | null, search: string): Ran
 
 export const FindInConversation = forwardRef<FindInConversationHandle, FindInConversationProps>(
   function FindInConversation({ containerRef, onClose }, ref) {
+  const textareaProps = useTextareaProps();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
@@ -151,10 +153,7 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
         onChange={(e) => setSearchQuery(e.target.value)}
         onKeyDown={handleKeyDown}
         className="find-input"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
+        {...textareaProps}
       />
       {searchQuery && (
         <span className="match-count">

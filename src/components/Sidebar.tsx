@@ -4,6 +4,7 @@ import { vaultService } from '../services/vault';
 import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTriggerContext } from '../contexts/TriggerContext';
+import { useTextareaProps } from '../utils/textareaProps';
 import './Sidebar.css';
 
 // FLIP animation helper - stores previous positions of items
@@ -134,6 +135,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   fullScreen,
   onMobileBack,
 }, ref) {
+  const textareaProps = useTextareaProps();
   const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
   const firedTriggerIds = firedTriggers.map(f => f.conversationId);
   const [searchQuery, setSearchQuery] = useState('');
@@ -439,10 +441,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
+            {...textareaProps}
           />
           {searchQuery && (
             <button
@@ -537,10 +536,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               }}
               autoFocus
               className="rename-input"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
+              {...textareaProps}
             />
             <div className="rename-buttons">
               <button onClick={cancelRename} className="cancel-button">Cancel</button>
