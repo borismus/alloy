@@ -48,7 +48,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Relative path within vault (e.g., "memory.md", "notes/todo.md")' },
+        path: { type: 'string', description: 'Relative path within vault. Note filenames must be human-readable with spaces, not kebab-case (e.g., "notes/Investment strategy.md", not "notes/investment-strategy.md")' },
         content: { type: 'string', description: 'Content to write' },
       },
       required: ['path', 'content'],
@@ -145,7 +145,7 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Relative path within vault notes/ directory (e.g., "notes/ideas.md", "notes/todo.md")' },
+        path: { type: 'string', description: 'Relative path within vault notes/ directory. Use human-readable names with spaces (e.g., "notes/Project ideas.md", not "notes/project-ideas.md")' },
         content: { type: 'string', description: 'Content to append. Do NOT include provenance markers - they are added automatically.' },
       },
       required: ['path', 'content'],
