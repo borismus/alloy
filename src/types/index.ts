@@ -45,6 +45,7 @@ export interface SkillUse {
 export interface SubagentResponse {
   name: string;           // Short label (e.g., "Research", "Analysis")
   model: string;          // Format: "provider/model-id"
+  prompt?: string;        // The prompt given to the sub-agent
   content: string;
   toolUse?: ToolUse[];
   skillUse?: SkillUse[];
@@ -54,6 +55,7 @@ export interface SubagentResponse {
 export interface SubagentStreamingState {
   name: string;
   model: string;
+  prompt?: string;
   content: string;
   status: 'pending' | 'streaming' | 'complete' | 'error';
   error?: string;

@@ -23,7 +23,7 @@ export interface ToolExecutionOptions {
   systemPrompt?: string;
   toolContext?: ToolContext;  // Context passed to tool executors (e.g., messageId for provenance)
   // Sub-agent streaming callbacks
-  onSubagentStart?: (agents: { id: string; name: string; model: string }[]) => void;
+  onSubagentStart?: (agents: { id: string; name: string; model: string; prompt: string }[]) => void;
   onSubagentChunk?: (agentId: string, chunk: string) => void;
   onSubagentToolUse?: (agentId: string, toolUse: ToolUse) => void;
   onSubagentComplete?: (agentId: string, content: string, error?: string) => void;
@@ -94,7 +94,7 @@ async function executeSubagentTool(
   }));
 
   // Signal UI
-  options.onSubagentStart?.(agents.map(a => ({ id: a.id, name: a.name, model: a.model })));
+  options.onSubagentStart?.(agents.map(a => ({ id: a.id, name: a.name, model: a.model, prompt: a.prompt })));
 
   // Tools for sub-agents: everything except spawn_subagent (prevent recursion)
   const subagentTools = BUILTIN_TOOLS.filter(t => t.name !== 'spawn_subagent');
@@ -130,6 +130,7 @@ async function executeSubagentTool(
       return {
         name: agent.name,
         model: agent.model,
+        prompt: agent.prompt,
         content: subResult.finalContent,
         toolUse: subResult.allToolUses.length > 0 ? subResult.allToolUses : undefined,
         skillUse: subResult.skillUses.length > 0 ? subResult.skillUses : undefined,

@@ -13,7 +13,7 @@ interface StreamingContextValue {
   clearStreamingContent: (id: string) => void;
   markAsRead: (id: string) => void;
   // Sub-agent streaming
-  startSubagents: (id: string, agents: { id: string; name: string; model: string }[]) => void;
+  startSubagents: (id: string, agents: { id: string; name: string; model: string; prompt: string }[]) => void;
   updateSubagentContent: (id: string, agentId: string, chunk: string) => void;
   addSubagentToolUse: (id: string, agentId: string, toolUse: ToolUse) => void;
   completeSubagent: (id: string, agentId: string, error?: string) => void;
@@ -148,7 +148,7 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
 
   // --- Sub-agent streaming methods ---
 
-  const startSubagents = useCallback((id: string, agents: { id: string; name: string; model: string }[]) => {
+  const startSubagents = useCallback((id: string, agents: { id: string; name: string; model: string; prompt: string }[]) => {
     setStreamingStates((prev) => {
       const existing = prev.get(id);
       if (!existing) return prev;
@@ -158,6 +158,7 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
         subagentMap.set(agent.id, {
           name: agent.name,
           model: agent.model,
+          prompt: agent.prompt,
           content: '',
           status: 'pending',
         });
