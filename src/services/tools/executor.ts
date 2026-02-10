@@ -195,6 +195,7 @@ export async function executeWithTools(
   let allToolUses: ToolUse[] = [];
   const skillUses: SkillUse[] = [];
   const allSubagentResponses: SubagentResponse[] = [];
+  let subagentsSpawned = false;
 
   const chatOptions: ChatOptions = {
     model,
@@ -253,8 +254,16 @@ export async function executeWithTools(
     // Execute each tool call
     const toolResults = await Promise.all(
       result.toolCalls.map(async (toolCall: ToolCall) => {
-        // Special handling for spawn_subagent
+        // Special handling for spawn_subagent (only allowed once per turn)
         if (toolCall.name === 'spawn_subagent') {
+          if (subagentsSpawned) {
+            return {
+              tool_use_id: toolCall.id,
+              content: 'spawn_subagent can only be called once per response. Combine all sub-agent tasks into a single call with multiple agents (up to 3).',
+              is_error: true,
+            };
+          }
+          subagentsSpawned = true;
           const { toolResult, responses } = await executeSubagentTool(
             toolCall,
             `${provider.providerType}/${model}`,
