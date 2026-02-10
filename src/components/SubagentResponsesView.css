@@ -45,6 +45,63 @@
   border-right: none;
 }
 
+/* Sub-agent cell header (name + model) */
+.subagent-cell-header-wrapper {
+  width: 100%;
+}
+
+.subagent-cell-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.subagent-cell-name {
+  font-weight: 600;
+}
+
+.subagent-cell-model {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Expandable info panel */
+.subagent-info-panel {
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  border: 1px solid #e8e8e8;
+}
+
+.subagent-info-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.subagent-info-row:last-child {
+  margin-bottom: 0;
+}
+
+.subagent-info-label {
+  font-weight: 600;
+  color: #666;
+  flex-shrink: 0;
+  min-width: 3.5rem;
+}
+
+.subagent-info-value {
+  color: #444;
+  word-break: break-word;
+}
+
 @media (max-width: 768px) {
   .subagent-responses-grid {
     grid-template-columns: 1fr;

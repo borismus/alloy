@@ -94,3 +94,50 @@
     transform: rotate(360deg);
   }
 }
+
+/* spawn_subagent pill: clickable with expandable detail */
+.tool-use-indicator.clickable {
+  cursor: pointer;
+}
+
+.tool-use-indicator.clickable:hover {
+  background: #eee;
+}
+
+.tool-use-subagent-wrapper {
+  flex-basis: 100%;
+}
+
+.tool-use-subagent-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0.25rem 0.25rem;
+}
+
+.tool-use-subagent-detail {
+  flex: 1;
+  min-width: 150px;
+  padding: 0.4rem 0.6rem;
+  background: #f8f9fa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+.tool-use-subagent-detail-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.15rem;
+}
+
+.tool-use-subagent-detail-model {
+  color: #888;
+  font-size: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+.tool-use-subagent-detail-prompt {
+  color: #555;
+  line-height: 1.3;
+}

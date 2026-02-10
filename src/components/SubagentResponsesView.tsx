@@ -1,5 +1,5 @@
-import React from 'react';
-import { SubagentResponse, SubagentStreamingState } from '../types';
+import React, { useState } from 'react';
+import { SubagentResponse, SubagentStreamingState, getModelIdFromModel } from '../types';
 import { AgentResponseView, AgentStatus } from './AgentResponseView';
 import './SubagentResponsesView.css';
 
@@ -14,6 +14,35 @@ interface SubagentResponsesViewProps {
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
 }
 
+const SubagentCellHeader: React.FC<{
+  name: string;
+  model: string;
+  prompt?: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+}> = ({ name, model, prompt, isExpanded, onToggle }) => (
+  <div className="subagent-cell-header-wrapper">
+    <div className="subagent-cell-header" onClick={onToggle} title="Click for details">
+      <span className="subagent-cell-name">{name}</span>
+      <span className="subagent-cell-model">{getModelIdFromModel(model)}</span>
+    </div>
+    {isExpanded && (
+      <div className="subagent-info-panel">
+        <div className="subagent-info-row">
+          <span className="subagent-info-label">Model</span>
+          <span className="subagent-info-value">{model}</span>
+        </div>
+        {prompt && (
+          <div className="subagent-info-row">
+            <span className="subagent-info-label">Prompt</span>
+            <span className="subagent-info-value">{prompt}</span>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+);
+
 /**
  * Renders sub-agent responses in a comparison-style grid.
  * Used both during streaming (with activeSubagents) and for completed messages (with completedResponses).
@@ -24,6 +53,12 @@ export const SubagentResponsesView: React.FC<SubagentResponsesViewProps> = ({
   onNavigateToNote,
   onNavigateToConversation,
 }) => {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedId(prev => prev === id ? null : id);
+  };
+
   // Render active streaming sub-agents
   if (activeSubagents && activeSubagents.size > 0) {
     const agents = Array.from(activeSubagents.entries());
@@ -41,8 +76,16 @@ export const SubagentResponsesView: React.FC<SubagentResponsesViewProps> = ({
               status={agent.status as AgentStatus}
               error={agent.error}
               toolUses={agent.toolUse}
-              modelName={agent.name}
               showHeader={true}
+              headerContent={
+                <SubagentCellHeader
+                  name={agent.name}
+                  model={agent.model}
+                  prompt={agent.prompt}
+                  isExpanded={expandedId === id}
+                  onToggle={() => toggleExpanded(id)}
+                />
+              }
               onNavigateToNote={onNavigateToNote}
               onNavigateToConversation={onNavigateToConversation}
             />
@@ -61,19 +104,30 @@ export const SubagentResponsesView: React.FC<SubagentResponsesViewProps> = ({
           <span>Sub-agents ({completedResponses.length})</span>
         </div>
         <div className="subagent-responses-grid">
-          {completedResponses.map((response, index) => (
-            <AgentResponseView
-              key={index}
-              content={response.content}
-              status="complete"
-              toolUses={response.toolUse}
-              skillUses={response.skillUse}
-              modelName={response.name}
-              showHeader={true}
-              onNavigateToNote={onNavigateToNote}
-              onNavigateToConversation={onNavigateToConversation}
-            />
-          ))}
+          {completedResponses.map((response, index) => {
+            const id = `completed-${index}`;
+            return (
+              <AgentResponseView
+                key={index}
+                content={response.content}
+                status="complete"
+                toolUses={response.toolUse}
+                skillUses={response.skillUse}
+                showHeader={true}
+                headerContent={
+                  <SubagentCellHeader
+                    name={response.name}
+                    model={response.model}
+                    prompt={response.prompt}
+                    isExpanded={expandedId === id}
+                    onToggle={() => toggleExpanded(id)}
+                  />
+                }
+                onNavigateToNote={onNavigateToNote}
+                onNavigateToConversation={onNavigateToConversation}
+              />
+            );
+          })}
         </div>
       </div>
     );

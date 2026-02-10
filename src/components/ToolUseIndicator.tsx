@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { ToolUse } from '../types';
+import { ToolUse, getModelIdFromModel } from '../types';
 import './ToolUseIndicator.css';
 
 interface ToolUseIndicatorProps {
@@ -20,6 +20,28 @@ const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: str
   web_search: { active: 'Searching', complete: 'Searched', icon: 'search' },
   spawn_subagent: { active: 'Running sub-agents', complete: 'Ran sub-agents', icon: 'agents' },
 };
+
+interface ParsedAgentConfig {
+  name: string;
+  prompt: string;
+  model?: string;
+}
+
+function parseSubagentInput(tool: ToolUse): ParsedAgentConfig[] {
+  try {
+    const raw = tool.input?.agents as string;
+    if (!raw) return [];
+    const configs = JSON.parse(raw);
+    if (!Array.isArray(configs)) return [];
+    return configs.map((c: any) => ({
+      name: c.name || 'Agent',
+      prompt: c.prompt || '',
+      model: c.model,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 const ToolIcon: React.FC<{ type: string }> = ({ type }) => {
   const iconType = TOOL_LABELS[type]?.icon || 'tool';
@@ -76,6 +98,8 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
   isStreaming = false,
   onNavigateToNote,
 }) => {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
   if (toolUse.length === 0) return null;
 
   return (
@@ -84,20 +108,60 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
         const labels = TOOL_LABELS[tool.type] || { active: tool.type, complete: tool.type };
         const isToolComplete = !!tool.result || !isStreaming;
 
+        // Special rendering for spawn_subagent
+        if (tool.type === 'spawn_subagent') {
+          const agents = parseSubagentInput(tool);
+          const agentNames = agents.map(a => a.name).join(', ');
+          const label = isToolComplete
+            ? `Ran sub-agents${agentNames ? ': ' + agentNames : ''}`
+            : `Running sub-agents${agentNames ? ': ' + agentNames : ''}`;
+          const isExpanded = expandedIdx === idx;
+
+          return (
+            <div key={idx} className="tool-use-subagent-wrapper">
+              <div
+                className={`tool-use-indicator clickable ${tool.isError ? 'error' : ''}`}
+                onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+              >
+                <span className="tool-use-icon">
+                  <ToolIcon type={tool.type} />
+                </span>
+                <span className="tool-use-label">{label}</span>
+                {isStreaming && !tool.result && <span className="tool-use-spinner" />}
+              </div>
+              {isExpanded && agents.length > 0 && (
+                <div className="tool-use-subagent-details">
+                  {agents.map((agent, i) => (
+                    <div key={i} className="tool-use-subagent-detail">
+                      <div className="tool-use-subagent-detail-name">{agent.name}</div>
+                      {agent.model && (
+                        <div className="tool-use-subagent-detail-model">
+                          {getModelIdFromModel(agent.model)}
+                        </div>
+                      )}
+                      <div className="tool-use-subagent-detail-prompt">{agent.prompt}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        }
+
         // For web_search, include the query in the label
         let label = isToolComplete ? labels.complete : labels.active;
-        let fullLabel: string | undefined;
         if (tool.type === 'web_search' && typeof tool.input?.query === 'string') {
-          const query = tool.input.query;
+          const query = tool.input.query.length > 40
+            ? tool.input.query.slice(0, 40) + '...'
+            : tool.input.query;
           label = isToolComplete ? `Searched "${query}"` : `Searching "${query}"`;
-          fullLabel = label;
         }
 
         return (
           <div
             key={idx}
             className={`tool-use-indicator ${tool.isError ? 'error' : ''}`}
-            title={tool.isError && tool.result ? tool.result : fullLabel}
+            title={tool.isError && tool.result ? tool.result : undefined}
           >
             <span className="tool-use-icon">
               <ToolIcon type={tool.type} />

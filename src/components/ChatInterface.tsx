@@ -749,6 +749,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 <AgentResponseView
                   content={streamingContent || ''}
                   status={isStreaming ? 'streaming' : 'pending'}
+                  headerContent={assistantName}
                   onNavigateToNote={onNavigateToNote}
                   onNavigateToConversation={onNavigateToConversation}
                 />
