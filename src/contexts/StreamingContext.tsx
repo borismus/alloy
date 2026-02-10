@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useMemo } from 'react';
-import type { ConversationStreamingState, ToolUse } from '../types';
+import type { ConversationStreamingState, SubagentStreamingState, ToolUse } from '../types';
 
 interface StreamingContextValue {
   getStreamingState: (id: string) => ConversationStreamingState | null;
@@ -12,6 +12,12 @@ interface StreamingContextValue {
   completeStreaming: (id: string, isCurrentConversation?: boolean) => void;
   clearStreamingContent: (id: string) => void;
   markAsRead: (id: string) => void;
+  // Sub-agent streaming
+  startSubagents: (id: string, agents: { id: string; name: string; model: string }[]) => void;
+  updateSubagentContent: (id: string, agentId: string, chunk: string) => void;
+  addSubagentToolUse: (id: string, agentId: string, toolUse: ToolUse) => void;
+  completeSubagent: (id: string, agentId: string, error?: string) => void;
+  clearSubagents: (id: string) => void;
 }
 
 const StreamingContext = createContext<StreamingContextValue | null>(null);
@@ -140,6 +146,108 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // --- Sub-agent streaming methods ---
+
+  const startSubagents = useCallback((id: string, agents: { id: string; name: string; model: string }[]) => {
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing) return prev;
+
+      const subagentMap = new Map<string, SubagentStreamingState>();
+      for (const agent of agents) {
+        subagentMap.set(agent.id, {
+          name: agent.name,
+          model: agent.model,
+          content: '',
+          status: 'pending',
+        });
+      }
+
+      const next = new Map(prev);
+      next.set(id, {
+        ...existing,
+        activeSubagents: subagentMap,
+        preSubagentContent: existing.streamingContent,
+        streamingContent: '',
+      });
+      return next;
+    });
+  }, []);
+
+  const updateSubagentContent = useCallback((id: string, agentId: string, chunk: string) => {
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing?.activeSubagents) return prev;
+
+      const agent = existing.activeSubagents.get(agentId);
+      if (!agent) return prev;
+
+      const newSubagents = new Map(existing.activeSubagents);
+      newSubagents.set(agentId, {
+        ...agent,
+        content: agent.content + chunk,
+        status: 'streaming',
+      });
+
+      const next = new Map(prev);
+      next.set(id, { ...existing, activeSubagents: newSubagents });
+      return next;
+    });
+  }, []);
+
+  const addSubagentToolUse = useCallback((id: string, agentId: string, toolUse: ToolUse) => {
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing?.activeSubagents) return prev;
+
+      const agent = existing.activeSubagents.get(agentId);
+      if (!agent) return prev;
+
+      const newSubagents = new Map(existing.activeSubagents);
+      newSubagents.set(agentId, {
+        ...agent,
+        toolUse: [...(agent.toolUse || []), toolUse],
+      });
+
+      const next = new Map(prev);
+      next.set(id, { ...existing, activeSubagents: newSubagents });
+      return next;
+    });
+  }, []);
+
+  const completeSubagent = useCallback((id: string, agentId: string, error?: string) => {
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing?.activeSubagents) return prev;
+
+      const agent = existing.activeSubagents.get(agentId);
+      if (!agent) return prev;
+
+      const newSubagents = new Map(existing.activeSubagents);
+      newSubagents.set(agentId, {
+        ...agent,
+        status: error ? 'error' : 'complete',
+        error,
+      });
+
+      const next = new Map(prev);
+      next.set(id, { ...existing, activeSubagents: newSubagents });
+      return next;
+    });
+  }, []);
+
+  const clearSubagents = useCallback((id: string) => {
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing?.activeSubagents) return prev;
+
+      const next = new Map(prev);
+      const { activeSubagents: _, ...rest } = existing;
+      next.set(id, rest);
+      return next;
+    });
+  }, []);
+
   const value = useMemo<StreamingContextValue>(
     () => ({
       getStreamingState,
@@ -152,6 +260,11 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       completeStreaming,
       clearStreamingContent,
       markAsRead,
+      startSubagents,
+      updateSubagentContent,
+      addSubagentToolUse,
+      completeSubagent,
+      clearSubagents,
     }),
     [
       getStreamingState,
@@ -164,6 +277,11 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       completeStreaming,
       clearStreamingContent,
       markAsRead,
+      startSubagents,
+      updateSubagentContent,
+      addSubagentToolUse,
+      completeSubagent,
+      clearSubagents,
     ]
   );
 

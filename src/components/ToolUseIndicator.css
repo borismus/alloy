@@ -29,7 +29,10 @@
 
 .tool-use-label {
   font-weight: 500;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .tool-use-path {

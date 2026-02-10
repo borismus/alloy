@@ -140,6 +140,17 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'spawn_subagent',
+    description: 'Spawn 1-3 sub-agents to work on tasks in parallel. Each sub-agent runs independently with its own context and full tool access. Use when a task can be broken into independent subtasks that benefit from parallel execution (e.g., researching different topics, analyzing from multiple angles). Results from all sub-agents are returned when all complete. Sub-agents cannot spawn their own sub-agents.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agents: { type: 'string', description: 'JSON array of 1-3 sub-agent configs. Each config: {"name": "short label", "prompt": "task description", "model": "optional provider/model-id", "system_prompt": "optional role"}. Example: [{"name": "Research", "prompt": "Find recent papers on X"}, {"name": "Analysis", "prompt": "Analyze the implications of Y", "model": "anthropic/claude-sonnet-4-5-20250929"}]' },
+      },
+      required: ['agents'],
+    },
+  },
+  {
     name: 'append_to_note',
     description: 'Append content to a note with provenance tracking. Content is automatically marked with a provenance ID linking it to this chat message. Use for capturing insights, ideas, to-dos as the user talks. Keep appends small and atomic (1-3 lines typically).',
     input_schema: {

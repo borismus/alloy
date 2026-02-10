@@ -12,6 +12,7 @@ import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
 import { FindInConversation, FindInConversationHandle } from './FindInConversation';
 import { AgentResponseView } from './AgentResponseView';
+import { SubagentResponsesView } from './SubagentResponsesView';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import './ChatInterface.css';
@@ -339,6 +340,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     isStreaming,
     streamingContent,
     streamingToolUse,
+    activeSubagents,
+    preSubagentContent,
     start: startStreaming,
     stop: stopStreaming,
     updateContent,
@@ -400,16 +403,36 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       }
 
       // Assistant messages use AgentResponseView
+      // Sub-agent responses render ABOVE the synthesis content
       return (
         <div key={`${conversation.id}-${index}`} data-message-id={message.id}>
+          {message.subagentResponses && message.subagentResponses.length > 0 && (
+            <>
+              {message.toolUse && message.toolUse.length > 0 && (
+                <AgentResponseView
+                  content=""
+                  status="complete"
+                  toolUses={message.toolUse}
+                  onNavigateToNote={onNavigateToNote}
+                  onNavigateToConversation={onNavigateToConversation}
+                  headerContent={assistantName}
+                />
+              )}
+              <SubagentResponsesView
+                completedResponses={message.subagentResponses}
+                onNavigateToNote={onNavigateToNote}
+                onNavigateToConversation={onNavigateToConversation}
+              />
+            </>
+          )}
           <AgentResponseView
             content={message.content}
             status="complete"
-            toolUses={message.toolUse}
+            toolUses={message.subagentResponses?.length ? undefined : message.toolUse}
             skillUses={message.skillUse}
             onNavigateToNote={onNavigateToNote}
             onNavigateToConversation={onNavigateToConversation}
-            headerContent={assistantName}
+            headerContent={message.subagentResponses?.length ? undefined : assistantName}
           />
         </div>
       );
@@ -703,14 +726,53 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         {renderedMessages}
 
         {showStreamingMessage && (
-          <AgentResponseView
-            content={streamingContent || ''}
-            status={isStreaming ? 'streaming' : 'pending'}
-            toolUses={streamingToolUse}
-            headerContent={assistantName}
-            onNavigateToNote={onNavigateToNote}
-            onNavigateToConversation={onNavigateToConversation}
-          />
+          <>
+            {preSubagentContent != null ? (
+              <>
+                {preSubagentContent.trim() && (
+                  <AgentResponseView
+                    content={preSubagentContent}
+                    status="complete"
+                    toolUses={streamingToolUse}
+                    headerContent={assistantName}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToConversation={onNavigateToConversation}
+                  />
+                )}
+                {activeSubagents && activeSubagents.size > 0 && (
+                  <SubagentResponsesView
+                    activeSubagents={activeSubagents}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToConversation={onNavigateToConversation}
+                  />
+                )}
+                <AgentResponseView
+                  content={streamingContent || ''}
+                  status={isStreaming ? 'streaming' : 'pending'}
+                  onNavigateToNote={onNavigateToNote}
+                  onNavigateToConversation={onNavigateToConversation}
+                />
+              </>
+            ) : (
+              <>
+                <AgentResponseView
+                  content={streamingContent || ''}
+                  status={isStreaming ? 'streaming' : 'pending'}
+                  toolUses={streamingToolUse}
+                  headerContent={assistantName}
+                  onNavigateToNote={onNavigateToNote}
+                  onNavigateToConversation={onNavigateToConversation}
+                />
+                {activeSubagents && activeSubagents.size > 0 && (
+                  <SubagentResponsesView
+                    activeSubagents={activeSubagents}
+                    onNavigateToNote={onNavigateToNote}
+                    onNavigateToConversation={onNavigateToConversation}
+                  />
+                )}
+              </>
+            )}
+          </>
         )}
 
         <div ref={messagesEndRef} />

@@ -11,6 +11,8 @@ export function useConversationStreaming(conversationId: string | null) {
   const streamingContent = streamingState?.streamingContent ?? '';
   const streamingToolUse = streamingState?.streamingToolUse ?? [];
   const error = streamingState?.error ?? null;
+  const activeSubagents = streamingState?.activeSubagents ?? null;
+  const preSubagentContent = streamingState?.preSubagentContent ?? null;
 
   const start = useCallback(() => {
     if (!conversationId) return null;
@@ -52,6 +54,8 @@ export function useConversationStreaming(conversationId: string | null) {
     isStreaming,
     streamingContent,
     streamingToolUse,
+    activeSubagents,
+    preSubagentContent,
     error,
     start,
     stop,

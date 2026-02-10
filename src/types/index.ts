@@ -41,6 +41,25 @@ export interface SkillUse {
   description?: string;   // skill description for display
 }
 
+// Sub-agent response stored on completed messages
+export interface SubagentResponse {
+  name: string;           // Short label (e.g., "Research", "Analysis")
+  model: string;          // Format: "provider/model-id"
+  content: string;
+  toolUse?: ToolUse[];
+  skillUse?: SkillUse[];
+}
+
+// Sub-agent streaming state during execution
+export interface SubagentStreamingState {
+  name: string;
+  model: string;
+  content: string;
+  status: 'pending' | 'streaming' | 'complete' | 'error';
+  error?: string;
+  toolUse?: ToolUse[];
+}
+
 export interface Message {
   // Unique identifier for provenance tracking (e.g., 'msg-a1b2')
   id?: string;
@@ -60,6 +79,8 @@ export interface Message {
   // Council mode - marks message role in council deliberation
   councilMember?: boolean;  // True if this is a council member response
   chairman?: boolean;       // True if this is the chairman synthesis
+  // Sub-agent responses spawned during this message
+  subagentResponses?: SubagentResponse[];
 }
 
 export interface ModelInfo {
@@ -170,6 +191,10 @@ export interface ConversationStreamingState {
   streamingContent: string;
   streamingToolUse?: ToolUse[];
   error?: string;
+  // Active sub-agents during streaming (keyed by agent ID)
+  activeSubagents?: Map<string, SubagentStreamingState>;
+  // Parent text from before sub-agents were spawned (streamingContent is reset for synthesis)
+  preSubagentContent?: string;
 }
 
 // Timeline filter type (replaces old SidebarTab)

@@ -286,7 +286,7 @@ function AppContent() {
   const comparisonChatInterfaceRef = useRef<ComparisonChatInterfaceHandle>(null);
   const councilChatInterfaceRef = useRef<CouncilChatInterfaceHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
-  const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse } = useStreamingContext();
+  const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = useStreamingContext();
   const { execute: executeWithTools } = useToolExecution();
 
   // Vault watcher callbacks
@@ -1020,17 +1020,23 @@ function AppContent() {
       const assistantMessageId = generateMessageId();
 
       // Execute with tool loop support
+      const convId = currentConversation.id;
       const result = await executeWithTools(provider, updatedMessages, modelId, {
         maxIterations: 10,
         toolContext: {
           messageId: assistantMessageId,
-          conversationId: `conversations/${currentConversation.id}`,
+          conversationId: `conversations/${convId}`,
         },
         onChunk,
-        onToolUse: (toolUse) => addToolUse(currentConversation.id, toolUse),
+        onToolUse: (toolUse) => addToolUse(convId, toolUse),
         signal,
         imageLoader,
         systemPrompt,
+        // Sub-agent streaming callbacks
+        onSubagentStart: (agents) => startSubagents(convId, agents),
+        onSubagentChunk: (agentId, chunk) => updateSubagentContent(convId, agentId, chunk),
+        onSubagentToolUse: (agentId, toolUse) => addSubagentToolUse(convId, agentId, toolUse),
+        onSubagentComplete: (agentId, _content, error) => completeSubagent(convId, agentId, error),
       });
 
       const assistantMessage: Message = {
@@ -1040,6 +1046,7 @@ function AppContent() {
         content: result.finalContent,
         toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
         skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
+        subagentResponses: result.subagentResponses.length > 0 ? result.subagentResponses : undefined,
       };
 
       let finalConversation: Conversation = {
@@ -1290,24 +1297,36 @@ function AppContent() {
     }
 
     // Create a new conversation with the trigger response as context
-    const newId = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const now = new Date().toISOString();
+    // Use standard ID format (YYYY-MM-DD-HHMM-hash) to match vault watcher expectations
+    const now = new Date();
+    const date = now.toISOString().split('T')[0];
+    const time = now.toTimeString().slice(0, 5).replace(':', '');
+    const hash = Math.random().toString(16).slice(2, 6);
+    const newId = `${date}-${time}-${hash}`;
+    const nowISO = now.toISOString();
     const defaultModel = config?.favoriteModels?.[0] || availableModels[0]?.key || trigger.model;
 
     const newConversation: Conversation = {
       id: newId,
-      created: now,
-      updated: now,
+      created: nowISO,
+      updated: nowISO,
       model: defaultModel,
       title: `Re: ${trigger.title || 'Trigger'}`,
       messages: [
         {
-          role: 'log',
+          role: 'user',
           content: `Context from monitor "${trigger.title}":\n\n${latestResponse.content}`,
-          timestamp: now,
+          timestamp: nowISO,
         },
       ],
     };
+
+    // Mark self-write to prevent vault watcher from creating a duplicate
+    const vaultPathForSave = vaultService.getVaultPath();
+    if (vaultPathForSave) {
+      const filename = vaultService.generateFilename(newConversation.id, newConversation.title);
+      markSelfWrite(`${vaultPathForSave}/conversations/${filename}`);
+    }
 
     // Save the new conversation
     await vaultService.saveConversation(newConversation);

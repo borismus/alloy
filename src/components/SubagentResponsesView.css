@@ -1,0 +1,61 @@
+.subagent-container {
+  margin: 0.75rem 0;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.subagent-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f0f2f5;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  border-bottom: 1px solid #d0d5dd;
+}
+
+.subagent-icon {
+  font-size: 0.9rem;
+  color: #667eea;
+}
+
+.subagent-responses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0;
+}
+
+/* Override response-summary styles when inside subagent grid */
+.subagent-responses-grid .response-summary {
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid #e0e0e0;
+  margin-bottom: 0;
+}
+
+.subagent-responses-grid .response-summary:last-child {
+  border-right: none;
+}
+
+/* Single sub-agent: full width, no border */
+.subagent-responses-grid .response-summary:only-child {
+  border-right: none;
+}
+
+@media (max-width: 768px) {
+  .subagent-responses-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .subagent-responses-grid .response-summary {
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .subagent-responses-grid .response-summary:last-child {
+    border-bottom: none;
+  }
+}

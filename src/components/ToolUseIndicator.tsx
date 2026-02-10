@@ -18,6 +18,7 @@ const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: str
   http_post: { active: 'Sending request', complete: 'Sent request', icon: 'globe' },
   get_secret: { active: 'Getting secret', complete: 'Got secret', icon: 'key' },
   web_search: { active: 'Searching', complete: 'Searched', icon: 'search' },
+  spawn_subagent: { active: 'Running sub-agents', complete: 'Ran sub-agents', icon: 'agents' },
 };
 
 const ToolIcon: React.FC<{ type: string }> = ({ type }) => {
@@ -52,6 +53,15 @@ const ToolIcon: React.FC<{ type: string }> = ({ type }) => {
           <line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       );
+    case 'agents':
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      );
     default:
       return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -76,18 +86,18 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
 
         // For web_search, include the query in the label
         let label = isToolComplete ? labels.complete : labels.active;
+        let fullLabel: string | undefined;
         if (tool.type === 'web_search' && typeof tool.input?.query === 'string') {
-          const query = tool.input.query.length > 40
-            ? tool.input.query.slice(0, 40) + '...'
-            : tool.input.query;
+          const query = tool.input.query;
           label = isToolComplete ? `Searched "${query}"` : `Searching "${query}"`;
+          fullLabel = label;
         }
 
         return (
           <div
             key={idx}
             className={`tool-use-indicator ${tool.isError ? 'error' : ''}`}
-            title={tool.isError && tool.result ? tool.result : undefined}
+            title={tool.isError && tool.result ? tool.result : fullLabel}
           >
             <span className="tool-use-icon">
               <ToolIcon type={tool.type} />
