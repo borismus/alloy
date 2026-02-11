@@ -44,7 +44,7 @@ const SubagentCellHeader: React.FC<{
 );
 
 /**
- * Renders sub-agent responses in a comparison-style grid.
+ * Renders sub-agent responses in a grid layout.
  * Used both during streaming (with activeSubagents) and for completed messages (with completedResponses).
  */
 export const SubagentResponsesView: React.FC<SubagentResponsesViewProps> = ({

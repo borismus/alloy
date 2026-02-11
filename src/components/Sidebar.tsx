@@ -95,8 +95,6 @@ interface SidebarProps {
   unreadConversationIds: string[];
   availableModels: ModelInfo[];
   onNewConversation: () => void;
-  onNewComparison: () => void;
-  onNewCouncil: () => void;
   onNewTrigger: () => void;
   onNewRamble: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
@@ -123,8 +121,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   unreadConversationIds,
   availableModels,
   onNewConversation,
-  onNewComparison,
-  onNewCouncil,
   onNewTrigger,
   onNewRamble,
   onRenameConversation,
@@ -297,20 +293,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             }
           },
           {
-            id: 'new-comparison',
-            text: 'New Comparison',
-            action: () => {
-              onNewComparison();
-            }
-          },
-          {
-            id: 'new-council',
-            text: 'New Council',
-            action: () => {
-              onNewCouncil();
-            }
-          },
-          {
             id: 'new-trigger',
             text: 'New Trigger',
             action: () => {
@@ -398,12 +380,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const getTypeBadge = (item: TimelineItem) => {
     switch (item.type) {
       case 'conversation':
-        if (item.conversation?.comparison) {
-          return <span className="type-badge comparison">Compare</span>;
-        }
-        if (item.conversation?.council) {
-          return <span className="type-badge council">Council</span>;
-        }
         return null;
       case 'note':
         return <span className="type-badge note">Note</span>;
@@ -429,7 +405,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               <path d="M19 12H5M12 19l-7-7 7-7"/>
             </svg>
           </button>
-          <h2>Timeline</h2>
+          <h2>Orchestra</h2>
         </div>
       )}
       <div className="search-box" data-tauri-drag-region>
@@ -507,8 +483,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               </div>
               <div className="item-meta">
                 <span className="item-date">{formatDate(item.lastUpdated)}</span>
-                {item.type === 'conversation' && item.conversation &&
-                 !item.conversation.comparison && !item.conversation.council && (
+                {item.type === 'conversation' && item.conversation && (
                   <span className="item-model" title={item.conversation.model}>
                     {getModelDisplayName(item.conversation.model)}
                   </span>
