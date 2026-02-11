@@ -57,6 +57,12 @@ echo "  Syncing package-lock.json..."
 cd "$PROJECT_ROOT"
 npm install --package-lock-only --silent
 
+# Sync Cargo.lock
+echo "  Syncing Cargo.lock..."
+cd "$PROJECT_ROOT/src-tauri"
+cargo update --workspace --quiet 2>/dev/null || cargo generate-lockfile --quiet
+cd "$PROJECT_ROOT"
+
 # Verify all versions match
 echo ""
 echo "Verifying versions..."
@@ -80,7 +86,7 @@ echo "All versions updated to $VERSION"
 # Git operations
 echo ""
 echo "Creating git commit and tag..."
-git add "$PROJECT_ROOT/package.json" "$PROJECT_ROOT/package-lock.json" "$PROJECT_ROOT/src-tauri/tauri.conf.json" "$PROJECT_ROOT/src-tauri/Cargo.toml"
+git add "$PROJECT_ROOT/package.json" "$PROJECT_ROOT/package-lock.json" "$PROJECT_ROOT/src-tauri/tauri.conf.json" "$PROJECT_ROOT/src-tauri/Cargo.toml" "$PROJECT_ROOT/src-tauri/Cargo.lock"
 git commit -m "Bump version to $VERSION"
 git tag "v$VERSION"
 
