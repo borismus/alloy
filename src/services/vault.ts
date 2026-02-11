@@ -193,63 +193,11 @@ export class VaultService {
       title: conversation.title,
     };
 
-    // Add comparison metadata to frontmatter if this is a comparison
-    if (conversation.comparison) {
-      frontmatterData.comparison = true;
-      frontmatterData.models = conversation.comparison.models;  // Already in "provider/model" format
-    }
-
     const frontmatter = yaml.dump(frontmatterData);
 
-    let messages: string;
-
-    if (conversation.comparison) {
-      // Format comparison conversations differently
-      const modelCount = conversation.comparison.models.length;
-      const modelNames = conversation.comparison.models;  // Already in "provider/model" format
-
-      // Group messages by user prompt
-      const groups: { userMessage: string; responses: string[] }[] = [];
-      let i = 0;
-      const nonLogMessages = conversation.messages.filter(m => m.role !== 'log');
-
-      while (i < nonLogMessages.length) {
-        const msg = nonLogMessages[i];
-        if (msg.role === 'user') {
-          const responses: string[] = [];
-          for (let j = 0; j < modelCount && i + 1 + j < nonLogMessages.length; j++) {
-            const nextMsg = nonLogMessages[i + 1 + j];
-            if (nextMsg.role === 'assistant') {
-              responses.push(nextMsg.content);
-            }
-          }
-          groups.push({ userMessage: msg.content, responses });
-          i += 1 + responses.length;
-        } else {
-          i++;
-        }
-      }
-
-      messages = groups.map(group => {
-        const userBlock = group.userMessage
-          .split('\n')
-          .map((line, i) => i === 0 ? `> [You] ${line}` : `> ${line}`)
-          .join('\n');
-
-        const responseBlocks = group.responses.map((response, idx) => {
-          const modelName = modelNames[idx] || `Model ${idx + 1}`;
-          return response
-            .split('\n')
-            .map((line, i) => i === 0 ? `> [${modelName}] ${line}` : `> ${line}`)
-            .join('\n');
-        }).join('\n\n');
-
-        return `${userBlock}\n\n${responseBlocks}`;
-      }).join('\n\n---\n\n');
-    } else {
-      // Standard single-model conversation
-      const assistantName = conversation.model;  // Already in "provider/model" format
-      messages = conversation.messages
+    // Standard single-model conversation
+    const assistantName = conversation.model;  // Already in "provider/model" format
+    const messages = conversation.messages
         .filter(m => m.role !== 'log')
         .map(m => {
           const role = m.role === 'user' ? 'You' : assistantName;
@@ -276,7 +224,6 @@ export class VaultService {
           return content;
         })
         .join('\n\n');
-    }
 
     const content = `---\n${frontmatter}---\n\n<!-- Auto-generated preview. Edits will be overwritten. Source: ${yamlFilename} -->\n\n${messages}\n`;
 
@@ -499,35 +446,7 @@ export class VaultService {
       delete conv.provider;
     }
 
-    // Migrate comparison metadata
-    if (conv.comparison?.models) {
-      conv.comparison.models = conv.comparison.models.map((m: any) => {
-        if (typeof m === 'object' && m.provider && m.model) {
-          return formatModelId(m.provider, m.model);
-        }
-        return m; // Already a string
-      });
-    }
-
-    // Migrate council metadata
-    if (conv.council) {
-      if (conv.council.councilMembers) {
-        conv.council.councilMembers = conv.council.councilMembers.map((m: any) => {
-          if (typeof m === 'object' && m.provider && m.model) {
-            return formatModelId(m.provider, m.model);
-          }
-          return m;
-        });
-      }
-      if (conv.council.chairman && typeof conv.council.chairman === 'object') {
-        const chairman = conv.council.chairman as any;
-        if (chairman.provider && chairman.model) {
-          conv.council.chairman = formatModelId(chairman.provider, chairman.model);
-        }
-      }
-    }
-
-    // Migrate message-level provider/model (for comparison/council messages)
+    // Migrate message-level provider/model
     if (conv.messages) {
       for (const msg of conv.messages) {
         if (msg.provider && msg.model && !msg.model.includes('/')) {

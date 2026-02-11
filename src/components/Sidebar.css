@@ -197,16 +197,6 @@
   vertical-align: middle;
 }
 
-.type-badge.comparison {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.type-badge.council {
-  background: linear-gradient(135deg, #f1c40f 0%, #f39c12 100%);
-  color: #333;
-}
-
 .type-badge.trigger {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;

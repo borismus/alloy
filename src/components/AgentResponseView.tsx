@@ -36,7 +36,6 @@ interface AgentResponseViewProps {
 /**
  * A reusable component for displaying an agent's streaming response.
  * Handles tool/skill indicators, loading states, and markdown rendering.
- * Used across regular chat, comparison, and council modes.
  */
 export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
   content,

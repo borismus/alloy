@@ -74,7 +74,7 @@ describe('AnthropicService', () => {
       const modelKeys = models.map((m) => m.key);
 
       expect(modelKeys).toContain('anthropic/claude-opus-4-5-20251101');
-      expect(modelKeys).toContain('anthropic/claude-sonnet-4-20250514');
+      expect(modelKeys).toContain('anthropic/claude-sonnet-4-5-20250929');
     });
   });
 
@@ -401,7 +401,9 @@ describe('AnthropicService', () => {
       service.initialize('test-api-key');
 
       mockClient.messages.create.mockResolvedValue({
+        id: 'msg_123',
         content: [{ type: 'text', text: 'Generated Title' }],
+        usage: { input_tokens: 50, output_tokens: 10 },
       });
 
       const title = await service.generateTitle('User message', 'Assistant response');
@@ -423,7 +425,9 @@ describe('AnthropicService', () => {
       service.initialize('test-api-key');
 
       mockClient.messages.create.mockResolvedValue({
+        id: 'msg_123',
         content: [{ type: 'text', text: 'Title' }],
+        usage: { input_tokens: 50, output_tokens: 10 },
       });
 
       await service.generateTitle('Hello world', 'Hi there!');
@@ -454,7 +458,9 @@ describe('AnthropicService', () => {
       service.initialize('test-api-key');
 
       mockClient.messages.create.mockResolvedValue({
+        id: 'msg_123',
         content: [{ type: 'text', text: 'Title' }],
+        usage: { input_tokens: 50, output_tokens: 10 },
       });
 
       const longMessage = 'a'.repeat(1000);
@@ -472,7 +478,9 @@ describe('AnthropicService', () => {
       service.initialize('test-api-key');
 
       mockClient.messages.create.mockResolvedValue({
+        id: 'msg_123',
         content: [{ type: 'text', text: '  Spaced Title  \n' }],
+        usage: { input_tokens: 50, output_tokens: 10 },
       });
 
       const title = await service.generateTitle('User', 'Assistant');
@@ -485,7 +493,9 @@ describe('AnthropicService', () => {
 
       const longTitle = 'A'.repeat(150);
       mockClient.messages.create.mockResolvedValue({
+        id: 'msg_123',
         content: [{ type: 'text', text: longTitle }],
+        usage: { input_tokens: 50, output_tokens: 10 },
       });
 
       const title = await service.generateTitle('User', 'Assistant');
@@ -510,7 +520,9 @@ describe('AnthropicService', () => {
       service.initialize('test-api-key');
 
       mockClient.messages.create.mockResolvedValue({
+        id: 'msg_123',
         content: [{ type: 'tool_use', id: '123', name: 'test', input: {} }],
+        usage: { input_tokens: 50, output_tokens: 10 },
       });
 
       const title = await service.generateTitle('User message here', 'Response');

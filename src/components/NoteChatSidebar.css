@@ -220,34 +220,3 @@
     background-color: transparent;
   }
 }
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .note-chat-sidebar {
-    background: #1a1a1a;
-    border-left-color: #333;
-  }
-
-  .note-chat-empty {
-    color: #888;
-  }
-
-  .note-chat-input-area {
-    background: #252525;
-    border-top-color: #333;
-  }
-
-  .note-chat-textarea {
-    background: #1a1a1a;
-    border-color: #333;
-    color: #e0e0e0;
-  }
-
-  .note-chat-textarea:focus {
-    border-color: #3b82f6;
-  }
-
-  .note-chat-textarea::placeholder {
-    color: #666;
-  }
-}

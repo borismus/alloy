@@ -69,7 +69,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'log';
   timestamp: string;
   content: string;
-  // For comparison/council mode - which model generated this assistant response
+  // Which model generated this assistant response
   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   model?: string;
   // Attachments (images, etc.)
@@ -78,9 +78,6 @@ export interface Message {
   toolUse?: ToolUse[];
   // Skills applied in this message
   skillUse?: SkillUse[];
-  // Council mode - marks message role in council deliberation
-  councilMember?: boolean;  // True if this is a council member response
-  chairman?: boolean;       // True if this is the chairman synthesis
   // Sub-agent responses spawned during this message
   subagentResponses?: SubagentResponse[];
 }
@@ -88,29 +85,6 @@ export interface Message {
 export interface ModelInfo {
   key: string;   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   name: string;  // Human-readable display name (e.g., "Sonnet 4.5")
-}
-
-// Track each model's response in a comparison
-export interface ComparisonResponse {
-  model: string;  // Format: "provider/model-id"
-  content: string;
-  status: 'pending' | 'streaming' | 'complete' | 'error';
-  error?: string;
-  toolUse?: ToolUse[];
-  skillUse?: SkillUse[];
-}
-
-// Metadata for comparison conversations
-export interface ComparisonMetadata {
-  isComparison: true;
-  models: string[];  // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
-}
-
-// Metadata for council conversations
-export interface CouncilMetadata {
-  isCouncil: true;
-  councilMembers: string[];  // Format: "provider/model-id"
-  chairman: string;  // Format: "provider/model-id"
 }
 
 // Single trigger attempt record
@@ -164,8 +138,6 @@ export interface Conversation {
   title?: string;
   memory_version?: number;
   messages: Message[];
-  comparison?: ComparisonMetadata;
-  council?: CouncilMetadata;
 }
 
 export interface Config {

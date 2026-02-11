@@ -71,7 +71,9 @@
 .note-content-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2rem;
+  min-width: 0;
 }
 
 .note-content {
@@ -79,6 +81,8 @@
   margin: 0 auto;
   line-height: 1.7;
   color: #333;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .note-input-area {
@@ -141,4 +145,34 @@
 .note-input-area .send-button:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .note-viewer {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .note-content-container {
+    padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .note-content {
+    max-width: 100%;
+  }
+
+  .ramble-integrate-bar {
+    padding: 10px 16px;
+  }
+
+  .ramble-integrate-bar .integrate-hint {
+    font-size: 13px;
+  }
+
+  .ramble-integrate-bar .integrate-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
 }
