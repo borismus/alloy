@@ -400,12 +400,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     <div className={`sidebar ${fullScreen ? 'full-screen' : ''}`}>
       {fullScreen && onMobileBack && (
         <div className="mobile-sidebar-header">
-          <button className="mobile-back-button" onClick={onMobileBack}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-          </button>
-          <h2>Orchestra</h2>
+          <img src="/icon.svg" alt="Wheelhouse" className="mobile-app-icon" width="44" height="44" />
+          <h2>Wheelhouse</h2>
         </div>
       )}
       <div className="search-box" data-tauri-drag-region>
