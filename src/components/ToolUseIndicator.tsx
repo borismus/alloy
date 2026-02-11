@@ -121,6 +121,7 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
             <div key={idx} className="tool-use-subagent-wrapper">
               <div
                 className={`tool-use-indicator clickable ${tool.isError ? 'error' : ''}`}
+                title={tool.isError && tool.result ? tool.result : undefined}
                 onClick={() => setExpandedIdx(isExpanded ? null : idx)}
               >
                 <span className="tool-use-icon">

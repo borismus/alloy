@@ -79,6 +79,10 @@
   color: #e53935;
 }
 
+.tool-use-indicator.error .tool-use-label {
+  color: #c62828;
+}
+
 .tool-use-spinner {
   width: 10px;
   height: 10px;
@@ -102,6 +106,10 @@
 
 .tool-use-indicator.clickable:hover {
   background: #eee;
+}
+
+.tool-use-indicator.clickable.error:hover {
+  background: #ffe0e0;
 }
 
 .tool-use-subagent-wrapper {
