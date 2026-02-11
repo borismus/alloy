@@ -1,5 +1,11 @@
 /* Shared Markdown Styles - imported by components that render markdown */
 
+.markdown-content {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+
 .markdown-content p {
   margin: 0 0 1rem 0;
 }

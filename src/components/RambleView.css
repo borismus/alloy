@@ -3,6 +3,8 @@
   flex-direction: column;
   height: 100%;
   background: var(--bg-primary, #fff);
+  overflow-x: hidden;
+  min-width: 0;
 }
 
 /* Draft indicator status */
@@ -73,9 +75,13 @@
 .ramble-draft-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 1rem 1.5rem;
   font-size: 0.9rem;
   line-height: 1.6;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
 }
 
 /* Highlight animation for recently crystallized content */
@@ -177,52 +183,5 @@
 
   .ramble-draft-section {
     max-height: 35%;
-  }
-}
-
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  .ramble-view {
-    background: var(--bg-primary, #1a1a1a);
-  }
-
-  .ramble-draft-header,
-  .ramble-log-header {
-    background: var(--bg-secondary, #2a2a2a);
-    border-color: var(--border-color, #404040);
-  }
-
-  .ramble-log-input .append-only-wrapper {
-    border-color: var(--border-color, #404040);
-  }
-
-  .ramble-view .btn-small {
-    background: var(--bg-secondary, #2a2a2a);
-    border-color: var(--border-color, #404040);
-    color: var(--text-primary, #e0e0e0);
-  }
-
-  .ramble-view .btn-small:hover {
-    background: var(--bg-hover, #3a3a3a);
-  }
-
-  /* Dark mode highlight colors */
-  @keyframes crystallize-fade {
-    0% {
-      background-color: rgba(102, 126, 234, 0.15);
-    }
-    100% {
-      background-color: transparent;
-    }
-  }
-
-  @keyframes crystallize-glow {
-    0% {
-      box-shadow: inset 0 0 0 2px rgba(102, 126, 234, 0.5);
-      border-radius: 6px;
-    }
-    100% {
-      box-shadow: inset 0 0 0 2px transparent;
-    }
   }
 }

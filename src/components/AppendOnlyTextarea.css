@@ -53,18 +53,3 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
-
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-  .append-only-wrapper {
-    background: var(--bg-primary, #1a1a1a);
-  }
-
-  .crystallized-bg {
-    background-color: rgba(255, 255, 255, 0.06);
-  }
-
-  .append-only-textarea {
-    color: #fff;
-  }
-}

@@ -68,11 +68,3 @@
 .toast-dismiss:hover {
   opacity: 1;
 }
-
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-  .toast-warning {
-    background: #d97706;
-    color: #fff;
-  }
-}

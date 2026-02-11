@@ -6,6 +6,8 @@
   border-bottom: 1px solid var(--border-color, #e0e0e0);
   background: var(--bg-secondary, #f8f9fa);
   flex-shrink: 0;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .item-header-title {

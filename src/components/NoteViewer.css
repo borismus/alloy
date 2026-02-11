@@ -71,7 +71,9 @@
 .note-content-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2rem;
+  min-width: 0;
 }
 
 .note-content {
@@ -79,6 +81,8 @@
   margin: 0 auto;
   line-height: 1.7;
   color: #333;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .note-input-area {
