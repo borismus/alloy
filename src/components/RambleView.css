@@ -154,6 +154,32 @@
   background: var(--bg-primary, #fff);
 }
 
+/* Mobile styles */
+@media (max-width: 768px) {
+  .ramble-view {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .ramble-draft-header,
+  .ramble-log-header {
+    padding: 0.5rem 1rem;
+  }
+
+  .ramble-draft-content {
+    padding: 0.75rem 1rem;
+  }
+
+  .ramble-log-input {
+    padding: 0.75rem 1rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .ramble-draft-section {
+    max-height: 35%;
+  }
+}
+
 /* Dark mode support */
 @media (prefers-color-scheme: dark) {
   .ramble-view {

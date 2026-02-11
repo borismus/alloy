@@ -136,6 +136,25 @@ const SidebarWithRamble = forwardRef<SidebarHandle, SidebarWithRambleProps>(
   }
 );
 
+// Effect component to auto-enter ramble mode when viewing drafts on mobile
+const MobileRambleModeEffect: React.FC<{
+  isMobile: boolean;
+  isViewingDraft: boolean;
+  selectedNote: { filename: string; content: string } | null;
+}> = ({ isMobile, isViewingDraft, selectedNote }) => {
+  const rambleContext = useRambleContext();
+
+  useEffect(() => {
+    if (isMobile && isViewingDraft && selectedNote) {
+      if (!rambleContext.isRambleMode || rambleContext.draftFilename !== selectedNote.filename) {
+        rambleContext.enterRambleMode(selectedNote.filename);
+      }
+    }
+  }, [isMobile, isViewingDraft, selectedNote, rambleContext]);
+
+  return null;
+};
+
 // Wrapper to provide ramble integration to NoteViewer
 interface NoteViewerWithIntegrateProps {
   content: string;
@@ -279,6 +298,10 @@ function AppContent() {
   const isMobile = useIsMobile();
   type MobileView = 'list' | 'conversation';
   const [mobileView, setMobileView] = useState<MobileView>('conversation');
+
+  // Check if selected note is a draft (for mobile ramble mode)
+  const isViewingDraft = selectedNote?.filename.startsWith('rambles/') &&
+    !selectedNote.content.includes('integrated: true');
 
   // Message ID to scroll to after navigating to a conversation (for provenance links)
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
@@ -1419,6 +1442,11 @@ function AppContent() {
           />
         )}
         <RambleApprovalModal />
+        <MobileRambleModeEffect
+          isMobile={isMobile}
+          isViewingDraft={isViewingDraft ?? false}
+          selectedNote={selectedNote}
+        />
         <div className="app">
         {isMobile ? (
           // Mobile layout - show one view at a time
@@ -1452,8 +1480,56 @@ function AppContent() {
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
             />
+          ) : isViewingDraft ? (
+            // Mobile: viewing a draft note - show RambleView
+            <div className="main-panel">
+              <RambleView
+                notes={notes}
+                model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+                onNavigateToNote={handleSelectNote}
+                onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+                conversations={conversations}
+                onBack={() => setMobileView('list')}
+                canGoBack={true}
+              />
+            </div>
+          ) : selectedNote ? (
+            // Mobile: viewing a regular note
+            <NoteViewerWithIntegrate
+              content={selectedNote.content}
+              filename={selectedNote.filename}
+              onNavigateToNote={handleSelectNote}
+              onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+              conversations={conversations}
+              notes={notes}
+              selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+              onBack={() => setMobileView('list')}
+              canGoBack={true}
+            />
+          ) : selectedTrigger ? (
+            // Mobile: viewing a trigger
+            <TriggerDetailView
+              trigger={selectedTrigger}
+              onBack={() => setMobileView('list')}
+              canGoBack={true}
+              onDelete={async () => {
+                await handleDeleteTrigger(selectedTrigger.id);
+                setSelectedItem(null);
+                setMobileView('list');
+              }}
+              onRunNow={async () => {
+                const refreshed = await vaultService.loadTrigger(selectedTrigger.id);
+                if (refreshed) {
+                  setTriggers(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
+                }
+              }}
+              onAskAbout={handleAskAboutTrigger}
+              onTriggerUpdated={(updated) => {
+                setTriggers(prev => prev.map(t => t.id === updated.id ? updated : t));
+              }}
+            />
           ) : (
-            // mobileView === 'conversation'
+            // Mobile: conversation view (regular, council, or comparison)
             <ChatInterface
               ref={chatInterfaceRef}
               conversation={currentConversation}
