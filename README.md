@@ -1,8 +1,9 @@
 # Wheelhouse
 
-**Steer your AI conversations. Harbor your data.**
+**Everything stays in your wheelhouse.**
 
-ChatGPT, Claude, Gemini — most apps give you one model at a time. Wheelhouse lets you steer them all. Run models in parallel, let them deliberate, or cascade from fast to powerful. Every major AI, charted from one helm.
+Your AI conversations belong on your device — not on someone else's server. Wheelhouse gives you one helm for ChatGPT, Claude, Gemini, and more. Run them in parallel, let them deliberate, or cascade from fast to powerful.
+Nothing leaves your machine. Ever.
 
 ## Why Wheelhouse?
 
