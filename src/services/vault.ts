@@ -11,7 +11,7 @@ export class VaultService {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select Orchestra Vault Folder',
+      title: 'Select Wheelhouse Vault Folder',
     });
 
     if (selected && typeof selected === 'string') {

@@ -1,7 +1,7 @@
 /**
  * HTTP-based implementation of @tauri-apps/plugin-fs
  *
- * Calls the Orchestra server API for filesystem operations.
+ * Calls the Wheelhouse server API for filesystem operations.
  * Used in SERVER_MODE when running as a web app against a remote server.
  */
 

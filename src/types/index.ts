@@ -1,4 +1,4 @@
-// Core types for Orchestra
+// Core types for Wheelhouse
 
 export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini';
 

@@ -93,12 +93,12 @@ export function VaultSetup({ onVaultSelected, onExistingVault }: VaultSetupProps
       <div className="vault-setup-content">
         {step === 'vault' && (
           <>
-            <h1>Welcome to Orchestra</h1>
-            <p>Conduct your AI</p>
+            <h1>Welcome to Wheelhouse</h1>
+            <p>Steer your AI conversations. Harbor your data.</p>
 
             <div className="vault-setup-description">
               <p>
-                Orchestra stores all your conversations as plain text files in a folder
+                Wheelhouse stores all your conversations as plain text files in a folder
                 you choose. This folder is called your "vault".
               </p>
               <p>

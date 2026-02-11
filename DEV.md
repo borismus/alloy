@@ -1,4 +1,4 @@
-# Orchestra Development Notes
+# Wheelhouse Development Notes
 
 ## Quick Start
 
@@ -16,7 +16,7 @@ npm run tauri dev
 ## Project Structure
 
 ```
-orchestra/
+wheelhouse/
 ├── src/                      # React frontend
 │   ├── components/          # UI components
 │   │   ├── VaultSetup.tsx   # First-run vault selection
@@ -77,7 +77,7 @@ messages:
 
 ### Config (YAML)
 ```yaml
-vaultPath: /Users/you/orchestra-vault
+vaultPath: /Users/you/wheelhouse-vault
 anthropicApiKey: sk-ant-...
 defaultModel: claude-sonnet-4-20250514
 ```

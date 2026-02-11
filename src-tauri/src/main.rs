@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    orchestra_lib::run()
+    wheelhouse_lib::run()
 }

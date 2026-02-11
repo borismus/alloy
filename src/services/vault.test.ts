@@ -27,7 +27,7 @@ describe('VaultService', () => {
       expect(dialog.open).toHaveBeenCalledWith({
         directory: true,
         multiple: false,
-        title: 'Select Orchestra Vault Folder',
+        title: 'Select Wheelhouse Vault Folder',
       });
     });
 

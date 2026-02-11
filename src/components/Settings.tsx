@@ -128,7 +128,7 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
           <div className="settings-section">
             <h3>Updates</h3>
             <p className="settings-description">
-              Check for new versions of Orchestra.
+              Check for new versions of Wheelhouse.
             </p>
             <div className="settings-button-group">
               <button

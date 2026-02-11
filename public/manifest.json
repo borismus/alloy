@@ -1,6 +1,6 @@
 {
-  "name": "Orchestra",
-  "short_name": "Orchestra",
+  "name": "Wheelhouse",
+  "short_name": "Wheelhouse",
   "description": "AI-powered conversation manager with multi-model support",
   "start_url": "/",
   "display": "standalone",

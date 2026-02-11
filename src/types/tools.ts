@@ -1,4 +1,4 @@
-// Built-in tool types for Orchestra Skills system
+// Built-in tool types for Wheelhouse Skills system
 
 export interface ToolDefinition {
   name: string;

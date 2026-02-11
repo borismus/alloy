@@ -1,22 +1,22 @@
-# Orchestra
+# Wheelhouse
 
-**Conduct your AI.**
+**Steer your AI conversations. Harbor your data.**
 
-ChatGPT, Claude, Gemini — most apps give you one model at a time. Orchestra lets you conduct them all. Run models in parallel, let them deliberate, or cascade from fast to powerful. Every major AI, performing in concert.
+ChatGPT, Claude, Gemini — most apps give you one model at a time. Wheelhouse lets you steer them all. Run models in parallel, let them deliberate, or cascade from fast to powerful. Every major AI, charted from one helm.
 
-## Why Orchestra?
+## Why Wheelhouse?
 
-**AI models are commoditizing fast.** The real power isn't in any single model — it's in orchestrating them:
+**AI models are commoditizing fast.** The real power isn't in any single model — it's in navigating them:
 
 - **Council mode**: Query multiple models at once. A chairman model synthesizes the best answer from all responses.
 - **Comparison mode**: See every model's response side-by-side. Pick the winner yourself.
 - **Triggers**: A fast, cheap model monitors your conversation and brings in reinforcements when needed.
 
-No other chat app does this. They lock you into one provider. Orchestra sits above them all — you're the conductor.
+No other chat app does this. They lock you into one provider. Wheelhouse sits above them all — you're the captain.
 
 ## Plus: You Own Everything
 
-Orchestra stores every conversation as a plain YAML file in a folder you choose. Like Obsidian for notes, but for AI conversations.
+Wheelhouse stores every conversation as a plain YAML file in a folder you choose. Like Obsidian for notes, but for AI conversations.
 
 | Question | Answer |
 |----------|--------|
@@ -28,7 +28,7 @@ Orchestra stores every conversation as a plain YAML file in a folder you choose.
 
 No cloud lock-in. No proprietary formats. Your conversations stay yours.
 
-## Where Orchestra Shines
+## Where Wheelhouse Shines
 
 ### Multi-Model Intelligence
 Use the right model for the job — or all of them at once. Council mode queries multiple models in parallel, then synthesizes a superior answer. Comparison mode shows you each response so you can judge for yourself.
@@ -74,7 +74,7 @@ npm install
 ## File Structure
 
 ```
-~/orchestra-vault/              # Your chosen vault location
+~/wheelhouse-vault/              # Your chosen vault location
 ├── conversations/
 │   ├── 2025-01-10-1736547123-how-to-setup-tauri.yaml
 │   ├── 2025-01-09-1736460789-project-brainstorm.yaml
@@ -108,7 +108,7 @@ messages:
 
 ## Skills & Tools
 
-Skills turn Orchestra into a programmable AI platform. Each skill is a markdown file with instructions that teach the AI new behaviors — and give it access to tools that can take action.
+Skills turn Wheelhouse into a programmable AI platform. Each skill is a markdown file with instructions that teach the AI new behaviors — and give it access to tools that can take action.
 
 ### How It Works
 
@@ -151,9 +151,9 @@ Skills are just text files. Edit them, version control them, share them. Your AI
 
 ## Privacy & Trust
 
-Orchestra is radically transparent:
+Wheelhouse is radically transparent:
 
-| What Orchestra does | What Orchestra doesn't do |
+| What Wheelhouse does | What Wheelhouse doesn't do |
 |---------------------|---------------------------|
 | Stores files in a folder you choose | Phone home |
 | Shows you exactly what's sent to LLMs | Collect analytics |

@@ -1,4 +1,4 @@
-// Skills types for Orchestra
+// Skills types for Wheelhouse
 
 export interface SkillMetadata {
   name: string;

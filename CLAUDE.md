@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Orchestra** (codenamed "promptbox") is a multi-model AI chat application built with Tauri 2 + React.
+**Wheelhouse** (codenamed "promptbox") is a multi-model AI chat application built with Tauri 2 + React.
 
 Key features:
 - **Multi-provider**: Anthropic (Claude), OpenAI, Google Gemini, Ollama

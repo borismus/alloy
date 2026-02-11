@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Version bump script for Orchestra
+# Version bump script for Wheelhouse
 # Updates version in all required files, commits, and tags
 
 usage() {

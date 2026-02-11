@@ -1,4 +1,4 @@
-# Orchestra Troubleshooting Guide
+# Wheelhouse Troubleshooting Guide
 
 ## Common Issues and Solutions
 
@@ -59,7 +59,7 @@ And permissions are in the `security.capabilities` section.
 **Problem**: File system permissions not granted.
 
 **Solutions**:
-1. Choose a folder you have write access to (e.g., `~/Documents/orchestra-vault`)
+1. Choose a folder you have write access to (e.g., `~/Documents/wheelhouse-vault`)
 2. On macOS, grant Full Disk Access: System Settings → Privacy & Security → Full Disk Access
 3. Try a different location like your home directory
 
@@ -214,7 +214,7 @@ If you're still stuck:
    ./run.sh
    ```
 
-4. **File an issue**: https://github.com/your-repo/orchestra/issues
+4. **File an issue**: https://github.com/your-repo/wheelhouse/issues
 
 ---
 

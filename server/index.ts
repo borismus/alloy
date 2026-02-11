@@ -1,7 +1,7 @@
 /**
- * Orchestra Server - HTTP API for filesystem operations
+ * Wheelhouse Server - HTTP API for filesystem operations
  *
- * Enables web/mobile access to Orchestra by exposing the vault over HTTP.
+ * Enables web/mobile access to Wheelhouse by exposing the vault over HTTP.
  * Run with: node --import tsx server/index.ts
  */
 
