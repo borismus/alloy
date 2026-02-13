@@ -106,8 +106,12 @@ async function executeSubagentTool(
   // Signal UI
   options.onSubagentStart?.(agents.map(a => ({ id: a.id, name: a.name, model: a.model, prompt: a.prompt })));
 
-  // Tools for sub-agents: everything except spawn_subagent (prevent recursion)
-  const subagentTools = BUILTIN_TOOLS.filter(t => t.name !== 'spawn_subagent');
+  // Tools for sub-agents: read-only (no spawning, no file writes)
+  const subagentTools = BUILTIN_TOOLS.filter(t =>
+    t.name !== 'spawn_subagent' &&
+    t.name !== 'write_file' &&
+    t.name !== 'append_to_note'
+  );
 
   // Execute all sub-agents in parallel
   const results = await Promise.allSettled(
