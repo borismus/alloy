@@ -6,6 +6,16 @@ import { skillRegistry } from '../skills/registry';
 import { providerRegistry } from '../providers/registry';
 import { ContextManager } from '../context';
 
+/** Enhance tool definitions with runtime context (e.g. available models for spawn_subagent) */
+function enhanceToolsWithContext(tools: ToolDefinition[]): ToolDefinition[] {
+  const modelKeys = providerRegistry.getAllAvailableModels().map(m => m.key);
+  if (modelKeys.length === 0) return tools;
+  return tools.map(t => t.name === 'spawn_subagent'
+    ? { ...t, description: `${t.description} Available models: ${modelKeys.join(', ')}` }
+    : t
+  );
+}
+
 export interface ApprovalRequest {
   path: string;
   originalContent: string;
@@ -200,7 +210,7 @@ export async function executeWithTools(
   const chatOptions: ChatOptions = {
     model,
     systemPrompt,
-    tools,
+    tools: enhanceToolsWithContext(tools),
     onChunk,
     onToolUse: (toolUse: ToolUse) => {
       onToolUse?.(toolUse);
@@ -215,8 +225,15 @@ export async function executeWithTools(
   const prepared = contextManager.prepareContext(messages, budget);
 
   if (prepared.truncated) {
+    const parts = [];
+    if (prepared.truncatedCount > 0) {
+      parts.push(`dropped ${prepared.truncatedCount} old messages`);
+    }
+    if (prepared.contentTruncated) {
+      parts.push('truncated latest message content');
+    }
     console.log(
-      `[Context] Dropped ${prepared.truncatedCount} old messages to fit ${budget.messages} token budget ` +
+      `[Context] ${parts.join(', ')} to fit ${budget.messages} token budget ` +
       `(${prepared.estimatedTokens} tokens used)`
     );
   }
@@ -257,18 +274,31 @@ export async function executeWithTools(
         // Special handling for spawn_subagent (only allowed once per turn)
         if (toolCall.name === 'spawn_subagent') {
           if (subagentsSpawned) {
+            const errorMsg = 'spawn_subagent can only be called once per response. Combine all sub-agent tasks into a single call with multiple agents (up to 3).';
+            // Update the tool use entry so the pill shows error state
+            const toolUseEntry = allToolUses.find(
+              (t) => t.type === 'spawn_subagent' && !t.result
+            );
+            if (toolUseEntry) {
+              toolUseEntry.result = errorMsg;
+              toolUseEntry.isError = true;
+            }
             return {
               tool_use_id: toolCall.id,
-              content: 'spawn_subagent can only be called once per response. Combine all sub-agent tasks into a single call with multiple agents (up to 3).',
+              content: errorMsg,
               is_error: true,
             };
           }
-          subagentsSpawned = true;
           const { toolResult, responses } = await executeSubagentTool(
             toolCall,
             `${provider.providerType}/${model}`,
             options,
           );
+          // Only burn the one-shot flag if agents actually spawned
+          // (not on validation errors like wrong model name)
+          if (!toolResult.is_error) {
+            subagentsSpawned = true;
+          }
           allSubagentResponses.push(...responses);
 
           // Update the tool use entry with result summary
