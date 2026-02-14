@@ -4,6 +4,7 @@ import { AnthropicService } from './anthropic';
 import { OpenAIService } from './openai';
 import { OllamaService } from './ollama';
 import { GeminiService } from './gemini';
+import { GrokService } from './grok';
 
 export class ProviderRegistry {
   private providers: Map<ProviderType, IProviderService> = new Map();
@@ -15,6 +16,7 @@ export class ProviderRegistry {
     this.providers.set('openai', new OpenAIService());
     this.providers.set('ollama', new OllamaService());
     this.providers.set('gemini', new GeminiService());
+    this.providers.set('grok', new GrokService());
   }
 
   async initializeFromConfig(config: Config): Promise<void> {
@@ -44,6 +46,12 @@ export class ProviderRegistry {
     if (config.GEMINI_API_KEY) {
       const gemini = this.providers.get('gemini');
       gemini?.initialize(config.GEMINI_API_KEY);
+    }
+
+    // Initialize Grok (xAI) if key is present
+    if (config.XAI_API_KEY) {
+      const grok = this.providers.get('grok');
+      grok?.initialize(config.XAI_API_KEY);
     }
   }
 

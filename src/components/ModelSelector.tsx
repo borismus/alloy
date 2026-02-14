@@ -44,7 +44,7 @@ export function ModelSelector({ value, onChange, disabled, models, favoriteModel
       return acc;
     }, {} as Record<ProviderType, ModelInfo[]>);
 
-  const providerOrder: ProviderType[] = ['anthropic', 'openai', 'gemini', 'ollama'];
+  const providerOrder: ProviderType[] = ['anthropic', 'openai', 'gemini', 'grok', 'ollama'];
   const sortedProviders = providerOrder.filter(p => groupedModels[p]?.length > 0);
 
   useEffect(() => {

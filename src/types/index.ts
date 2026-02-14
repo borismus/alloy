@@ -1,6 +1,6 @@
 // Core types for Wheelhouse
 
-export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini';
+export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini' | 'grok';
 
 // Helper functions for unified model format: "provider/model-id"
 export function parseModelId(modelString: string): { provider: ProviderType; modelId: string } {
@@ -149,6 +149,7 @@ export interface Config {
   OPENAI_API_KEY?: string;
   OLLAMA_BASE_URL?: string;
   GEMINI_API_KEY?: string;
+  XAI_API_KEY?: string;
 }
 
 export interface AppState {
