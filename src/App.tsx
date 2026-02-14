@@ -1109,13 +1109,6 @@ function AppContent() {
     }
   };
 
-  const handleConfigReload = async () => {
-    const vaultPathForReload = vaultService.getVaultPath();
-    if (vaultPathForReload) {
-      await loadVault(vaultPathForReload);
-    }
-  };
-
 
   if (isLoading) {
     return <div className="loading">Loading...</div>;
@@ -1489,14 +1482,7 @@ function AppContent() {
       {showSettings && (
         <Settings
           onClose={() => setShowSettings(false)}
-          vaultPath={vaultService.getVaultPath()}
-          onChangeVault={async () => {
-            const newPath = await vaultService.selectVaultFolder();
-            if (newPath) {
-              await loadVault(newPath);
-            }
-          }}
-          onConfigReload={handleConfigReload}
+          vaultPath={vaultPath}
         />
       )}
       {showTriggerConfig && (

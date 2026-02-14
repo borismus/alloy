@@ -7,11 +7,9 @@ import './Settings.css';
 interface SettingsProps {
   onClose: () => void;
   vaultPath: string | null;
-  onChangeVault: () => Promise<void>;
-  onConfigReload?: () => Promise<void>;
 }
 
-export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _onConfigReload }: SettingsProps) {
+export function Settings({ onClose, vaultPath }: SettingsProps) {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | CheckResult>('idle');
 
   const handleCheckForUpdates = async () => {
@@ -36,19 +34,11 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
     }
   };
 
-  const handleEditMemory = async () => {
-    try {
-      const filePath = await vaultService.getMemoryFilePath();
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-      if (!filePath) {
-        console.error('Memory file path not found');
-        return;
-      }
-
-      await openPath(filePath);
-    } catch (error) {
-      console.error('Failed to open memory file:', error);
-    }
+  const handleResetVault = () => {
+    localStorage.clear();
+    window.location.reload();
   };
 
   const handleEditConfig = async () => {
@@ -77,46 +67,29 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
         <div className="settings-content">
           <div className="settings-section">
             <h3>Vault</h3>
-            <p className="settings-description">
-              Your vault stores all conversations and settings. Point it to a synced folder (like Obsidian) to sync across devices.
-            </p>
+            <p className="settings-description">All conversations, notes, and settings are stored here.</p>
             {vaultPath && (
               <p className="vault-path">{vaultPath}</p>
             )}
             <div className="settings-button-group">
-              <button
-                onClick={onChangeVault}
-                className="settings-button"
-              >
-                Change Vault Location
-              </button>
               <button
                 onClick={handleRevealVaultInFinder}
                 className="settings-button"
               >
                 Reveal in Finder
               </button>
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="settings-button settings-button-danger"
+              >
+                Reset
+              </button>
             </div>
           </div>
 
           <div className="settings-section">
-            <h3>Memory</h3>
-            <p className="settings-description">
-              Your memory file stores context and preferences that are included with every conversation.
-            </p>
-            <button
-              onClick={handleEditMemory}
-              className="settings-button"
-            >
-              Edit memory.md
-            </button>
-          </div>
-
-          <div className="settings-section">
             <h3>Configuration</h3>
-            <p className="settings-description">
-              Your config file stores API keys and other settings. Edit it to add or change providers.
-            </p>
+            <p className="settings-description">API keys, providers, and preferences.</p>
             <button
               onClick={handleEditConfig}
               className="settings-button"
@@ -127,9 +100,7 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
 
           <div className="settings-section">
             <h3>Updates</h3>
-            <p className="settings-description">
-              Check for new versions of Wheelhouse.
-            </p>
+            <p className="settings-description">Check for new versions of Wheelhouse.</p>
             <div className="settings-button-group">
               <button
                 onClick={handleCheckForUpdates}
@@ -155,6 +126,29 @@ export function Settings({ onClose, vaultPath, onChangeVault, onConfigReload: _o
 
         </div>
       </div>
+
+      {showResetConfirm && (
+        <div className="settings-overlay" onClick={() => setShowResetConfirm(false)}>
+          <div className="settings-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Reset Wheelhouse?</h3>
+            <p>This will clear all local settings and reload the app. Your vault files will not be deleted.</p>
+            <div className="settings-button-group">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="settings-button settings-button-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetVault}
+                className="settings-button settings-button-danger"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
