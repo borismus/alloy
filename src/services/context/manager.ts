@@ -1,6 +1,6 @@
 import { Message } from '../../types';
 import { ToolDefinition } from '../../types/tools';
-import { estimateTokens, estimateMessageTokens, estimateToolTokens } from './estimator';
+import { estimateTokens, estimateMessageTokens, estimateToolTokens, truncateToTokenBudget } from './estimator';
 
 // Default budget for conversation context
 const DEFAULT_TOTAL_BUDGET = 16000;
@@ -20,6 +20,7 @@ export interface TruncatedContext {
   estimatedTokens: number;
   truncated: boolean;
   truncatedCount: number; // How many old messages were dropped
+  contentTruncated: boolean; // Whether the latest message content was truncated
 }
 
 export interface ContextManagerConfig {
@@ -62,7 +63,8 @@ export class ContextManager {
 
   /**
    * Prepare messages to fit within budget.
-   * Builds from newest to oldest - most recent messages are always included.
+   * The most recent message is always included (truncated if necessary).
+   * Remaining budget is filled with older messages, newest first.
    * Returns messages in chronological order (oldest first).
    */
   prepareContext(messages: Message[], budget: ContextBudget): TruncatedContext {
@@ -75,39 +77,57 @@ export class ContextManager {
         estimatedTokens: 0,
         truncated: false,
         truncatedCount: 0,
+        contentTruncated: false,
       };
     }
 
     // Truncate tool results within messages to save tokens
     const withTruncatedTools = filtered.map(m => this.truncateToolResults(m));
 
-    // Build from newest to oldest
     const result: Message[] = [];
     let totalTokens = 0;
+    let contentTruncated = false;
 
-    // Iterate backwards (newest first)
-    for (let i = withTruncatedTools.length - 1; i >= 0; i--) {
+    // Always include the most recent message, truncating its content if needed
+    const newest = withTruncatedTools[withTruncatedTools.length - 1];
+    const newestTokens = estimateMessageTokens(newest);
+
+    if (newestTokens > budget.messages) {
+      // Truncate content to fit the budget (leave room for message overhead)
+      const overhead = newestTokens - estimateTokens(newest.content);
+      const contentBudget = Math.max(100, budget.messages - overhead);
+      const truncatedContent = truncateToTokenBudget(newest.content, contentBudget);
+      const truncatedNewest = { ...newest, content: truncatedContent };
+      result.push(truncatedNewest);
+      totalTokens = estimateMessageTokens(truncatedNewest);
+      contentTruncated = true;
+    } else {
+      result.push(newest);
+      totalTokens = newestTokens;
+    }
+
+    // Fill remaining budget with older messages, newest first
+    for (let i = withTruncatedTools.length - 2; i >= 0; i--) {
       const message = withTruncatedTools[i];
       const messageTokens = estimateMessageTokens(message);
 
-      // Check if adding this message would exceed budget
       if (totalTokens + messageTokens > budget.messages) {
-        // Stop adding older messages
         break;
       }
 
-      // Add to front (to maintain chronological order)
       result.unshift(message);
       totalTokens += messageTokens;
     }
 
+    // Count dropped messages (not including the newest which is always kept)
     const truncatedCount = withTruncatedTools.length - result.length;
 
     return {
       messages: result,
       estimatedTokens: totalTokens,
-      truncated: truncatedCount > 0,
+      truncated: truncatedCount > 0 || contentTruncated,
       truncatedCount,
+      contentTruncated,
     };
   }
 
