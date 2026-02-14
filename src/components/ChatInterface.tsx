@@ -3,7 +3,6 @@ import { Conversation, Message, ModelInfo, Attachment, getProviderFromModel, get
 import { PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
-import { useIsMobile } from '../hooks/useIsMobile';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useAutoScroll } from '../hooks/useAutoScroll';
@@ -89,7 +88,6 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isMobile = useIsMobile();
   const textareaProps = useTextareaProps();
 
   useImperativeHandle(ref, () => ({
@@ -238,7 +236,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={isMobile ? "Send a message..." : "Send a message... (drop or paste images)"}
+          placeholder="Send a message..."
           disabled={isStreaming}
           rows={1}
           {...textareaProps}
