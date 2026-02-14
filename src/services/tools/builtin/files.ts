@@ -1,7 +1,7 @@
 import { ToolResult } from '../../../types/tools';
 import { vaultService } from '../../vault';
 import { ToolRegistry } from '../registry';
-import { readTextFile, writeTextFile, exists, readDir } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, exists, readDir, mkdir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import yaml from 'js-yaml';
 
@@ -234,6 +234,15 @@ async function writeFile(
   }
 
   try {
+    // Ensure parent directories exist (e.g., skills/my-skill/ for skills/my-skill/SKILL.md)
+    const lastSlash = fullPath.lastIndexOf('/');
+    if (lastSlash > 0) {
+      const parentDir = fullPath.slice(0, lastSlash);
+      if (!(await exists(parentDir))) {
+        await mkdir(parentDir, { recursive: true });
+      }
+    }
+
     await writeTextFile(fullPath, content);
     return {
       tool_use_id: '',
