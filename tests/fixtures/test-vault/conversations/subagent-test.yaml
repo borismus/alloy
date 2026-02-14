@@ -1,0 +1,79 @@
+id: subagent-test
+created: "2025-01-15T10:00:00.000Z"
+updated: "2025-01-15T10:01:00.000Z"
+model: "anthropic/claude-sonnet-4-5-20250929"
+title: "Sub-agent side-by-side test"
+messages:
+  - role: user
+    timestamp: "2025-01-15T10:00:00.000Z"
+    content: "Compare the pros and cons of React vs Vue vs Svelte"
+  - role: assistant
+    timestamp: "2025-01-15T10:01:00.000Z"
+    content: "Here's a synthesis of what my sub-agents found about each framework."
+    model: "anthropic/claude-sonnet-4-5-20250929"
+    toolUse:
+      - type: spawn_subagent
+        input:
+          agents:
+            - name: React Analyst
+              model: anthropic/claude-sonnet-4-5-20250929
+              prompt: Analyze React pros and cons
+            - name: Vue Analyst
+              model: anthropic/claude-sonnet-4-5-20250929
+              prompt: Analyze Vue pros and cons
+            - name: Svelte Analyst
+              model: anthropic/claude-sonnet-4-5-20250929
+              prompt: Analyze Svelte pros and cons
+        result: "Spawned 3 sub-agent(s): React Analyst, Vue Analyst, Svelte Analyst"
+    subagentResponses:
+      - name: React Analyst
+        model: "anthropic/claude-sonnet-4-5-20250929"
+        prompt: "Analyze React pros and cons"
+        content: |
+          ## React
+
+          **Pros:**
+          - Massive ecosystem and community
+          - Strong job market demand
+          - Flexible architecture
+          - React Native for mobile
+
+          **Cons:**
+          - Steep learning curve for beginners
+          - Frequent API changes
+          - JSX can be polarizing
+          - Requires additional libraries for routing/state
+      - name: Vue Analyst
+        model: "anthropic/claude-sonnet-4-5-20250929"
+        prompt: "Analyze Vue pros and cons"
+        content: |
+          ## Vue
+
+          **Pros:**
+          - Gentle learning curve
+          - Excellent documentation
+          - Progressive adoption
+          - Single-file components
+
+          **Cons:**
+          - Smaller ecosystem than React
+          - Fewer job opportunities
+          - Less community resources
+          - Some enterprise hesitancy
+      - name: Svelte Analyst
+        model: "anthropic/claude-sonnet-4-5-20250929"
+        prompt: "Analyze Svelte pros and cons"
+        content: |
+          ## Svelte
+
+          **Pros:**
+          - No virtual DOM overhead
+          - Minimal boilerplate
+          - Truly reactive
+          - Small bundle sizes
+
+          **Cons:**
+          - Smallest ecosystem of the three
+          - Limited tooling
+          - Fewer learning resources
+          - Less battle-tested at scale
