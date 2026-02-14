@@ -223,7 +223,6 @@ function AppContent() {
   // Navigate to a new item, saving current as previous (for back button)
   const navigateTo = useCallback((item: SelectedItem) => {
     console.log('[navigateTo] called with:', item?.type, item?.id);
-    console.trace('[navigateTo] stack trace');
     if (selectedItem) {
       setPreviousItem(selectedItem);
     }
