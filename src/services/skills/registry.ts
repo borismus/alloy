@@ -53,6 +53,10 @@ export class SkillRegistry {
     console.log('[buildSystemPrompt] skills count:', skills.length, 'names:', skills.map(s => s.name));
     let prompt = '';
 
+    // Current date/time context
+    const now = new Date();
+    prompt += `Current time: ${now.toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone})\n\n`;
+
     // Inject memory content at the top if provided
     if (memoryContent) {
       prompt += '# Memory\n\n';
