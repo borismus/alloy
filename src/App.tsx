@@ -3,6 +3,7 @@ import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { rambleService } from './services/ramble';
+import { triggerExecutor } from './services/triggers/executor';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
@@ -1256,6 +1257,27 @@ function AppContent() {
       setDraftConversation(null);
       setNoteContent(null);
       navigateTo({ type: 'trigger', id: newTrigger.id });
+
+      // Establish baseline in background (non-blocking)
+      if (newTrigger.enabled) {
+        triggerExecutor.executeBaselineCheck(newTrigger).then(async (result) => {
+          if (result.result === 'triggered') {
+            const baselineTime = new Date().toISOString();
+            const updatedTrigger: Trigger = {
+              ...newTrigger,
+              updated: baselineTime,
+              messages: [
+                { role: 'user', timestamp: baselineTime, content: newTrigger.triggerPrompt },
+                { role: 'assistant', timestamp: baselineTime, content: result.response, model: newTrigger.model },
+              ],
+              lastChecked: baselineTime,
+              lastTriggered: baselineTime,
+              history: [{ timestamp: baselineTime, result: 'triggered', reasoning: 'Baseline established' }],
+            };
+            await handleTriggerUpdated(updatedTrigger);
+          }
+        }).catch(err => console.warn('Failed to establish trigger baseline:', err));
+      }
     } catch (error) {
       console.error('Error creating trigger:', error);
     }
