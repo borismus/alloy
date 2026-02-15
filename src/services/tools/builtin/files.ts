@@ -45,56 +45,74 @@ function checkPathPermission(relativePath: string, operation: 'read' | 'write'):
   return false;
 }
 
+// Default model for triggers when none specified — cheap and fast
+const DEFAULT_TRIGGER_MODEL = 'anthropic/claude-haiku-4-5-20251001';
+
 /**
- * Validate trigger YAML content before writing to triggers/ directory.
- * Returns null if valid, or an error message if invalid.
+ * Validate and normalize trigger YAML content before writing to triggers/ directory.
+ * Applies sensible defaults for missing optional fields and handles legacy nested format.
+ * Returns { content: normalizedYaml } on success, or { error: message } on failure.
  */
-function validateTriggerYaml(content: string): string | null {
+function validateAndNormalizeTriggerYaml(content: string): { content: string } | { error: string } {
   // Parse YAML
   let data: unknown;
   try {
     data = yaml.load(content);
   } catch (e) {
-    return `Invalid YAML syntax: ${e instanceof Error ? e.message : String(e)}`;
+    return { error: `Invalid YAML syntax: ${e instanceof Error ? e.message : String(e)}` };
   }
 
   if (!data || typeof data !== 'object') {
-    return 'Trigger file must be a YAML object';
+    return { error: 'Trigger file must be a YAML object' };
   }
 
   const trigger = data as Record<string, unknown>;
 
-  // Check required top-level fields
+  // Handle legacy nested trigger: { ... } format — flatten it
+  if (trigger.trigger && typeof trigger.trigger === 'object') {
+    const nested = trigger.trigger as Record<string, unknown>;
+    if (nested.triggerPrompt) trigger.triggerPrompt ??= nested.triggerPrompt;
+    if (nested.intervalMinutes) trigger.intervalMinutes ??= nested.intervalMinutes;
+    if (nested.enabled !== undefined) trigger.enabled ??= nested.enabled;
+    if (nested.lastChecked) trigger.lastChecked ??= nested.lastChecked;
+    if (nested.lastTriggered) trigger.lastTriggered ??= nested.lastTriggered;
+    delete trigger.trigger;
+  }
+
+  // Required fields — these have no sensible defaults
   if (!trigger.id || typeof trigger.id !== 'string') {
-    return 'Missing or invalid field: id (must be a string)';
+    return { error: 'Missing or invalid field: id (must be a string)' };
   }
   if (!trigger.title || typeof trigger.title !== 'string') {
-    return 'Missing or invalid field: title (must be a string)';
-  }
-  if (!trigger.model || typeof trigger.model !== 'string') {
-    return 'Missing or invalid field: model (must be a string)';
-  }
-  if (!trigger.model.includes('/')) {
-    return 'Invalid model format: must be "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")';
-  }
-
-  // Check trigger config fields (now flat, at top level)
-  if (typeof trigger.enabled !== 'boolean') {
-    return 'Missing or invalid field: enabled (must be a boolean)';
+    return { error: 'Missing or invalid field: title (must be a string)' };
   }
   if (!trigger.triggerPrompt || typeof trigger.triggerPrompt !== 'string') {
-    return 'Missing or invalid field: triggerPrompt (must be a non-empty string)';
+    return { error: 'Missing or invalid field: triggerPrompt (must be a non-empty string)' };
   }
   if (typeof trigger.intervalMinutes !== 'number' || (trigger.intervalMinutes as number) < 1) {
-    return 'Missing or invalid field: intervalMinutes (must be a positive number)';
+    return { error: 'Missing or invalid field: intervalMinutes (must be a positive number)' };
   }
 
-  // Check messages array exists (can be empty)
+  // Optional fields — apply defaults
+  if (trigger.model && typeof trigger.model === 'string' && !trigger.model.includes('/')) {
+    return { error: 'Invalid model format: must be "provider/model-id" (e.g., "anthropic/claude-haiku-4-5-20251001")' };
+  }
+  if (!trigger.model || typeof trigger.model !== 'string') {
+    trigger.model = DEFAULT_TRIGGER_MODEL;
+  }
+  if (typeof trigger.enabled !== 'boolean') {
+    trigger.enabled = true;
+  }
   if (!Array.isArray(trigger.messages)) {
-    return 'Missing or invalid field: messages (must be an array)';
+    trigger.messages = [];
   }
 
-  return null; // Valid
+  // Ensure timestamps exist
+  const now = new Date().toISOString();
+  if (!trigger.created) trigger.created = now;
+  if (!trigger.updated) trigger.updated = now;
+
+  return { content: yaml.dump(trigger) };
 }
 
 export async function executeFileTools(
@@ -197,17 +215,19 @@ async function writeFile(
     };
   }
 
-  // Validate trigger YAML when writing to triggers/ directory
+  // Validate and normalize trigger YAML when writing to triggers/ directory
   const normalizedPath = relativePath.replace(/\\/g, '/');
   if (normalizedPath.startsWith('triggers/') && normalizedPath.endsWith('.yaml') && !normalizedPath.endsWith('logs.yaml')) {
-    const validationError = validateTriggerYaml(content);
-    if (validationError) {
+    const result = validateAndNormalizeTriggerYaml(content);
+    if ('error' in result) {
       return {
         tool_use_id: '',
-        content: `Invalid trigger file: ${validationError}`,
+        content: `Invalid trigger file: ${result.error}`,
         is_error: true,
       };
     }
+    // Use the normalized content with defaults applied
+    content = result.content;
   }
 
   // If approval is required, return the data for UI to show diff

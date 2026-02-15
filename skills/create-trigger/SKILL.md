@@ -32,7 +32,7 @@ When a user wants to create a trigger, gather this information:
    - Daily: 1440 minutes
    - Weekly: 10080 minutes
 
-4. **Model** (optional): Which AI model to use. If not specified, use the default.
+4. **Model** (optional): Which AI model to use. Defaults to Haiku 4.5 (cheap and fast). Only ask if the user wants a specific model.
 
 ## Creating the Trigger
 
@@ -40,16 +40,16 @@ Generate a unique ID and write the trigger YAML file:
 
 ```yaml
 id: "YYYY-MM-DD-HHMM-XXXX"  # Generate: date-time-4random_hex_chars
-created: "ISO_TIMESTAMP"
-updated: "ISO_TIMESTAMP"
 title: "User's Title"
-model: "provider/model-id"  # e.g., "anthropic/claude-sonnet-4-5-20250929"
-trigger:
-  enabled: true
-  triggerPrompt: "The prompt to evaluate..."
-  intervalMinutes: 60
-messages: []
+triggerPrompt: "The prompt to evaluate..."
+intervalMinutes: 60
 ```
+
+The following fields are optional and will be filled in automatically if omitted:
+- `model` — defaults to `anthropic/claude-haiku-4-5-20251001`. Use `"provider/model-id"` format if specifying.
+- `enabled` — defaults to `true`
+- `messages` — defaults to `[]`
+- `created` / `updated` — default to current time
 
 Use `write_file` with path `triggers/{id}.yaml` to create the trigger.
 
@@ -63,6 +63,10 @@ Use `write_file` with path `triggers/{id}.yaml` to create the trigger.
 
 ### Website Monitor (conditional)
 "Fetch https://example.com and check if the content has changed significantly. Only respond if you detect meaningful changes. Summarize what changed."
+
+## Baseline Establishment
+
+When a trigger is created, a baseline check runs automatically in the background. This gathers the current state (prices, content, data) so that future checks can detect meaningful changes. The user doesn't need to wait for the first scheduled interval — the trigger is ready to detect changes immediately.
 
 ## Tips for Good Prompts
 
