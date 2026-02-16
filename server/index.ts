@@ -28,7 +28,7 @@ app.use((req, res, next) => {
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const VAULT_PATH = process.env.VAULT_PATH || process.cwd();
-const AUTH_TOKEN = process.env.PROMPTBOX_AUTH_TOKEN;
+const AUTH_TOKEN = process.env.WHEELHOUSE_AUTH_TOKEN;
 
 console.log(`[Server] Starting with VAULT_PATH=${VAULT_PATH}`);
 

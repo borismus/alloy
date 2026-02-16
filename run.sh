@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PromptBox Development Launcher
+# Wheelhouse Development Launcher
 # This script ensures Rust is in the PATH before launching
 
 # Add Rust to PATH
@@ -20,7 +20,7 @@ if ! command -v cargo &> /dev/null; then
 fi
 
 echo "✅ Rust found: $(rustc --version)"
-echo "🚀 Launching PromptBox..."
+echo "🚀 Launching Wheelhouse..."
 echo ""
 
 # Run the dev server

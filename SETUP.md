@@ -1,4 +1,4 @@
-# PromptBox Setup Guide
+# Wheelhouse Setup Guide
 
 ## Prerequisites
 
@@ -30,11 +30,11 @@ npm run tauri dev
 This will:
 - Start the Vite dev server
 - Compile the Rust backend
-- Launch the PromptBox application
+- Launch the Wheelhouse application
 
 ## First Run
 
-When you first launch PromptBox:
+When you first launch Wheelhouse:
 
 1. **Select Vault Folder**: Choose a folder where your conversations will be stored
 2. **Enter API Key**: Provide your Anthropic API key when prompted
@@ -125,4 +125,4 @@ You can edit these files with any text editor, back them up, sync them—they're
 
 ---
 
-**PromptBox**: Your AI conversations. Your files. Your control.
+**Wheelhouse**: Your AI conversations. Your files. Your control.

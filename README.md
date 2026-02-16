@@ -249,7 +249,7 @@ This is an early MVP. Issues and PRs welcome!
 
 ## License
 
-MIT (TBD - update as needed)
+[MIT](LICENSE)
 
 ---
 

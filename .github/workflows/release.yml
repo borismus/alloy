@@ -173,7 +173,7 @@ jobs:
           # ARM (aarch64)
           if [ -f "Wheelhouse-aarch64.app.tar.gz.sig" ] && [ -f "Wheelhouse-aarch64.app.tar.gz" ]; then
             ARM_SIG=$(cat "Wheelhouse-aarch64.app.tar.gz.sig")
-            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${ARM_SIG}\", \"url\": \"https://borismus.github.io/promptbox/Wheelhouse-aarch64.app.tar.gz\" }"
+            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${ARM_SIG}\", \"url\": \"https://borismus.github.io/wheelhouse/Wheelhouse-aarch64.app.tar.gz\" }"
           fi
 
           # Intel (x86_64)
@@ -182,7 +182,7 @@ jobs:
             if [ -n "$PLATFORMS" ]; then
               PLATFORMS="${PLATFORMS}, "
             fi
-            PLATFORMS="${PLATFORMS}\"darwin-x86_64\": { \"signature\": \"${INTEL_SIG}\", \"url\": \"https://borismus.github.io/promptbox/Wheelhouse-x86_64.app.tar.gz\" }"
+            PLATFORMS="${PLATFORMS}\"darwin-x86_64\": { \"signature\": \"${INTEL_SIG}\", \"url\": \"https://borismus.github.io/wheelhouse/Wheelhouse-x86_64.app.tar.gz\" }"
           fi
 
           echo "PLATFORMS: $PLATFORMS"

@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 /**
- * E2E tests for Orchestra (promptbox) Tauri app
+ * E2E tests for Wheelhouse Tauri app
  *
  * These tests can be run via:
  * 1. Traditional Playwright: npm run test:e2e

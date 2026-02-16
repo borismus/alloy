@@ -1,6 +1,6 @@
 # Testing Guide
 
-This directory contains unit tests for the core functionality of PromptBox.
+This directory contains unit tests for the core functionality of Wheelhouse.
 
 ## Running Tests
 

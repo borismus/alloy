@@ -27,7 +27,7 @@ search:
     - json
 
 server:
-  secret_key: "promptbox-searxng-local"
+  secret_key: "wheelhouse-searxng-local"
   limiter: false
   default_http_headers:
     Access-Control-Allow-Origin: "*"
@@ -45,7 +45,7 @@ docker run -d \
   searxng/searxng
 ```
 
-### 4. Configure PromptBox
+### 4. Configure Wheelhouse
 
 Add to your vault's `config.yaml`:
 
