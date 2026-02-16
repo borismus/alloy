@@ -254,8 +254,11 @@ export class VaultService {
       }
     }
 
+    // Filter out the background conversation from the regular list
+    const filtered = conversations.filter(c => c.id !== '_background');
+
     // Sort by updated date, newest first (fall back to created for older conversations)
-    return conversations.sort((a, b) =>
+    return filtered.sort((a, b) =>
       new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
     );
   }
@@ -275,6 +278,22 @@ export class VaultService {
     }
 
     return null;
+  }
+
+  /**
+   * Load the background conversation, or create a new empty one.
+   */
+  async loadBackgroundConversation(defaultModel: string): Promise<Conversation> {
+    const existing = await this.loadConversation('_background');
+    if (existing) return existing;
+
+    return {
+      id: '_background',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      model: defaultModel,
+      messages: [],
+    };
   }
 
   /**
