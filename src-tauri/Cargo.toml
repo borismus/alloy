@@ -1,6 +1,6 @@
 [package]
 name = "Wheelhouse"
-version = "0.2.1"
+version = "0.2.2"
 description = "Own your AI conversations"
 authors = ["Boris Smus"]
 edition = "2021"
