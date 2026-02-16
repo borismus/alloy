@@ -50,6 +50,7 @@ interface NoteViewerProps {
   conversations?: ConversationInfo[]; // For looking up conversation titles
   onBack?: () => void;
   canGoBack?: boolean;
+  onClose?: () => void;
 }
 
 export const NoteViewer: React.FC<NoteViewerProps> = ({
@@ -61,6 +62,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   conversations,
   onBack,
   canGoBack = false,
+  onClose,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const prevContentLengthRef = useRef<number>(0);
@@ -92,6 +94,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
         title={displayName}
         onBack={onBack}
         canGoBack={canGoBack}
+        onClose={onClose}
       />
       {isUnintegrated && onIntegrate && (
         <div className="ramble-integrate-bar">

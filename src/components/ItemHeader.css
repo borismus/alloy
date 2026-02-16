@@ -58,8 +58,29 @@
 
 .item-header-actions {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.item-header .btn-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-tertiary, #aaa);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.item-header .btn-close:hover {
+  background: var(--bg-hover, #e0e0e0);
+  color: var(--text-primary, #333);
 }
 
 /* Mobile adjustments */

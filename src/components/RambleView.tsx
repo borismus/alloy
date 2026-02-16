@@ -20,6 +20,7 @@ interface RambleViewProps {
   conversations?: ConversationInfo[];
   onBack?: () => void;
   canGoBack?: boolean;
+  onClose?: () => void;
 }
 
 // Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
@@ -60,6 +61,7 @@ export const RambleView: React.FC<RambleViewProps> = ({
   conversations,
   onBack,
   canGoBack = false,
+  onClose,
 }) => {
   const {
     rawLog,
@@ -198,6 +200,7 @@ export const RambleView: React.FC<RambleViewProps> = ({
         title={headerTitle}
         onBack={handleBack}
         canGoBack={canGoBack}
+        onClose={onClose}
       >
         {draftFilename && (
           <>

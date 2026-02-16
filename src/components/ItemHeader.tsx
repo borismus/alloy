@@ -7,6 +7,7 @@ interface ItemHeaderProps {
   canGoBack?: boolean;
   onForward?: () => void;
   canGoForward?: boolean;
+  onClose?: () => void; // X button to dismiss/return to background
   children?: React.ReactNode; // For action buttons on the right
 }
 
@@ -16,6 +17,7 @@ export const ItemHeader: React.FC<ItemHeaderProps> = ({
   canGoBack = true,
   onForward,
   canGoForward = false,
+  onClose,
   children,
 }) => {
   return (
@@ -45,9 +47,20 @@ export const ItemHeader: React.FC<ItemHeaderProps> = ({
         )}
         <h2>{title}</h2>
       </div>
-      {children && (
+      {(children || onClose) && (
         <div className="item-header-actions">
           {children}
+          {onClose && (
+            <button
+              className="btn-close"
+              onClick={onClose}
+              title="Close"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
     </div>

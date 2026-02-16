@@ -14,6 +14,7 @@ interface TriggerDetailViewProps {
   onTriggerUpdated: (trigger: Trigger) => void;
   onBack?: () => void;
   canGoBack?: boolean;
+  onClose?: () => void;
 }
 
 function formatDate(isoString: string): string {
@@ -34,6 +35,7 @@ export function TriggerDetailView({
   onTriggerUpdated,
   onBack,
   canGoBack = false,
+  onClose,
 }: TriggerDetailViewProps) {
   const { activeChecks } = useTriggerContext();
   const [isRunning, setIsRunning] = useState(false);
@@ -92,6 +94,7 @@ export function TriggerDetailView({
         title={trigger.title || 'Untitled Trigger'}
         onBack={onBack}
         canGoBack={canGoBack}
+        onClose={onClose}
       >
         <button
           className="btn-small btn-accent"
