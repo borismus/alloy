@@ -164,7 +164,7 @@ export async function executeFileTools(
     case 'write_file':
       return await writeFile(fullPath, path, input.content as string, input._requireApproval as boolean | undefined);
     case 'append_to_note':
-      return await appendToNote(fullPath, path, input.content as string, input._messageId as string | undefined, input._conversationId as string | undefined);
+      return await appendToNote(fullPath, path, input.content as string, input._messageId as string | undefined, input._conversationId as string | undefined, input._sourceLabel as string | undefined);
     case 'list_directory':
       return await listDirectory(fullPath, path);
     default:
@@ -281,7 +281,8 @@ async function appendToNote(
   relativePath: string,
   content: string,
   messageId?: string,
-  conversationId?: string
+  conversationId?: string,
+  sourceLabel?: string
 ): Promise<ToolResult> {
   if (content === undefined || content === null) {
     return {
@@ -300,7 +301,7 @@ async function appendToNote(
   // Reference points to the source conversation (e.g., 'ramble_history' or 'conversations/...')
   const contentWithProvenance = content
     .split('\n')
-    .map(line => line.trim() ? `${line} &[[${convId}^${provId}]]` : line)
+    .map(line => line.trim() ? `${line} &[[${convId}^${provId}${sourceLabel ? '|' + sourceLabel : ''}]]` : line)
     .join('\n');
 
   try {

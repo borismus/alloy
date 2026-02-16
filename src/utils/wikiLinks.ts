@@ -13,8 +13,12 @@ export function extractConversationId(path: string): string {
 // e.g., "conversations/2025-01-19-1430-a1b2-my-topic" -> "my-topic" or the full path if no title
 function extractDisplayName(path: string): string {
   const withoutPrefix = path.replace('conversations/', '');
+  // Strip ^messageId suffix if present (provenance markers include message refs)
+  const withoutMessageId = withoutPrefix.split('^')[0];
+  // Special case for background conversation
+  if (withoutMessageId === '_background') return 'Background';
   // Remove the ID prefix (YYYY-MM-DD-HHMM-hash-) to get the title slug
-  const titleSlug = withoutPrefix.replace(/^\d{4}-\d{2}-\d{2}-\d{4}-[a-f0-9]+-?/, '');
+  const titleSlug = withoutMessageId.replace(/^\d{4}-\d{2}-\d{2}-\d{4}-[a-f0-9]+-?/, '');
   // Convert slug back to readable text (replace hyphens with spaces, capitalize)
   if (titleSlug) {
     return titleSlug.replace(/-/g, ' ');
@@ -26,9 +30,15 @@ function extractDisplayName(path: string): string {
 // Supports: [[note-name]], [[conversations/id-title]], &[[conversations/id-title]]
 export function processWikiLinks(content: string): string {
   // First, handle &[[...]] provenance markers
-  let result = content.replace(/&\[\[([^\]]+)\]\]/g, (_match, linkTarget) => {
-    const displayName = extractDisplayName(linkTarget);
-    // URL-encode the target to handle spaces and special characters in markdown links
+  // Format: &[[convId^msgId]] or &[[convId^msgId|Label]]
+  let result = content.replace(/&\[\[([^\]]+)\]\]/g, (match, linkTarget) => {
+    // Split off optional |label suffix (use label as display name if present)
+    const pipeIndex = linkTarget.indexOf('|');
+    const label = pipeIndex >= 0 ? linkTarget.slice(pipeIndex + 1) : null;
+    const target = pipeIndex >= 0 ? linkTarget.slice(0, pipeIndex) : linkTarget;
+    const displayName = label || extractDisplayName(target);
+    console.log('[processWikiLinks] Found provenance marker:', { match, linkTarget, displayName });
+    // URL-encode the full linkTarget (including |label) to preserve it for the click handler
     return `[${displayName}](provenance:${encodeURIComponent(linkTarget)})`;
   });
 
@@ -71,18 +81,23 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
   return {
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
       // Handle provenance markers (&[[...]]) - these link to conversations/ramble with optional message ID
-      // Format: &[[conversationPath^messageId]] e.g., &[[ramble_history^msg-a1b2]] or &[[conversations/2025-01-19...^msg-a1b2]]
+      // Format: &[[conversationPath^messageId]] or &[[conversationPath^messageId|Label]]
       if (href?.startsWith('provenance:')) {
-        const target = decodeURIComponent(href.replace('provenance:', ''));
+        const rawTarget = decodeURIComponent(href.replace('provenance:', ''));
+        // Strip optional |label suffix
+        const pipeIndex = rawTarget.indexOf('|');
+        const label = pipeIndex >= 0 ? rawTarget.slice(pipeIndex + 1) : null;
+        const target = pipeIndex >= 0 ? rawTarget.slice(0, pipeIndex) : rawTarget;
         // Parse conversation path and optional message ID (separated by ^)
         const [conversationPath, messageId] = target.split('^');
         const conversationId = conversationPath === 'ramble_history'
           ? 'ramble_history'
           : extractConversationId(conversationPath);
-        // Look up the conversation title from YAML, fall back to slug-derived name
-        const conversationTitle = conversationId === 'ramble_history'
-          ? 'Note Chat'
-          : lookupConversationTitle(conversationId, conversations);
+        // Use embedded label first, then look up conversation title, fall back to slug-derived name
+        const conversationTitle = label
+          || (conversationId === 'ramble_history' ? 'Note Chat' : null)
+          || (conversationId === '_background' ? 'Background' : null)
+          || lookupConversationTitle(conversationId, conversations);
         const displayText = conversationTitle || children;
 
         return React.createElement('a', {
