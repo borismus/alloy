@@ -4,7 +4,6 @@
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  background: #fafafa;
   position: relative;
   overflow: hidden;
 }
@@ -212,36 +211,15 @@
   cursor: not-allowed;
 }
 
-/* Header bar */
-.background-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #e5e5e5;
-  background: white;
+
+/* Message highlight for scroll-to-message */
+.background-messages .message-highlight {
+  animation: message-highlight-pulse 2s ease-out;
 }
 
-.background-header-title {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #999;
-}
-
-.background-clear-btn {
-  background: none;
-  border: none;
-  font-size: 0.75rem;
-  color: #999;
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.background-clear-btn:hover {
-  background: #f0f0f0;
-  color: #666;
+@keyframes message-highlight-pulse {
+  0% { background-color: rgba(102, 126, 234, 0.2); }
+  100% { background-color: transparent; }
 }
 
 /* Queue indicator */

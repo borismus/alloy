@@ -80,6 +80,8 @@ export interface Message {
   skillUse?: SkillUse[];
   // Sub-agent responses spawned during this message
   subagentResponses?: SubagentResponse[];
+  // Source of the message for background mode rendering
+  source?: 'orchestrator' | 'task';
 }
 
 export interface ModelInfo {

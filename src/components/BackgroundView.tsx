@@ -1,24 +1,29 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Message } from '../types';
 import { AgentResponseView } from './AgentResponseView';
+import { MarkdownContent } from './MarkdownContent';
 import { useBackgroundContext, BackgroundTask } from '../contexts/BackgroundContext';
+import { useScrollToMessage } from '../hooks/useScrollToMessage';
 import './BackgroundView.css';
 
 interface BackgroundViewProps {
   onNavigateToNote: (filename: string) => void;
   onNavigateToConversation: (conversationId: string, messageId?: string) => void;
+  scrollToMessageId?: string | null;
+  onScrollComplete?: () => void;
 }
 
 export const BackgroundView: React.FC<BackgroundViewProps> = ({
   onNavigateToNote,
   onNavigateToConversation,
+  scrollToMessageId,
+  onScrollComplete,
 }) => {
   const {
     conversation,
     tasks,
     queueLength,
     sendMessage,
-    clearHistory,
   } = useBackgroundContext();
 
   const [inputValue, setInputValue] = useState('');
@@ -28,9 +33,18 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
 
   const messages = conversation?.messages || [];
 
-  // Auto-scroll to bottom when new messages/tasks arrive
+  // Scroll to specific message when navigating from provenance links
+  useScrollToMessage({
+    containerRef: messagesContainerRef,
+    messageId: scrollToMessageId,
+    onScrollComplete,
+  });
+
+  // Auto-scroll to bottom when new messages/tasks arrive (skip if scrolling to a specific message)
   useEffect(() => {
+    if (scrollToMessageId) return;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, tasks]);
 
   // Auto-resize textarea
@@ -69,15 +83,6 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
 
   return (
     <div className="background-view">
-      <div className="background-header">
-        <span className="background-header-title">Background</span>
-        {messages.length > 0 && (
-          <button className="background-clear-btn" onClick={clearHistory}>
-            Clear
-          </button>
-        )}
-      </div>
-
       <div className="background-messages" ref={messagesContainerRef}>
         {messages.length === 0 && runningTasks.length === 0 ? (
           <div className="background-empty">
@@ -150,7 +155,7 @@ const MessageRow: React.FC<{
 }> = ({ message, onNavigateToNote, onNavigateToConversation }) => {
   if (message.role === 'user') {
     return (
-      <div className="background-user-message">
+      <div className="background-user-message" data-message-id={message.id}>
         <div className="prompt-line">
           <span className="prompt-char">&gt;</span>
           <span className="prompt-text">{message.content}</span>
@@ -163,20 +168,18 @@ const MessageRow: React.FC<{
     return null; // Skip log messages in background view
   }
 
-  // Assistant message: determine if it's an orchestrator ack or a task result
-  const isShortAck = message.content.length < 120 && !message.toolUse?.length;
-
-  if (isShortAck) {
+  // Assistant message: orchestrator acks shown inline, task results in cards
+  if (message.source !== 'task') {
     return (
-      <div className="background-ack-message">
-        {message.content}
+      <div className="background-ack-message" data-message-id={message.id}>
+        <MarkdownContent content={message.content} />
       </div>
     );
   }
 
   // Full task result — use AgentResponseView
   return (
-    <div className="background-task-result">
+    <div className="background-task-result" data-message-id={message.id}>
       <AgentResponseView
         content={message.content}
         status="complete"

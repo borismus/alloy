@@ -1517,6 +1517,8 @@ function AppContent() {
           <BackgroundView
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+            scrollToMessageId={pendingScrollToMessageId}
+            onScrollComplete={() => setPendingScrollToMessageId(null)}
           />
         )}
       </div>

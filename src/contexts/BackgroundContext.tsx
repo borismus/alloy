@@ -10,6 +10,7 @@ import {
   getProviderForModel,
 } from '../services/background';
 import { executeWithTools } from '../services/tools/executor';
+import { useApproval } from './ApprovalContext';
 import { vaultService } from '../services/vault';
 
 const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
@@ -57,6 +58,7 @@ export function BackgroundProvider({
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [messageQueue, setMessageQueue] = useState<string[]>([]);
   const [isOrchestratorBusy, setIsOrchestratorBusy] = useState(false);
+  const { requestApproval } = useApproval();
 
   // Refs for stable access in async operations
   const conversationRef = useRef(conversation);
@@ -67,6 +69,8 @@ export function BackgroundProvider({
   memoryContentRef.current = memoryContent;
   const markSelfWriteRef = useRef(markSelfWrite);
   markSelfWriteRef.current = markSelfWrite;
+  const requestApprovalRef = useRef(requestApproval);
+  requestApprovalRef.current = requestApproval;
 
   // Sync when initial conversation changes (e.g., vault reload)
   useEffect(() => {
@@ -177,14 +181,20 @@ export function BackgroundProvider({
 
         const systemPrompt = getTaskSystemPrompt(memoryContentRef.current);
 
+        // Generate message ID once — used in provenance markers AND the result message
+        // so that clicking a provenance link scrolls to the correct message
+        const resultMessageId = generateMessageId();
+
         const result = await executeWithTools(provider, taskMessages, modelId, {
           maxIterations: 10,
           tools: taskTools,
           systemPrompt,
           toolContext: {
-            messageId: generateMessageId(),
+            messageId: resultMessageId,
             conversationId: `conversations/${BACKGROUND_CONVERSATION_ID}`,
+            sourceLabel: name,
           },
+          onApprovalRequired: (request) => requestApprovalRef.current(request),
           onChunk: (chunk) => {
             setTasks(prev => prev.map(t =>
               t.id === taskId ? { ...t, content: t.content + chunk } : t
@@ -206,13 +216,14 @@ export function BackgroundProvider({
 
         // Append result as an assistant message to the conversation
         const resultMessage: Message = {
-          id: generateMessageId(),
+          id: resultMessageId,
           role: 'assistant',
           timestamp: new Date().toISOString(),
           content: result.finalContent,
           model: modelKey,
           toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
           skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
+          source: 'task',
         };
         await appendMessage(resultMessage);
       } catch (error: any) {
@@ -309,6 +320,7 @@ export function BackgroundProvider({
           timestamp: new Date().toISOString(),
           content: ackContent,
           model: orchestratorModelKey,
+          source: 'orchestrator',
         };
         await appendMessage(ackMessage);
       }
