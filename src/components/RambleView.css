@@ -167,8 +167,7 @@
     height: 100dvh;
   }
 
-  .ramble-draft-header,
-  .ramble-log-header {
+  .ramble-draft-header {
     padding: 0.5rem 1rem;
   }
 
@@ -176,12 +175,32 @@
     padding: 0.75rem 1rem;
   }
 
-  .ramble-log-input {
-    padding: 0.75rem 1rem;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  /* Draft section takes dominant space on mobile */
+  .ramble-draft-section {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
   }
 
-  .ramble-draft-section {
-    max-height: 35%;
+  /* Log section stays compact on mobile */
+  .ramble-log-section {
+    flex: 0 0 auto;
+  }
+
+  /* Hide log header on mobile to save space */
+  .ramble-log-header {
+    display: none;
+  }
+
+  .ramble-log-input {
+    padding: 0.5rem 1rem;
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Limit textarea wrapper to ~2 lines on mobile */
+  .ramble-log-input .append-only-wrapper {
+    flex: 0 0 auto;
+    max-height: 64px;
+    overflow: hidden;
   }
 }

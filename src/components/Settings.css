@@ -120,6 +120,51 @@
   flex-wrap: wrap;
 }
 
+.settings-button-secondary {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.settings-button-secondary:hover {
+  background: #d1d5db;
+}
+
+.settings-confirm-dialog {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid #e5e7eb;
+}
+
+.settings-confirm-dialog h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.settings-confirm-dialog p {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.settings-confirm-dialog .settings-button-group {
+  justify-content: flex-end;
+}
+
+.settings-button-danger {
+  background: #dc2626;
+}
+
+.settings-button-danger:hover {
+  background: #b91c1c;
+}
+
 .settings-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

@@ -26,29 +26,48 @@ function parseModelString(modelString: string): { provider: ProviderType; model:
   return { provider, model };
 }
 
-function buildTriggerSystemPrompt(hasBaseline: boolean): string {
+function buildBaselineSystemPrompt(): string {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  const baselineInstructions = hasBaseline
-    ? `A BASELINE from your last notification is provided below.
-The baseline is your last assistant message from when you previously triggered.
-Only trigger if the current state has MEANINGFULLY CHANGED from this baseline.
-Do NOT re-trigger for the same condition that was already reported.
-Compare the current data against the baseline to detect changes.`
-    : `This is the FIRST CHECK - no baseline exists yet.
-Gather the current state and evaluate the condition.
-If the condition is already met, trigger and report it.
-Your assistant response will become the baseline for future comparisons.`;
+  return `You are a trigger evaluation system establishing a baseline for future monitoring.
+
+Current time: ${timeStr} on ${dateStr}
+Timezone: ${timezone}
+
+This is a BASELINE ESTABLISHMENT run. Your job is to gather the current state of what's being monitored so that future checks can detect changes.
+
+You have access to tools like web_search to gather real-time information. Use them as needed.
+
+IMPORTANT: Always gather and report the current data. Include specific data points (numbers, prices, percentages, timestamps, etc.) so future checks can detect meaningful changes.
+
+Always end your response with:
+\`\`\`json
+{"triggered": true}
+\`\`\`
+
+Your response will be saved as the baseline for future comparison.`;
+}
+
+function buildTriggerSystemPrompt(): string {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return `You are a trigger evaluation system that monitors conditions and notifies the user when they're met.
 
 Current time: ${timeStr} on ${dateStr}
 Timezone: ${timezone}
 
-${baselineInstructions}
+A BASELINE from your last notification is provided below.
+The baseline is your last assistant message from when you previously triggered.
+Only trigger if the current state has MEANINGFULLY CHANGED from this baseline.
+Do NOT re-trigger for the same condition that was already reported.
+Compare the current data against the baseline to detect changes.
+If no baseline is available, gather the current state and report it — your response will become the baseline for future comparisons.
 
 You have access to tools like web_search to gather real-time information. Use them as needed.
 
@@ -95,14 +114,44 @@ export class TriggerExecutor {
   }
 
   /**
+   * Run a baseline establishment check for a newly created trigger.
+   * Gathers the current state without notifying the user.
+   * The response becomes the baseline for future comparisons.
+   */
+  async executeBaselineCheck(trigger: Trigger): Promise<TriggerResult> {
+    const modelString = trigger.model || 'anthropic/claude-haiku-4-5-20251001';
+    const { provider: providerType, model: modelId } = parseModelString(modelString);
+    const provider = providerRegistry.getProvider(providerType);
+    if (!provider || !provider.isInitialized()) {
+      throw new Error(`Provider ${providerType} is not available`);
+    }
+
+    const messages: Message[] = [{
+      role: 'user',
+      timestamp: new Date().toISOString(),
+      content: trigger.triggerPrompt,
+    }];
+
+    const systemPrompt = buildSystemPromptWithSkills(buildBaselineSystemPrompt());
+
+    const result = await executeWithTools(provider, messages, modelId, {
+      maxIterations: 10,
+      systemPrompt,
+    });
+
+    return this.parseResponse(result.finalContent);
+  }
+
+  /**
    * Execute the trigger: evaluate condition and produce response.
    * Baseline is inferred from conversation history based on lastTriggered.
    */
   async executeTrigger(
     trigger: Trigger
   ): Promise<TriggerResult> {
-    // Use trigger's model directly (flat structure)
-    const { provider: providerType, model: modelId } = parseModelString(trigger.model);
+    // Use trigger's model, falling back to Haiku 4.5 if missing
+    const modelString = trigger.model || 'anthropic/claude-haiku-4-5-20251001';
+    const { provider: providerType, model: modelId } = parseModelString(modelString);
     const provider = providerRegistry.getProvider(providerType);
     if (!provider || !provider.isInitialized()) {
       throw new Error(`Provider ${providerType} is not available`);
@@ -111,7 +160,6 @@ export class TriggerExecutor {
     // Extract baseline from trigger's messages
     const conversationMessages = trigger.messages.filter(m => m.role !== 'log');
     const baseline = this.extractBaseline(trigger, conversationMessages);
-    const hasBaseline = !!baseline;
 
     const messages: Message[] = [];
 
@@ -138,7 +186,7 @@ export class TriggerExecutor {
     });
 
     // Build system prompt with skills included
-    const systemPrompt = buildSystemPromptWithSkills(buildTriggerSystemPrompt(hasBaseline));
+    const systemPrompt = buildSystemPromptWithSkills(buildTriggerSystemPrompt());
 
     // Execute with tool support
     const result = await executeWithTools(provider, messages, modelId, {

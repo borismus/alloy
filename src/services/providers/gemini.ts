@@ -5,10 +5,11 @@ import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from
 import { geminiToolAdapter } from './tool-adapters/gemini';
 
 const GEMINI_MODELS: ModelInfo[] = [
-  { key: 'gemini/gemini-3-pro-preview', name: 'Gemini 3 Pro Preview' },
-  { key: 'gemini/gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+  { key: 'gemini/gemini-3-pro-preview', name: 'Gemini 3 Pro' },
+  { key: 'gemini/gemini-3-flash-preview', name: 'Gemini 3 Flash' },
   { key: 'gemini/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
   { key: 'gemini/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  { key: 'gemini/gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
 ];
 
 // Ensure we have a valid MIME type (Gemini requires full type like 'image/png')

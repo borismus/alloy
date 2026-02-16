@@ -3,6 +3,7 @@ import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { rambleService } from './services/ramble';
+import { triggerExecutor } from './services/triggers/executor';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
@@ -637,26 +638,36 @@ function AppContent() {
   loadVaultRef.current = loadVault;
 
   const handleVaultSelected = async (path: string, provider: ProviderType, credential: string) => {
-    // Save the provider credential to config
-    const configKey = provider === 'ollama' ? 'OLLAMA_BASE_URL' :
-                      provider === 'openai' ? 'OPENAI_API_KEY' :
-                      provider === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
-
     // Default models for each provider (using provider/model format)
     const defaultModels: Record<ProviderType, string> = {
       anthropic: 'anthropic/claude-opus-4-5-20251101',
       openai: 'openai/gpt-4o',
       gemini: 'gemini/gemini-2.0-flash',
+      grok: 'grok/grok-4-1-fast',
       ollama: '', // Ollama models are discovered dynamically
     };
 
-    const newConfig: Config = {
-      defaultModel: defaultModels[provider],
-      [configKey]: credential,
+    // Build config YAML with the active provider uncommented and others commented out
+    const providerLines: Record<string, { key: string; placeholder: string }> = {
+      anthropic: { key: 'ANTHROPIC_API_KEY', placeholder: 'sk-ant-...' },
+      openai: { key: 'OPENAI_API_KEY', placeholder: 'sk-...' },
+      gemini: { key: 'GEMINI_API_KEY', placeholder: '...' },
+      grok: { key: 'XAI_API_KEY', placeholder: 'xai-...' },
+      ollama: { key: 'OLLAMA_BASE_URL', placeholder: 'http://localhost:11434' },
     };
 
+    const lines = [`defaultModel: ${defaultModels[provider]}`, ''];
+    for (const [p, info] of Object.entries(providerLines)) {
+      if (p === provider) {
+        lines.push(`${info.key}: ${credential}`);
+      } else {
+        lines.push(`# ${info.key}: ${info.placeholder}`);
+      }
+    }
+    lines.push('', '# API keys for skills', '# SERPER_API_KEY: ...', '');
+
     vaultService.setVaultPath(path);
-    await vaultService.saveConfig(newConfig);
+    await vaultService.saveRawConfig(lines.join('\n'));
     await loadVault(path);
   };
 
@@ -1086,13 +1097,6 @@ function AppContent() {
     }
   };
 
-  const handleConfigReload = async () => {
-    const vaultPathForReload = vaultService.getVaultPath();
-    if (vaultPathForReload) {
-      await loadVault(vaultPathForReload);
-    }
-  };
-
 
   if (isLoading) {
     return <div className="loading">Loading...</div>;
@@ -1240,6 +1244,27 @@ function AppContent() {
       setDraftConversation(null);
       setNoteContent(null);
       navigateTo({ type: 'trigger', id: newTrigger.id });
+
+      // Establish baseline in background (non-blocking)
+      if (newTrigger.enabled) {
+        triggerExecutor.executeBaselineCheck(newTrigger).then(async (result) => {
+          if (result.result === 'triggered') {
+            const baselineTime = new Date().toISOString();
+            const updatedTrigger: Trigger = {
+              ...newTrigger,
+              updated: baselineTime,
+              messages: [
+                { role: 'user', timestamp: baselineTime, content: newTrigger.triggerPrompt },
+                { role: 'assistant', timestamp: baselineTime, content: result.response, model: newTrigger.model },
+              ],
+              lastChecked: baselineTime,
+              lastTriggered: baselineTime,
+              history: [{ timestamp: baselineTime, result: 'triggered', reasoning: 'Baseline established' }],
+            };
+            await handleTriggerUpdated(updatedTrigger);
+          }
+        }).catch(err => console.warn('Failed to establish trigger baseline:', err));
+      }
     } catch (error) {
       console.error('Error creating trigger:', error);
     }
@@ -1463,14 +1488,7 @@ function AppContent() {
       {showSettings && (
         <Settings
           onClose={() => setShowSettings(false)}
-          vaultPath={vaultService.getVaultPath()}
-          onChangeVault={async () => {
-            const newPath = await vaultService.selectVaultFolder();
-            if (newPath) {
-              await loadVault(newPath);
-            }
-          }}
-          onConfigReload={handleConfigReload}
+          vaultPath={vaultPath}
         />
       )}
       {showTriggerConfig && (
