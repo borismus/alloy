@@ -102,7 +102,6 @@ export async function executeFileTools(
   input: Record<string, unknown>
 ): Promise<ToolResult> {
   const vaultPath = vaultService.getVaultPath();
-  console.log('[FileTools] vaultPath:', vaultPath);
   if (!vaultPath) {
     return {
       tool_use_id: '',

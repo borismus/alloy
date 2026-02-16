@@ -31,8 +31,6 @@ export class ToolRegistry {
   }
 
   async executeTool(toolCall: ToolCall, context?: ToolContext): Promise<ToolResult> {
-    console.log(`[Tool] Executing: ${toolCall.name}`, toolCall.input);
-
     const tool = this.tools.get(toolCall.name);
     if (!tool) {
       console.error(`[Tool] Unknown tool: ${toolCall.name}`);
@@ -96,8 +94,6 @@ export class ToolRegistry {
 
       if (finalResult.is_error) {
         console.error(`[Tool] ${toolCall.name} failed:`, finalResult.content);
-      } else {
-        console.log(`[Tool] ${toolCall.name} completed successfully`);
       }
 
       return finalResult;

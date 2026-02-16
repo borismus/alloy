@@ -50,8 +50,6 @@ export class AnthropicService implements IProviderService {
         messages: [{ role: 'user', content: prompt }],
       });
 
-      console.log(`Claude API: message_id=${response.id}, input_tokens=${response.usage.input_tokens}`);
-
       const textBlock = response.content.find((block) => block.type === 'text');
       if (textBlock && textBlock.type === 'text') {
         return textBlock.text.trim().slice(0, 100);
@@ -153,12 +151,6 @@ export class AnthropicService implements IProviderService {
           if (options.signal?.aborted) {
             stream.controller.abort();
             break;
-          }
-
-          // Log message ID and input tokens at stream start
-          if (chunk.type === 'message_start') {
-            const msg = (chunk as Anthropic.MessageStartEvent).message;
-            console.log(`Claude API: message_id=${msg.id}, input_tokens=${msg.usage.input_tokens}`);
           }
 
           // Handle message stop to get stop reason
@@ -365,12 +357,6 @@ export class AnthropicService implements IProviderService {
           if (options.signal?.aborted) {
             stream.controller.abort();
             break;
-          }
-
-          // Log message ID and input tokens at stream start
-          if (chunk.type === 'message_start') {
-            const msg = (chunk as Anthropic.MessageStartEvent).message;
-            console.log(`Claude API: message_id=${msg.id}, input_tokens=${msg.usage.input_tokens}`);
           }
 
           if (chunk.type === 'message_delta') {

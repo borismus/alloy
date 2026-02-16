@@ -713,7 +713,6 @@ export class VaultService {
 
   async loadNotes(): Promise<NoteInfo[]> {
     if (!this.vaultPath) {
-      console.log('[VaultService] loadNotes: No vault path set');
       return [];
     }
 
@@ -734,7 +733,6 @@ export class VaultService {
     }
 
     const notesPath = await join(this.vaultPath, 'notes');
-    console.log('[VaultService] loadNotes: Looking in', notesPath);
 
     // Auto-create notes directory if missing
     if (!(await exists(notesPath))) {
@@ -805,9 +803,7 @@ export class VaultService {
     }
 
     // Sort by lastModified descending (newest first)
-    const sortedNotes = notes.sort((a, b) => b.lastModified - a.lastModified);
-    console.log('[VaultService] loadNotes: Found', sortedNotes.length, 'notes:', sortedNotes.map(n => n.filename));
-    return sortedNotes;
+    return notes.sort((a, b) => b.lastModified - a.lastModified);
   }
 
   /**

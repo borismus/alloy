@@ -23,19 +23,15 @@ export function UpdateChecker() {
   }, []);
 
   const checkForUpdates = async (manual = false): Promise<CheckResult> => {
-    console.log('[Updater] Checking for updates...', manual ? '(manual)' : '(auto)');
     if (manual) {
       setDismissed(false); // Reset dismissed state on manual check
     }
     try {
       const available = await check();
-      console.log('[Updater] Check result:', available);
       if (available) {
-        console.log('[Updater] Update available:', available.version);
         setUpdate(available);
         return { available: true, version: available.version };
       } else {
-        console.log('[Updater] No update available');
         return { available: false };
       }
     } catch (err) {

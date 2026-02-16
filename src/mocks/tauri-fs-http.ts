@@ -164,7 +164,6 @@ function ensureWebSocket(): Promise<WebSocket> {
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
-      console.log('[WS] Connected to file watcher');
       ws = socket;
       wsConnecting = false;
       resolve(socket);
@@ -195,7 +194,6 @@ function ensureWebSocket(): Promise<WebSocket> {
     };
 
     socket.onclose = () => {
-      console.log('[WS] Disconnected from file watcher');
       ws = null;
       wsConnecting = false;
 

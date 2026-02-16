@@ -82,8 +82,6 @@ export class Menu {
       const showMenu = getGlobalShowMenu();
       if (showMenu) {
         showMenu(this.items, lastMouseX, lastMouseY);
-      } else {
-        console.log('[MockMenu] popup() - ContextMenuProvider not mounted');
       }
     }
   }

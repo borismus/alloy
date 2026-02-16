@@ -213,7 +213,6 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
 
     // macOS dictation duplicate: added text equals existing content
     if (addedText.length > 20 && addedText === current) {
-      console.warn('[RambleContext] Duplicate rejected');
       return;
     }
 
@@ -258,7 +257,6 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
           draftFilename: filename,
           phase: 'rambling',
         }));
-        console.log('[RambleContext] Created draft:', filename);
       } catch (error) {
         console.error('[RambleContext] Failed to create draft:', error);
       }

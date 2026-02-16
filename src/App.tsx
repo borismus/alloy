@@ -222,7 +222,6 @@ function AppContent() {
 
   // Navigate to a new item, saving current as previous (for back button)
   const navigateTo = useCallback((item: SelectedItem) => {
-    console.log('[navigateTo] called with:', item?.type, item?.id);
     if (selectedItem) {
       setPreviousItem(selectedItem);
     }
@@ -392,8 +391,6 @@ function AppContent() {
 
   // Handle note modification - refresh selected note content if it's the one being viewed
   const handleNoteModified = useCallback(async (filename: string) => {
-    console.log('[App] handleNoteModified called:', filename);
-
     // Reload the notes list
     const loadedNotes = await vaultService.loadNotes();
     setNotes(loadedNotes);
@@ -413,9 +410,7 @@ function AppContent() {
         const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
           ? `${vaultPathStr}/${filename}`
           : `${notesPath}/${filename}`;
-        console.log('[App] Refreshing note content from:', notePath);
         readTextFile(notePath).then(content => {
-          console.log('[App] Note content refreshed, length:', content.length);
           setNoteContent(content);
         }).catch(error => {
           console.error('Failed to refresh note content:', error);
@@ -477,7 +472,6 @@ function AppContent() {
           await loadVault(savedVaultPath);
         } else if (isServerMode()) {
           // Server mode: auto-load vault (server's VAULT_PATH is the root)
-          console.log('[App] Server mode detected, loading vault');
           await loadVault('/');
         } else {
           setIsLoading(false);
@@ -616,7 +610,6 @@ function AppContent() {
 
         // Load notes from vault
         const loadedNotes = await vaultService.loadNotes();
-        console.log('[App] Loaded notes:', loadedNotes.length, loadedNotes);
         setNotes(loadedNotes);
 
         // Load skills from vault
@@ -725,13 +718,11 @@ function AppContent() {
   }, [isMobile, mobileView, selectedItem, config, availableModels.length]);
 
   const handleSelectNote = async (filename: string) => {
-    console.log('[App] handleSelectNote called:', filename);
     const vaultPathStr = vaultService.getVaultPath();
     const notesPath = vaultService.getNotesPath();
     if (vaultPathStr && notesPath) {
       // Don't navigate to the same note we're already viewing
       if (selectedItem?.type === 'note' && selectedItem.id === filename) {
-        console.log('[App] Skipping - same note already selected');
         return;
       }
 
@@ -748,12 +739,10 @@ function AppContent() {
           return;
         }
 
-        console.log('[App] Reading note from:', notePath);
         const content = await readTextFile(notePath);
         // Clear draft conversation and select note
         setDraftConversation(null);
         navigateTo({ type: 'note', id: filename });
-        console.log('[App] Setting note content:', { filename, contentLength: content.length });
         setNoteContent(content);
       } catch (error) {
         console.error('[App] Failed to load note:', error);
@@ -987,8 +976,6 @@ function AppContent() {
   };
 
   const handleSelectConversation = async (id: string, _addToHistory = true, messageId?: string) => {
-    console.log('[App] handleSelectConversation called with id:', id, 'messageId:', messageId);
-
     // Store messageId for scrolling after conversation loads
     setPendingScrollToMessageId(messageId || null);
 
@@ -1443,10 +1430,7 @@ function AppContent() {
             content={selectedNote.content}
             filename={selectedNote.filename}
             onNavigateToNote={handleSelectNote}
-            onNavigateToConversation={(conversationId: string, messageId?: string) => {
-              console.log('[App] NoteViewer onNavigateToConversation callback called with:', conversationId, messageId);
-              handleSelectConversation(conversationId, true, messageId);
-            }}
+            onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             conversations={conversations}
             notes={notes}
             selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}

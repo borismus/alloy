@@ -116,13 +116,9 @@ export function useVaultWatcher(
       const { type, paths } = event;
       const eventType = getEventType(type);
 
-      // Debug logging
-      console.log('[VaultWatcher] Event:', { type, eventType, paths });
-
       for (const filePath of paths) {
         // Skip if this was our own write
         if (isSelfWrite(filePath)) {
-          console.log('[VaultWatcher] Skipping self-write:', filePath);
           continue;
         }
 
@@ -150,14 +146,11 @@ export function useVaultWatcher(
           const conversationId = extractConversationId(filePath);
           if (!conversationId) continue;
 
-          console.log('[VaultWatcher] Conversation event:', { eventType, conversationId, filePath });
-
           // For rename events (macOS deletion), check if file still exists
           let effectiveEventType = eventType;
           if (eventType === 'rename') {
             const fileExists = await exists(filePath);
             effectiveEventType = fileExists ? 'modify' : 'remove';
-            console.log('[VaultWatcher] Rename event - file exists:', fileExists, '-> treating as:', effectiveEventType);
           }
 
           switch (effectiveEventType) {
@@ -165,7 +158,6 @@ export function useVaultWatcher(
               callbacksRef.current.onConversationAdded(conversationId);
               break;
             case 'remove':
-              console.log('[VaultWatcher] Calling onConversationRemoved for:', conversationId);
               callbacksRef.current.onConversationRemoved(conversationId);
               break;
             case 'modify':
@@ -184,8 +176,6 @@ export function useVaultWatcher(
           // For ramble files, include the rambles/ prefix in filename
           const baseFilename = filePath.split('/').pop() || '';
           const filename = isRambleFile ? `rambles/${baseFilename}` : baseFilename;
-          console.log('[VaultWatcher] Note event:', { eventType, filename, filePath });
-
           // For rename events (macOS deletion), check if file still exists
           let effectiveEventType = eventType;
           if (eventType === 'rename') {
@@ -207,8 +197,6 @@ export function useVaultWatcher(
         } else if (isTriggerFile) {
           const triggerId = extractTriggerId(filePath);
           if (!triggerId) continue;
-
-          console.log('[VaultWatcher] Trigger event:', { eventType, triggerId, filePath });
 
           // For rename events (macOS deletion), check if file still exists
           let effectiveEventType = eventType;

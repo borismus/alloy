@@ -38,8 +38,6 @@ export class TriggerScheduler {
     this.callbacks = callbacks;
     this.isRunning = true;
 
-    console.log('TriggerScheduler: Started');
-
     // Don't run initial check - wait for the first interval to avoid
     // firing triggers on app reload/refresh
     const intervalId = window.setInterval(() => {
@@ -58,7 +56,6 @@ export class TriggerScheduler {
     }
     this.isRunning = false;
     this.callbacks = null;
-    console.log('TriggerScheduler: Stopped');
   }
 
   getIsRunning(): boolean {
@@ -88,7 +85,6 @@ export class TriggerScheduler {
     for (const trigger of enabledTriggers) {
       // Skip if already checking
       if (this.activeChecks.has(trigger.id)) {
-        console.log(`TriggerScheduler: Skipping ${trigger.id}, LLM check already in progress`);
         continue;
       }
 
@@ -110,20 +106,12 @@ export class TriggerScheduler {
     this.callbacks?.onTriggerChecking(trigger.id);
 
     try {
-      console.log(`TriggerScheduler: Executing LLM check for "${trigger.title}"`);
-
       // Executor now takes the full trigger object
       const result = await triggerExecutor.executeTrigger(trigger);
 
       if (result.result === 'triggered') {
-        console.log(
-          `TriggerScheduler: LLM returned TRIGGERED for "${trigger.title}"`
-        );
         await this.callbacks?.onTriggerFired(trigger, result);
       } else if (result.result === 'skipped') {
-        console.log(
-          `TriggerScheduler: LLM returned SKIPPED for "${trigger.title}": ${result.response}`
-        );
         await this.callbacks?.onTriggerSkipped(trigger, result);
       } else {
         // result.result === 'error'

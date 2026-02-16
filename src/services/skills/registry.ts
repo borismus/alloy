@@ -32,9 +32,6 @@ export class SkillRegistry {
       for (const skill of vaultSkills) {
         this.skills.set(skill.name, skill);
       }
-      console.log(`Loaded ${vaultSkills.length} vault skills + ${this.bundledSkills.length} bundled skills`);
-    } else {
-      console.log(`Loaded ${this.bundledSkills.length} bundled skills (no vault path set)`);
     }
   }
 
@@ -50,7 +47,6 @@ export class SkillRegistry {
   // Full instructions are loaded on-demand when a skill is used via use_skill tool
   buildSystemPrompt(conversationContext?: { id: string; title?: string }, memoryContent?: string): string {
     const skills = this.getSkills();
-    console.log('[buildSystemPrompt] skills count:', skills.length, 'names:', skills.map(s => s.name));
     let prompt = '';
 
     // Current date/time context

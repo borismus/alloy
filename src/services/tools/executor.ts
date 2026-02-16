@@ -224,20 +224,6 @@ export async function executeWithTools(
   const budget = contextManager.calculateBudget(systemPrompt || '', tools);
   const prepared = contextManager.prepareContext(messages, budget);
 
-  if (prepared.truncated) {
-    const parts = [];
-    if (prepared.truncatedCount > 0) {
-      parts.push(`dropped ${prepared.truncatedCount} old messages`);
-    }
-    if (prepared.contentTruncated) {
-      parts.push('truncated latest message content');
-    }
-    console.log(
-      `[Context] ${parts.join(', ')} to fit ${budget.messages} token budget ` +
-      `(${prepared.estimatedTokens} tokens used)`
-    );
-  }
-
   // Initial request with context-managed messages
   let result = await provider.sendMessage(prepared.messages, chatOptions);
   let finalContent = result.content;

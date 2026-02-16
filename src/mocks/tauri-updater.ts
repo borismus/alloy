@@ -12,6 +12,5 @@ export interface Update {
 }
 
 export async function check(): Promise<Update | null> {
-  console.log('[MockUpdater] check() - no updates in browser mode');
   return null;
 }
