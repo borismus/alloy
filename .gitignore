@@ -29,3 +29,6 @@ src-tauri/target
 
 # User vault (don't commit personal conversations)
 vault/
+
+# Local Claude Code settings (contains user-specific paths)
+.claude/settings.local.json

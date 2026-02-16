@@ -26,21 +26,19 @@ function extractDisplayName(path: string): string {
 // Supports: [[note-name]], [[conversations/id-title]], &[[conversations/id-title]]
 export function processWikiLinks(content: string): string {
   // First, handle &[[...]] provenance markers
-  let result = content.replace(/&\[\[([^\]]+)\]\]/g, (match, linkTarget) => {
+  let result = content.replace(/&\[\[([^\]]+)\]\]/g, (_match, linkTarget) => {
     const displayName = extractDisplayName(linkTarget);
-    console.log('[processWikiLinks] Found provenance marker:', { match, linkTarget, displayName });
     // URL-encode the target to handle spaces and special characters in markdown links
     return `[${displayName}](provenance:${encodeURIComponent(linkTarget)})`;
   });
 
   // Then handle regular [[...]] wiki-links
-  result = result.replace(/\[\[([^\]]+)\]\]/g, (match, linkTarget) => {
+  result = result.replace(/\[\[([^\]]+)\]\]/g, (_match, linkTarget) => {
     // Determine if it's a conversation link or note link
     const isConversation = linkTarget.startsWith('conversations/');
     const displayName = isConversation
       ? linkTarget.replace('conversations/', '').replace(/^\d{4}-\d{2}-\d{2}-\d{4}-[a-f0-9]+-?/, '')
       : linkTarget;
-    console.log('[processWikiLinks] Found wiki-link:', { match, linkTarget, displayName, isConversation });
     // URL-encode the target to handle spaces and special characters in markdown links
     return `[${displayName || linkTarget}](wikilink:${encodeURIComponent(linkTarget)})`;
   });
@@ -94,7 +92,6 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
           onClick: (e: React.MouseEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('[wikiLinks] Provenance link clicked:', { target, conversationId, messageId, conversationTitle, hasCallback: !!onNavigateToConversation });
             if (onNavigateToConversation) {
               onNavigateToConversation(conversationId, messageId);
             }
@@ -113,10 +110,8 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
           onClick: (e: React.MouseEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('[wikiLinks] Wiki-link clicked:', { target, isConversation, hasNoteCallback: !!onNavigateToNote, hasConvCallback: !!onNavigateToConversation });
             if (isConversation) {
               const conversationId = extractConversationId(target);
-              console.log('[wikiLinks] Extracted conversation ID:', conversationId);
               if (onNavigateToConversation) {
                 onNavigateToConversation(conversationId);
               }
