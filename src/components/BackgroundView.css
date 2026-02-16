@@ -1,0 +1,253 @@
+.background-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: #fafafa;
+  position: relative;
+  overflow: hidden;
+}
+
+.background-messages {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2rem 2rem 1rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.background-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  text-align: center;
+  padding: 2rem;
+}
+
+.background-empty h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: #666;
+}
+
+.background-empty p {
+  margin: 0;
+  font-size: 0.875rem;
+  max-width: 400px;
+}
+
+/* User messages: compact prompt style */
+.background-user-message {
+  margin-bottom: 1rem;
+  max-width: 800px;
+}
+
+.background-user-message .prompt-line {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.background-user-message .prompt-char {
+  color: #667eea;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-weight: 600;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.background-user-message .prompt-text {
+  color: #333;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Orchestrator ack messages: subtle, brief */
+.background-ack-message {
+  margin-bottom: 0.75rem;
+  max-width: 800px;
+  font-size: 0.8125rem;
+  color: #888;
+  font-style: italic;
+  padding-left: 1.25rem;
+}
+
+/* Task result messages: use AgentResponseView */
+.background-task-result {
+  margin-bottom: 1.5rem;
+  max-width: 800px;
+}
+
+.background-task-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #667eea;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+/* Streaming task indicator */
+.background-streaming-task {
+  margin-bottom: 1.5rem;
+  max-width: 800px;
+}
+
+.background-task-streaming-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #667eea;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+.task-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #667eea;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: task-spin 0.8s linear infinite;
+}
+
+@keyframes task-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error messages */
+.background-error-message {
+  margin-bottom: 1rem;
+  max-width: 800px;
+  padding: 0.75rem 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 0.875rem;
+}
+
+/* Input area */
+.background-input {
+  border-top: 1px solid #e5e5e5;
+  padding: 1rem 1.5rem;
+  background: white;
+}
+
+.background-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: 800px;
+}
+
+.background-prompt-char {
+  color: #667eea;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 2.25rem;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.background-input-row textarea {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  resize: none;
+  min-height: 2.25rem;
+  max-height: 10rem;
+  overflow-y: auto;
+  background: #fafafa;
+  transition: border-color 0.15s;
+}
+
+.background-input-row textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  background: white;
+}
+
+.background-input-row textarea::placeholder {
+  color: #aaa;
+}
+
+.background-send-btn {
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  height: 2.25rem;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.background-send-btn:hover {
+  background: #5a6fd6;
+}
+
+.background-send-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Header bar */
+.background-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #e5e5e5;
+  background: white;
+}
+
+.background-header-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #999;
+}
+
+.background-clear-btn {
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  color: #999;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.background-clear-btn:hover {
+  background: #f0f0f0;
+  color: #666;
+}
+
+/* Queue indicator */
+.background-queue-indicator {
+  font-size: 0.75rem;
+  color: #999;
+  text-align: center;
+  padding: 0.25rem;
+}

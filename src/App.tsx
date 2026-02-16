@@ -25,8 +25,11 @@ import { readTextFile, exists } from '@tauri-apps/plugin-fs';
 import { isServerMode } from './mocks';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RambleProvider, useRambleContext } from './contexts/RambleContext';
+import { BackgroundProvider } from './contexts/BackgroundContext';
 import { RambleBatchApprovalModal } from './components/RambleBatchApprovalModal';
 import { RambleView } from './components/RambleView';
+import { BackgroundView } from './components/BackgroundView';
+import { BACKGROUND_CONVERSATION_ID } from './services/background';
 import { ContextMenu } from './components/ContextMenu';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import './App.css';
@@ -59,6 +62,7 @@ interface MainPanelWithRambleProps {
   children: React.ReactNode;
   onBack?: () => void;
   canGoBack?: boolean;
+  onClose?: () => void;
 }
 
 const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
@@ -72,6 +76,7 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
   children,
   onBack,
   canGoBack,
+  onClose,
 }) => {
   const rambleContext = useRambleContext();
 
@@ -107,6 +112,7 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
           conversations={conversations}
           onBack={onBack}
           canGoBack={canGoBack}
+          onClose={onClose}
         />
       </div>
     );
@@ -163,6 +169,7 @@ interface NoteViewerWithIntegrateProps {
   selectedModel: string;
   onBack?: () => void;
   canGoBack?: boolean;
+  onClose?: () => void;
 }
 
 const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
@@ -175,6 +182,7 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
   selectedModel,
   onBack,
   canGoBack,
+  onClose,
 }) => {
   const rambleContext = useRambleContext();
 
@@ -197,6 +205,7 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
       conversations={conversations}
       onBack={onBack}
       canGoBack={canGoBack}
+      onClose={onClose}
     />
   );
 };
@@ -266,6 +275,8 @@ function AppContent() {
   const [draftConversation, setDraftConversation] = useState<Conversation | null>(null);
   // Memory content and size for system prompt injection
   const [memory, setMemory] = useState<{ content: string; sizeBytes: number } | null>(null);
+  // Background conversation (persistent, always-available command interface)
+  const [backgroundConversation, setBackgroundConversation] = useState<Conversation | null>(null);
   // Toast notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -329,6 +340,13 @@ function AppContent() {
   }, [selectedItem]);
 
   const handleConversationModified = useCallback(async (id: string) => {
+    // Route background conversation updates to separate state
+    if (id === BACKGROUND_CONVERSATION_ID) {
+      const updated = await vaultService.loadConversation(id);
+      if (updated) setBackgroundConversation(updated);
+      return;
+    }
+
     const updated = await vaultService.loadConversation(id);
     if (!updated) return;
 
@@ -623,6 +641,11 @@ function AppContent() {
         // Load memory for system prompt injection
         const loadedMemory = await vaultService.loadMemory();
         setMemory(loadedMemory);
+
+        // Load background conversation
+        const bgDefaultModel = loadedConfig.favoriteModels?.[0] || providerRegistry.getAllAvailableModels()[0]?.key || '';
+        const bgConv = await vaultService.loadBackgroundConversation(bgDefaultModel);
+        setBackgroundConversation(bgConv);
       } else {
         localStorage.removeItem('vaultPath');
       }
@@ -1277,6 +1300,12 @@ function AppContent() {
       vaultPath={vaultPath}
     >
       <RambleProvider>
+      <BackgroundProvider
+        initialConversation={backgroundConversation}
+        defaultModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+        memoryContent={memory?.content}
+        markSelfWrite={markSelfWrite}
+      >
         <UpdateChecker />
         {memory && (
           <MemoryWarning
@@ -1426,6 +1455,7 @@ function AppContent() {
         hasAnySelection={!!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('rambles/') || selectedNote.content.includes('integrated: true'))))}
         onBack={goBack}
         canGoBack={canGoBack}
+        onClose={() => { setSelectedItem(null); setNoteContent(null); }}
       >
       <div className="main-panel">
         {selectedTrigger ? (
@@ -1433,6 +1463,7 @@ function AppContent() {
             trigger={selectedTrigger}
             onBack={goBack}
             canGoBack={canGoBack}
+            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
             onDelete={async () => {
               await handleDeleteTrigger(selectedTrigger.id);
               setSelectedItem(null);
@@ -1461,8 +1492,9 @@ function AppContent() {
             selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
             onBack={goBack}
             canGoBack={canGoBack}
+            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
           />
-        ) : (
+        ) : currentConversation ? (
           <ChatInterface
             ref={chatInterfaceRef}
             conversation={currentConversation}
@@ -1479,6 +1511,12 @@ function AppContent() {
             onScrollComplete={() => setPendingScrollToMessageId(null)}
             onBack={goBack}
             canGoBack={canGoBack}
+            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
+          />
+        ) : (
+          <BackgroundView
+            onNavigateToNote={handleSelectNote}
+            onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
           />
         )}
       </div>
@@ -1515,6 +1553,7 @@ function AppContent() {
       )}
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
+      </BackgroundProvider>
       </RambleProvider>
     </TriggerProvider>
   );
