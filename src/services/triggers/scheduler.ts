@@ -1,10 +1,10 @@
-import { Trigger, TriggerResult } from '../../types';
+import { Trigger, TriggerResult, Usage } from '../../types';
 import { triggerExecutor } from './executor';
 
 export interface TriggerSchedulerCallbacks {
   getTriggers: () => Trigger[];
   reloadTrigger: (id: string) => Promise<Trigger | null>;
-  onTriggerFired: (trigger: Trigger, result: TriggerResult) => Promise<void>;
+  onTriggerFired: (trigger: Trigger, result: TriggerResult, usage?: Usage) => Promise<void>;
   onTriggerSkipped: (trigger: Trigger, result: TriggerResult) => void;
   onTriggerChecking: (triggerId: string) => void;
   onTriggerCheckComplete: (triggerId: string) => void;
@@ -107,10 +107,10 @@ export class TriggerScheduler {
 
     try {
       // Executor now takes the full trigger object
-      const result = await triggerExecutor.executeTrigger(trigger);
+      const { triggerResult: result, usage } = await triggerExecutor.executeTrigger(trigger);
 
       if (result.result === 'triggered') {
-        await this.callbacks?.onTriggerFired(trigger, result);
+        await this.callbacks?.onTriggerFired(trigger, result, usage);
       } else if (result.result === 'skipped') {
         await this.callbacks?.onTriggerSkipped(trigger, result);
       } else {

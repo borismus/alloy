@@ -433,6 +433,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             onNavigateToNote={onNavigateToNote}
             onNavigateToConversation={onNavigateToConversation}
             headerContent={message.subagentResponses?.length ? undefined : assistantName}
+            usage={message.usage}
           />
         </div>
       );

@@ -6,8 +6,9 @@ import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useRambleContextOptional } from '../contexts/RambleContext';
-import { Message, ModelInfo, NoteInfo, getModelIdFromModel } from '../types';
+import { Message, ModelInfo, NoteInfo, Usage, getModelIdFromModel } from '../types';
 import { BUILTIN_TOOLS } from '../types/tools';
+import { estimateCost } from '../services/pricing';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ConversationView, ConversationViewHandle } from './ConversationView';
 import { ModelSelector } from './ModelSelector';
@@ -236,6 +237,18 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
         systemPrompt: NOTE_CHAT_SYSTEM_PROMPT,
       });
 
+      // Build usage with cost estimate
+      let usage: Usage | undefined;
+      if (result.usage) {
+        const cost = estimateCost(selectedModel, result.usage.inputTokens, result.usage.outputTokens);
+        usage = {
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          ...(cost !== undefined && { cost }),
+          ...(result.usage.responseId && { responseId: result.usage.responseId }),
+        };
+      }
+
       // Create assistant message
       const assistantMessage: Message = {
         id: messageId,
@@ -243,6 +256,7 @@ export const NoteChatSidebar = React.forwardRef<NoteChatSidebarHandle, NoteChatS
         timestamp: new Date().toISOString(),
         content: result.finalContent,
         toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
+        usage,
       };
 
       // Add to history

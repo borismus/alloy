@@ -25,6 +25,7 @@ export interface ChatResult {
   toolUse?: ToolUse[];  // Tools used during this response (for UI display)
   toolCalls?: ToolCall[];  // Tool calls that need execution (when stopReason is 'tool_use')
   stopReason?: StopReason;
+  usage?: { inputTokens: number; outputTokens: number; responseId?: string };
 }
 
 export interface IProviderService {

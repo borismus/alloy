@@ -36,7 +36,7 @@ export function UpdateChecker() {
       }
     } catch (err) {
       console.error('[Updater] Failed to check for updates:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      const errorMsg = err instanceof Error ? err.message : String(err);
       return { error: errorMsg };
     }
   };

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { fetch } from '@tauri-apps/plugin-http';
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
 import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
@@ -19,6 +20,7 @@ export class AnthropicService implements IProviderService {
     this.client = new Anthropic({
       apiKey,
       dangerouslyAllowBrowser: true,
+      fetch,
     });
   }
 
@@ -143,6 +145,11 @@ export class AnthropicService implements IProviderService {
         const toolCalls: ToolCall[] = [];
         let stopReason: StopReason = 'end_turn';
 
+        // Track usage
+        let responseId: string | undefined;
+        let inputTokens = 0;
+        let outputTokens = 0;
+
         // Track current tool use block for streaming
         let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
 
@@ -153,12 +160,20 @@ export class AnthropicService implements IProviderService {
             break;
           }
 
-          // Handle message stop to get stop reason
+          // Capture response ID and input tokens from message_start
+          if (chunk.type === 'message_start') {
+            const messageStart = chunk as Anthropic.MessageStartEvent;
+            responseId = messageStart.message.id;
+            inputTokens = messageStart.message.usage?.input_tokens ?? 0;
+          }
+
+          // Handle message stop to get stop reason and output tokens
           if (chunk.type === 'message_delta') {
             const messageDelta = chunk as Anthropic.MessageDeltaEvent;
             if (messageDelta.delta.stop_reason) {
               stopReason = messageDelta.delta.stop_reason as StopReason;
             }
+            outputTokens = (messageDelta as any).usage?.output_tokens ?? outputTokens;
           }
 
           // Detect tool use start
@@ -225,6 +240,9 @@ export class AnthropicService implements IProviderService {
           toolUse: toolUseList.length > 0 ? toolUseList : undefined,
           toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
           stopReason,
+          usage: (inputTokens > 0 || outputTokens > 0)
+            ? { inputTokens, outputTokens, responseId }
+            : undefined,
         };
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -353,10 +371,21 @@ export class AnthropicService implements IProviderService {
         let stopReason: StopReason = 'end_turn';
         let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
 
+        // Track usage
+        let responseId: string | undefined;
+        let inputTokens = 0;
+        let outputTokens = 0;
+
         for await (const chunk of stream) {
           if (options.signal?.aborted) {
             stream.controller.abort();
             break;
+          }
+
+          if (chunk.type === 'message_start') {
+            const messageStart = chunk as Anthropic.MessageStartEvent;
+            responseId = messageStart.message.id;
+            inputTokens = messageStart.message.usage?.input_tokens ?? 0;
           }
 
           if (chunk.type === 'message_delta') {
@@ -364,6 +393,7 @@ export class AnthropicService implements IProviderService {
             if (messageDelta.delta.stop_reason) {
               stopReason = messageDelta.delta.stop_reason as StopReason;
             }
+            outputTokens = (messageDelta as any).usage?.output_tokens ?? outputTokens;
           }
 
           if (chunk.type === 'content_block_start') {
@@ -406,6 +436,9 @@ export class AnthropicService implements IProviderService {
           toolUse: toolUseList.length > 0 ? toolUseList : undefined,
           toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
           stopReason,
+          usage: (inputTokens > 0 || outputTokens > 0)
+            ? { inputTokens, outputTokens, responseId }
+            : undefined,
         };
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));

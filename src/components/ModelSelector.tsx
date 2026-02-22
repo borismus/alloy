@@ -15,6 +15,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   openai: 'OpenAI',
   ollama: 'Ollama',
   gemini: 'Gemini',
+  grok: 'Grok',
 };
 
 export function ModelSelector({ value, onChange, disabled, models, favoriteModels = [] }: ModelSelectorProps) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ToolUse, SkillUse } from '../types';
+import { ToolUse, SkillUse, Usage } from '../types';
 import { ToolUseIndicator } from './ToolUseIndicator';
 import { SkillUseIndicator } from './SkillUseIndicator';
 import { MarkdownContent } from './MarkdownContent';
@@ -31,6 +31,8 @@ interface AgentResponseViewProps {
   onNavigateToNote?: (noteFilename: string) => void;
   /** Callback when a wiki-link to a conversation is clicked */
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
+  /** Token usage and cost for this response */
+  usage?: Usage;
 }
 
 /**
@@ -50,6 +52,7 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
   headerContent,
   onNavigateToNote,
   onNavigateToConversation,
+  usage,
 }) => {
   // Use provided skillUses, or derive from use_skill tool calls
   const skillUses: SkillUse[] = skillUsesProp ?? toolUses
@@ -96,6 +99,15 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
             onNavigateToNote={onNavigateToNote}
             onNavigateToConversation={onNavigateToConversation}
           />
+        )}
+        {status === 'complete' && usage && (
+          <div className="usage-badge">
+            {usage.cost !== undefined && (
+              <span>${usage.cost < 0.01 ? usage.cost.toFixed(4) : usage.cost.toFixed(2)}</span>
+            )}
+            {' '}
+            <span>{((usage.inputTokens + usage.outputTokens) / 1000).toFixed(1)}k tok</span>
+          </div>
         )}
         {status === 'error' && (
           <span className="error-text">{error || 'An error occurred'}</span>

@@ -1,7 +1,13 @@
-import { Message, ProviderType, Trigger, TriggerResult } from '../../types';
+import { Message, ProviderType, Trigger, TriggerResult, Usage } from '../../types';
 import { providerRegistry } from '../providers/registry';
 import { executeWithTools, buildSystemPromptWithSkills } from '../tools/executor';
 import { truncateToTokenBudget } from '../context';
+import { estimateCost } from '../pricing';
+
+export interface TriggerExecutionResult {
+  triggerResult: TriggerResult;
+  usage?: Usage;
+}
 
 // Max tokens for trigger context (baseline + prompt). Keeps costs low and focus high.
 const MAX_TRIGGER_CONTEXT_TOKENS = 4000;
@@ -118,7 +124,7 @@ export class TriggerExecutor {
    * Gathers the current state without notifying the user.
    * The response becomes the baseline for future comparisons.
    */
-  async executeBaselineCheck(trigger: Trigger): Promise<TriggerResult> {
+  async executeBaselineCheck(trigger: Trigger): Promise<TriggerExecutionResult> {
     const modelString = trigger.model || 'anthropic/claude-haiku-4-5-20251001';
     const { provider: providerType, model: modelId } = parseModelString(modelString);
     const provider = providerRegistry.getProvider(providerType);
@@ -139,7 +145,18 @@ export class TriggerExecutor {
       systemPrompt,
     });
 
-    return this.parseResponse(result.finalContent);
+    let usage: Usage | undefined;
+    if (result.usage) {
+      const cost = estimateCost(modelString, result.usage.inputTokens, result.usage.outputTokens);
+      usage = {
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        ...(cost !== undefined && { cost }),
+        ...(result.usage.responseId && { responseId: result.usage.responseId }),
+      };
+    }
+
+    return { triggerResult: this.parseResponse(result.finalContent), usage };
   }
 
   /**
@@ -148,7 +165,7 @@ export class TriggerExecutor {
    */
   async executeTrigger(
     trigger: Trigger
-  ): Promise<TriggerResult> {
+  ): Promise<TriggerExecutionResult> {
     // Use trigger's model, falling back to Haiku 4.5 if missing
     const modelString = trigger.model || 'anthropic/claude-haiku-4-5-20251001';
     const { provider: providerType, model: modelId } = parseModelString(modelString);
@@ -194,7 +211,18 @@ export class TriggerExecutor {
       systemPrompt,
     });
 
-    return this.parseResponse(result.finalContent);
+    let usage: Usage | undefined;
+    if (result.usage) {
+      const cost = estimateCost(modelString, result.usage.inputTokens, result.usage.outputTokens);
+      usage = {
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        ...(cost !== undefined && { cost }),
+        ...(result.usage.responseId && { responseId: result.usage.responseId }),
+      };
+    }
+
+    return { triggerResult: this.parseResponse(result.finalContent), usage };
   }
 
   /**

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { Conversation, Message, ToolUse } from '../types';
+import { Conversation, Message, ToolUse, Usage } from '../types';
+import { estimateCost } from '../services/pricing';
 import { BUILTIN_TOOLS } from '../types/tools';
 import {
   BACKGROUND_CONVERSATION_ID,
@@ -214,6 +215,18 @@ export function BackgroundProvider({
             : t
         ));
 
+        // Build usage with cost estimate
+        let taskUsage: Usage | undefined;
+        if (result.usage) {
+          const cost = estimateCost(modelKey, result.usage.inputTokens, result.usage.outputTokens);
+          taskUsage = {
+            inputTokens: result.usage.inputTokens,
+            outputTokens: result.usage.outputTokens,
+            ...(cost !== undefined && { cost }),
+            ...(result.usage.responseId && { responseId: result.usage.responseId }),
+          };
+        }
+
         // Append result as an assistant message to the conversation
         const resultMessage: Message = {
           id: resultMessageId,
@@ -224,6 +237,7 @@ export function BackgroundProvider({
           toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
           skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
           source: 'task',
+          usage: taskUsage,
         };
         await appendMessage(resultMessage);
       } catch (error: any) {
@@ -314,6 +328,18 @@ export function BackgroundProvider({
       // 5. Save orchestrator acknowledgment
       const ackContent = result.content || '';
       if (ackContent.trim()) {
+        // Build usage with cost estimate for orchestrator
+        let orchUsage: Usage | undefined;
+        if (result.usage) {
+          const cost = estimateCost(orchestratorModelKey, result.usage.inputTokens, result.usage.outputTokens);
+          orchUsage = {
+            inputTokens: result.usage.inputTokens,
+            outputTokens: result.usage.outputTokens,
+            ...(cost !== undefined && { cost }),
+            ...(result.usage.responseId && { responseId: result.usage.responseId }),
+          };
+        }
+
         const ackMessage: Message = {
           id: generateMessageId(),
           role: 'assistant',
@@ -321,6 +347,7 @@ export function BackgroundProvider({
           content: ackContent,
           model: orchestratorModelKey,
           source: 'orchestrator',
+          usage: orchUsage,
         };
         await appendMessage(ackMessage);
       }

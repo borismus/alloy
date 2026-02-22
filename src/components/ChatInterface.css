@@ -790,6 +790,13 @@
   line-height: 1.6;
 }
 
+.response-summary .usage-badge {
+  font-size: 0.7rem;
+  color: #999;
+  text-align: right;
+  margin-top: 0.25rem;
+}
+
 .response-summary .waiting-text {
   color: #999;
   font-style: italic;

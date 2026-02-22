@@ -11,6 +11,7 @@ import { TriggerProvider } from './contexts/TriggerContext';
 import { ApprovalProvider } from './contexts/ApprovalContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, TimelineFilter, TimelineItem, Trigger, SelectedItem } from './types';
 import { useToolExecution } from './hooks/useToolExecution';
+import { estimateCost } from './services/pricing';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { Sidebar, SidebarHandle } from './components/Sidebar';
@@ -921,6 +922,18 @@ function AppContent() {
         onSubagentComplete: (agentId, _content, error) => completeSubagent(convId, agentId, error),
       });
 
+      // Build usage with cost estimate
+      let usage: import('./types').Usage | undefined;
+      if (result.usage) {
+        const cost = estimateCost(currentConversation.model, result.usage.inputTokens, result.usage.outputTokens);
+        usage = {
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          ...(cost !== undefined && { cost }),
+          ...(result.usage.responseId && { responseId: result.usage.responseId }),
+        };
+      }
+
       const assistantMessage: Message = {
         id: assistantMessageId,
         role: 'assistant',
@@ -929,6 +942,7 @@ function AppContent() {
         toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
         skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
         subagentResponses: result.subagentResponses.length > 0 ? result.subagentResponses : undefined,
+        usage,
       };
 
       let finalConversation: Conversation = {
@@ -1270,7 +1284,7 @@ function AppContent() {
 
       // Establish baseline in background (non-blocking)
       if (newTrigger.enabled) {
-        triggerExecutor.executeBaselineCheck(newTrigger).then(async (result) => {
+        triggerExecutor.executeBaselineCheck(newTrigger).then(async ({ triggerResult: result, usage: baselineUsage }) => {
           if (result.result === 'triggered') {
             const baselineTime = new Date().toISOString();
             const updatedTrigger: Trigger = {
@@ -1278,7 +1292,7 @@ function AppContent() {
               updated: baselineTime,
               messages: [
                 { role: 'user', timestamp: baselineTime, content: newTrigger.triggerPrompt },
-                { role: 'assistant', timestamp: baselineTime, content: result.response, model: newTrigger.model },
+                { role: 'assistant', timestamp: baselineTime, content: result.response, model: newTrigger.model, usage: baselineUsage },
               ],
               lastChecked: baselineTime,
               lastTriggered: baselineTime,

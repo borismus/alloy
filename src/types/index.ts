@@ -41,6 +41,14 @@ export interface SkillUse {
   description?: string;   // skill description for display
 }
 
+// Token usage and cost tracking for an API response
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  cost?: number;        // Estimated USD (omitted for free/unknown models)
+  responseId?: string;  // Provider response ID for billing cross-reference
+}
+
 // Sub-agent response stored on completed messages
 export interface SubagentResponse {
   name: string;           // Short label (e.g., "Research", "Analysis")
@@ -49,6 +57,7 @@ export interface SubagentResponse {
   content: string;
   toolUse?: ToolUse[];
   skillUse?: SkillUse[];
+  usage?: Usage;
 }
 
 // Sub-agent streaming state during execution
@@ -82,6 +91,8 @@ export interface Message {
   subagentResponses?: SubagentResponse[];
   // Source of the message for background mode rendering
   source?: 'orchestrator' | 'task';
+  // Token usage and cost for this response
+  usage?: Usage;
 }
 
 export interface ModelInfo {

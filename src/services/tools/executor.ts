@@ -1,10 +1,11 @@
-import { Message, ToolUse, SkillUse, SubagentResponse, parseModelId } from '../../types';
+import { Message, ToolUse, SkillUse, SubagentResponse, Usage, parseModelId } from '../../types';
 import { ToolCall, ToolDefinition, ToolResult, BUILTIN_TOOLS } from '../../types/tools';
 import { ToolRound, IProviderService, ChatOptions } from '../providers/types';
 import { toolRegistry, ToolContext } from './registry';
 import { skillRegistry } from '../skills/registry';
 import { providerRegistry } from '../providers/registry';
 import { ContextManager } from '../context';
+import { estimateCost } from '../pricing';
 
 /** Enhance tool definitions with runtime context (e.g. available models for spawn_subagent) */
 function enhanceToolsWithContext(tools: ToolDefinition[]): ToolDefinition[] {
@@ -45,6 +46,7 @@ export interface ToolExecutionResult {
   skillUses: SkillUse[];
   iterations: number;
   subagentResponses: SubagentResponse[];
+  usage?: { inputTokens: number; outputTokens: number; responseId?: string };
 }
 
 /**
@@ -141,6 +143,18 @@ async function executeSubagentTool(
 
       options.onSubagentComplete?.(agent.id, subResult.finalContent);
 
+      // Build usage with cost estimate for this sub-agent
+      let subUsage: Usage | undefined;
+      if (subResult.usage) {
+        const cost = estimateCost(agent.model, subResult.usage.inputTokens, subResult.usage.outputTokens);
+        subUsage = {
+          inputTokens: subResult.usage.inputTokens,
+          outputTokens: subResult.usage.outputTokens,
+          ...(cost !== undefined && { cost }),
+          ...(subResult.usage.responseId && { responseId: subResult.usage.responseId }),
+        };
+      }
+
       return {
         name: agent.name,
         model: agent.model,
@@ -148,6 +162,7 @@ async function executeSubagentTool(
         content: subResult.finalContent,
         toolUse: subResult.allToolUses.length > 0 ? subResult.allToolUses : undefined,
         skillUse: subResult.skillUses.length > 0 ? subResult.skillUses : undefined,
+        usage: subUsage,
       } as SubagentResponse;
     })
   );
@@ -211,6 +226,11 @@ export async function executeWithTools(
   const allSubagentResponses: SubagentResponse[] = [];
   let subagentsSpawned = false;
 
+  // Accumulate usage across all iterations
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let firstResponseId: string | undefined;
+
   const chatOptions: ChatOptions = {
     model,
     systemPrompt,
@@ -230,6 +250,11 @@ export async function executeWithTools(
 
   // Initial request with context-managed messages
   let result = await provider.sendMessage(prepared.messages, chatOptions);
+  if (result.usage) {
+    totalInputTokens += result.usage.inputTokens;
+    totalOutputTokens += result.usage.outputTokens;
+    firstResponseId = result.usage.responseId;
+  }
   let finalContent = result.content;
   if (result.toolUse) {
     allToolUses = [...allToolUses, ...result.toolUse];
@@ -352,6 +377,11 @@ export async function executeWithTools(
       toolHistory,
       chatOptions
     );
+    if (result.usage) {
+      totalInputTokens += result.usage.inputTokens;
+      totalOutputTokens += result.usage.outputTokens;
+      if (!firstResponseId) firstResponseId = result.usage.responseId;
+    }
 
     finalContent = result.content;
     if (result.toolUse) {
@@ -368,6 +398,9 @@ export async function executeWithTools(
     skillUses,
     iterations: iteration,
     subagentResponses: allSubagentResponses,
+    usage: (totalInputTokens > 0 || totalOutputTokens > 0)
+      ? { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, responseId: firstResponseId }
+      : undefined,
   };
 }
 

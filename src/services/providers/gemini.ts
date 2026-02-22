@@ -210,11 +210,25 @@ export class GeminiService implements IProviderService {
       }
     }
 
+    // Capture usage metadata from the completed response
+    let inputTokens = 0;
+    let outputTokens = 0;
+    try {
+      const response = await result.response;
+      inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
+      outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+    } catch {
+      // Usage metadata not available
+    }
+
     return {
       content: fullResponse,
       toolUse: toolUseList.length > 0 ? toolUseList : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason,
+      usage: (inputTokens > 0 || outputTokens > 0)
+        ? { inputTokens, outputTokens }
+        : undefined,
     };
   }
 
@@ -437,11 +451,25 @@ export class GeminiService implements IProviderService {
       }
     }
 
+    // Capture usage metadata from the completed response
+    let inputTokens = 0;
+    let outputTokens = 0;
+    try {
+      const response = await result.response;
+      inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
+      outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+    } catch {
+      // Usage metadata not available
+    }
+
     return {
       content: fullResponse,
       toolUse: toolUseList.length > 0 ? toolUseList : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason,
+      usage: (inputTokens > 0 || outputTokens > 0)
+        ? { inputTokens, outputTokens }
+        : undefined,
     };
   }
 }

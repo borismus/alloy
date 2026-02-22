@@ -194,6 +194,8 @@ export class OllamaService implements IProviderService {
     const decoder = new TextDecoder();
     let fullResponse = '';
     let stopReason: StopReason = 'end_turn';
+    let inputTokens = 0;
+    let outputTokens = 0;
 
     try {
       while (true) {
@@ -216,9 +218,13 @@ export class OllamaService implements IProviderService {
               fullResponse += chunk.message.content;
               options.onChunk?.(chunk.message.content);
             }
-            // Check for done_reason in the final chunk
-            if (chunk.done && chunk.done_reason === 'length') {
-              stopReason = 'max_tokens';
+            // Capture usage and done_reason from the final chunk
+            if (chunk.done) {
+              inputTokens = chunk.prompt_eval_count ?? 0;
+              outputTokens = chunk.eval_count ?? 0;
+              if (chunk.done_reason === 'length') {
+                stopReason = 'max_tokens';
+              }
             }
           } catch {
             // Skip invalid JSON lines
@@ -257,6 +263,9 @@ export class OllamaService implements IProviderService {
       toolUse: toolUseList.length > 0 ? toolUseList : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason,
+      usage: (inputTokens > 0 || outputTokens > 0)
+        ? { inputTokens, outputTokens }
+        : undefined,
     };
   }
 
@@ -345,6 +354,8 @@ export class OllamaService implements IProviderService {
     const decoder = new TextDecoder();
     let fullResponse = '';
     let stopReason: StopReason = 'end_turn';
+    let inputTokens = 0;
+    let outputTokens = 0;
 
     try {
       while (true) {
@@ -366,8 +377,12 @@ export class OllamaService implements IProviderService {
               fullResponse += chunk.message.content;
               options.onChunk?.(chunk.message.content);
             }
-            if (chunk.done && chunk.done_reason === 'length') {
-              stopReason = 'max_tokens';
+            if (chunk.done) {
+              inputTokens = chunk.prompt_eval_count ?? 0;
+              outputTokens = chunk.eval_count ?? 0;
+              if (chunk.done_reason === 'length') {
+                stopReason = 'max_tokens';
+              }
             }
           } catch {
             // Skip invalid JSON lines
@@ -402,6 +417,9 @@ export class OllamaService implements IProviderService {
       toolUse: toolUseList.length > 0 ? toolUseList : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason,
+      usage: (inputTokens > 0 || outputTokens > 0)
+        ? { inputTokens, outputTokens }
+        : undefined,
     };
   }
 

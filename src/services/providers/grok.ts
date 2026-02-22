@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { fetch } from '@tauri-apps/plugin-http';
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
 import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
@@ -18,6 +19,7 @@ export class GrokService implements IProviderService {
       apiKey,
       baseURL: 'https://api.x.ai/v1',
       dangerouslyAllowBrowser: true,
+      fetch,
     });
   }
 
@@ -118,6 +120,7 @@ export class GrokService implements IProviderService {
       model: options.model,
       messages: openaiMessages,
       stream: true,
+      stream_options: { include_usage: true },
       tools: openaiTools,
     });
 
@@ -127,10 +130,23 @@ export class GrokService implements IProviderService {
     let stopReason: StopReason = 'end_turn';
     const toolCallBuilders: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
+    // Track usage
+    let responseId: string | undefined;
+    let inputTokens = 0;
+    let outputTokens = 0;
+
     for await (const chunk of stream) {
       if (options.signal?.aborted) {
         stream.controller.abort();
         break;
+      }
+
+      if (chunk.id && !responseId) {
+        responseId = chunk.id;
+      }
+      if (chunk.usage) {
+        inputTokens = chunk.usage.prompt_tokens ?? 0;
+        outputTokens = chunk.usage.completion_tokens ?? 0;
       }
 
       const choice = chunk.choices[0];
@@ -197,6 +213,9 @@ export class GrokService implements IProviderService {
       toolUse: toolUseList.length > 0 ? toolUseList : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason,
+      usage: (inputTokens > 0 || outputTokens > 0)
+        ? { inputTokens, outputTokens, responseId }
+        : undefined,
     };
   }
 
@@ -251,6 +270,7 @@ export class GrokService implements IProviderService {
       model: options.model,
       messages: openaiMessages,
       stream: true,
+      stream_options: { include_usage: true },
       tools: openaiTools,
     });
 
@@ -260,10 +280,23 @@ export class GrokService implements IProviderService {
     let stopReason: StopReason = 'end_turn';
     const toolCallBuilders: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
+    // Track usage
+    let responseId: string | undefined;
+    let inputTokens = 0;
+    let outputTokens = 0;
+
     for await (const chunk of stream) {
       if (options.signal?.aborted) {
         stream.controller.abort();
         break;
+      }
+
+      if (chunk.id && !responseId) {
+        responseId = chunk.id;
+      }
+      if (chunk.usage) {
+        inputTokens = chunk.usage.prompt_tokens ?? 0;
+        outputTokens = chunk.usage.completion_tokens ?? 0;
       }
 
       const choice = chunk.choices[0];
@@ -330,6 +363,9 @@ export class GrokService implements IProviderService {
       toolUse: toolUseList.length > 0 ? toolUseList : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason,
+      usage: (inputTokens > 0 || outputTokens > 0)
+        ? { inputTokens, outputTokens, responseId }
+        : undefined,
     };
   }
 }

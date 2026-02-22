@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { Message, TriggerAttempt, Trigger } from '../types';
+import { Message, TriggerAttempt, Trigger, Usage } from '../types';
 import { triggerScheduler } from '../services/triggers/scheduler';
 import { vaultService } from '../services/vault';
 
@@ -69,7 +69,7 @@ export function TriggerProvider({
         return await vaultService.loadTrigger(id);
       },
 
-      onTriggerFired: async (triggerDoc, result) => {
+      onTriggerFired: async (triggerDoc, result, usage?: Usage) => {
         // Re-fetch fresh trigger to avoid race conditions
         const freshTrigger = getFreshTrigger(triggerDoc.id);
         if (!freshTrigger) return;
@@ -95,6 +95,7 @@ export function TriggerProvider({
           timestamp: now,
           content: result.response,
           model: freshTrigger.model,
+          usage,
         };
 
         // Update trigger with new messages, timestamps, and history (flat structure)
