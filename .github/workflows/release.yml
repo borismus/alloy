@@ -101,7 +101,11 @@ jobs:
           TARGZ=$(find src-tauri/target -name "*.app.tar.gz" -type f | head -1)
           if [ -n "$TARGZ" ]; then
             echo "Signing $TARGZ"
-            npx tauri signer sign -k "$TAURI_SIGNING_PRIVATE_KEY" -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" "$TARGZ"
+            SIGN_ARGS=(-k "$TAURI_SIGNING_PRIVATE_KEY")
+            if [ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
+              SIGN_ARGS+=(-p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD")
+            fi
+            npx tauri signer sign "${SIGN_ARGS[@]}" "$TARGZ"
             echo "=== Signature file created ==="
             ls -la "${TARGZ}.sig" 2>/dev/null || echo "No sig file found"
             cat "${TARGZ}.sig" 2>/dev/null || echo "Could not read sig file"
