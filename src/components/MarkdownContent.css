@@ -162,3 +162,8 @@
 .markdown-content strong {
   font-weight: 600;
 }
+
+/* Hide KaTeX MathML duplicate (normally hidden by katex.css which we can't import) */
+.markdown-content .katex-mathml {
+  display: none;
+}
