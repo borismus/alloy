@@ -123,7 +123,7 @@ jobs:
           ARM_SIG=$(find artifacts/macos-arm -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
           if [ -n "$ARM_TAR" ]; then
             cp "$ARM_TAR" deploy/Wheelhouse-aarch64.app.tar.gz
-            cp "$ARM_SIG" deploy/Wheelhouse-aarch64.app.tar.gz.sig
+            [ -n "$ARM_SIG" ] && cp "$ARM_SIG" deploy/Wheelhouse-aarch64.app.tar.gz.sig
           fi
 
           # Copy Intel build with architecture suffix
@@ -131,7 +131,7 @@ jobs:
           INTEL_SIG=$(find artifacts/macos-intel -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
           if [ -n "$INTEL_TAR" ]; then
             cp "$INTEL_TAR" deploy/Wheelhouse-x86_64.app.tar.gz
-            cp "$INTEL_SIG" deploy/Wheelhouse-x86_64.app.tar.gz.sig
+            [ -n "$INTEL_SIG" ] && cp "$INTEL_SIG" deploy/Wheelhouse-x86_64.app.tar.gz.sig
           fi
 
           # List what we're deploying
