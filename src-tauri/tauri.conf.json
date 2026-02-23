@@ -141,12 +141,13 @@
       "endpoints": [
         "https://borismus.github.io/wheelhouse/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENEOTU1NkJDQUQyRDczNzQKUldSMGN5MnR2RmFWelFaUDZ6eFdqVVphZmxpYWovZ3gvUlhua3F3VldsNFBFTUljQXJ5QUpWRlIK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY4OTk0QTI4MEU1NjFCRDYKUldUV0cxWU9LRXFaYUtlaVM0VWtnREsrTUd0eWNUOWd3a1BBSUUySVU1ZTZDcWwwZVB2TEI3R28K"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["app", "appimage", "nsis", "deb"],
+    "createUpdaterArtifacts": "v1Compatible",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
