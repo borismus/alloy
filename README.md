@@ -2,7 +2,7 @@
 
 **Everything stays in your wheelhouse.**
 
-Your AI conversations belong on your device — not on someone else's server. Wheelhouse gives you one helm for ChatGPT, Claude, Gemini, and more. Run them in parallel, let them deliberate, or cascade from fast to powerful.
+Your AI conversations belong on your device — not on someone else's server. Wheelhouse gives you one helm for Claude, ChatGPT, Gemini, Grok, and local models. Run them in parallel, let them deliberate, or cascade from fast to powerful.
 Nothing leaves your machine. Ever.
 
 ## Why Wheelhouse?
@@ -11,7 +11,8 @@ Nothing leaves your machine. Ever.
 
 - **Council mode**: Query multiple models at once. A chairman model synthesizes the best answer from all responses.
 - **Comparison mode**: See every model's response side-by-side. Pick the winner yourself.
-- **Triggers**: A fast, cheap model monitors your conversation and brings in reinforcements when needed.
+- **Background mode**: An orchestrator classifies your request and delegates tasks to specialized agents that work autonomously in the background.
+- **Triggers**: Scheduled autonomous prompts that fire on intervals — monitor feeds, check conditions, run recurring tasks.
 
 No other chat app does this. They lock you into one provider. Wheelhouse sits above them all — you're the captain.
 
@@ -21,11 +22,11 @@ Wheelhouse stores every conversation as a plain YAML file in a folder you choose
 
 | Question | Answer |
 |----------|--------|
-| Can you find your data in Finder/Explorer? | ✅ Yes |
-| Can you read it without the app? | ✅ Yes |
-| Can you edit it with any text editor? | ✅ Yes |
-| Can you sync it with your own tools? | ✅ Yes |
-| Can you delete the app and keep everything? | ✅ Yes |
+| Can you find your data in Finder/Explorer? | Yes |
+| Can you read it without the app? | Yes |
+| Can you edit it with any text editor? | Yes |
+| Can you sync it with your own tools? | Yes |
+| Can you delete the app and keep everything? | Yes |
 
 No cloud lock-in. No proprietary formats. Your conversations stay yours.
 
@@ -34,8 +35,14 @@ No cloud lock-in. No proprietary formats. Your conversations stay yours.
 ### Multi-Model Intelligence
 Use the right model for the job — or all of them at once. Council mode queries multiple models in parallel, then synthesizes a superior answer. Comparison mode shows you each response so you can judge for yourself.
 
+### Background Mode
+Send complex tasks to an orchestrator that breaks them down and delegates to specialized agents. Work continues in the background while you do other things — check back when it's done.
+
+### Ramble Mode
+Think out loud. Ramble mode gives you a freeform drafting space where you stream thoughts as an append-only log. When you're ready, the AI crystallizes your ramblings into structured notes with proposed changes you approve one by one.
+
 ### Smart Triggers
-Set up rules that watch your conversation and fire automatically. A cheap model can monitor context and escalate to a powerful model when the task demands it. Or trigger a web search when current information is needed. Layers of intelligence, coordinated.
+Set up scheduled prompts that fire on intervals. A cheap model can monitor conditions and escalate to a powerful model when needed. Or run recurring checks — weather, news, system health — on autopilot.
 
 ### Skills & Automation
 Skills are plain-text instructions that teach your AI new capabilities. Search the web, fetch APIs, read and write files in your vault, chain actions into workflows. Your AI automation, version-controlled alongside your data.
@@ -55,34 +62,38 @@ npm install
 ## Features
 
 ### Core
-- ✅ **Pick your vault folder** on first run
-- ✅ **Conversations saved as YAML files** (human-readable, plain text)
-- ✅ **Full-text search** across all conversations
+- **Pick your vault folder** on first run
+- **Conversations saved as YAML files** (human-readable, plain text)
+- **Full-text search** across all conversations
+- **Auto-updates** with signed releases
 
 ### Multi-Provider Support
-- ✅ **Anthropic** (Claude models with streaming)
-- ✅ **OpenAI** (GPT-4o, GPT-4, etc.)
-- ✅ **Google Gemini** (2.5 Pro, 2.5 Flash)
-- ✅ **Ollama** (local models)
-- ✅ **Side-by-side model comparison** mode
-- ✅ **Image attachments** (drag & drop or paste)
+- **Anthropic**
+- **OpenAI**
+- **Google Gemini**
+- **xAI**
+- **Ollama** (local models)
+- **Side-by-side model comparison** mode
+- **Image attachments** (drag & drop or paste)
 
 ### Skills & Tools
-- ✅ **Custom skills** as markdown files with built-in tool access
-- ✅ **Read/write files**, call APIs, chain actions together
+- **Custom skills** as markdown files with built-in tool access
+- **Read/write files**, call APIs, chain actions together
 - See [Skills & Tools](#skills--tools) section below for details
 
 ## File Structure
 
 ```
 ~/wheelhouse-vault/              # Your chosen vault location
-├── conversations/
-│   ├── 2025-01-10-1736547123-how-to-setup-tauri.yaml
-│   ├── 2025-01-09-1736460789-project-brainstorm.yaml
+├── config.yaml                  # API keys and settings
+├── memory.md                    # Persistent AI memory
+├── conversations/               # Chat history (YAML)
+│   ├── attachments/             # Image attachments
 │   └── ...
-├── skills/                     # Custom skills (markdown files)
-│   └── memory/SKILL.md
-└── config.yaml                 # API keys and settings
+├── notes/                       # AI-managed notes (Markdown)
+├── triggers/                    # Scheduled prompts (YAML)
+├── skills/                      # Custom skills (Markdown)
+└── rambles/                     # Draft notes (Markdown)
 ```
 
 ## Conversation Format
@@ -163,51 +174,12 @@ Wheelhouse is radically transparent:
 
 **No accounts. No telemetry. No cloud.** Your API keys stay on your machine. Your conversations never touch our servers (we don't have any).
 
-## Roadmap
-
-### ✅ v0.1 - MVP
-- Pick your vault folder on first run
-- Chat with Claude (single provider)
-- Conversations saved as YAML files
-- Basic search across conversations
-
-### ✅ v0.2 - Multi-Provider & Images
-- Multi-provider support (Claude, GPT, Gemini, Ollama)
-- Provider switching within app
-- Side-by-side model comparison
-- Image attachments
-
-### ✅ v0.3 - Skills & Triggers
-- Skills system with on-demand loading
-- Built-in tools (file ops, HTTP, secrets)
-- Triggers for automated background execution
-
-### v0.4 - Polish
-- Better skill discovery and management
-- UI refinements
-
-### v0.5 - Privacy & Local
-- Privacy boundaries configuration
-- Selective file/folder sharing
-- Local LLM summarization layer
-
-### v0.6 - AI-Managed Notes
-- AI that proactively organizes and maintains your knowledge base
-- Automatic summarization and linking of related conversations
-- Your notes, enhanced by AI — but still plain text you control
-
-### v1.0 - Production Ready
-- Polished UI
-- Sync service (optional, paid)
-- Browser extension
-- Mobile companion app
-
 ## Tech Stack
 
 - **Framework:** Tauri 2 (Rust backend, React frontend)
 - **Frontend:** React 19 + TypeScript + Vite
 - **Storage:** YAML/Markdown files in user-chosen directory
-- **AI Providers:** Anthropic, OpenAI, Google Gemini, Ollama
+- **AI Providers:** Anthropic, OpenAI, Google Gemini, xAI, Ollama
 
 ## Development
 
@@ -228,7 +200,7 @@ See [DEV.md](DEV.md) for development notes and architecture details.
 
 - Node.js (v18+)
 - Rust (latest stable)
-- At least one AI provider API key (Anthropic, OpenAI, or Google), or Ollama running locally
+- At least one AI provider API key (Anthropic, OpenAI, Google, xAI), or Ollama running locally
 
 ### Installing Rust
 
