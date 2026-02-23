@@ -106,6 +106,7 @@ export interface TriggerAttempt {
   result: 'triggered' | 'skipped' | 'error';
   reasoning: string;  // Explanation for triggered/skipped, empty for error
   error?: string;     // Error message when result is 'error'
+  usage?: Usage;      // Token usage and cost for this check
 }
 
 // Result of a trigger check

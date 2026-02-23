@@ -81,6 +81,7 @@ export function TriggerProvider({
           timestamp: now,
           result: 'triggered',
           reasoning: result.response.slice(0, 200), // Brief summary for history
+          usage,
         };
 
         // Create the 2-message block: trigger prompt + response
@@ -126,7 +127,7 @@ export function TriggerProvider({
         ]);
       },
 
-      onTriggerSkipped: async (triggerDoc, result) => {
+      onTriggerSkipped: async (triggerDoc, result, usage?: Usage) => {
         // Re-fetch fresh trigger to avoid race conditions
         const freshTrigger = getFreshTrigger(triggerDoc.id);
         if (!freshTrigger) return;
@@ -137,6 +138,7 @@ export function TriggerProvider({
           timestamp: now,
           result: 'skipped',
           reasoning: result.response,
+          usage,
         };
 
         // Update trigger (flat structure) - preserve original updated timestamp

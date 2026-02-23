@@ -108,9 +108,24 @@
   color: var(--text-secondary, #666);
 }
 
+/* Cost display for latest response */
+.trigger-usage-badge {
+  font-size: 0.7rem;
+  color: var(--text-tertiary, #999);
+  text-align: right;
+  margin-bottom: 0.75rem;
+}
+
 /* History Section */
 .trigger-history-section {
   margin-bottom: 2rem;
+}
+
+.history-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
 }
 
 .trigger-history-section h3 {
@@ -119,7 +134,13 @@
   color: var(--text-secondary, #666);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin: 0 0 1rem 0;
+  margin: 0;
+}
+
+.trigger-total-cost {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-tertiary, #999);
 }
 
 .trigger-history-list {
@@ -154,6 +175,17 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.25rem;
+}
+
+.history-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.history-cost {
+  font-size: 0.7rem;
+  color: var(--text-tertiary, #999);
 }
 
 .history-time {

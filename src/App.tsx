@@ -1296,7 +1296,7 @@ function AppContent() {
               ],
               lastChecked: baselineTime,
               lastTriggered: baselineTime,
-              history: [{ timestamp: baselineTime, result: 'triggered', reasoning: 'Baseline established' }],
+              history: [{ timestamp: baselineTime, result: 'triggered', reasoning: 'Baseline established', usage: baselineUsage }],
             };
             await handleTriggerUpdated(updatedTrigger);
           }

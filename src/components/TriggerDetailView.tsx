@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trigger } from '../types';
+import { Trigger, Usage } from '../types';
 import { vaultService } from '../services/vault';
 import { useTriggerContext } from '../contexts/TriggerContext';
 import { ItemHeader } from './ItemHeader';
@@ -15,6 +15,19 @@ interface TriggerDetailViewProps {
   onBack?: () => void;
   canGoBack?: boolean;
   onClose?: () => void;
+}
+
+function formatCost(cost: number): string {
+  return cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2);
+}
+
+function formatUsage(usage: Usage): string {
+  const parts: string[] = [];
+  if (usage.cost !== undefined) {
+    parts.push(`$${formatCost(usage.cost)}`);
+  }
+  parts.push(`${((usage.inputTokens + usage.outputTokens) / 1000).toFixed(1)}k tok`);
+  return parts.join(' · ');
 }
 
 function formatDate(isoString: string): string {
@@ -48,6 +61,36 @@ export function TriggerDetailView({
   const latestResponse = trigger.messages
     ?.filter(m => m.role === 'assistant')
     .pop();
+
+  // Compute total cost from history entries + fallback to messages for legacy data
+  const totalCost = (() => {
+    let cost = 0;
+    let counted = 0;
+    const countedTimestamps = new Set<string>();
+
+    // Primary: sum from history entries that have usage
+    if (trigger.history) {
+      for (const attempt of trigger.history) {
+        if (attempt.usage?.cost !== undefined) {
+          cost += attempt.usage.cost;
+          counted++;
+          countedTimestamps.add(attempt.timestamp);
+        }
+      }
+    }
+
+    // Fallback: for legacy triggers, sum from assistant messages not already counted
+    if (trigger.messages) {
+      for (const msg of trigger.messages) {
+        if (msg.role === 'assistant' && msg.usage?.cost !== undefined && !countedTimestamps.has(msg.timestamp)) {
+          cost += msg.usage.cost;
+          counted++;
+        }
+      }
+    }
+
+    return counted > 0 ? cost : undefined;
+  })();
 
   const handleRunNow = async () => {
     setIsRunning(true);
@@ -135,6 +178,11 @@ export function TriggerDetailView({
                 content={latestResponse.content}
                 className="latest-response-content"
               />
+              {latestResponse.usage && (
+                <div className="trigger-usage-badge">
+                  {formatUsage(latestResponse.usage)}
+                </div>
+              )}
               <button className="btn-ask-about" onClick={handleAskAbout}>
                 Ask about this
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -155,16 +203,26 @@ export function TriggerDetailView({
         {/* History Section */}
         {trigger.history && trigger.history.length > 0 && (
           <section className="trigger-history-section">
-            <h3>History</h3>
+            <div className="history-section-header">
+              <h3>History</h3>
+              {totalCost !== undefined && (
+                <span className="trigger-total-cost">Total: ${formatCost(totalCost)}</span>
+              )}
+            </div>
             <div className="trigger-history-list">
               {trigger.history.slice(0, 50).map((attempt, index) => (
                 <div key={index} className={`history-entry ${attempt.result}`}>
                   <div className="history-entry-header">
                     <span className="history-time">{formatDate(attempt.timestamp)}</span>
-                    <span className={`history-result ${attempt.result}`}>
-                      {attempt.result === 'triggered' ? 'Triggered' :
-                       attempt.result === 'skipped' ? 'Skipped' : 'Error'}
-                    </span>
+                    <div className="history-entry-meta">
+                      {attempt.usage?.cost !== undefined && (
+                        <span className="history-cost">${formatCost(attempt.usage.cost)}</span>
+                      )}
+                      <span className={`history-result ${attempt.result}`}>
+                        {attempt.result === 'triggered' ? 'Triggered' :
+                         attempt.result === 'skipped' ? 'Skipped' : 'Error'}
+                      </span>
+                    </div>
                   </div>
                   <div className="history-reasoning">
                     {attempt.error || attempt.reasoning}

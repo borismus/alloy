@@ -5,7 +5,7 @@ export interface TriggerSchedulerCallbacks {
   getTriggers: () => Trigger[];
   reloadTrigger: (id: string) => Promise<Trigger | null>;
   onTriggerFired: (trigger: Trigger, result: TriggerResult, usage?: Usage) => Promise<void>;
-  onTriggerSkipped: (trigger: Trigger, result: TriggerResult) => void;
+  onTriggerSkipped: (trigger: Trigger, result: TriggerResult, usage?: Usage) => void;
   onTriggerChecking: (triggerId: string) => void;
   onTriggerCheckComplete: (triggerId: string) => void;
   onError: (trigger: Trigger, error: Error) => void;
@@ -112,7 +112,7 @@ export class TriggerScheduler {
       if (result.result === 'triggered') {
         await this.callbacks?.onTriggerFired(trigger, result, usage);
       } else if (result.result === 'skipped') {
-        await this.callbacks?.onTriggerSkipped(trigger, result);
+        await this.callbacks?.onTriggerSkipped(trigger, result, usage);
       } else {
         // result.result === 'error'
         console.error(
