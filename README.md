@@ -36,21 +36,25 @@ Everything lives in your vault folder as plain files:
 Conversations are YAML files:
 
 ```yaml
-id: 2025-01-09-1736460789-project-brainstorm
-created: 2025-01-09T10:30:00Z
-model: anthropic/claude-sonnet-4-5-20250929
-title: How should I structure this API
+id: 2025-06-15-1750012200-bike-kickstand
+created: 2025-06-15T11:30:00Z
+model: anthropic/claude-opus-4-6
+title: Kickstand won't stay tight
 
 messages:
   - role: user
-    timestamp: 2025-01-09T10:30:00Z
+    timestamp: 2025-06-15T11:30:00Z
     content: |
-      How should I structure this API?
+      I bolted a new kickstand to my bike but it keeps
+      loosening after a few rides. Any ideas?
 
   - role: assistant
-    timestamp: 2025-01-09T10:30:15Z
+    timestamp: 2025-06-15T11:30:09Z
     content: |
-      I'd recommend starting with the core resources...
+      The bolt is probably vibrating loose. Clean the threads,
+      apply a drop of Loctite Blue (medium strength), and
+      re-tighten. It'll stay put but you can still remove it
+      with a wrench later if you need to.
 ```
 
 ## Skills & Tools
