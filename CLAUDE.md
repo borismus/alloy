@@ -10,8 +10,17 @@ Key features:
 - **Comparison mode**: See responses side-by-side
 - **Triggers**: Scheduled background prompts (monitors)
 - **Skills**: Markdown-defined capabilities with tool access
-- **Ramble mode**: Draft-based note integration
+- **Riff mode**: Draft-based note integration
 - **Vault storage**: All data as YAML/Markdown in user-chosen folder
+
+## Project Context
+
+- This is a TypeScript Tauri app. The primary codebase is TypeScript. When debugging platform-specific issues (dictation, WKWebView, native behaviors), recognize early when the issue is at the system/platform level rather than app level, and communicate that clearly instead of cycling through incorrect hypotheses.
+
+## General Principles
+
+- **Minimal scope**: When asked to implement a feature or fix, start with the MINIMAL scope. Do not add extra UI elements, system prompt overrides, polling mechanisms, or utility functions beyond what was explicitly requested. If you think something additional is needed, ask first.
+- **Reuse existing code**: When reusing existing patterns in the codebase, always check for and reuse existing hooks, utilities, and components rather than duplicating code. Search for similar implementations before creating new ones.
 
 ## Architecture
 
@@ -20,11 +29,11 @@ src/
 ├── App.tsx                 # Main app - state management, routing
 ├── components/             # React components
 │   ├── ChatInterface.tsx   # Standard chat
-│   ├── RambleView.tsx      # Draft note editing
+│   ├── RiffView.tsx      # Draft note editing
 │   ├── Sidebar.tsx         # Timeline + navigation
 ├── services/
 │   ├── vault.ts            # File I/O, conversation/note CRUD
-│   ├── ramble.ts           # Draft integration logic
+│   ├── riff.ts           # Draft integration logic
 │   ├── providers/          # AI provider implementations
 │   ├── skills/             # Skill loading and execution
 │   └── tools/              # Built-in tool implementations
@@ -40,7 +49,7 @@ src/
 - [src/services/vault.ts](src/services/vault.ts) - File operations, conversation/note persistence
 - [src/services/providers/registry.ts](src/services/providers/registry.ts) - Provider management
 - [src/types/index.ts](src/types/index.ts) - Core type definitions
-- [src/services/ramble.ts](src/services/ramble.ts) - Draft/ramble processing
+- [src/services/riff.ts](src/services/riff.ts) - Draft/riff processing
 
 ## Common Commands
 
@@ -91,7 +100,7 @@ vault-folder/
 ├── notes/                # User notes (Markdown)
 ├── triggers/             # Scheduled prompts (YAML)
 ├── skills/               # Custom skills (Markdown)
-└── rambles/              # Draft notes (Markdown)
+└── riffs/              # Draft notes (Markdown)
 ```
 
 ## Allowed Tools
@@ -112,6 +121,10 @@ allowedTools:
   - Bash(pwd)
   - Bash(which *)
   - Bash(echo *)
+
+## Git Workflow
+
+- When the user asks to commit changes, organize them into logical chunks by feature/concern. Don't ask for permission on obvious groupings — just create coherent commits.
 
 ## Releasing
 

@@ -23,11 +23,12 @@
       "Bash(ls:*)",
       "Bash(curl:*)",
       "Bash(docker rm:*)",
-      "Bash(docker run:*)"
+      "Bash(docker run:*)",
+      "Bash(git -C /Users/smus/Projects/promptbox log --all --pretty=format:\"%h %s\")"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "playwright"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
