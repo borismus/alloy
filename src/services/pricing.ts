@@ -7,9 +7,10 @@ interface ModelPricing {
 // Dated model IDs (e.g. "claude-opus-4-5-20251101") match their base prefix.
 // Order matters: more specific prefixes before less specific ones.
 const PRICING_TABLE: [string, ModelPricing][] = [
-  // Anthropic
+  // Anthropic (sonnet-4-6 before sonnet-4-5 for prefix ordering)
   ['anthropic/claude-opus-4-6',       { inputPer1M: 5,     outputPer1M: 25 }],
   ['anthropic/claude-opus-4-5',       { inputPer1M: 5,     outputPer1M: 25 }],
+  ['anthropic/claude-sonnet-4-6',     { inputPer1M: 3,     outputPer1M: 15 }],
   ['anthropic/claude-sonnet-4-5',     { inputPer1M: 3,     outputPer1M: 15 }],
   ['anthropic/claude-haiku-4-5',      { inputPer1M: 1,     outputPer1M: 5 }],
   // OpenAI (gpt-5-mini before gpt-5 so prefix match works)
@@ -22,7 +23,7 @@ const PRICING_TABLE: [string, ModelPricing][] = [
   ['gemini/gemini-3-pro',             { inputPer1M: 2,     outputPer1M: 12 }],
   ['gemini/gemini-3-flash',           { inputPer1M: 0.50,  outputPer1M: 3 }],
   ['gemini/gemini-2.5-pro',           { inputPer1M: 1.25,  outputPer1M: 10 }],
-  ['gemini/gemini-2.5-flash',         { inputPer1M: 0.15,  outputPer1M: 0.60 }],
+  ['gemini/gemini-2.5-flash',         { inputPer1M: 0.30,  outputPer1M: 2.50 }],
   ['gemini/gemini-2.0-flash-lite',    { inputPer1M: 0.075, outputPer1M: 0.30 }],
   // Grok (grok-4-1 before grok-4 for prefix ordering)
   ['grok/grok-4-1',                   { inputPer1M: 0.20,  outputPer1M: 0.50 }],
