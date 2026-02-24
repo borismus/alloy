@@ -496,14 +496,12 @@
 
 /* Shared Markdown Styles - applies to all markdown-rendered content */
 .message-content p,
-.response-summary-content p,
-.chairman-content p {
+.response-summary-content p {
   margin: 0 0 1rem 0;
 }
 
 .message-content p:last-child,
-.response-summary-content p:last-child,
-.chairman-content p:last-child {
+.response-summary-content p:last-child {
   margin-bottom: 0;
 }
 
@@ -518,13 +516,7 @@
 .response-summary-content h3,
 .response-summary-content h4,
 .response-summary-content h5,
-.response-summary-content h6,
-.chairman-content h1,
-.chairman-content h2,
-.chairman-content h3,
-.chairman-content h4,
-.chairman-content h5,
-.chairman-content h6 {
+.response-summary-content h6 {
   margin: 1.5rem 0 0.75rem 0;
   font-weight: 600;
   line-height: 1.3;
@@ -535,34 +527,27 @@
 .message-content h3:first-child,
 .response-summary-content h1:first-child,
 .response-summary-content h2:first-child,
-.response-summary-content h3:first-child,
-.chairman-content h1:first-child,
-.chairman-content h2:first-child,
-.chairman-content h3:first-child {
+.response-summary-content h3:first-child {
   margin-top: 0;
 }
 
 .message-content h1,
-.response-summary-content h1,
-.chairman-content h1 {
+.response-summary-content h1 {
   font-size: 1.75rem;
 }
 
 .message-content h2,
-.response-summary-content h2,
-.chairman-content h2 {
+.response-summary-content h2 {
   font-size: 1.5rem;
 }
 
 .message-content h3,
-.response-summary-content h3,
-.chairman-content h3 {
+.response-summary-content h3 {
   font-size: 1.25rem;
 }
 
 .message-content code,
-.response-summary-content code,
-.chairman-content code {
+.response-summary-content code {
   background: rgba(0, 0, 0, 0.08);
   padding: 0.2em 0.4em;
   border-radius: 4px;
@@ -575,8 +560,7 @@
 }
 
 .message-content pre,
-.response-summary-content pre,
-.chairman-content pre {
+.response-summary-content pre {
   margin: 1rem 0;
   border-radius: 8px;
   overflow-x: auto;
@@ -585,8 +569,7 @@
 }
 
 .message-content pre code,
-.response-summary-content pre code,
-.chairman-content pre code {
+.response-summary-content pre code {
   display: block;
   padding: 1rem;
   background: transparent;
@@ -598,34 +581,28 @@
 .message-content ul,
 .message-content ol,
 .response-summary-content ul,
-.response-summary-content ol,
-.chairman-content ul,
-.chairman-content ol {
+.response-summary-content ol {
   margin: 0.5rem 0;
   padding-left: 1.5rem;
 }
 
 .message-content li,
-.response-summary-content li,
-.chairman-content li {
+.response-summary-content li {
   margin: 0.25rem 0;
 }
 
 .message-content li > p,
-.response-summary-content li > p,
-.chairman-content li > p {
+.response-summary-content li > p {
   margin: 0;
 }
 
 .message-content li > p + p,
-.response-summary-content li > p + p,
-.chairman-content li > p + p {
+.response-summary-content li > p + p {
   margin-top: 0.5rem;
 }
 
 .message-content blockquote,
-.response-summary-content blockquote,
-.chairman-content blockquote {
+.response-summary-content blockquote {
   margin: 1rem 0;
   padding-left: 1rem;
   border-left: 3px solid #e0e0e0;
@@ -638,8 +615,7 @@
 }
 
 .message-content table,
-.response-summary-content table,
-.chairman-content table {
+.response-summary-content table {
   border-collapse: collapse;
   width: 100%;
   margin: 1rem 0;
@@ -649,9 +625,7 @@
 .message-content th,
 .message-content td,
 .response-summary-content th,
-.response-summary-content td,
-.chairman-content th,
-.chairman-content td {
+.response-summary-content td {
   border: 1px solid #e0e0e0;
   padding: 0.5rem;
   text-align: left;
@@ -660,22 +634,19 @@
 }
 
 .message-content th,
-.response-summary-content th,
-.chairman-content th {
+.response-summary-content th {
   background: #f8f9fa;
   font-weight: 600;
 }
 
 .message-content a,
-.response-summary-content a,
-.chairman-content a {
+.response-summary-content a {
   color: #667eea;
   text-decoration: none;
 }
 
 .message-content a:hover,
-.response-summary-content a:hover,
-.chairman-content a:hover {
+.response-summary-content a:hover {
   text-decoration: underline;
 }
 
@@ -736,8 +707,7 @@
 }
 
 .message-content hr,
-.response-summary-content hr,
-.chairman-content hr {
+.response-summary-content hr {
   margin: 1.5rem 0;
   border: none;
   border-top: 1px solid #e0e0e0;
@@ -748,8 +718,7 @@
 }
 
 .message-content strong,
-.response-summary-content strong,
-.chairman-content strong {
+.response-summary-content strong {
   font-weight: 600;
 }
 

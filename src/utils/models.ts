@@ -47,22 +47,3 @@ export function getModelDisplayName(
   return `Model ${index + 1}`;
 }
 
-export function getChairmanDisplayName(
-  response: ResponseWithModel,
-  chairman: ModelInfo | undefined,
-  conversationChairman?: string
-): string {
-  if (chairman) {
-    return chairman.name;
-  }
-
-  if (response.model) {
-    return response.model;
-  }
-
-  if (conversationChairman) {
-    return conversationChairman;
-  }
-
-  return 'Chairman';
-}
