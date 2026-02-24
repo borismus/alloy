@@ -24,7 +24,8 @@
       "Bash(curl:*)",
       "Bash(docker rm:*)",
       "Bash(docker run:*)",
-      "Bash(git -C /Users/smus/Projects/promptbox log --all --pretty=format:\"%h %s\")"
+      "Bash(git -C /Users/smus/Projects/promptbox log --all --pretty=format:\"%h %s\")",
+      "Bash(npx tauri icon:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
