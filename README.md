@@ -85,6 +85,13 @@ using `append_to_note`. Before answering, check `memory.md` for context.
 | `use_skill` | Load another skill on-demand |
 | `spawn_subagent` | Run 1-3 parallel sub-agents |
 
+### Web Search Setup
+
+The `web_search` tool requires one of:
+
+- **[SearXNG](https://docs.searxng.org/)** (free, self-hosted) — Run a local instance via Docker with JSON format enabled. Set `searxng_url` in your vault's `config.yaml`.
+- **[Serper](https://serper.dev/)** (paid API) — Sign up for a key and add it as `serper_api_key` in your vault's `config.yaml`.
+
 ## Supported Providers
 
 - **Anthropic** (Claude)
