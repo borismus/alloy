@@ -120,6 +120,23 @@ export class GeminiService implements IProviderService {
       throw new Error('Last message must be from user');
     }
 
+    // Gemini requires first content to be 'user' and roles to alternate.
+    // Strip leading 'model' messages and merge consecutive same-role messages.
+    const cleanedHistory: Content[] = [];
+    for (const entry of geminiHistory) {
+      if (cleanedHistory.length === 0 && entry.role === 'model') {
+        // Skip leading model messages
+        continue;
+      }
+      const prev = cleanedHistory[cleanedHistory.length - 1];
+      if (prev && prev.role === entry.role) {
+        // Merge consecutive same-role messages
+        prev.parts = prev.parts.concat(entry.parts);
+      } else {
+        cleanedHistory.push({ ...entry });
+      }
+    }
+
     // Convert tools to Gemini format if provided
     const geminiTools = options.tools
       ? [{ functionDeclarations: geminiToolAdapter.toProviderFormat(options.tools) }]
@@ -132,7 +149,7 @@ export class GeminiService implements IProviderService {
     });
 
     const chat = model.startChat({
-      history: geminiHistory,
+      history: cleanedHistory,
     });
 
     const result = await chat.sendMessageStream(lastMessage.parts);
@@ -365,6 +382,20 @@ export class GeminiService implements IProviderService {
       });
     }
 
+    // Gemini requires first content to be 'user' and roles to alternate.
+    const cleanedHistory: Content[] = [];
+    for (const entry of geminiHistory) {
+      if (cleanedHistory.length === 0 && entry.role === 'model') {
+        continue;
+      }
+      const prev = cleanedHistory[cleanedHistory.length - 1];
+      if (prev && prev.role === entry.role) {
+        prev.parts = prev.parts.concat(entry.parts);
+      } else {
+        cleanedHistory.push({ ...entry });
+      }
+    }
+
     // Convert tools to Gemini format
     const geminiTools = options.tools
       ? [{ functionDeclarations: geminiToolAdapter.toProviderFormat(options.tools) }]
@@ -377,7 +408,7 @@ export class GeminiService implements IProviderService {
     });
 
     const chat = model.startChat({
-      history: geminiHistory,
+      history: cleanedHistory,
     });
 
     // Send function responses
