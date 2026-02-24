@@ -214,7 +214,7 @@ If you're still stuck:
    ./run.sh
    ```
 
-4. **File an issue**: https://github.com/your-repo/wheelhouse/issues
+4. **File an issue**: https://github.com/borismus/promptbox/issues
 
 ---
 

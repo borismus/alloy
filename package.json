@@ -1,7 +1,18 @@
 {
   "name": "wheelhouse",
-  "private": true,
   "version": "0.2.7",
+  "description": "Local-first multi-model AI chat app. One helm for Claude, ChatGPT, Gemini, Grok, and local models.",
+  "author": "Boris Smus",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/borismus/promptbox.git"
+  },
+  "homepage": "https://github.com/borismus/promptbox#readme",
+  "bugs": {
+    "url": "https://github.com/borismus/promptbox/issues"
+  },
+  "keywords": ["ai", "chat", "claude", "openai", "gemini", "ollama", "tauri", "local-first"],
   "type": "module",
   "scripts": {
     "dev": "vite",

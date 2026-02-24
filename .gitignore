@@ -33,3 +33,14 @@ vault/
 
 # Local Claude Code settings (contains user-specific paths)
 .claude/settings.local.json
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Session recordings
+.specstory/
+
+# Generated platform icons
+src-tauri/icons/android/
+src-tauri/icons/ios/
