@@ -33,9 +33,12 @@ interface BackgroundContextValue {
   tasks: BackgroundTask[];
   isOrchestratorBusy: boolean;
   queueLength: number;
+  hasRunningTasks: boolean;
   sendMessage: (content: string) => void;
   clearHistory: () => void;
   setConversation: (conv: Conversation | null) => void;
+  cancelTask: (taskId: string) => void;
+  cancelAllTasks: () => void;
 }
 
 const BackgroundContext = createContext<BackgroundContextValue | null>(null);
@@ -60,6 +63,7 @@ export function BackgroundProvider({
   const [messageQueue, setMessageQueue] = useState<string[]>([]);
   const [isOrchestratorBusy, setIsOrchestratorBusy] = useState(false);
   const { requestApproval } = useApproval();
+  const taskAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
 
   // Refs for stable access in async operations
   const conversationRef = useRef(conversation);
@@ -149,6 +153,9 @@ export function BackgroundProvider({
    */
   const launchTask = useCallback((name: string, prompt: string) => {
     const taskId = generateTaskId();
+    const abortController = new AbortController();
+    taskAbortControllersRef.current.set(taskId, abortController);
+
     const task: BackgroundTask = {
       id: taskId,
       name,
@@ -162,8 +169,12 @@ export function BackgroundProvider({
 
     // Fire and forget — run the task asynchronously
     (async () => {
+      // Declared before try so they're accessible in catch for partial content saving
+      const modelKey = defaultModelRef.current;
+      const resultMessageId = generateMessageId();
+      let accumulatedContent = '';
+
       try {
-        const modelKey = defaultModelRef.current;
         const resolved = getProviderForModel(modelKey);
         if (!resolved) {
           throw new Error(`No provider available for model ${modelKey}`);
@@ -182,14 +193,11 @@ export function BackgroundProvider({
 
         const systemPrompt = getTaskSystemPrompt(memoryContentRef.current);
 
-        // Generate message ID once — used in provenance markers AND the result message
-        // so that clicking a provenance link scrolls to the correct message
-        const resultMessageId = generateMessageId();
-
         const result = await executeWithTools(provider, taskMessages, modelId, {
           maxIterations: 10,
           tools: taskTools,
           systemPrompt,
+          signal: abortController.signal,
           toolContext: {
             messageId: resultMessageId,
             conversationId: `conversations/${BACKGROUND_CONVERSATION_ID}`,
@@ -197,6 +205,7 @@ export function BackgroundProvider({
           },
           onApprovalRequired: (request) => requestApprovalRef.current(request),
           onChunk: (chunk) => {
+            accumulatedContent += chunk;
             setTasks(prev => prev.map(t =>
               t.id === taskId ? { ...t, content: t.content + chunk } : t
             ));
@@ -207,6 +216,25 @@ export function BackgroundProvider({
             ));
           },
         });
+
+        // Provider returned normally after abort — save partial content
+        if (abortController.signal.aborted && accumulatedContent.trim()) {
+          setTasks(prev => prev.map(t =>
+            t.id === taskId
+              ? { ...t, status: 'completed' as const, completedAt: new Date().toISOString() }
+              : t
+          ));
+          const resultMessage: Message = {
+            id: resultMessageId,
+            role: 'assistant',
+            timestamp: new Date().toISOString(),
+            content: accumulatedContent,
+            model: modelKey,
+            source: 'task',
+          };
+          await appendMessage(resultMessage);
+          return;
+        }
 
         // Mark task complete
         setTasks(prev => prev.map(t =>
@@ -241,6 +269,27 @@ export function BackgroundProvider({
         };
         await appendMessage(resultMessage);
       } catch (error: any) {
+        // User-initiated cancellation — save any partial content that was streamed
+        if (error?.name === 'AbortError' || abortController.signal.aborted) {
+          setTasks(prev => prev.map(t =>
+            t.id === taskId
+              ? { ...t, status: 'error' as const, error: 'Cancelled', completedAt: new Date().toISOString() }
+              : t
+          ));
+          if (accumulatedContent.trim()) {
+            const resultMessage: Message = {
+              id: resultMessageId,
+              role: 'assistant',
+              timestamp: new Date().toISOString(),
+              content: accumulatedContent,
+              model: modelKey,
+              source: 'task',
+            };
+            await appendMessage(resultMessage);
+          }
+          return;
+        }
+
         const errorMsg = error?.message || 'Unknown error';
         console.error(`[Background] Task "${name}" failed:`, error);
 
@@ -259,6 +308,8 @@ export function BackgroundProvider({
           model: defaultModelRef.current,
         };
         await appendMessage(errorMessage);
+      } finally {
+        taskAbortControllersRef.current.delete(taskId);
       }
     })();
   }, [appendMessage]);
@@ -387,14 +438,34 @@ export function BackgroundProvider({
     });
   }, [isOrchestratorBusy, messageQueue, processMessage]);
 
+  const cancelTask = useCallback((taskId: string) => {
+    const controller = taskAbortControllersRef.current.get(taskId);
+    if (controller) {
+      controller.abort();
+      taskAbortControllersRef.current.delete(taskId);
+    }
+  }, []);
+
+  const cancelAllTasks = useCallback(() => {
+    for (const [, controller] of taskAbortControllersRef.current) {
+      controller.abort();
+    }
+    taskAbortControllersRef.current.clear();
+  }, []);
+
+  const hasRunningTasks = tasks.some(t => t.status === 'running');
+
   const value: BackgroundContextValue = {
     conversation,
     tasks,
     isOrchestratorBusy,
     queueLength: messageQueue.length,
+    hasRunningTasks,
     sendMessage,
     clearHistory,
     setConversation,
+    cancelTask,
+    cancelAllTasks,
   };
 
   return (

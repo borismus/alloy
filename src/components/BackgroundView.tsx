@@ -1,9 +1,16 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Message } from '../types';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { Message, getProviderFromModel, getModelIdFromModel } from '../types';
+import { PROVIDER_NAMES } from '../utils/models';
+import { getOrchestratorModel } from '../services/background';
 import { AgentResponseView } from './AgentResponseView';
 import { MarkdownContent } from './MarkdownContent';
 import { useBackgroundContext, BackgroundTask } from '../contexts/BackgroundContext';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
+import { useAutoScroll } from '../hooks/useAutoScroll';
+import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
+import { useChatKeyboard } from '../hooks/useChatKeyboard';
+import { useGlobalEscape } from '../hooks/useGlobalEscape';
+import { useTextareaProps } from '../utils/textareaProps';
 import './BackgroundView.css';
 
 interface BackgroundViewProps {
@@ -23,15 +30,26 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
     conversation,
     tasks,
     queueLength,
-    sendMessage,
+    cancelTask,
   } = useBackgroundContext();
 
-  const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const messages = conversation?.messages || [];
+
+  // Compute total cost across all messages in the background conversation
+  const totalCost = useMemo(() => {
+    let cost = 0;
+    let counted = 0;
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.usage?.cost !== undefined) {
+        cost += msg.usage.cost;
+        counted++;
+      }
+    }
+    return counted > 0 ? cost : undefined;
+  }, [messages]);
 
   // Scroll to specific message when navigating from provenance links
   useScrollToMessage({
@@ -40,50 +58,18 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
     onScrollComplete,
   });
 
-  // Auto-scroll to bottom when new messages/tasks arrive (skip if scrolling to a specific message)
-  useEffect(() => {
-    if (scrollToMessageId) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length, tasks]);
-
-  // Auto-resize textarea
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputValue(e.target.value);
-    const textarea = e.target;
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px';
-  }, []);
-
-  const handleSubmit = useCallback(() => {
-    const trimmed = inputValue.trim();
-    if (!trimmed) return;
-    sendMessage(trimmed);
-    setInputValue('');
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-  }, [inputValue, sendMessage]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  }, [handleSubmit]);
-
-  // Focus input on mount
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
+  // Smart auto-scroll: only scrolls when user is near the bottom
+  const { handleScroll } = useAutoScroll({
+    endRef: messagesEndRef,
+    dependencies: [messages, tasks],
+  });
 
   // Find active (running) tasks for streaming display
   const runningTasks = tasks.filter(t => t.status === 'running');
 
   return (
     <div className="background-view">
-      <div className="background-messages" ref={messagesContainerRef}>
+      <div className="background-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.length === 0 && runningTasks.length === 0 ? (
           <div className="background-empty">
             <h2>Wheelhouse</h2>
@@ -91,6 +77,26 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
           </div>
         ) : (
           <>
+            {(() => {
+              const orchestratorModel = getOrchestratorModel();
+              return orchestratorModel || totalCost !== undefined ? (
+                <div className="model-info">
+                  {orchestratorModel && (
+                    <>
+                      <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(orchestratorModel)]}</span>
+                      <span className="model-separator">·</span>
+                      <span className="model-name">{getModelIdFromModel(orchestratorModel)}</span>
+                    </>
+                  )}
+                  {totalCost !== undefined && (
+                    <>
+                      {orchestratorModel && <span className="model-separator">·</span>}
+                      <span className="model-cost">${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}</span>
+                    </>
+                  )}
+                </div>
+              ) : null;
+            })()}
             {messages.map((message, index) => (
               <MessageRow
                 key={message.id || index}
@@ -105,6 +111,7 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
               <StreamingTaskView
                 key={task.id}
                 task={task}
+                onCancel={cancelTask}
                 onNavigateToNote={onNavigateToNote}
                 onNavigateToConversation={onNavigateToConversation}
               />
@@ -120,17 +127,63 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
         </div>
       )}
 
-      <div className="background-input">
-        <div className="background-input-row">
-          <span className="background-prompt-char">&gt;</span>
-          <textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a command..."
-            rows={1}
-          />
+      <BackgroundInputForm />
+    </div>
+  );
+};
+
+/**
+ * Isolated input form to prevent keystroke re-renders from propagating to the message list.
+ */
+const BackgroundInputForm = React.memo(() => {
+  const { sendMessage, cancelAllTasks, hasRunningTasks } = useBackgroundContext();
+  const [inputValue, setInputValue] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaProps = useTextareaProps();
+
+  useAutoResizeTextarea(textareaRef, inputValue);
+
+  const handleSubmit = useCallback(() => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+    sendMessage(trimmed);
+    setInputValue('');
+  }, [inputValue, sendMessage]);
+
+  const handleKeyDown = useChatKeyboard({
+    onSubmit: handleSubmit,
+    onStop: cancelAllTasks,
+    isStreaming: hasRunningTasks,
+  });
+
+  useGlobalEscape(cancelAllTasks, hasRunningTasks);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="background-input">
+      <div className="background-input-row">
+        <span className="background-prompt-char">&gt;</span>
+        <textarea
+          ref={textareaRef}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a command..."
+          rows={1}
+          {...textareaProps}
+        />
+        {hasRunningTasks ? (
+          <button
+            className="background-send-btn background-stop-btn"
+            onClick={cancelAllTasks}
+            title="Stop all tasks"
+          >
+            &#9632;
+          </button>
+        ) : (
           <button
             className="background-send-btn"
             onClick={handleSubmit}
@@ -138,11 +191,11 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
           >
             Send
           </button>
-        </div>
+        )}
       </div>
     </div>
   );
-};
+});
 
 /**
  * Renders a single message in the background conversation.
@@ -187,6 +240,7 @@ const MessageRow: React.FC<{
         skillUses={message.skillUse}
         onNavigateToNote={onNavigateToNote}
         onNavigateToConversation={onNavigateToConversation}
+        usage={message.usage}
       />
     </div>
   );
@@ -197,14 +251,22 @@ const MessageRow: React.FC<{
  */
 const StreamingTaskView: React.FC<{
   task: BackgroundTask;
+  onCancel: (taskId: string) => void;
   onNavigateToNote: (filename: string) => void;
   onNavigateToConversation: (conversationId: string, messageId?: string) => void;
-}> = ({ task, onNavigateToNote, onNavigateToConversation }) => {
+}> = ({ task, onCancel, onNavigateToNote, onNavigateToConversation }) => {
   return (
     <div className="background-streaming-task">
       <div className="background-task-streaming-label">
         <span className="task-spinner" />
         {task.name}
+        <button
+          className="task-cancel-btn"
+          onClick={() => onCancel(task.id)}
+          title="Cancel task"
+        >
+          &times;
+        </button>
       </div>
       <AgentResponseView
         content={task.content}
