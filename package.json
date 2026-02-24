@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/borismus/promptbox.git"
+    "url": "https://github.com/borismus/wheelhouse.git"
   },
-  "homepage": "https://github.com/borismus/promptbox#readme",
+  "homepage": "https://github.com/borismus/wheelhouse#readme",
   "bugs": {
-    "url": "https://github.com/borismus/promptbox/issues"
+    "url": "https://github.com/borismus/wheelhouse/issues"
   },
   "keywords": ["ai", "chat", "claude", "openai", "gemini", "ollama", "tauri", "local-first"],
   "type": "module",
