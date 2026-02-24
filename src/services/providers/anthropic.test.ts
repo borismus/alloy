@@ -39,6 +39,7 @@ describe('AnthropicService', () => {
       expect(Anthropic).toHaveBeenCalledWith({
         apiKey: 'test-api-key',
         dangerouslyAllowBrowser: true,
+        fetch: expect.any(Function),
       });
     });
 
