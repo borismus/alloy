@@ -43,10 +43,10 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, any>; 
 
 interface NoteViewerProps {
   content: string;
-  filename?: string; // Used to detect ramble notes for auto-scroll
+  filename?: string; // Used to detect riff notes for auto-scroll
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
-  onIntegrate?: () => void; // Called when user wants to integrate a ramble
+  onIntegrate?: () => void; // Called when user wants to integrate a riff
   conversations?: ConversationInfo[]; // For looking up conversation titles
   onBack?: () => void;
   canGoBack?: boolean;
@@ -69,23 +69,23 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
 
   // Parse frontmatter and get body content
   const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
-  const isRambleNote = filename?.startsWith('rambles/');
-  const isUnintegrated = isRambleNote && frontmatter.integrated === false;
+  const isRiffNote = filename?.startsWith('riffs/');
+  const isUnintegrated = isRiffNote && frontmatter.integrated === false;
 
-  // Auto-scroll to bottom for ramble notes when content grows
+  // Auto-scroll to bottom for riff notes when content grows
   useEffect(() => {
-    if (isRambleNote && contentRef.current) {
+    if (isRiffNote && contentRef.current) {
       // Only scroll if content has grown (not on initial load or content changes)
       if (body.length > prevContentLengthRef.current && prevContentLengthRef.current > 0) {
         contentRef.current.scrollTop = contentRef.current.scrollHeight;
       }
       prevContentLengthRef.current = body.length;
     }
-  }, [body, isRambleNote]);
+  }, [body, isRiffNote]);
 
   // Get display name from filename
   const displayName = filename
-    ? filename.replace(/^(notes\/|rambles\/)/, '').replace(/\.md$/, '')
+    ? filename.replace(/^(notes\/|riffs\/)/, '').replace(/\.md$/, '')
     : 'Note';
 
   return (
@@ -97,8 +97,8 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
         onClose={onClose}
       />
       {isUnintegrated && onIntegrate && (
-        <div className="ramble-integrate-bar">
-          <span className="integrate-hint">This ramble hasn't been integrated yet</span>
+        <div className="riff-integrate-bar">
+          <span className="integrate-hint">This riff hasn't been integrated yet</span>
           <button className="integrate-btn" onClick={onIntegrate}>
             Integrate
           </button>

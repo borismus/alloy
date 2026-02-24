@@ -1,4 +1,4 @@
-.ramble-view {
+.riff-view {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -8,7 +8,7 @@
 }
 
 /* Draft indicator status */
-.ramble-view .draft-indicator {
+.riff-view .draft-indicator {
   font-size: 0.75rem;
   color: var(--text-tertiary, #999);
   font-style: italic;
@@ -17,7 +17,7 @@
 }
 
 /* Button styles */
-.ramble-view .btn-small {
+.riff-view .btn-small {
   padding: 0.4rem 0.75rem;
   border-radius: 4px;
   border: 1px solid var(--border-color, #e0e0e0);
@@ -29,27 +29,27 @@
   color: var(--text-primary, #333);
 }
 
-.ramble-view .btn-small:hover {
+.riff-view .btn-small:hover {
   background: var(--bg-hover, #f0f0f0);
 }
 
-.ramble-view .btn-small:disabled {
+.riff-view .btn-small:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.ramble-view .btn-small.btn-accent {
+.riff-view .btn-small.btn-accent {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-color: transparent;
 }
 
-.ramble-view .btn-small.btn-accent:hover {
+.riff-view .btn-small.btn-accent:hover {
   opacity: 0.9;
 }
 
 /* Draft section */
-.ramble-draft-section {
+.riff-draft-section {
   flex: 0 0 auto;
   max-height: 40%;
   display: flex;
@@ -57,13 +57,13 @@
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.ramble-draft-header {
+.riff-draft-header {
   padding: 0.75rem 1.5rem;
   background: var(--bg-secondary, #f8f9fa);
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.ramble-draft-header h3 {
+.riff-draft-header h3 {
   margin: 0;
   font-size: 0.75rem;
   font-weight: 600;
@@ -72,7 +72,7 @@
   letter-spacing: 0.5px;
 }
 
-.ramble-draft-content {
+.riff-draft-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -85,11 +85,11 @@
 }
 
 /* Highlight animation for recently crystallized content */
-.ramble-draft-content.just-crystallized {
+.riff-draft-content.just-crystallized {
   animation: crystallize-fade 3s ease-out forwards;
 }
 
-.ramble-draft-content.just-crystallized .markdown-content {
+.riff-draft-content.just-crystallized .markdown-content {
   animation: crystallize-glow 3s ease-out forwards;
 }
 
@@ -113,14 +113,14 @@
 }
 
 /* Log section */
-.ramble-log-section {
+.riff-log-section {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-.ramble-log-header {
+.riff-log-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -129,7 +129,7 @@
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.ramble-log-header h3 {
+.riff-log-header h3 {
   margin: 0;
   font-size: 0.75rem;
   font-weight: 600;
@@ -138,13 +138,13 @@
   letter-spacing: 0.5px;
 }
 
-.ramble-log-hint {
+.riff-log-hint {
   font-size: 0.75rem;
   color: var(--text-tertiary, #999);
   font-style: italic;
 }
 
-.ramble-log-input {
+.riff-log-input {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -153,7 +153,7 @@
   overflow: hidden;
 }
 
-.ramble-log-input .append-only-wrapper {
+.riff-log-input .append-only-wrapper {
   flex: 1;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
@@ -162,43 +162,43 @@
 
 /* Mobile styles */
 @media (max-width: 768px) {
-  .ramble-view {
+  .riff-view {
     height: 100vh;
     height: 100dvh;
   }
 
-  .ramble-draft-header {
+  .riff-draft-header {
     padding: 0.5rem 1rem;
   }
 
-  .ramble-draft-content {
+  .riff-draft-content {
     padding: 0.75rem 1rem;
   }
 
   /* Draft section takes dominant space on mobile */
-  .ramble-draft-section {
+  .riff-draft-section {
     flex: 1;
     max-height: none;
     min-height: 0;
   }
 
   /* Log section stays compact on mobile */
-  .ramble-log-section {
+  .riff-log-section {
     flex: 0 0 auto;
   }
 
   /* Hide log header on mobile to save space */
-  .ramble-log-header {
+  .riff-log-header {
     display: none;
   }
 
-  .ramble-log-input {
+  .riff-log-input {
     padding: 0.5rem 1rem;
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   /* Limit textarea wrapper to ~2 lines on mobile */
-  .ramble-log-input .append-only-wrapper {
+  .riff-log-input .append-only-wrapper {
     flex: 0 0 auto;
     max-height: 64px;
     overflow: hidden;

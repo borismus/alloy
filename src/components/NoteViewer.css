@@ -6,7 +6,7 @@
   background: white;
 }
 
-.ramble-integrate-bar {
+.riff-integrate-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -15,12 +15,12 @@
   border-bottom: 1px solid #bae6fd;
 }
 
-.ramble-integrate-bar .integrate-hint {
+.riff-integrate-bar .integrate-hint {
   font-size: 14px;
   color: #0369a1;
 }
 
-.ramble-integrate-bar .integrate-btn {
+.riff-integrate-bar .integrate-btn {
   padding: 8px 16px;
   background: #0284c7;
   color: white;
@@ -32,7 +32,7 @@
   transition: background 0.15s;
 }
 
-.ramble-integrate-bar .integrate-btn:hover {
+.riff-integrate-bar .integrate-btn:hover {
   background: #0369a1;
 }
 
@@ -163,15 +163,15 @@
     max-width: 100%;
   }
 
-  .ramble-integrate-bar {
+  .riff-integrate-bar {
     padding: 10px 16px;
   }
 
-  .ramble-integrate-bar .integrate-hint {
+  .riff-integrate-bar .integrate-hint {
     font-size: 13px;
   }
 
-  .ramble-integrate-bar .integrate-btn {
+  .riff-integrate-bar .integrate-btn {
     padding: 6px 12px;
     font-size: 13px;
   }

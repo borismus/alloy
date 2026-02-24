@@ -18,7 +18,7 @@ export interface AppendOnlyTextareaHandle {
 }
 
 /**
- * Single textarea that shows all text. RambleContext handles protecting
+ * Single textarea that shows all text. RiffContext handles protecting
  * crystallized text - if user tries to modify it, the change is rejected
  * and the textarea stays in sync with the valid state.
  *

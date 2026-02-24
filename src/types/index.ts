@@ -187,21 +187,21 @@ export interface ConversationStreamingState {
 }
 
 // Timeline filter type (replaces old SidebarTab)
-export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'triggers' | 'rambles';
+export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'triggers' | 'riffs';
 
 // Note metadata for sidebar display
 export interface NoteInfo {
   filename: string;        // e.g., "my-note.md"
   lastModified: number;    // Unix timestamp for sorting
   hasSkillContent: boolean; // true if contains &[[...]] markers
-  isRamble?: boolean;      // true if in rambles/ directory
-  isIntegrated?: boolean;  // for rambles: whether integrated into notes
-  title?: string;          // for rambles: custom title from frontmatter
+  isRiff?: boolean;      // true if in riffs/ directory
+  isIntegrated?: boolean;  // for riffs: whether integrated into notes
+  title?: string;          // for riffs: custom title from frontmatter
 }
 
 // Unified timeline item for sidebar display
 export interface TimelineItem {
-  type: 'conversation' | 'note' | 'trigger' | 'ramble';
+  type: 'conversation' | 'note' | 'trigger' | 'riff';
   id: string;              // conversation id, note filename, or trigger id
   title: string;           // display title
   lastUpdated: number;     // unix timestamp for sorting
@@ -219,7 +219,7 @@ export type SelectedItem =
   | { type: 'trigger'; id: string }
   | null;
 
-// Ramble mode: proposed changes to integrate into other notes
+// Riff mode: proposed changes to integrate into other notes
 export interface ProposedChange {
   type: 'create' | 'update' | 'append';
   path: string;              // e.g., "notes/topic.md"

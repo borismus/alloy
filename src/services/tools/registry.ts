@@ -8,7 +8,7 @@ import { executeWebSearchTools } from './builtin/websearch';
 
 export interface ToolContext {
   messageId?: string;
-  conversationId?: string;  // e.g., 'ramble_history' or 'conversations/2025-01-19-...'
+  conversationId?: string;  // e.g., 'riff_history' or 'conversations/2025-01-19-...'
   sourceLabel?: string;     // Display label for provenance markers (e.g., task name)
   requireWriteApproval?: boolean;  // write_file always requires approval unless this is explicitly false (after user approval)
 }

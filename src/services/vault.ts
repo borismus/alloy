@@ -485,14 +485,14 @@ export class VaultService {
     return this.vaultPath;
   }
 
-  async ensureRamblesDirectory(): Promise<string | null> {
+  async ensureRiffsDirectory(): Promise<string | null> {
     if (!this.vaultPath) return null;
 
-    const ramblesPath = await join(this.vaultPath, 'rambles');
-    if (!(await exists(ramblesPath))) {
-      await mkdir(ramblesPath, { recursive: true });
+    const riffsPath = await join(this.vaultPath, 'riffs');
+    if (!(await exists(riffsPath))) {
+      await mkdir(riffsPath, { recursive: true });
     }
-    return ramblesPath;
+    return riffsPath;
   }
 
   extractConversationIdFromPath(filePath: string): string | null {
@@ -676,8 +676,8 @@ export class VaultService {
 
   async getNoteFilePath(filename: string): Promise<string | null> {
     if (!this.vaultPath) return null;
-    // Rambles are stored at rambles/, regular notes at notes/
-    if (filename.startsWith('rambles/')) {
+    // Riffs are stored at riffs/, regular notes at notes/
+    if (filename.startsWith('riffs/')) {
       return await join(this.vaultPath, filename);
     }
     return await join(this.vaultPath, 'notes', filename);
@@ -686,8 +686,8 @@ export class VaultService {
   async deleteNote(filename: string): Promise<boolean> {
     if (!this.vaultPath) return false;
 
-    // Rambles are stored at rambles/, regular notes at notes/
-    const notePath = filename.startsWith('rambles/')
+    // Riffs are stored at riffs/, regular notes at notes/
+    const notePath = filename.startsWith('riffs/')
       ? await join(this.vaultPath, filename)
       : await join(this.vaultPath, 'notes', filename);
 
@@ -698,9 +698,9 @@ export class VaultService {
     return false;
   }
 
-  async renameRamble(oldFilename: string, newName: string): Promise<string | null> {
+  async renameRiff(oldFilename: string, newName: string): Promise<string | null> {
     if (!this.vaultPath) return null;
-    if (!oldFilename.startsWith('rambles/')) return null;
+    if (!oldFilename.startsWith('riffs/')) return null;
 
     // Sanitize new name - remove .md if provided, sanitize for filesystem
     const sanitizedName = newName
@@ -711,7 +711,7 @@ export class VaultService {
     if (!sanitizedName) return null;
 
     const oldPath = await join(this.vaultPath, oldFilename);
-    const newFilename = `rambles/${sanitizedName}.md`;
+    const newFilename = `riffs/${sanitizedName}.md`;
     const newPath = await join(this.vaultPath, newFilename);
 
     // Don't rename if same name
@@ -782,13 +782,13 @@ export class VaultService {
       }
     }
 
-    // Load ramble notes from rambles/ directory
-    const ramblesPath = await join(this.vaultPath, 'rambles');
-    if (await exists(ramblesPath)) {
-      const rambleEntries = await readDir(ramblesPath);
-      for (const entry of rambleEntries) {
+    // Load riff notes from riffs/ directory
+    const riffsPath = await join(this.vaultPath, 'riffs');
+    if (await exists(riffsPath)) {
+      const riffEntries = await readDir(riffsPath);
+      for (const entry of riffEntries) {
         if (entry.name?.endsWith('.md')) {
-          const filePath = await join(ramblesPath, entry.name);
+          const filePath = await join(riffsPath, entry.name);
           const fileStat = await stat(filePath);
           const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
           const content = await readTextFile(filePath);
@@ -811,10 +811,10 @@ export class VaultService {
           }
 
           notes.push({
-            filename: `rambles/${entry.name}`,
+            filename: `riffs/${entry.name}`,
             lastModified,
             hasSkillContent,
-            isRamble: true,
+            isRiff: true,
             isIntegrated,
             title,
           });
@@ -828,7 +828,7 @@ export class VaultService {
 
   /**
    * Build a unified timeline of all content types, sorted by last updated.
-   * Returns conversations, notes (excluding rambles), triggers, and rambles as TimelineItems.
+   * Returns conversations, notes (excluding riffs), triggers, and riffs as TimelineItems.
    */
   async buildTimeline(
     conversations: Conversation[],
@@ -853,14 +853,14 @@ export class VaultService {
       });
     }
 
-    // Add notes (separate regular notes from rambles)
+    // Add notes (separate regular notes from riffs)
     for (const note of notes) {
-      if (note.isRamble) {
-        // Ramble items - title is the filename without extension
-        const title = note.filename.replace('rambles/', '').replace('.md', '');
+      if (note.isRiff) {
+        // Riff items - title is the filename without extension
+        const title = note.filename.replace('riffs/', '').replace('.md', '');
 
         items.push({
-          type: 'ramble',
+          type: 'riff',
           id: note.filename,
           title,
           lastUpdated: note.lastModified,

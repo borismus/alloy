@@ -4,16 +4,16 @@ import * as yaml from 'js-yaml';
 import { Message, NoteInfo, ProposedChange, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from './providers';
 
-interface RambleHistoryFile {
+interface RiffHistoryFile {
   messages: Message[];
 }
 
 const MAX_MESSAGES = 50;
-const RAMBLE_FILENAME = 'ramble_history.yaml';
-const RAMBLE_LOG_FILENAME = 'raw_input';
+const RIFF_FILENAME = 'riff_history.yaml';
+const RIFF_LOG_FILENAME = 'raw_input';
 
 // Terse system prompt for action-focused responses
-export const RAMBLE_SYSTEM_PROMPT = `You are a quick-action assistant. Be extremely terse. Focus on doing, not explaining.
+export const RIFF_SYSTEM_PROMPT = `You are a quick-action assistant. Be extremely terse. Focus on doing, not explaining.
 
 Rules:
 - Respond in 1-2 sentences max unless showing code/results
@@ -23,7 +23,7 @@ Rules:
 - If asked to do something, do it immediately
 - Only explain if explicitly asked`;
 
-export class RambleService {
+export class RiffService {
   private vaultPath: string | null = null;
 
   setVaultPath(path: string): void {
@@ -34,28 +34,28 @@ export class RambleService {
     return this.vaultPath;
   }
 
-  async getRambleFilePath(): Promise<string | null> {
+  async getRiffFilePath(): Promise<string | null> {
     if (!this.vaultPath) return null;
-    return await join(this.vaultPath, RAMBLE_FILENAME);
+    return await join(this.vaultPath, RIFF_FILENAME);
   }
 
-  // Get the ramble log file path (append-only journal)
-  async getRambleLogPath(): Promise<string | null> {
+  // Get the riff log file path (append-only journal)
+  async getRiffLogPath(): Promise<string | null> {
     if (!this.vaultPath) return null;
-    const ramblesPath = await join(this.vaultPath, 'rambles');
-    return await join(ramblesPath, RAMBLE_LOG_FILENAME);
+    const riffsPath = await join(this.vaultPath, 'riffs');
+    return await join(riffsPath, RIFF_LOG_FILENAME);
   }
 
-  // Read the entire ramble log (append-only journal)
-  async getRambleLog(): Promise<string> {
-    const logPath = await this.getRambleLogPath();
+  // Read the entire riff log (append-only journal)
+  async getRiffLog(): Promise<string> {
+    const logPath = await this.getRiffLogPath();
     if (!logPath || !(await exists(logPath))) {
       return '';
     }
     try {
       return await readTextFile(logPath);
     } catch (error) {
-      console.error('[RambleService] Failed to read ramble log:', error);
+      console.error('[RiffService] Failed to read riff log:', error);
       return '';
     }
   }
@@ -64,19 +64,19 @@ export class RambleService {
   async writeLog(content: string): Promise<void> {
     if (!this.vaultPath) return;
 
-    // Ensure rambles directory exists
-    const ramblesPath = await join(this.vaultPath, 'rambles');
-    if (!(await exists(ramblesPath))) {
-      await mkdir(ramblesPath, { recursive: true });
+    // Ensure riffs directory exists
+    const riffsPath = await join(this.vaultPath, 'riffs');
+    if (!(await exists(riffsPath))) {
+      await mkdir(riffsPath, { recursive: true });
     }
 
-    const logPath = await this.getRambleLogPath();
+    const logPath = await this.getRiffLogPath();
     if (!logPath) return;
 
     try {
       await writeTextFile(logPath, content);
     } catch (error) {
-      console.error('[RambleService] Failed to write ramble log:', error);
+      console.error('[RiffService] Failed to write riff log:', error);
     }
   }
 
@@ -84,13 +84,13 @@ export class RambleService {
   async appendToLog(text: string): Promise<void> {
     if (!this.vaultPath || !text) return;
 
-    // Ensure rambles directory exists
-    const ramblesPath = await join(this.vaultPath, 'rambles');
-    if (!(await exists(ramblesPath))) {
-      await mkdir(ramblesPath, { recursive: true });
+    // Ensure riffs directory exists
+    const riffsPath = await join(this.vaultPath, 'riffs');
+    if (!(await exists(riffsPath))) {
+      await mkdir(riffsPath, { recursive: true });
     }
 
-    const logPath = await this.getRambleLogPath();
+    const logPath = await this.getRiffLogPath();
     if (!logPath) return;
 
     try {
@@ -101,24 +101,24 @@ export class RambleService {
       }
       await writeTextFile(logPath, existingContent + text);
     } catch (error) {
-      console.error('[RambleService] Failed to append to ramble log:', error);
+      console.error('[RiffService] Failed to append to riff log:', error);
     }
   }
 
   async loadHistory(): Promise<Message[]> {
     if (!this.vaultPath) return [];
 
-    const filePath = await this.getRambleFilePath();
+    const filePath = await this.getRiffFilePath();
     if (!filePath || !(await exists(filePath))) {
       return [];
     }
 
     try {
       const content = await readTextFile(filePath);
-      const data = yaml.load(content) as RambleHistoryFile;
+      const data = yaml.load(content) as RiffHistoryFile;
       return data?.messages || [];
     } catch (error) {
-      console.error('[RambleService] Failed to load history:', error);
+      console.error('[RiffService] Failed to load history:', error);
       return [];
     }
   }
@@ -126,20 +126,20 @@ export class RambleService {
   async saveHistory(messages: Message[]): Promise<void> {
     if (!this.vaultPath) return;
 
-    const filePath = await this.getRambleFilePath();
+    const filePath = await this.getRiffFilePath();
     if (!filePath) return;
 
     // Keep only the last MAX_MESSAGES
     const trimmedMessages = messages.slice(-MAX_MESSAGES);
 
-    const data: RambleHistoryFile = {
+    const data: RiffHistoryFile = {
       messages: trimmedMessages,
     };
 
     try {
       await writeTextFile(filePath, yaml.dump(data));
     } catch (error) {
-      console.error('[RambleService] Failed to save history:', error);
+      console.error('[RiffService] Failed to save history:', error);
     }
   }
 
@@ -153,21 +153,21 @@ export class RambleService {
     await this.saveHistory([]);
   }
 
-  // Get or create a timestamped ramble note
-  async getOrCreateRambleNote(initialRawInput = ''): Promise<string> {
+  // Get or create a timestamped riff note
+  async getOrCreateRiffNote(initialRawInput = ''): Promise<string> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
-    // Ensure rambles directory exists
-    const ramblesPath = await join(this.vaultPath, 'rambles');
-    if (!(await exists(ramblesPath))) {
-      await mkdir(ramblesPath, { recursive: true });
+    // Ensure riffs directory exists
+    const riffsPath = await join(this.vaultPath, 'riffs');
+    if (!(await exists(riffsPath))) {
+      await mkdir(riffsPath, { recursive: true });
     }
 
     // Generate timestamp-based filename: YYYY-MM-DD-HHMMSS.md
     const now = new Date();
     const date = now.toISOString().split('T')[0];
     const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
-    const filename = `rambles/${date}-${time}.md`;
+    const filename = `riffs/${date}-${time}.md`;
 
     const fullPath = await join(this.vaultPath, filename);
 
@@ -181,7 +181,7 @@ export class RambleService {
 integrated: false
 ${rawInputYaml}
 ---
-# Ramble - ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
+# Riff - ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
 
 `;
     await writeTextFile(fullPath, initialContent);
@@ -190,11 +190,11 @@ ${rawInputYaml}
   }
 
   // Get the rawInput and crystallizedOffset from a draft's frontmatter
-  async getDraftRawInput(rambleNotePath: string): Promise<{ rawInput: string; crystallizedOffset: number }> {
+  async getDraftRawInput(riffNotePath: string): Promise<{ rawInput: string; crystallizedOffset: number }> {
     if (!this.vaultPath) return { rawInput: '', crystallizedOffset: 0 };
 
     try {
-      const fullPath = await join(this.vaultPath, rambleNotePath);
+      const fullPath = await join(this.vaultPath, riffNotePath);
       if (!(await exists(fullPath))) return { rawInput: '', crystallizedOffset: 0 };
 
       const content = await readTextFile(fullPath);
@@ -224,16 +224,16 @@ ${rawInputYaml}
 
       return { rawInput, crystallizedOffset };
     } catch (error) {
-      console.error('[RambleService] Failed to get draft rawInput:', error);
+      console.error('[RiffService] Failed to get draft rawInput:', error);
       return { rawInput: '', crystallizedOffset: 0 };
     }
   }
 
   // Update the rawInput and crystallizedOffset in a draft's frontmatter
-  async updateDraftRawInput(rambleNotePath: string, rawInput: string, crystallizedOffset?: number): Promise<void> {
+  async updateDraftRawInput(riffNotePath: string, rawInput: string, crystallizedOffset?: number): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
-    const fullPath = await join(this.vaultPath, rambleNotePath);
+    const fullPath = await join(this.vaultPath, riffNotePath);
     if (!(await exists(fullPath))) return;
 
     const content = await readTextFile(fullPath);
@@ -267,10 +267,10 @@ ${rawInputYaml}
   }
 
   // Update draft content directly (preserves frontmatter)
-  async updateDraft(rambleNotePath: string, content: string): Promise<void> {
+  async updateDraft(riffNotePath: string, content: string): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
-    const fullPath = await join(this.vaultPath, rambleNotePath);
+    const fullPath = await join(this.vaultPath, riffNotePath);
 
     // Preserve frontmatter if it exists
     let frontmatter = '---\nintegrated: false\n---\n';
@@ -285,11 +285,11 @@ ${rawInputYaml}
     await writeTextFile(fullPath, frontmatter + content);
   }
 
-  // Mark a ramble note as integrated
-  async markRambleIntegrated(rambleNotePath: string): Promise<void> {
+  // Mark a riff note as integrated
+  async markRiffIntegrated(riffNotePath: string): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
-    const fullPath = await join(this.vaultPath, rambleNotePath);
+    const fullPath = await join(this.vaultPath, riffNotePath);
     const content = await readTextFile(fullPath);
 
     // Update frontmatter
@@ -305,7 +305,7 @@ ${rawInputYaml}
   // Only processes new text since last crystallization, using existing note as context
   async crystallize(
     newIncrementalText: string,  // Only the new text since last crystallize
-    rambleNotePath: string,
+    riffNotePath: string,
     existingNotes: NoteInfo[],
     model: string,
     signal?: AbortSignal
@@ -320,11 +320,11 @@ ${rawInputYaml}
       throw new Error(`Provider ${providerType} not initialized`);
     }
 
-    const fullPath = await join(this.vaultPath, rambleNotePath);
+    const fullPath = await join(this.vaultPath, riffNotePath);
 
     // Build notes list for wikilink suggestions
     const notesList = existingNotes
-      .filter(n => !n.filename.startsWith('rambles/'))
+      .filter(n => !n.filename.startsWith('riffs/'))
       .map(n => n.filename.replace('.md', ''))
       .join(', ');
 
@@ -341,7 +341,7 @@ ${rawInputYaml}
     }
 
     // Get timestamp from filename for the header (only used if starting fresh)
-    const filename = rambleNotePath.split('/').pop()?.replace('.md', '') || '';
+    const filename = riffNotePath.split('/').pop()?.replace('.md', '') || '';
     const dateMatch = filename.match(/(\d{4}-\d{2}-\d{2})-(\d{6})/);
     let headerDate = new Date().toLocaleString();
     if (dateMatch) {
@@ -353,14 +353,14 @@ ${rawInputYaml}
     const systemPrompt = `You are a thinking partner helping the user develop their thoughts. You receive only the NEW text since the last crystallization.
 
 EXISTING NOTE:
-${existingContent || `# Ramble - ${headerDate}\n\n(empty - start fresh)`}
+${existingContent || `# Riff - ${headerDate}\n\n(empty - start fresh)`}
 
 NEW RAW INPUT to incorporate:
 ${newIncrementalText}
 
 YOUR ROLE:
 1. **Organize their thoughts** into the note structure
-2. **Answer questions** they ask mid-ramble (e.g., "what was that film with...?" → provide the answer inline)
+2. **Answer questions** they ask mid-riff (e.g., "what was that film with...?" → provide the answer inline)
 3. **Fill in gaps** when they express uncertainty ("I can't remember...", "what was that...", "something like...")
 4. **Occasionally prompt** with a brief question to deepen their thinking (sparingly - don't overdo it)
 
@@ -404,7 +404,7 @@ Existing notes in vault: ${notesList}`;
 
   // Generate integration proposals for other notes
   async generateIntegrationProposal(
-    rambleNotePath: string,
+    riffNotePath: string,
     existingNotes: NoteInfo[],
     model: string
   ): Promise<ProposedChange[]> {
@@ -418,14 +418,14 @@ Existing notes in vault: ${notesList}`;
       throw new Error(`Provider ${providerType} not initialized`);
     }
 
-    // Read ramble note content
-    const fullPath = await join(this.vaultPath, rambleNotePath);
-    const rambleContent = await readTextFile(fullPath);
+    // Read riff note content
+    const fullPath = await join(this.vaultPath, riffNotePath);
+    const riffContent = await readTextFile(fullPath);
 
     // Read content of existing notes for context
     const notesWithContent: { filename: string; content: string }[] = [];
     for (const note of existingNotes.slice(0, 10)) { // Limit to 10 notes for context
-      if (note.filename.startsWith('rambles/')) continue;
+      if (note.filename.startsWith('riffs/')) continue;
       try {
         const notePath = note.filename === 'memory.md'
           ? await join(this.vaultPath, note.filename)
@@ -442,9 +442,9 @@ Existing notes in vault: ${notesList}`;
       .join('\n\n');
 
     // Extract just the filename without path for provenance
-    const rambleFilename = rambleNotePath.split('/').pop()?.replace('.md', '') || rambleNotePath;
+    const riffFilename = riffNotePath.split('/').pop()?.replace('.md', '') || riffNotePath;
 
-    const systemPrompt = `You are analyzing a ramble note and proposing specific changes to integrate key insights into other notes.
+    const systemPrompt = `You are analyzing a riff note and proposing specific changes to integrate key insights into other notes.
 
 Return ONLY a valid JSON array of proposed changes. Each object must have:
 - "type": "append" | "update" | "create"
@@ -455,7 +455,7 @@ Return ONLY a valid JSON array of proposed changes. Each object must have:
 
 Rules:
 - Prefer appending to existing notes over creating new ones
-- Add provenance marker at the end: &[[rambles/${rambleFilename}]]
+- Add provenance marker at the end: &[[riffs/${riffFilename}]]
 - Only propose meaningful integrations - don't force it
 - If no good integrations exist, return an empty array []
 
@@ -470,7 +470,7 @@ Return ONLY the JSON array, no other text.`;
       {
         role: 'user',
         timestamp: new Date().toISOString(),
-        content: `Ramble content:\n\n${rambleContent}\n\nExisting notes:\n\n${notesContext}`
+        content: `Riff content:\n\n${riffContent}\n\nExisting notes:\n\n${notesContext}`
       }
     ];
 
@@ -493,7 +493,7 @@ Return ONLY the JSON array, no other text.`;
       }
       return [];
     } catch (error) {
-      console.error('[RambleService] Failed to parse integration proposals:', error);
+      console.error('[RiffService] Failed to parse integration proposals:', error);
       return [];
     }
   }
@@ -503,13 +503,13 @@ Return ONLY the JSON array, no other text.`;
   async applyProposedChanges(
     changes: ProposedChange[],
     vaultPath: string,
-    rambleNotePath?: string
+    riffNotePath?: string
   ): Promise<void> {
-    // Extract ramble filename for provenance (e.g., "2026-02-02-143052" from "rambles/2026-02-02-143052.md")
-    const rambleFilename = rambleNotePath
-      ? rambleNotePath.split('/').pop()?.replace('.md', '') || ''
+    // Extract riff filename for provenance (e.g., "2026-02-02-143052" from "riffs/2026-02-02-143052.md")
+    const riffFilename = riffNotePath
+      ? riffNotePath.split('/').pop()?.replace('.md', '') || ''
       : '';
-    const provenanceMarker = rambleFilename ? ` &[[rambles/${rambleFilename}]]` : '';
+    const provenanceMarker = riffFilename ? ` &[[riffs/${riffFilename}]]` : '';
 
     for (const change of changes) {
       try {
@@ -519,7 +519,7 @@ Return ONLY the JSON array, no other text.`;
 
         // Ensure provenance marker is present in content
         let contentWithProvenance = change.newContent;
-        if (provenanceMarker && !contentWithProvenance.includes('&[[rambles/')) {
+        if (provenanceMarker && !contentWithProvenance.includes('&[[riffs/')) {
           // Add provenance at end of content
           contentWithProvenance = contentWithProvenance.trimEnd() + provenanceMarker;
         }
@@ -540,19 +540,19 @@ Return ONLY the JSON array, no other text.`;
           await writeTextFile(notePath, contentWithProvenance);
         }
       } catch (error) {
-        console.error(`[RambleService] Failed to apply change to ${change.path}:`, error);
+        console.error(`[RiffService] Failed to apply change to ${change.path}:`, error);
       }
     }
 
-    // Mark the ramble as integrated
-    if (rambleNotePath) {
+    // Mark the riff as integrated
+    if (riffNotePath) {
       try {
-        await this.markRambleIntegrated(rambleNotePath);
+        await this.markRiffIntegrated(riffNotePath);
       } catch (error) {
-        console.error('[RambleService] Failed to mark ramble as integrated:', error);
+        console.error('[RiffService] Failed to mark riff as integrated:', error);
       }
     }
   }
 }
 
-export const rambleService = new RambleService();
+export const riffService = new RiffService();

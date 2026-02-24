@@ -80,7 +80,7 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
 
   return {
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-      // Handle provenance markers (&[[...]]) - these link to conversations/ramble with optional message ID
+      // Handle provenance markers (&[[...]]) - these link to conversations/riff with optional message ID
       // Format: &[[conversationPath^messageId]] or &[[conversationPath^messageId|Label]]
       if (href?.startsWith('provenance:')) {
         const rawTarget = decodeURIComponent(href.replace('provenance:', ''));
@@ -90,12 +90,12 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
         const target = pipeIndex >= 0 ? rawTarget.slice(0, pipeIndex) : rawTarget;
         // Parse conversation path and optional message ID (separated by ^)
         const [conversationPath, messageId] = target.split('^');
-        const conversationId = conversationPath === 'ramble_history'
-          ? 'ramble_history'
+        const conversationId = conversationPath === 'riff_history'
+          ? 'riff_history'
           : extractConversationId(conversationPath);
         // Use embedded label first, then look up conversation title, fall back to slug-derived name
         const conversationTitle = label
-          || (conversationId === 'ramble_history' ? 'Note Chat' : null)
+          || (conversationId === 'riff_history' ? 'Note Chat' : null)
           || (conversationId === '_background' ? 'Background' : null)
           || lookupConversationTitle(conversationId, conversations);
         const displayText = conversationTitle || children;

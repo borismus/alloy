@@ -1,51 +1,51 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { ProposedChange, NoteInfo } from '../types';
-import { rambleService } from '../services/ramble';
+import { riffService } from '../services/riff';
 import { vaultService } from '../services/vault';
 
-type RamblePhase = 'idle' | 'rambling' | 'integrating' | 'approving';
+type RiffPhase = 'idle' | 'riffing' | 'integrating' | 'approving';
 
-interface RambleState {
-  // Core ramble state (simplified)
+interface RiffState {
+  // Core riff state (simplified)
   rawLog: string;                // The full user input, append-only
   crystallizedOffset: number;    // How many chars have been processed
   draftFilename: string | null;  // Active draft being updated
   isDirty: boolean;              // True if user has typed since opening draft
 
   // UI state
-  isRambleMode: boolean;
+  isRiffMode: boolean;
   isCrystallizing: boolean;
   isProcessing: boolean;         // Blocks UI (integration, apply)
-  phase: RamblePhase;
+  phase: RiffPhase;
   crystallizationCount: number;  // Increments each time crystallization completes
 
   // Integration state
   proposedChanges: ProposedChange[];
 }
 
-interface RambleContextValue extends RambleState {
+interface RiffContextValue extends RiffState {
   // Core methods
   setRawLog: (newLog: string) => void;
 
   // Mode management
-  enterRambleMode: (draftFilename?: string) => void;
-  exitRambleMode: () => void;
+  enterRiffMode: (draftFilename?: string) => void;
+  exitRiffMode: () => void;
 
   // Integration
   integrateNow: () => Promise<void>;
   applyChanges: () => Promise<void>;
   cancelIntegration: () => void;
 
-  // Config (must be set before entering ramble mode)
+  // Config (must be set before entering riff mode)
   setConfig: (model: string, notes: NoteInfo[]) => void;
 }
 
-const initialState: RambleState = {
+const initialState: RiffState = {
   rawLog: '',
   crystallizedOffset: 0,
   draftFilename: null,
   isDirty: false,
-  isRambleMode: false,
+  isRiffMode: false,
   isCrystallizing: false,
   isProcessing: false,
   phase: 'idle',
@@ -53,20 +53,20 @@ const initialState: RambleState = {
   proposedChanges: [],
 };
 
-const RambleContext = createContext<RambleContextValue | null>(null);
+const RiffContext = createContext<RiffContextValue | null>(null);
 
 // Thresholds
-const PAUSE_DELAY_MS = 800;       // Crystallize after this pause
-const MIN_CHARS_TO_CRYSTALLIZE = 20;
-const EMERGENCY_THRESHOLD = 200;  // Crystallize immediately if this many chars pending
+const PAUSE_DELAY_MS = 400;       // Crystallize after this pause
+const MIN_CHARS_TO_CRYSTALLIZE = 10;
+const EMERGENCY_THRESHOLD = 100;  // Crystallize immediately if this many chars pending
 const PERSIST_DELAY_MS = 2000;    // Save to disk after this pause
 
-interface RambleProviderProps {
+interface RiffProviderProps {
   children: React.ReactNode;
 }
 
-export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
-  const [state, setState] = useState<RambleState>(initialState);
+export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
+  const [state, setState] = useState<RiffState>(initialState);
 
   // Refs for timers and config
   const crystallizeTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -93,7 +93,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
     };
   }, []);
 
-  // Set config (model and notes) - must be called before rambling
+  // Set config (model and notes) - must be called before riffing
   const setConfig = useCallback((model: string, notes: NoteInfo[]) => {
     modelRef.current = model;
     notesRef.current = notes;
@@ -111,9 +111,9 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
     if (!draftFilename || !rawLog || !isDirty) return;
 
     try {
-      await rambleService.updateDraftRawInput(draftFilename, rawLog, crystallizedOffset);
+      await riffService.updateDraftRawInput(draftFilename, rawLog, crystallizedOffset);
     } catch (error) {
-      console.error('[RambleContext] Failed to persist:', error);
+      console.error('[RiffContext] Failed to persist:', error);
     }
   }, []);
 
@@ -143,7 +143,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
     try {
       abortControllerRef.current = new AbortController();
 
-      await rambleService.crystallize(
+      await riffService.crystallize(
         pendingText,
         current.draftFilename,
         notesRef.current,
@@ -165,7 +165,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
     } catch (error: any) {
       isCrystallizingRef.current = false;
       if (error?.name !== 'AbortError') {
-        console.error('[RambleContext] Crystallization error:', error);
+        console.error('[RiffContext] Crystallization error:', error);
       }
       setState(prev => ({ ...prev, isCrystallizing: false }));
     }
@@ -245,28 +245,28 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
   // Create draft if needed (when enough text accumulates)
   useEffect(() => {
     const createDraftIfNeeded = async () => {
-      const { rawLog, draftFilename, isRambleMode, isDirty } = stateRef.current;
+      const { rawLog, draftFilename, isRiffMode, isDirty } = stateRef.current;
 
-      // Only create draft if in ramble mode, no draft yet, user has typed, and enough content
-      if (!isRambleMode || draftFilename || !isDirty || rawLog.trim().length < 10) return;
+      // Only create draft if in riff mode, no draft yet, user has typed, and enough content
+      if (!isRiffMode || draftFilename || !isDirty || rawLog.trim().length < 10) return;
 
       try {
-        const filename = await rambleService.getOrCreateRambleNote(rawLog);
+        const filename = await riffService.getOrCreateRiffNote(rawLog);
         setState(prev => ({
           ...prev,
           draftFilename: filename,
-          phase: 'rambling',
+          phase: 'riffing',
         }));
       } catch (error) {
-        console.error('[RambleContext] Failed to create draft:', error);
+        console.error('[RiffContext] Failed to create draft:', error);
       }
     };
 
     createDraftIfNeeded();
-  }, [state.rawLog, state.draftFilename, state.isRambleMode, state.isDirty]);
+  }, [state.rawLog, state.draftFilename, state.isRiffMode, state.isDirty]);
 
-  // Enter ramble mode
-  const enterRambleMode = useCallback(async (existingDraftFilename?: string) => {
+  // Enter riff mode
+  const enterRiffMode = useCallback(async (existingDraftFilename?: string) => {
     // Clear any existing timers
     if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
@@ -274,33 +274,33 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
     if (existingDraftFilename) {
       // Resume existing draft - load rawInput and crystallizedOffset from frontmatter
       try {
-        const { rawInput, crystallizedOffset } = await rambleService.getDraftRawInput(existingDraftFilename);
+        const { rawInput, crystallizedOffset } = await riffService.getDraftRawInput(existingDraftFilename);
         setState(prev => ({
           ...prev,
-          isRambleMode: true,
+          isRiffMode: true,
           draftFilename: existingDraftFilename,
           rawLog: rawInput,
           crystallizedOffset,
           isDirty: false,
-          phase: 'rambling',
+          phase: 'riffing',
         }));
       } catch (error) {
-        console.error('[RambleContext] Failed to load rawInput:', error);
+        console.error('[RiffContext] Failed to load rawInput:', error);
         setState(prev => ({
           ...prev,
-          isRambleMode: true,
+          isRiffMode: true,
           draftFilename: existingDraftFilename,
           rawLog: '',
           crystallizedOffset: 0,
           isDirty: false,
-          phase: 'rambling',
+          phase: 'riffing',
         }));
       }
     } else {
       // Fresh start - empty input
       setState(prev => ({
         ...prev,
-        isRambleMode: true,
+        isRiffMode: true,
         draftFilename: null,
         rawLog: '',
         crystallizedOffset: 0,
@@ -310,8 +310,8 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
     }
   }, []);
 
-  // Exit ramble mode
-  const exitRambleMode = useCallback(async () => {
+  // Exit riff mode
+  const exitRiffMode = useCallback(async () => {
     // Cancel timers and abort any ongoing crystallization
     if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
@@ -341,7 +341,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
       const pending = current.rawLog.slice(current.crystallizedOffset);
       const targetOffset = current.rawLog.length; // Capture before async work
       if (pending.trim()) {
-        await rambleService.crystallize(
+        await riffService.crystallize(
           pending,
           current.draftFilename,
           notesRef.current,
@@ -356,7 +356,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
       // Generate integration proposals
       setState(prev => ({ ...prev, phase: 'integrating' }));
 
-      const proposals = await rambleService.generateIntegrationProposal(
+      const proposals = await riffService.generateIntegrationProposal(
         current.draftFilename,
         notesRef.current,
         modelRef.current
@@ -369,10 +369,10 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
         proposedChanges: proposals,
       }));
     } catch (error) {
-      console.error('[RambleContext] Integration error:', error);
+      console.error('[RiffContext] Integration error:', error);
       setState(prev => ({
         ...prev,
-        phase: 'rambling',
+        phase: 'riffing',
         isProcessing: false,
       }));
     }
@@ -391,7 +391,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
     try {
       const vaultPath = vaultService.getVaultPath();
       if (vaultPath) {
-        await rambleService.applyProposedChanges(
+        await riffService.applyProposedChanges(
           proposedChanges,
           vaultPath,
           draftFilename || undefined
@@ -400,7 +400,7 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
 
       setState(initialState);
     } catch (error) {
-      console.error('[RambleContext] Apply changes error:', error);
+      console.error('[RiffContext] Apply changes error:', error);
       setState(prev => ({ ...prev, isProcessing: false }));
     }
   }, []);
@@ -409,17 +409,17 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
   const cancelIntegration = useCallback(() => {
     setState(prev => ({
       ...prev,
-      phase: 'rambling',
+      phase: 'riffing',
       isProcessing: false,
       proposedChanges: [],
     }));
   }, []);
 
-  const value: RambleContextValue = {
+  const value: RiffContextValue = {
     ...state,
     setRawLog,
-    enterRambleMode,
-    exitRambleMode,
+    enterRiffMode,
+    exitRiffMode,
     integrateNow,
     applyChanges,
     cancelIntegration,
@@ -427,20 +427,20 @@ export const RambleProvider: React.FC<RambleProviderProps> = ({ children }) => {
   };
 
   return (
-    <RambleContext.Provider value={value}>
+    <RiffContext.Provider value={value}>
       {children}
-    </RambleContext.Provider>
+    </RiffContext.Provider>
   );
 };
 
-export const useRambleContext = (): RambleContextValue => {
-  const context = useContext(RambleContext);
+export const useRiffContext = (): RiffContextValue => {
+  const context = useContext(RiffContext);
   if (!context) {
-    throw new Error('useRambleContext must be used within a RambleProvider');
+    throw new Error('useRiffContext must be used within a RiffProvider');
   }
   return context;
 };
 
-export const useRambleContextOptional = (): RambleContextValue | null => {
-  return useContext(RambleContext);
+export const useRiffContextOptional = (): RiffContextValue | null => {
+  return useContext(RiffContext);
 };

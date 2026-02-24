@@ -96,9 +96,9 @@ interface SidebarProps {
   availableModels: ModelInfo[];
   onNewConversation: () => void;
   onNewTrigger: () => void;
-  onNewRamble: () => void;
+  onNewRiff: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
-  onRenameRamble: (oldFilename: string, newName: string) => void;
+  onRenameRiff: (oldFilename: string, newName: string) => void;
   onDeleteConversation: (id: string) => void;
   onDeleteTrigger: (id: string) => void;
   onDeleteNote: (filename: string) => void;
@@ -122,9 +122,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   availableModels,
   onNewConversation,
   onNewTrigger,
-  onNewRamble,
+  onNewRiff,
   onRenameConversation,
-  onRenameRamble,
+  onRenameRiff,
   onDeleteConversation,
   onDeleteTrigger,
   onDeleteNote,
@@ -136,9 +136,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const firedTriggerIds = firedTriggers.map(f => f.conversationId);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renamingType, setRenamingType] = useState<'conversation' | 'ramble' | null>(null);
+  const [renamingType, setRenamingType] = useState<'conversation' | 'riff' | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger' | 'ramble'; id: string } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger' | 'riff'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(ref, () => ({
@@ -160,7 +160,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     onSelectItem(item);
   };
 
-  const startRename = (id: string, type: 'conversation' | 'ramble') => {
+  const startRename = (id: string, type: 'conversation' | 'riff') => {
     const item = timelineItems.find(i => i.id === id && i.type === type);
     if (!item) return;
 
@@ -168,7 +168,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     if (type === 'conversation') {
       currentTitle = item.conversation?.title || 'New conversation';
     } else {
-      // For rambles, title is the filename without path and extension
+      // For riffs, title is the filename without path and extension
       currentTitle = item.title;
     }
 
@@ -181,8 +181,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     if (renamingId && renameValue.trim() !== '') {
       if (renamingType === 'conversation') {
         onRenameConversation(renamingId, renameValue.trim());
-      } else if (renamingType === 'ramble') {
-        onRenameRamble(renamingId, renameValue.trim());
+      } else if (renamingType === 'riff') {
+        onRenameRiff(renamingId, renameValue.trim());
       }
     }
     setRenamingId(null);
@@ -202,7 +202,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         onDeleteConversation(deletingItem.id);
       } else if (deletingItem.type === 'trigger') {
         onDeleteTrigger(deletingItem.id);
-      } else if (deletingItem.type === 'note' || deletingItem.type === 'ramble') {
+      } else if (deletingItem.type === 'note' || deletingItem.type === 'riff') {
         onDeleteNote(deletingItem.id);
       }
     }
@@ -222,7 +222,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       filePath = await vaultService.getConversationFilePath(item.id);
     } else if (item.type === 'trigger') {
       filePath = await vaultService.getTriggerFilePath(item.id);
-    } else if (item.type === 'note' || item.type === 'ramble') {
+    } else if (item.type === 'note' || item.type === 'riff') {
       filePath = await vaultService.getNoteFilePath(item.id);
     }
 
@@ -231,13 +231,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     try {
       const menuItems = [];
 
-      // Rename is available for conversations and rambles
-      if (item.type === 'conversation' || item.type === 'ramble') {
+      // Rename is available for conversations and riffs
+      if (item.type === 'conversation' || item.type === 'riff') {
         menuItems.push({
           id: 'rename',
           text: 'Rename',
           action: () => {
-            startRename(item.id, item.type as 'conversation' | 'ramble');
+            startRename(item.id, item.type as 'conversation' | 'riff');
           }
         });
       }
@@ -300,10 +300,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             }
           },
           {
-            id: 'new-ramble',
-            text: 'New Ramble',
+            id: 'new-riff',
+            text: 'New Riff',
             action: () => {
-              onNewRamble();
+              onNewRiff();
             }
           }
         ]
@@ -352,7 +352,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         if (activeFilter === 'conversations' && item.type !== 'conversation') return false;
         if (activeFilter === 'notes' && item.type !== 'note') return false;
         if (activeFilter === 'triggers' && item.type !== 'trigger') return false;
-        if (activeFilter === 'rambles' && item.type !== 'ramble') return false;
+        if (activeFilter === 'riffs' && item.type !== 'riff') return false;
       }
 
       // Apply search filter
@@ -385,10 +385,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         return <span className="type-badge note">Note</span>;
       case 'trigger':
         return <span className="type-badge trigger">Trigger</span>;
-      case 'ramble':
+      case 'riff':
         return (
-          <span className={`type-badge ramble ${item.note?.isIntegrated ? 'integrated' : 'draft'}`}>
-            {item.note?.isIntegrated ? 'Ramble' : 'Draft'}
+          <span className={`type-badge riff ${item.note?.isIntegrated ? 'integrated' : 'draft'}`}>
+            {item.note?.isIntegrated ? 'Riff' : 'Draft'}
           </span>
         );
       default:
@@ -440,7 +440,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           <option value="conversations">Conversations</option>
           <option value="notes">Notes</option>
           <option value="triggers">Triggers</option>
-          <option value="rambles">Rambles</option>
+          <option value="riffs">Riffs</option>
         </select>
       </div>
 
@@ -493,7 +493,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       {renamingId && (
         <div className="rename-modal" onClick={cancelRename}>
           <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Rename {renamingType === 'ramble' ? 'Ramble' : 'Conversation'}</h3>
+            <h3>Rename {renamingType === 'riff' ? 'Riff' : 'Conversation'}</h3>
             <input
               type="text"
               value={renameValue}
@@ -520,7 +520,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       {deletingItem && (
         <div className="rename-modal" onClick={cancelDelete}>
           <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'trigger' ? 'Trigger' : deletingItem.type === 'ramble' ? 'Ramble' : 'Note'}</h3>
+            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'trigger' ? 'Trigger' : deletingItem.type === 'riff' ? 'Riff' : 'Note'}</h3>
             <p className="delete-warning">
               Are you sure you want to delete this {deletingItem.type}? This action cannot be undone.
             </p>

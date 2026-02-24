@@ -129,9 +129,9 @@ export function useVaultWatcher(
         const isMemoryFile = filePath.endsWith('memory.md');
         const isConfigFile = filePath.endsWith('config.yaml');
         const isNoteFile =
-          (filePath.includes('/notes/') || filePath.includes('/rambles/')) &&
+          (filePath.includes('/notes/') || filePath.includes('/riffs/')) &&
           filePath.endsWith('.md');
-        const isRambleFile = filePath.includes('/rambles/');
+        const isRiffFile = filePath.includes('/riffs/');
         const isTriggerFile =
           filePath.includes('/triggers/') &&
           filePath.endsWith('.yaml') &&
@@ -173,9 +173,9 @@ export function useVaultWatcher(
             callbacksRef.current.onConfigChanged();
           }
         } else if (isNoteFile) {
-          // For ramble files, include the rambles/ prefix in filename
+          // For riff files, include the riffs/ prefix in filename
           const baseFilename = filePath.split('/').pop() || '';
-          const filename = isRambleFile ? `rambles/${baseFilename}` : baseFilename;
+          const filename = isRiffFile ? `riffs/${baseFilename}` : baseFilename;
           // For rename events (macOS deletion), check if file still exists
           let effectiveEventType = eventType;
           if (eventType === 'rename') {

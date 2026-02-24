@@ -298,7 +298,7 @@ async function appendToNote(
   const convId = conversationId || 'unknown';
 
   // Add provenance marker to each non-empty line
-  // Reference points to the source conversation (e.g., 'ramble_history' or 'conversations/...')
+  // Reference points to the source conversation (e.g., 'riff_history' or 'conversations/...')
   const contentWithProvenance = content
     .split('\n')
     .map(line => line.trim() ? `${line} &[[${convId}^${provId}${sourceLabel ? '|' + sourceLabel : ''}]]` : line)

@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import { NoteInfo } from '../types';
-import { rambleService } from '../services/ramble';
-import { useRambleContext } from '../contexts/RambleContext';
+import { riffService } from '../services/riff';
+import { useRiffContext } from '../contexts/RiffContext';
 import { MarkdownContent } from './MarkdownContent';
 import { AppendOnlyTextarea, AppendOnlyTextareaHandle } from './AppendOnlyTextarea';
 import { ItemHeader } from './ItemHeader';
-import './RambleView.css';
+import './RiffView.css';
 
 interface ConversationInfo {
   id: string;
   title?: string;
 }
 
-interface RambleViewProps {
+interface RiffViewProps {
   notes: NoteInfo[];
   model: string;
   onNavigateToNote?: (noteFilename: string) => void;
@@ -53,7 +53,7 @@ function parseFrontmatter(content: string): { frontmatter: Record<string, any>; 
   return { frontmatter, body };
 }
 
-export const RambleView: React.FC<RambleViewProps> = ({
+export const RiffView: React.FC<RiffViewProps> = ({
   notes,
   model,
   onNavigateToNote,
@@ -67,15 +67,15 @@ export const RambleView: React.FC<RambleViewProps> = ({
     rawLog,
     crystallizedOffset,
     draftFilename,
-    isRambleMode,
+    isRiffMode,
     isCrystallizing,
     isProcessing,
     crystallizationCount,
     setRawLog,
-    exitRambleMode,
+    exitRiffMode,
     integrateNow,
     setConfig,
-  } = useRambleContext();
+  } = useRiffContext();
 
   const [draftContent, setDraftContent] = useState('');
   const [justCrystallized, setJustCrystallized] = useState(false);
@@ -88,16 +88,16 @@ export const RambleView: React.FC<RambleViewProps> = ({
     setConfig(model, notes);
   }, [model, notes, setConfig]);
 
-  // Focus and scroll to bottom when entering ramble mode or switching drafts
+  // Focus and scroll to bottom when entering riff mode or switching drafts
   useLayoutEffect(() => {
-    if (isRambleMode) {
+    if (isRiffMode) {
       // Small delay to ensure the textarea is rendered
       setTimeout(() => {
         textareaRef.current?.focus();
         textareaRef.current?.scrollToBottom();
       }, 0);
     }
-  }, [isRambleMode, draftFilename]);
+  }, [isRiffMode, draftFilename]);
 
   // Load draft content when draftFilename changes
   useEffect(() => {
@@ -107,7 +107,7 @@ export const RambleView: React.FC<RambleViewProps> = ({
     }
 
     const loadDraft = async () => {
-      const vaultPath = rambleService.getVaultPath();
+      const vaultPath = riffService.getVaultPath();
       if (!vaultPath) return;
 
       try {
@@ -119,7 +119,7 @@ export const RambleView: React.FC<RambleViewProps> = ({
           setDraftContent(content);
         }
       } catch (error) {
-        console.error('[RambleView] Failed to load draft:', error);
+        console.error('[RiffView] Failed to load draft:', error);
       }
     };
 
@@ -174,9 +174,9 @@ export const RambleView: React.FC<RambleViewProps> = ({
 
   // Handle back navigation
   const handleBack = useCallback(() => {
-    exitRambleMode();
+    exitRiffMode();
     onBack?.();
-  }, [exitRambleMode, onBack]);
+  }, [exitRiffMode, onBack]);
 
   // Parse draft frontmatter
   const draftBody = useMemo(() => {
@@ -186,16 +186,16 @@ export const RambleView: React.FC<RambleViewProps> = ({
 
   // Title is the filename without path and extension
   const headerTitle = useMemo(() => {
-    if (!draftFilename) return 'Ramble';
-    return draftFilename.split('/').pop()?.replace('.md', '') || 'Ramble';
+    if (!draftFilename) return 'Riff';
+    return draftFilename.split('/').pop()?.replace('.md', '') || 'Riff';
   }, [draftFilename]);
 
-  if (!isRambleMode) {
+  if (!isRiffMode) {
     return null;
   }
 
   return (
-    <div className="ramble-view">
+    <div className="riff-view">
       <ItemHeader
         title={headerTitle}
         onBack={handleBack}
@@ -221,12 +221,12 @@ export const RambleView: React.FC<RambleViewProps> = ({
 
       {/* Draft content area - only shown when there's an active draft */}
       {draftFilename && draftBody && (
-        <div className="ramble-draft-section">
-          <div className="ramble-draft-header">
+        <div className="riff-draft-section">
+          <div className="riff-draft-header">
             <h3>Draft</h3>
           </div>
           <div
-            className={`ramble-draft-content ${justCrystallized ? 'just-crystallized' : ''}`}
+            className={`riff-draft-content ${justCrystallized ? 'just-crystallized' : ''}`}
             ref={draftContentRef}
           >
             <MarkdownContent
@@ -241,17 +241,17 @@ export const RambleView: React.FC<RambleViewProps> = ({
         </div>
       )}
 
-      {/* Ramble log input - always visible */}
-      <div className="ramble-log-section">
-        <div className="ramble-log-header">
+      {/* Riff log input - always visible */}
+      <div className="riff-log-section">
+        <div className="riff-log-header">
           <h3>Log</h3>
-          <span className="ramble-log-hint">
+          <span className="riff-log-hint">
             {draftFilename
               ? 'Type to update the draft...'
               : 'Start typing to create a draft...'}
           </span>
         </div>
-        <div className="ramble-log-input">
+        <div className="riff-log-input">
           <AppendOnlyTextarea
             ref={textareaRef}
             value={rawLog}
