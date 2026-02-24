@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate PWA icons from SVG source
+ * Generate PWA icons from PNG source
  * Run: node scripts/generate-icons.js
  */
 
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, '..', 'public');
-const svgPath = join(publicDir, 'icon.svg');
+const iconPath = join(publicDir, 'icon.png');
 
 // Icon sizes needed for PWA/iOS
 const sizes = [
@@ -27,16 +27,16 @@ const sizes = [
 async function generateIcons() {
   console.log('Generating PWA icons...');
 
-  if (!existsSync(svgPath)) {
-    console.error('Error: icon.svg not found in public/');
+  if (!existsSync(iconPath)) {
+    console.error('Error: icon.png not found in public/');
     process.exit(1);
   }
 
-  const svgBuffer = readFileSync(svgPath);
+  const iconBuffer = readFileSync(iconPath);
 
   for (const { size, name } of sizes) {
     const outputPath = join(publicDir, name);
-    await sharp(svgBuffer)
+    await sharp(iconBuffer)
       .resize(size, size)
       .png()
       .toFile(outputPath);
