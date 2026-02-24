@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 /**
- * E2E tests for Wheelhouse Tauri app
+ * E2E tests for Alloy Tauri app
  *
  * These tests can be run via:
  * 1. Traditional Playwright: npm run test:e2e
@@ -24,7 +24,7 @@ async function getAppState(page: Page): Promise<'vault-setup' | 'main-app'> {
   return 'main-app';
 }
 
-test.describe('Orchestra App - Core', () => {
+test.describe('Alloy App - Core', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:1420');
   });
@@ -39,7 +39,7 @@ test.describe('Orchestra App - Core', () => {
 
   test('should have correct page title', async ({ page }) => {
     const title = await page.title();
-    expect(title).toBe('Orchestra');
+    expect(title).toBe('Alloy');
   });
 
   test('should show either vault setup or main app', async ({ page }) => {
@@ -56,7 +56,7 @@ test.describe('Orchestra App - Core', () => {
   });
 });
 
-test.describe('Orchestra App - Vault Setup', () => {
+test.describe('Alloy App - Vault Setup', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:1420');
   });
@@ -66,7 +66,7 @@ test.describe('Orchestra App - Vault Setup', () => {
     test.skip(state !== 'vault-setup', 'Vault already configured - skipping setup tests');
 
     const heading = page.locator('h1');
-    await expect(heading).toContainText('Welcome to Orchestra');
+    await expect(heading).toContainText('Welcome to Alloy');
   });
 
   test('vault setup should have select folder button', async ({ page }) => {
@@ -88,7 +88,7 @@ test.describe('Orchestra App - Vault Setup', () => {
   });
 });
 
-test.describe('Orchestra App - Main Interface', () => {
+test.describe('Alloy App - Main Interface', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:1420');
   });
@@ -121,7 +121,7 @@ test.describe('Orchestra App - Main Interface', () => {
   });
 });
 
-test.describe('Orchestra App - Visual Verification', () => {
+test.describe('Alloy App - Visual Verification', () => {
   test('should render without unexpected console errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', (msg) => {
@@ -159,11 +159,11 @@ test.describe('Orchestra App - Visual Verification', () => {
     expect(screenshot.length).toBeGreaterThan(1000); // Ensure it's not empty
   });
 
-  test('page content should reference Orchestra', async ({ page }) => {
+  test('page content should reference Alloy', async ({ page }) => {
     await page.goto('http://localhost:1420');
     await page.waitForLoadState('networkidle');
 
     const content = await page.content();
-    expect(content).toContain('Orchestra');
+    expect(content).toContain('Alloy');
   });
 });

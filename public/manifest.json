@@ -1,6 +1,6 @@
 {
-  "name": "Wheelhouse",
-  "short_name": "Wheelhouse",
+  "name": "Alloy",
+  "short_name": "Alloy",
   "description": "AI-powered conversation manager with multi-model support",
   "start_url": "/",
   "display": "standalone",

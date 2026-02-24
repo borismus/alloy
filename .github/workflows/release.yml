@@ -76,7 +76,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Wheelhouse v__VERSION__'
+          releaseName: 'Alloy v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
@@ -123,16 +123,16 @@ jobs:
           ARM_TAR=$(find artifacts/macos-arm -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
           ARM_SIG=$(find artifacts/macos-arm -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
           if [ -n "$ARM_TAR" ]; then
-            cp "$ARM_TAR" deploy/Wheelhouse-aarch64.app.tar.gz
-            [ -n "$ARM_SIG" ] && cp "$ARM_SIG" deploy/Wheelhouse-aarch64.app.tar.gz.sig
+            cp "$ARM_TAR" deploy/Alloy-aarch64.app.tar.gz
+            [ -n "$ARM_SIG" ] && cp "$ARM_SIG" deploy/Alloy-aarch64.app.tar.gz.sig
           fi
 
           # Copy Intel build with architecture suffix
           INTEL_TAR=$(find artifacts/macos-intel -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
           INTEL_SIG=$(find artifacts/macos-intel -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
           if [ -n "$INTEL_TAR" ]; then
-            cp "$INTEL_TAR" deploy/Wheelhouse-x86_64.app.tar.gz
-            [ -n "$INTEL_SIG" ] && cp "$INTEL_SIG" deploy/Wheelhouse-x86_64.app.tar.gz.sig
+            cp "$INTEL_TAR" deploy/Alloy-x86_64.app.tar.gz
+            [ -n "$INTEL_SIG" ] && cp "$INTEL_SIG" deploy/Alloy-x86_64.app.tar.gz.sig
           fi
 
           # List what we're deploying
@@ -153,18 +153,18 @@ jobs:
           PLATFORMS=""
 
           # ARM (aarch64)
-          if [ -f "Wheelhouse-aarch64.app.tar.gz.sig" ] && [ -f "Wheelhouse-aarch64.app.tar.gz" ]; then
-            ARM_SIG=$(cat "Wheelhouse-aarch64.app.tar.gz.sig")
-            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${ARM_SIG}\", \"url\": \"https://borismus.github.io/wheelhouse/Wheelhouse-aarch64.app.tar.gz\" }"
+          if [ -f "Alloy-aarch64.app.tar.gz.sig" ] && [ -f "Alloy-aarch64.app.tar.gz" ]; then
+            ARM_SIG=$(cat "Alloy-aarch64.app.tar.gz.sig")
+            PLATFORMS="\"darwin-aarch64\": { \"signature\": \"${ARM_SIG}\", \"url\": \"https://borismus.github.io/alloy/Alloy-aarch64.app.tar.gz\" }"
           fi
 
           # Intel (x86_64)
-          if [ -f "Wheelhouse-x86_64.app.tar.gz.sig" ] && [ -f "Wheelhouse-x86_64.app.tar.gz" ]; then
-            INTEL_SIG=$(cat "Wheelhouse-x86_64.app.tar.gz.sig")
+          if [ -f "Alloy-x86_64.app.tar.gz.sig" ] && [ -f "Alloy-x86_64.app.tar.gz" ]; then
+            INTEL_SIG=$(cat "Alloy-x86_64.app.tar.gz.sig")
             if [ -n "$PLATFORMS" ]; then
               PLATFORMS="${PLATFORMS}, "
             fi
-            PLATFORMS="${PLATFORMS}\"darwin-x86_64\": { \"signature\": \"${INTEL_SIG}\", \"url\": \"https://borismus.github.io/wheelhouse/Wheelhouse-x86_64.app.tar.gz\" }"
+            PLATFORMS="${PLATFORMS}\"darwin-x86_64\": { \"signature\": \"${INTEL_SIG}\", \"url\": \"https://borismus.github.io/alloy/Alloy-x86_64.app.tar.gz\" }"
           fi
 
           echo "PLATFORMS: $PLATFORMS"

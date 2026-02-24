@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Wheelhouse Development Launcher
+# Alloy Development Launcher
 # This script ensures Rust is in the PATH before launching
 
 # Add Rust to PATH
@@ -20,7 +20,7 @@ if ! command -v cargo &> /dev/null; then
 fi
 
 echo "✅ Rust found: $(rustc --version)"
-echo "🚀 Launching Wheelhouse..."
+echo "🚀 Launching Alloy..."
 echo ""
 
 # Run the dev server

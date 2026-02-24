@@ -1,4 +1,4 @@
-# Wheelhouse - Launch Checklist
+# Alloy - Launch Checklist
 
 ## Before First Run
 
@@ -31,7 +31,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ### Option 1: Using the Launch Script (Recommended)
 
 ```bash
-# From the wheelhouse directory
+# From the alloy directory
 ./run.sh
 ```
 
@@ -53,7 +53,7 @@ npm run tauri dev
 This will:
 1. Build the Rust backend (first time takes 2-3 minutes)
 2. Start the Vite dev server
-3. Launch the Wheelhouse window
+3. Launch the Alloy window
 
 ## First Run Experience
 
@@ -62,7 +62,7 @@ When the app opens:
 ### Step 1: Select Your Vault Folder
 - Click "Select Vault Folder"
 - Choose where you want your conversations stored
-- Recommended: Create a new folder like `~/wheelhouse-vault`
+- Recommended: Create a new folder like `~/alloy-vault`
 
 ### Step 2: Enter API Key
 - Paste your Anthropic API key
@@ -80,7 +80,7 @@ After first run, check your vault folder:
 
 ```bash
 # Navigate to your vault
-cd ~/wheelhouse-vault  # or wherever you chose
+cd ~/alloy-vault  # or wherever you chose
 
 # You should see:
 ls -la
@@ -173,4 +173,4 @@ npm run tauri build
 
 ---
 
-**Ready to go!** Run `npm run tauri dev` and enjoy Wheelhouse!
+**Ready to go!** Run `npm run tauri dev` and enjoy Alloy!

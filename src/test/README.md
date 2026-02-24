@@ -1,6 +1,6 @@
 # Testing Guide
 
-This directory contains unit tests for the core functionality of Wheelhouse.
+This directory contains unit tests for the core functionality of Alloy.
 
 ## Running Tests
 

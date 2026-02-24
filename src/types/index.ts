@@ -1,4 +1,4 @@
-// Core types for Wheelhouse
+// Core types for Alloy
 
 export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini' | 'grok';
 

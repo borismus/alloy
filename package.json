@@ -1,16 +1,16 @@
 {
-  "name": "wheelhouse",
+  "name": "alloy",
   "version": "0.2.7",
   "description": "Local-first multi-model AI chat app. One helm for Claude, ChatGPT, Gemini, Grok, and local models.",
   "author": "Boris Smus",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/borismus/wheelhouse.git"
+    "url": "https://github.com/borismus/alloy.git"
   },
-  "homepage": "https://github.com/borismus/wheelhouse#readme",
+  "homepage": "https://github.com/borismus/alloy#readme",
   "bugs": {
-    "url": "https://github.com/borismus/wheelhouse/issues"
+    "url": "https://github.com/borismus/alloy/issues"
   },
   "keywords": ["ai", "chat", "claude", "openai", "gemini", "ollama", "tauri", "local-first"],
   "type": "module",

@@ -100,7 +100,7 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
 
           <div className="settings-section">
             <h3>Updates</h3>
-            <p className="settings-description">Check for new versions of Wheelhouse.</p>
+            <p className="settings-description">Check for new versions of Alloy.</p>
             <div className="settings-button-group">
               <button
                 onClick={handleCheckForUpdates}
@@ -130,7 +130,7 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
       {showResetConfirm && (
         <div className="settings-overlay" onClick={() => setShowResetConfirm(false)}>
           <div className="settings-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Reset Wheelhouse?</h3>
+            <h3>Reset Alloy?</h3>
             <p>This will clear all local settings and reload the app. Your vault files will not be deleted.</p>
             <div className="settings-button-group">
               <button

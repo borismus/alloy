@@ -72,7 +72,7 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
       <div className="background-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.length === 0 && runningTasks.length === 0 ? (
           <div className="background-empty">
-            <h2>Wheelhouse</h2>
+            <h2>Alloy</h2>
             <p>Type a command, ask a question, or think out loud. Work gets delegated to background agents automatically.</p>
           </div>
         ) : (

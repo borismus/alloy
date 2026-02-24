@@ -51,7 +51,7 @@ export const DELEGATE_TOOL: ToolDefinition = {
  */
 export function getOrchestratorSystemPrompt(): string {
   const now = new Date();
-  return `You are the Wheelhouse orchestrator. You receive user messages and delegate work to background agents.
+  return `You are the Alloy orchestrator. You receive user messages and delegate work to background agents.
 
 Current time: ${now.toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone})
 
@@ -82,7 +82,7 @@ export function getTaskSystemPrompt(memoryContent?: string): string {
     memoryContent,
   );
 
-  return `You are a Wheelhouse task agent. Complete your assigned task using your tools.
+  return `You are an Alloy task agent. Complete your assigned task using your tools.
 
 Be thorough but concise in your final response. You have full access to the user's vault (notes, conversations, skills, triggers) and the web.
 

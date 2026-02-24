@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Wheelhouse** is a multi-model AI chat application built with Tauri 2 + React.
+**Alloy** is a multi-model AI chat application built with Tauri 2 + React.
 
 Key features:
 - **Multi-provider**: Anthropic (Claude), OpenAI, Google Gemini, Ollama

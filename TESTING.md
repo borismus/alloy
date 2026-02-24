@@ -1,6 +1,6 @@
 # Testing Guide: Playwright MCP Integration
 
-This guide explains how to use the Playwright MCP (Model Context Protocol) server integration to test the Wheelhouse Tauri app with AI assistance.
+This guide explains how to use the Playwright MCP (Model Context Protocol) server integration to test the Alloy Tauri app with AI assistance.
 
 ## Overview
 
@@ -90,7 +90,7 @@ The MCP server exposes these tools to Claude Code:
 You can ask Claude Code to explore your app:
 
 ```
-"Explore the Wheelhouse UI and tell me what features are available"
+"Explore the Alloy UI and tell me what features are available"
 ```
 
 Claude Code will use the MCP server to:

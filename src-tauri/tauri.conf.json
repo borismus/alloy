@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Wheelhouse",
+  "productName": "Alloy",
   "version": "0.2.7",
-  "identifier": "com.wheelhouse.app",
+  "identifier": "com.alloy.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Wheelhouse",
+        "title": "Alloy",
         "width": 1200,
         "height": 800,
         "decorations": true,
@@ -139,7 +139,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://borismus.github.io/wheelhouse/latest.json"
+        "https://borismus.github.io/alloy/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY4OTk0QTI4MEU1NjFCRDYKUldUV0cxWU9LRXFaYUtlaVM0VWtnREsrTUd0eWNUOWd3a1BBSUUySVU1ZTZDcWwwZVB2TEI3R28K"
     }

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Version bump script for Wheelhouse
+# Version bump script for Alloy
 # Updates version in all required files, commits, and tags
 
 usage() {

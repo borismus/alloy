@@ -1,4 +1,4 @@
-// Skills types for Wheelhouse
+// Skills types for Alloy
 
 export interface SkillMetadata {
   name: string;

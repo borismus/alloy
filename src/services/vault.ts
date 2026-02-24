@@ -11,7 +11,7 @@ export class VaultService {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Select Wheelhouse Vault Folder',
+      title: 'Select Alloy Vault Folder',
     });
 
     if (selected && typeof selected === 'string') {
@@ -676,8 +676,8 @@ export class VaultService {
 
   async getNoteFilePath(filename: string): Promise<string | null> {
     if (!this.vaultPath) return null;
-    // Riffs are stored at riffs/, regular notes at notes/
-    if (filename.startsWith('riffs/')) {
+    // memory.md and riffs/ are at vault root, regular notes at notes/
+    if (filename === 'memory.md' || filename.startsWith('riffs/')) {
       return await join(this.vaultPath, filename);
     }
     return await join(this.vaultPath, 'notes', filename);
@@ -686,8 +686,8 @@ export class VaultService {
   async deleteNote(filename: string): Promise<boolean> {
     if (!this.vaultPath) return false;
 
-    // Riffs are stored at riffs/, regular notes at notes/
-    const notePath = filename.startsWith('riffs/')
+    // memory.md and riffs/ are at vault root, regular notes at notes/
+    const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
       ? await join(this.vaultPath, filename)
       : await join(this.vaultPath, 'notes', filename);
 

@@ -27,7 +27,7 @@ describe('VaultService', () => {
       expect(dialog.open).toHaveBeenCalledWith({
         directory: true,
         multiple: false,
-        title: 'Select Wheelhouse Vault Folder',
+        title: 'Select Alloy Vault Folder',
       });
     });
 

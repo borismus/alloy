@@ -1,4 +1,4 @@
-// Built-in tool types for Wheelhouse Skills system
+// Built-in tool types for Alloy Skills system
 
 export interface ToolDefinition {
   name: string;

@@ -1,4 +1,4 @@
-# Wheelhouse Setup Guide
+# Alloy Setup Guide
 
 ## Prerequisites
 
@@ -30,11 +30,11 @@ npm run tauri dev
 This will:
 - Start the Vite dev server
 - Compile the Rust backend
-- Launch the Wheelhouse application
+- Launch the Alloy application
 
 ## First Run
 
-When you first launch Wheelhouse:
+When you first launch Alloy:
 
 1. **Select Vault Folder**: Choose a folder where your conversations will be stored
 2. **Enter API Key**: Provide your Anthropic API key when prompted
@@ -125,4 +125,4 @@ You can edit these files with any text editor, back them up, sync them—they're
 
 ---
 
-**Wheelhouse**: Your AI conversations. Your files. Your control.
+**Alloy**: Your AI conversations. Your files. Your control.
