@@ -1,4 +1,9 @@
 .update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
   background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   color: white;
   padding: 10px 16px;
@@ -93,11 +98,6 @@
 
 /* Error state - for install errors */
 .update-banner-error {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
   background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
 }
 
