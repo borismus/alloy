@@ -152,5 +152,9 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
         }
       }, children);
     },
+    img: ({ src, alt, ...props }: { src?: string; alt?: string; [key: string]: any }) => {
+      if (!src) return null;
+      return React.createElement('img', { src, alt, ...props });
+    },
   };
 }
