@@ -369,6 +369,20 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   const assistantName = conversation ? getAssistantName(conversation.model) : 'Assistant';
 
+  // Compute total cost across all messages in the conversation
+  const totalCost = useMemo(() => {
+    if (!conversation) return undefined;
+    let cost = 0;
+    let counted = 0;
+    for (const msg of conversation.messages) {
+      if (msg.role === 'assistant' && msg.usage?.cost !== undefined) {
+        cost += msg.usage.cost;
+        counted++;
+      }
+    }
+    return counted > 0 ? cost : undefined;
+  }, [conversation?.messages]);
+
   // Use ref to keep getImageUrl callback stable - prevents message re-renders when imageUrls changes
   const imageUrlsRef = useRef(imageUrls);
   imageUrlsRef.current = imageUrls;
@@ -715,6 +729,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(conversation.model)]}</span>
             <span className="model-separator">·</span>
             <span className="model-name">{getModelIdFromModel(conversation.model)}</span>
+            {totalCost !== undefined && (
+              <>
+                <span className="model-separator">·</span>
+                <span className="model-cost">${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}</span>
+              </>
+            )}
           </div>
         )}
 

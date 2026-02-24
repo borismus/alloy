@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
-import { rambleService } from './services/ramble';
+import { riffService } from './services/riff';
 import { triggerExecutor } from './services/triggers/executor';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -25,48 +25,48 @@ import { MemoryWarning } from './components/MemoryWarning';
 import { readTextFile, exists } from '@tauri-apps/plugin-fs';
 import { isServerMode } from './mocks';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
-import { RambleProvider, useRambleContext } from './contexts/RambleContext';
+import { RiffProvider, useRiffContext } from './contexts/RiffContext';
 import { BackgroundProvider } from './contexts/BackgroundContext';
-import { RambleBatchApprovalModal } from './components/RambleBatchApprovalModal';
-import { RambleView } from './components/RambleView';
+import { RiffBatchApprovalModal } from './components/RiffBatchApprovalModal';
+import { RiffView } from './components/RiffView';
 import { BackgroundView } from './components/BackgroundView';
 import { BACKGROUND_CONVERSATION_ID } from './services/background';
 import { ContextMenu } from './components/ContextMenu';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import './App.css';
 
-// Wrapper component to access RambleContext and show approval modal
-const RambleApprovalModal: React.FC = () => {
-  const rambleContext = useRambleContext();
+// Wrapper component to access RiffContext and show approval modal
+const RiffApprovalModal: React.FC = () => {
+  const riffContext = useRiffContext();
 
-  if (rambleContext.phase !== 'approving') return null;
+  if (riffContext.phase !== 'approving') return null;
 
   return (
-    <RambleBatchApprovalModal
-      proposedChanges={rambleContext.proposedChanges}
-      isProcessing={rambleContext.isProcessing}
-      onApply={rambleContext.applyChanges}
-      onCancel={rambleContext.cancelIntegration}
+    <RiffBatchApprovalModal
+      proposedChanges={riffContext.proposedChanges}
+      isProcessing={riffContext.isProcessing}
+      onApply={riffContext.applyChanges}
+      onCancel={riffContext.cancelIntegration}
     />
   );
 };
 
-// Wrapper component for main panel that can access RambleContext
-interface MainPanelWithRambleProps {
+// Wrapper component for main panel that can access RiffContext
+interface MainPanelWithRiffProps {
   notes: NoteInfo[];
   selectedModel: string;
   onNavigateToNote: (filename: string) => void;
   onNavigateToConversation: (conversationId: string, messageId?: string) => void;
   conversations: { id: string; title?: string }[];
   selectedNote: { filename: string; content: string } | null;
-  hasAnySelection: boolean; // true if user selected conversation, trigger, or non-ramble note
+  hasAnySelection: boolean; // true if user selected conversation, trigger, or non-riff note
   children: React.ReactNode;
   onBack?: () => void;
   canGoBack?: boolean;
   onClose?: () => void;
 }
 
-const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
+const MainPanelWithRiff: React.FC<MainPanelWithRiffProps> = ({
   notes,
   selectedModel,
   onNavigateToNote,
@@ -79,33 +79,33 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
   canGoBack,
   onClose,
 }) => {
-  const rambleContext = useRambleContext();
+  const riffContext = useRiffContext();
 
-  // Check if selected note is a ramble/draft (not integrated)
-  const isRambleNote = selectedNote?.filename.startsWith('rambles/') &&
+  // Check if selected note is a riff/draft (not integrated)
+  const isRiffNote = selectedNote?.filename.startsWith('riffs/') &&
     !selectedNote.content.includes('integrated: true');
 
-  // Auto-enter ramble mode when viewing a draft note
+  // Auto-enter riff mode when viewing a draft note
   useEffect(() => {
-    if (isRambleNote && selectedNote) {
-      if (!rambleContext.isRambleMode || rambleContext.draftFilename !== selectedNote.filename) {
-        rambleContext.enterRambleMode(selectedNote.filename);
+    if (isRiffNote && selectedNote) {
+      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
+        riffContext.enterRiffMode(selectedNote.filename);
       }
     }
-  }, [isRambleNote, selectedNote, rambleContext.isRambleMode, rambleContext.draftFilename]);
+  }, [isRiffNote, selectedNote, riffContext.isRiffMode, riffContext.draftFilename]);
 
-  // Auto-exit ramble mode when user navigates away
+  // Auto-exit riff mode when user navigates away
   useEffect(() => {
-    if (rambleContext.isRambleMode && hasAnySelection) {
-      rambleContext.exitRambleMode();
+    if (riffContext.isRiffMode && hasAnySelection) {
+      riffContext.exitRiffMode();
     }
-  }, [hasAnySelection, rambleContext]);
+  }, [hasAnySelection, riffContext]);
 
-  // Show RambleView when viewing a draft OR in fresh ramble mode (nothing selected)
-  if (isRambleNote || (rambleContext.isRambleMode && !hasAnySelection)) {
+  // Show RiffView when viewing a draft OR in fresh riff mode (nothing selected)
+  if (isRiffNote || (riffContext.isRiffMode && !hasAnySelection)) {
     return (
       <div className="main-panel">
-        <RambleView
+        <RiffView
           notes={notes}
           model={selectedModel}
           onNavigateToNote={onNavigateToNote}
@@ -122,44 +122,44 @@ const MainPanelWithRamble: React.FC<MainPanelWithRambleProps> = ({
   return <>{children}</>;
 };
 
-// Wrapper to get onNewRamble handler for Sidebar
-type SidebarWithRambleProps = Omit<React.ComponentProps<typeof Sidebar>, 'onNewRamble'> & {
+// Wrapper to get onNewRiff handler for Sidebar
+type SidebarWithRiffProps = Omit<React.ComponentProps<typeof Sidebar>, 'onNewRiff'> & {
   onClearSelection: () => void;
 };
 
-const SidebarWithRamble = forwardRef<SidebarHandle, SidebarWithRambleProps>(
-  function SidebarWithRamble({ onClearSelection, ...props }: SidebarWithRambleProps, ref: React.Ref<SidebarHandle>) {
-    const rambleContext = useRambleContext();
+const SidebarWithRiff = forwardRef<SidebarHandle, SidebarWithRiffProps>(
+  function SidebarWithRiff({ onClearSelection, ...props }: SidebarWithRiffProps, ref: React.Ref<SidebarHandle>) {
+    const riffContext = useRiffContext();
 
-    const handleNewRamble = useCallback(async () => {
+    const handleNewRiff = useCallback(async () => {
       onClearSelection();
-      await rambleContext.enterRambleMode();
-    }, [rambleContext, onClearSelection]);
+      await riffContext.enterRiffMode();
+    }, [riffContext, onClearSelection]);
 
-    return <Sidebar ref={ref} {...props} onNewRamble={handleNewRamble} />;
+    return <Sidebar ref={ref} {...props} onNewRiff={handleNewRiff} />;
   }
 );
 
-// Effect component to auto-enter ramble mode when viewing drafts on mobile
-const MobileRambleModeEffect: React.FC<{
+// Effect component to auto-enter riff mode when viewing drafts on mobile
+const MobileRiffModeEffect: React.FC<{
   isMobile: boolean;
   isViewingDraft: boolean;
   selectedNote: { filename: string; content: string } | null;
 }> = ({ isMobile, isViewingDraft, selectedNote }) => {
-  const rambleContext = useRambleContext();
+  const riffContext = useRiffContext();
 
   useEffect(() => {
     if (isMobile && isViewingDraft && selectedNote) {
-      if (!rambleContext.isRambleMode || rambleContext.draftFilename !== selectedNote.filename) {
-        rambleContext.enterRambleMode(selectedNote.filename);
+      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
+        riffContext.enterRiffMode(selectedNote.filename);
       }
     }
-  }, [isMobile, isViewingDraft, selectedNote, rambleContext]);
+  }, [isMobile, isViewingDraft, selectedNote, riffContext]);
 
   return null;
 };
 
-// Wrapper to provide ramble integration to NoteViewer
+// Wrapper to provide riff integration to NoteViewer
 interface NoteViewerWithIntegrateProps {
   content: string;
   filename: string;
@@ -185,16 +185,16 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
   canGoBack,
   onClose,
 }) => {
-  const rambleContext = useRambleContext();
+  const riffContext = useRiffContext();
 
   const handleIntegrate = useCallback(async () => {
     if (selectedModel && filename) {
-      // Set config and enter ramble mode with this draft, then integrate
-      rambleContext.setConfig(selectedModel, notes);
-      await rambleContext.enterRambleMode(filename);
-      await rambleContext.integrateNow();
+      // Set config and enter riff mode with this draft, then integrate
+      riffContext.setConfig(selectedModel, notes);
+      await riffContext.enterRiffMode(filename);
+      await riffContext.integrateNow();
     }
-  }, [rambleContext, filename, selectedModel, notes]);
+  }, [riffContext, filename, selectedModel, notes]);
 
   return (
     <NoteViewer
@@ -249,7 +249,7 @@ function AppContent() {
       const vaultPathStr = vaultService.getVaultPath();
       const notesPath = vaultService.getNotesPath();
       if (vaultPathStr && notesPath) {
-        const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
+        const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
           ? `${vaultPathStr}/${filename}`
           : `${notesPath}/${filename}`;
         try {
@@ -306,8 +306,8 @@ function AppContent() {
   type MobileView = 'list' | 'conversation';
   const [mobileView, setMobileView] = useState<MobileView>('list');
 
-  // Check if selected note is a draft (for mobile ramble mode)
-  const isViewingDraft = selectedNote?.filename.startsWith('rambles/') &&
+  // Check if selected note is a draft (for mobile riff mode)
+  const isViewingDraft = selectedNote?.filename.startsWith('riffs/') &&
     !selectedNote.content.includes('integrated: true');
 
   // Message ID to scroll to after navigating to a conversation (for provenance links)
@@ -426,8 +426,8 @@ function AppContent() {
       const vaultPathStr = vaultService.getVaultPath();
       const notesPath = vaultService.getNotesPath();
       if (vaultPathStr && notesPath) {
-        // memory.md and rambles/ are at vault root, other notes are in notes/
-        const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
+        // memory.md and riffs/ are at vault root, other notes are in notes/
+        const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
           ? `${vaultPathStr}/${filename}`
           : `${notesPath}/${filename}`;
         readTextFile(notePath).then(content => {
@@ -534,12 +534,20 @@ function AppContent() {
 
       if (e.key === 'Escape' && showSettings) {
         setShowSettings(false);
+        return;
+      }
+
+      // Escape with no modals open: go back to background view
+      // Skip if already handled (e.g. streaming stop) or if user is in a text field
+      if (e.key === 'Escape' && !showSettings && !showTriggerConfig && selectedItem && !e.defaultPrevented) {
+        setSelectedItem(null);
+        setNoteContent(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSettings, config]);
+  }, [showSettings, showTriggerConfig, selectedItem, config]);
 
   // Build unified timeline whenever data changes
   useEffect(() => {
@@ -553,7 +561,7 @@ function AppContent() {
   // Handle selecting an item from the timeline
   const handleSelectItem = useCallback(async (item: TimelineItem) => {
     // Navigate to the selected item
-    if (item.type === 'ramble') {
+    if (item.type === 'riff') {
       navigateTo({ type: 'note', id: item.id });
     } else if (item.type === 'note') {
       navigateTo({ type: 'note', id: item.id });
@@ -573,12 +581,12 @@ function AppContent() {
     if (item.type === 'conversation') {
       // Mark as read when user selects the conversation
       markAsRead(item.id);
-    } else if (item.type === 'note' || item.type === 'ramble') {
+    } else if (item.type === 'note' || item.type === 'riff') {
       // Load note content
       const vaultPathStr = vaultService.getVaultPath();
       const notesPath = vaultService.getNotesPath();
       if (vaultPathStr && notesPath) {
-        const notePath = item.id === 'memory.md' || item.id.startsWith('rambles/')
+        const notePath = item.id === 'memory.md' || item.id.startsWith('riffs/')
           ? `${vaultPathStr}/${item.id}`
           : `${notesPath}/${item.id}`;
         try {
@@ -636,8 +644,8 @@ function AppContent() {
         skillRegistry.setVaultPath(path);
         await skillRegistry.loadSkills();
 
-        // Initialize ramble service
-        rambleService.setVaultPath(path);
+        // Initialize riff service
+        riffService.setVaultPath(path);
 
         // Load memory for system prompt injection
         const loadedMemory = await vaultService.loadMemory();
@@ -761,8 +769,8 @@ function AppContent() {
         return;
       }
 
-      // memory.md and rambles/ are at vault root, other notes are in notes/
-      const notePath = filename === 'memory.md' || filename.startsWith('rambles/')
+      // memory.md and riffs/ are at vault root, other notes are in notes/
+      const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
         ? `${vaultPathStr}/${filename}`
         : `${notesPath}/${filename}`;
       try {
@@ -888,6 +896,38 @@ function AppContent() {
       console.error('Error saving conversation on user message (non-fatal):', saveError);
     }
 
+    // Track accumulated content locally so we can save partial results on cancel
+    let accumulatedContent = '';
+    const assistantMessageId = generateMessageId();
+
+    // Helper to save partial/complete conversation
+    const savePartialConversation = async (content: string) => {
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+        content,
+      };
+      const finalConv: Conversation = {
+        ...updatedConversation,
+        messages: [...updatedMessages, assistantMessage],
+        updated: new Date().toISOString(),
+      };
+      setDraftConversation(prev => prev?.id === finalConv.id ? finalConv : prev);
+      setConversations(prev => prev.map(c => c.id === finalConv.id ? finalConv : c));
+      try {
+        const vaultPathForSave = vaultService.getVaultPath();
+        const filename = vaultService.generateFilename(finalConv.id, finalConv.title);
+        if (vaultPathForSave) {
+          const filePath = `${vaultPathForSave}/conversations/${filename}`;
+          markSelfWrite(filePath);
+        }
+        await vaultService.saveConversation(finalConv);
+      } catch (saveError) {
+        console.error('Error saving partial conversation (non-fatal):', saveError);
+      }
+    };
+
     try {
       // Build system prompt with skill descriptions, conversation context, and memory
       const systemPrompt = skillRegistry.buildSystemPrompt({
@@ -899,9 +939,6 @@ function AppContent() {
         return await vaultService.loadImageAsBase64(relativePath);
       };
 
-      // Generate message ID for provenance tracking
-      const assistantMessageId = generateMessageId();
-
       // Execute with tool loop support
       const convId = currentConversation.id;
       const result = await executeWithTools(provider, updatedMessages, modelId, {
@@ -910,7 +947,10 @@ function AppContent() {
           messageId: assistantMessageId,
           conversationId: `conversations/${convId}`,
         },
-        onChunk,
+        onChunk: onChunk ? (chunk: string) => {
+          accumulatedContent += chunk;
+          onChunk(chunk);
+        } : undefined,
         onToolUse: (toolUse) => addToolUse(convId, toolUse),
         signal,
         imageLoader,
@@ -921,6 +961,12 @@ function AppContent() {
         onSubagentToolUse: (agentId, toolUse) => addSubagentToolUse(convId, agentId, toolUse),
         onSubagentComplete: (agentId, _content, error) => completeSubagent(convId, agentId, error),
       });
+
+      // Provider returned normally after abort — save partial content
+      if (signal?.aborted && accumulatedContent.trim()) {
+        await savePartialConversation(accumulatedContent);
+        return;
+      }
 
       // Build usage with cost estimate
       let usage: import('./types').Usage | undefined;
@@ -994,8 +1040,11 @@ function AppContent() {
         console.error('Error loading conversations list (non-fatal):', loadError);
       }
     } catch (error: any) {
-      // If aborted, don't show error - just silently stop
+      // If aborted, save any partial content that was streamed
       if (error?.name === 'AbortError' || signal?.aborted) {
+        if (accumulatedContent.trim()) {
+          await savePartialConversation(accumulatedContent);
+        }
         return;
       }
 
@@ -1077,7 +1126,7 @@ function AppContent() {
     }
   };
 
-  const handleRenameRamble = async (oldFilename: string, newName: string) => {
+  const handleRenameRiff = async (oldFilename: string, newName: string) => {
     try {
       const vaultPathForRename = vaultService.getVaultPath();
       if (vaultPathForRename) {
@@ -1085,23 +1134,23 @@ function AppContent() {
         markSelfWrite(`${vaultPathForRename}/${oldFilename}`);
         // Mark new file path
         const sanitizedName = newName.replace(/\.md$/, '').replace(/[/\\:*?"<>|]/g, '-').trim();
-        markSelfWrite(`${vaultPathForRename}/rambles/${sanitizedName}.md`);
+        markSelfWrite(`${vaultPathForRename}/riffs/${sanitizedName}.md`);
       }
 
-      const newFilename = await vaultService.renameRamble(oldFilename, newName);
+      const newFilename = await vaultService.renameRiff(oldFilename, newName);
       if (newFilename) {
         // Reload notes to get updated list
         const updatedNotes = await vaultService.loadNotes();
         setNotes(updatedNotes);
 
-        // Update selection if this ramble was selected
+        // Update selection if this riff was selected
         if (selectedItem?.type === 'note' && selectedItem.id === oldFilename) {
           setSelectedItem({ type: 'note', id: newFilename });
         }
       }
     } catch (error) {
-      console.error('Error renaming ramble:', error);
-      alert('Failed to rename ramble. Please try again.');
+      console.error('Error renaming riff:', error);
+      alert('Failed to rename riff. Please try again.');
     }
   };
 
@@ -1313,7 +1362,7 @@ function AppContent() {
       onTriggerUpdated={handleTriggerUpdated}
       vaultPath={vaultPath}
     >
-      <RambleProvider>
+      <RiffProvider>
       <BackgroundProvider
         initialConversation={backgroundConversation}
         defaultModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
@@ -1327,8 +1376,8 @@ function AppContent() {
             onEdit={() => handleSelectNote('memory.md')}
           />
         )}
-        <RambleApprovalModal />
-        <MobileRambleModeEffect
+        <RiffApprovalModal />
+        <MobileRiffModeEffect
           isMobile={isMobile}
           isViewingDraft={isViewingDraft ?? false}
           selectedNote={selectedNote}
@@ -1337,7 +1386,7 @@ function AppContent() {
         {isMobile ? (
           // Mobile layout - show one view at a time
           mobileView === 'list' ? (
-            <SidebarWithRamble
+            <SidebarWithRiff
               ref={sidebarRef}
               fullScreen
               onMobileBack={() => setMobileView('conversation')}
@@ -1359,7 +1408,7 @@ function AppContent() {
               }}
               onNewTrigger={() => setShowTriggerConfig(true)}
               onRenameConversation={handleRenameConversation}
-              onRenameRamble={handleRenameRamble}
+              onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
@@ -1390,7 +1439,7 @@ function AppContent() {
             // Mobile: viewing a note or draft
             isViewingDraft ? (
               <div className="main-panel">
-                <RambleView
+                <RiffView
                   notes={notes}
                   model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
                   onNavigateToNote={handleSelectNote}
@@ -1440,7 +1489,7 @@ function AppContent() {
         ) : (
           // Desktop layout - sidebar + main panel
           <>
-            <SidebarWithRamble
+            <SidebarWithRiff
               ref={sidebarRef}
               onClearSelection={() => { setSelectedItem(null); setNoteContent(null); }}
               timelineItems={timelineItems}
@@ -1454,19 +1503,19 @@ function AppContent() {
               onNewConversation={handleNewConversation}
               onNewTrigger={() => setShowTriggerConfig(true)}
               onRenameConversation={handleRenameConversation}
-              onRenameRamble={handleRenameRamble}
+              onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
             />
-      <MainPanelWithRamble
+      <MainPanelWithRiff
         notes={notes}
         selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
         onNavigateToNote={handleSelectNote}
         onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
         conversations={conversations}
         selectedNote={selectedNote}
-        hasAnySelection={!!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('rambles/') || selectedNote.content.includes('integrated: true'))))}
+        hasAnySelection={!!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('riffs/') || selectedNote.content.includes('integrated: true'))))}
         onBack={goBack}
         canGoBack={canGoBack}
         onClose={() => { setSelectedItem(null); setNoteContent(null); }}
@@ -1536,7 +1585,7 @@ function AppContent() {
           />
         )}
       </div>
-      </MainPanelWithRamble>
+      </MainPanelWithRiff>
           </>
         )}
       {showSettings && (
@@ -1570,7 +1619,7 @@ function AppContent() {
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
       </BackgroundProvider>
-      </RambleProvider>
+      </RiffProvider>
     </TriggerProvider>
   );
 }
