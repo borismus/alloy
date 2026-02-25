@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ProposedChange, NoteInfo } from '../types';
+import { ProposedChange, NoteInfo, RiffArtifactType } from '../types';
 import { riffService } from '../services/riff';
 import { vaultService } from '../services/vault';
 
@@ -11,6 +11,10 @@ interface RiffState {
   crystallizedOffset: number;    // How many chars have been processed
   draftFilename: string | null;  // Active draft being updated
   isDirty: boolean;              // True if user has typed since opening draft
+
+  // Artifact type
+  artifactType: RiffArtifactType;
+  artifactTypeSetByUser: boolean;  // Whether user manually picked a type
 
   // UI state
   isRiffMode: boolean;
@@ -31,6 +35,9 @@ interface RiffContextValue extends RiffState {
   enterRiffMode: (draftFilename?: string) => void;
   exitRiffMode: () => void;
 
+  // Artifact type
+  setArtifactType: (type: RiffArtifactType) => void;
+
   // Integration
   integrateNow: () => Promise<void>;
   applyChanges: () => Promise<void>;
@@ -45,6 +52,8 @@ const initialState: RiffState = {
   crystallizedOffset: 0,
   draftFilename: null,
   isDirty: false,
+  artifactType: 'note',
+  artifactTypeSetByUser: false,
   isRiffMode: false,
   isCrystallizing: false,
   isProcessing: false,
@@ -148,7 +157,8 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
         current.draftFilename,
         notesRef.current,
         modelRef.current,
-        abortControllerRef.current.signal
+        abortControllerRef.current.signal,
+        current.artifactType
       );
 
       // Advance the offset to mark only the text that was actually crystallized
@@ -265,6 +275,74 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
     createDraftIfNeeded();
   }, [state.rawLog, state.draftFilename, state.isRiffMode, state.isDirty]);
 
+  // Re-crystallize when offset resets to 0 (artifact type change)
+  useEffect(() => {
+    const { crystallizedOffset, rawLog, draftFilename, isRiffMode } = stateRef.current;
+    if (crystallizedOffset === 0 && rawLog.trim().length >= MIN_CHARS_TO_CRYSTALLIZE && draftFilename && isRiffMode) {
+      // Offset was reset — schedule re-crystallization
+      schedulecrystallization();
+    }
+  }, [state.artifactType, schedulecrystallization]);
+
+  // Auto-detect artifact type after first crystallization completes
+  useEffect(() => {
+    const detectType = async () => {
+      const { crystallizationCount, artifactTypeSetByUser, rawLog, draftFilename } = stateRef.current;
+
+      // Only run once: after first crystallization, if user hasn't manually set the type
+      if (crystallizationCount !== 1 || artifactTypeSetByUser || !rawLog || !draftFilename) return;
+      if (!modelRef.current) return;
+
+      try {
+        const detectedType = await riffService.detectArtifactType(rawLog, modelRef.current);
+        const current = stateRef.current;
+        if (detectedType !== current.artifactType && !current.artifactTypeSetByUser) {
+          // Type changed — update and re-crystallize
+          setState(prev => ({
+            ...prev,
+            artifactType: detectedType,
+            crystallizedOffset: 0,
+          }));
+          // Persist the detected type
+          if (current.draftFilename) {
+            await riffService.updateDraftRawInput(current.draftFilename, current.rawLog, 0, detectedType);
+          }
+        }
+      } catch (error) {
+        console.error('[RiffContext] Failed to detect artifact type:', error);
+      }
+    };
+
+    detectType();
+  }, [state.crystallizationCount]);
+
+  // Set artifact type (user override)
+  const setArtifactType = useCallback(async (type: RiffArtifactType) => {
+    const current = stateRef.current;
+    if (type === current.artifactType) return;
+
+    // Cancel any pending crystallization
+    if (crystallizeTimerRef.current) {
+      clearTimeout(crystallizeTimerRef.current);
+      crystallizeTimerRef.current = null;
+    }
+    abortControllerRef.current?.abort();
+    isCrystallizingRef.current = false;
+
+    setState(prev => ({
+      ...prev,
+      artifactType: type,
+      artifactTypeSetByUser: true,
+      crystallizedOffset: 0,
+      isCrystallizing: false,
+    }));
+
+    // Persist the type to frontmatter
+    if (current.draftFilename) {
+      await riffService.updateDraftRawInput(current.draftFilename, current.rawLog, 0, type);
+    }
+  }, []);
+
   // Enter riff mode
   const enterRiffMode = useCallback(async (existingDraftFilename?: string) => {
     // Clear any existing timers
@@ -272,15 +350,17 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
 
     if (existingDraftFilename) {
-      // Resume existing draft - load rawInput and crystallizedOffset from frontmatter
+      // Resume existing draft - load rawInput, crystallizedOffset, and artifactType from frontmatter
       try {
-        const { rawInput, crystallizedOffset } = await riffService.getDraftRawInput(existingDraftFilename);
+        const { rawInput, crystallizedOffset, artifactType } = await riffService.getDraftRawInput(existingDraftFilename);
         setState(prev => ({
           ...prev,
           isRiffMode: true,
           draftFilename: existingDraftFilename,
           rawLog: rawInput,
           crystallizedOffset,
+          artifactType,
+          artifactTypeSetByUser: true,  // Don't re-detect when resuming
           isDirty: false,
           phase: 'riffing',
         }));
@@ -304,6 +384,8 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
         draftFilename: null,
         rawLog: '',
         crystallizedOffset: 0,
+        artifactType: 'note',
+        artifactTypeSetByUser: false,
         isDirty: false,
         phase: 'idle',
       }));
@@ -345,7 +427,9 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
           pending,
           current.draftFilename,
           notesRef.current,
-          modelRef.current
+          modelRef.current,
+          undefined,
+          current.artifactType
         );
         setState(prev => ({ ...prev, crystallizedOffset: targetOffset }));
       }
@@ -420,6 +504,7 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
     setRawLog,
     enterRiffMode,
     exitRiffMode,
+    setArtifactType,
     integrateNow,
     applyChanges,
     cancelIntegration,

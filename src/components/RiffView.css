@@ -16,6 +16,23 @@
   align-items: center;
 }
 
+/* Artifact type selector */
+.riff-view .artifact-type-select {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-primary, white);
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.riff-view .artifact-type-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Button styles */
 .riff-view .btn-small {
   padding: 0.4rem 0.75rem;

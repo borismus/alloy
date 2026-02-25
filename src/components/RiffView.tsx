@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
-import { NoteInfo } from '../types';
+import { NoteInfo, RiffArtifactType } from '../types';
 import { riffService } from '../services/riff';
 import { useRiffContext } from '../contexts/RiffContext';
 import { MarkdownContent } from './MarkdownContent';
@@ -71,8 +71,10 @@ export const RiffView: React.FC<RiffViewProps> = ({
     isCrystallizing,
     isProcessing,
     crystallizationCount,
+    artifactType,
     setRawLog,
     exitRiffMode,
+    setArtifactType,
     integrateNow,
     setConfig,
   } = useRiffContext();
@@ -167,6 +169,11 @@ export const RiffView: React.FC<RiffViewProps> = ({
     setRawLog(newValue);
   }, [setRawLog]);
 
+  // Handle artifact type change
+  const handleArtifactTypeChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setArtifactType(e.target.value as RiffArtifactType);
+  }, [setArtifactType]);
+
   // Handle integrate
   const handleIntegrate = useCallback(() => {
     integrateNow();
@@ -204,6 +211,16 @@ export const RiffView: React.FC<RiffViewProps> = ({
       >
         {draftFilename && (
           <>
+            <select
+              className="artifact-type-select"
+              value={artifactType}
+              onChange={handleArtifactTypeChange}
+              disabled={isProcessing || isCrystallizing}
+              title="Artifact type"
+            >
+              <option value="note">Draft Note</option>
+              <option value="mermaid">Mermaid Diagram</option>
+            </select>
             <span className="draft-indicator">
               {isProcessing ? 'Integrating...' : isCrystallizing ? 'Crystallizing...' : 'Draft'}
             </span>

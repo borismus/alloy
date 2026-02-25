@@ -163,6 +163,35 @@
   font-weight: 600;
 }
 
+/* Mermaid diagram rendering */
+.markdown-content .mermaid-diagram {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--bg-secondary, #f8f9fa);
+  border-radius: 8px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.markdown-content .mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-content .mermaid-error {
+  margin: 1rem 0;
+}
+
+.markdown-content .mermaid-error pre {
+  margin-bottom: 0.5rem;
+}
+
+.markdown-content .mermaid-error-msg {
+  color: #dc3545;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
 /* Hide KaTeX MathML duplicate (normally hidden by katex.css which we can't import) */
 .markdown-content .katex-mathml {
   display: none;

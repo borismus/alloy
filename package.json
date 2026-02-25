@@ -12,7 +12,16 @@
   "bugs": {
     "url": "https://github.com/borismus/alloy/issues"
   },
-  "keywords": ["ai", "chat", "claude", "openai", "gemini", "ollama", "tauri", "local-first"],
+  "keywords": [
+    "ai",
+    "chat",
+    "claude",
+    "openai",
+    "gemini",
+    "ollama",
+    "tauri",
+    "local-first"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -48,6 +57,7 @@
     "chokidar": "^4",
     "express": "^5",
     "js-yaml": "^4.1.1",
+    "mermaid": "^11.12.3",
     "openai": "^6.16.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

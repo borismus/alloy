@@ -189,6 +189,8 @@ export interface ConversationStreamingState {
 // Timeline filter type (replaces old SidebarTab)
 export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'triggers' | 'riffs';
 
+export type RiffArtifactType = 'note' | 'mermaid';
+
 // Note metadata for sidebar display
 export interface NoteInfo {
   filename: string;        // e.g., "my-note.md"
@@ -197,6 +199,7 @@ export interface NoteInfo {
   isRiff?: boolean;      // true if in riffs/ directory
   isIntegrated?: boolean;  // for riffs: whether integrated into notes
   title?: string;          // for riffs: custom title from frontmatter
+  artifactType?: RiffArtifactType;  // for riffs: what kind of artifact
 }
 
 // Unified timeline item for sidebar display

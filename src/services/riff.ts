@@ -1,7 +1,7 @@
 import { readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Message, NoteInfo, ProposedChange, getProviderFromModel, getModelIdFromModel } from '../types';
+import { Message, NoteInfo, ProposedChange, RiffArtifactType, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from './providers';
 
 interface RiffHistoryFile {
@@ -179,6 +179,7 @@ export class RiffService {
 
     const initialContent = `---
 integrated: false
+artifactType: note
 ${rawInputYaml}
 ---
 # Riff - ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
@@ -189,17 +190,17 @@ ${rawInputYaml}
     return filename;
   }
 
-  // Get the rawInput and crystallizedOffset from a draft's frontmatter
-  async getDraftRawInput(riffNotePath: string): Promise<{ rawInput: string; crystallizedOffset: number }> {
-    if (!this.vaultPath) return { rawInput: '', crystallizedOffset: 0 };
+  // Get the rawInput, crystallizedOffset, and artifactType from a draft's frontmatter
+  async getDraftRawInput(riffNotePath: string): Promise<{ rawInput: string; crystallizedOffset: number; artifactType: RiffArtifactType }> {
+    if (!this.vaultPath) return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
 
     try {
       const fullPath = await join(this.vaultPath, riffNotePath);
-      if (!(await exists(fullPath))) return { rawInput: '', crystallizedOffset: 0 };
+      if (!(await exists(fullPath))) return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
 
       const content = await readTextFile(fullPath);
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) return { rawInput: '', crystallizedOffset: 0 };
+      if (!fmMatch) return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
 
       const frontmatter = fmMatch[1];
 
@@ -222,15 +223,22 @@ ${rawInputYaml}
         crystallizedOffset = parseInt(offsetMatch[1], 10);
       }
 
-      return { rawInput, crystallizedOffset };
+      // Parse artifactType
+      let artifactType: RiffArtifactType = 'note';
+      const typeMatch = frontmatter.match(/artifactType:\s*(\w+)/);
+      if (typeMatch && (typeMatch[1] === 'note' || typeMatch[1] === 'mermaid')) {
+        artifactType = typeMatch[1] as RiffArtifactType;
+      }
+
+      return { rawInput, crystallizedOffset, artifactType };
     } catch (error) {
       console.error('[RiffService] Failed to get draft rawInput:', error);
-      return { rawInput: '', crystallizedOffset: 0 };
+      return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
     }
   }
 
-  // Update the rawInput and crystallizedOffset in a draft's frontmatter
-  async updateDraftRawInput(riffNotePath: string, rawInput: string, crystallizedOffset?: number): Promise<void> {
+  // Update the rawInput, crystallizedOffset, and optionally artifactType in a draft's frontmatter
+  async updateDraftRawInput(riffNotePath: string, rawInput: string, crystallizedOffset?: number, artifactType?: RiffArtifactType): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
     const fullPath = await join(this.vaultPath, riffNotePath);
@@ -261,6 +269,15 @@ ${rawInputYaml}
       newFrontmatter = newFrontmatter.replace(/crystallizedOffset:\s*\d+/, offsetYaml);
     } else {
       newFrontmatter = newFrontmatter.trim() + '\n' + offsetYaml;
+    }
+
+    // Replace or add artifactType
+    if (artifactType) {
+      if (newFrontmatter.includes('artifactType:')) {
+        newFrontmatter = newFrontmatter.replace(/artifactType:\s*\w+/, `artifactType: ${artifactType}`);
+      } else {
+        newFrontmatter = newFrontmatter.trim() + `\nartifactType: ${artifactType}`;
+      }
     }
 
     await writeTextFile(fullPath, `---\n${newFrontmatter}\n---\n${body}`);
@@ -301,6 +318,108 @@ ${rawInputYaml}
     await writeTextFile(fullPath, updatedContent);
   }
 
+  // Build the system prompt for crystallization based on artifact type
+  private buildCrystallizePrompt(
+    artifactType: RiffArtifactType,
+    existingContent: string,
+    newIncrementalText: string,
+    headerDate: string,
+    notesList: string
+  ): string {
+    if (artifactType === 'mermaid') {
+      return `You are a visual thinking partner helping the user develop their ideas as a Mermaid diagram. You receive only the NEW text since the last update.
+
+EXISTING DIAGRAM:
+${existingContent || '(empty - start fresh)'}
+
+NEW RAW INPUT to incorporate:
+${newIncrementalText}
+
+YOUR ROLE:
+1. **Visualize their thoughts** as a Mermaid diagram (flowchart, mindmap, sequence diagram, etc.)
+2. **Choose the best diagram type** based on the content (flowchart for processes, mindmap for brainstorming, sequence for interactions, etc.)
+3. **Answer questions** they ask mid-riff by incorporating the answer into the diagram
+4. **Fill in gaps** when they express uncertainty
+
+RULES:
+- Output ONLY a valid Mermaid diagram inside a \`\`\`mermaid code fence
+- The entire output must be the fenced mermaid code block - nothing else before or after
+- If there's an existing diagram, update it with the new thoughts woven in
+- Keep the diagram readable - don't overcrowd nodes
+- Use clear, concise labels on nodes and edges
+- Preserve all existing nodes/relationships and add new ones as needed`;
+    }
+
+    // Default: note type (existing behavior)
+    return `You are a thinking partner helping the user develop their thoughts. You receive only the NEW text since the last crystallization.
+
+EXISTING NOTE:
+${existingContent || `# Riff - ${headerDate}\n\n(empty - start fresh)`}
+
+NEW RAW INPUT to incorporate:
+${newIncrementalText}
+
+YOUR ROLE:
+1. **Organize their thoughts** into the note structure
+2. **Answer questions** they ask mid-riff (e.g., "what was that film with...?" → provide the answer inline)
+3. **Fill in gaps** when they express uncertainty ("I can't remember...", "what was that...", "something like...")
+4. **Occasionally prompt** with a brief question to deepen their thinking (sparingly - don't overdo it)
+
+FORMAT FOR YOUR CONTRIBUTIONS:
+- Mark your contributions with *italics* so they're visually distinct from the user's thoughts
+- Keep your contributions brief (1-2 sentences max)
+- Don't summarize or rephrase what they said - add value, don't echo
+
+RULES:
+- Output the COMPLETE updated note (existing content + new thoughts woven in)
+- Preserve the existing structure and all existing content
+- Add new thoughts in appropriate sections or create new sections as needed
+- Be concise but preserve the essence of all ideas
+- Output ONLY the note content (no meta-commentary)
+
+WIKILINK FORMAT:
+- Use ONLY double-bracket syntax: [[Note Name]]
+
+Existing notes in vault: ${notesList}`;
+  }
+
+  // Detect the best artifact type for the given input text
+  async detectArtifactType(text: string, model: string): Promise<RiffArtifactType> {
+    try {
+      const providerType = getProviderFromModel(model);
+      const modelId = getModelIdFromModel(model);
+      const provider = providerRegistry.getProvider(providerType);
+
+      if (!provider || !provider.isInitialized()) return 'note';
+
+      const systemPrompt = `Classify the user's input into one of these artifact types. Respond with ONLY the type name, nothing else.
+
+Types:
+- note: General thoughts, writing, brainstorming, questions, notes
+- mermaid: Relationships between things, processes, flows, hierarchies, comparisons, system architecture, sequences of events
+
+Default to "note" unless the input clearly describes visual relationships, processes, or structures that would benefit from a diagram.`;
+
+      const messages: Message[] = [
+        { role: 'user', timestamp: new Date().toISOString(), content: text }
+      ];
+
+      let response = '';
+      await provider.sendMessage(messages, {
+        model: modelId,
+        onChunk: (chunk: string) => { response += chunk; },
+        systemPrompt,
+      });
+
+      const trimmed = response.trim().toLowerCase();
+      if (trimmed === 'mermaid') return 'mermaid';
+      return 'note';
+    } catch (error) {
+      console.error('[RiffService] Failed to detect artifact type:', error);
+      return 'note';
+    }
+  }
+
   // Crystallize: incrementally extend the note with new thoughts
   // Only processes new text since last crystallization, using existing note as context
   async crystallize(
@@ -308,7 +427,8 @@ ${rawInputYaml}
     riffNotePath: string,
     existingNotes: NoteInfo[],
     model: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    artifactType: RiffArtifactType = 'note'
   ): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
@@ -350,39 +470,12 @@ ${rawInputYaml}
       headerDate = `${date} ${timeFormatted}`;
     }
 
-    const systemPrompt = `You are a thinking partner helping the user develop their thoughts. You receive only the NEW text since the last crystallization.
-
-EXISTING NOTE:
-${existingContent || `# Riff - ${headerDate}\n\n(empty - start fresh)`}
-
-NEW RAW INPUT to incorporate:
-${newIncrementalText}
-
-YOUR ROLE:
-1. **Organize their thoughts** into the note structure
-2. **Answer questions** they ask mid-riff (e.g., "what was that film with...?" → provide the answer inline)
-3. **Fill in gaps** when they express uncertainty ("I can't remember...", "what was that...", "something like...")
-4. **Occasionally prompt** with a brief question to deepen their thinking (sparingly - don't overdo it)
-
-FORMAT FOR YOUR CONTRIBUTIONS:
-- Mark your contributions with *italics* so they're visually distinct from the user's thoughts
-- Keep your contributions brief (1-2 sentences max)
-- Don't summarize or rephrase what they said - add value, don't echo
-
-RULES:
-- Output the COMPLETE updated note (existing content + new thoughts woven in)
-- Preserve the existing structure and all existing content
-- Add new thoughts in appropriate sections or create new sections as needed
-- Be concise but preserve the essence of all ideas
-- Output ONLY the note content (no meta-commentary)
-
-WIKILINK FORMAT:
-- Use ONLY double-bracket syntax: [[Note Name]]
-
-Existing notes in vault: ${notesList}`;
+    const systemPrompt = this.buildCrystallizePrompt(
+      artifactType, existingContent, newIncrementalText, headerDate, notesList
+    );
 
     const messages: Message[] = [
-      { role: 'user', timestamp: new Date().toISOString(), content: `Incorporate the new input into the note.` }
+      { role: 'user', timestamp: new Date().toISOString(), content: `Incorporate the new input into the ${artifactType === 'mermaid' ? 'diagram' : 'note'}.` }
     ];
 
     // Stream the response

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Components } from 'react-markdown';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { MermaidDiagram } from '../components/MermaidDiagram';
 
 // Helper to extract conversation ID from a path
 // Format: conversations/YYYY-MM-DD-HHMM-hash-title -> YYYY-MM-DD-HHMM-hash
@@ -155,6 +156,14 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
     img: ({ src, alt, ...props }: { src?: string; alt?: string; [key: string]: any }) => {
       if (!src) return null;
       return React.createElement('img', { src, alt, ...props });
+    },
+    code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: any }) => {
+      // Render mermaid code blocks as diagrams
+      if (className === 'language-mermaid') {
+        const code = String(children).replace(/\n$/, '');
+        return React.createElement(MermaidDiagram, { code });
+      }
+      return React.createElement('code', { className, ...props }, children);
     },
   };
 }

@@ -794,9 +794,10 @@ export class VaultService {
           const content = await readTextFile(filePath);
           const hasSkillContent = content.includes('&[[');
 
-          // Parse frontmatter to get integrated status and title
+          // Parse frontmatter to get integrated status, title, and artifact type
           let isIntegrated = false;
           let title: string | undefined;
+          let artifactType: 'note' | 'mermaid' | undefined;
           const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
           if (frontmatterMatch) {
             try {
@@ -804,6 +805,9 @@ export class VaultService {
               isIntegrated = frontmatter.integrated === true;
               if (typeof frontmatter.title === 'string') {
                 title = frontmatter.title;
+              }
+              if (frontmatter.artifactType === 'note' || frontmatter.artifactType === 'mermaid') {
+                artifactType = frontmatter.artifactType;
               }
             } catch {
               // Ignore frontmatter parse errors
@@ -817,6 +821,7 @@ export class VaultService {
             isRiff: true,
             isIntegrated,
             title,
+            artifactType,
           });
         }
       }
