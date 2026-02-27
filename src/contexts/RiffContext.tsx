@@ -1,35 +1,38 @@
-import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ProposedChange, NoteInfo, RiffArtifactType } from '../types';
+import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
+import { ProposedChange, NoteInfo, RiffArtifactType, RiffMessage, RiffComment } from '../types';
 import { riffService } from '../services/riff';
 import { vaultService } from '../services/vault';
 
 type RiffPhase = 'idle' | 'riffing' | 'integrating' | 'approving';
 
 interface RiffState {
-  // Core riff state (simplified)
-  rawLog: string;                // The full user input, append-only
-  crystallizedOffset: number;    // How many chars have been processed
-  draftFilename: string | null;  // Active draft being updated
-  isDirty: boolean;              // True if user has typed since opening draft
+  // Input
+  inputText: string;               // Current textarea value, clears after send
+  messages: RiffMessage[];         // Sent message history
 
-  // Artifact type
+  // Draft
+  draftFilename: string | null;
   artifactType: RiffArtifactType;
-  artifactTypeSetByUser: boolean;  // Whether user manually picked a type
+  artifactTypeSetByUser: boolean;
+
+  // Comments
+  comments: RiffComment[];
+  isCommenting: boolean;           // AI generating comments
 
   // UI state
   isRiffMode: boolean;
-  isCrystallizing: boolean;
-  isProcessing: boolean;         // Blocks UI (integration, apply)
+  isUpdating: boolean;             // LLM working on artifact update (command or mermaid/table)
+  isProcessing: boolean;           // Integration/apply in progress
   phase: RiffPhase;
-  crystallizationCount: number;  // Increments each time crystallization completes
 
   // Integration state
   proposedChanges: ProposedChange[];
 }
 
 interface RiffContextValue extends RiffState {
-  // Core methods
-  setRawLog: (newLog: string) => void;
+  // Input
+  setInputText: (text: string) => void;
+  sendMessage: (textOverride?: string) => Promise<void>;
 
   // Mode management
   enterRiffMode: (draftFilename?: string) => void;
@@ -37,6 +40,9 @@ interface RiffContextValue extends RiffState {
 
   // Artifact type
   setArtifactType: (type: RiffArtifactType) => void;
+
+  // Comments
+  resolveComment: (commentId: string) => void;
 
   // Integration
   integrateNow: () => Promise<void>;
@@ -48,27 +54,21 @@ interface RiffContextValue extends RiffState {
 }
 
 const initialState: RiffState = {
-  rawLog: '',
-  crystallizedOffset: 0,
+  inputText: '',
+  messages: [],
   draftFilename: null,
-  isDirty: false,
   artifactType: 'note',
   artifactTypeSetByUser: false,
+  comments: [],
+  isCommenting: false,
   isRiffMode: false,
-  isCrystallizing: false,
+  isUpdating: false,
   isProcessing: false,
   phase: 'idle',
-  crystallizationCount: 0,
   proposedChanges: [],
 };
 
 const RiffContext = createContext<RiffContextValue | null>(null);
-
-// Thresholds
-const PAUSE_DELAY_MS = 400;       // Crystallize after this pause
-const MIN_CHARS_TO_CRYSTALLIZE = 10;
-const EMERGENCY_THRESHOLD = 100;  // Crystallize immediately if this many chars pending
-const PERSIST_DELAY_MS = 2000;    // Save to disk after this pause
 
 interface RiffProviderProps {
   children: React.ReactNode;
@@ -77,30 +77,17 @@ interface RiffProviderProps {
 export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
   const [state, setState] = useState<RiffState>(initialState);
 
-  // Refs for timers and config
-  const crystallizeTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const persistTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const stateRef = useRef(state);
-  // Synchronous ref for crystallizing flag - prevents race conditions
-  // (setState is async, so stateRef.current.isCrystallizing can be stale)
-  const isCrystallizingRef = useRef(false);
 
-  // Config refs (model and notes for crystallization)
+  // Config refs (model and notes for artifact updates)
   const modelRef = useRef<string>('');
   const notesRef = useRef<NoteInfo[]>([]);
 
+  // Track active parallel updates
+  const activeUpdatesRef = useRef(0);
+
   // Keep stateRef in sync
   stateRef.current = state;
-
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
-      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-      abortControllerRef.current?.abort();
-    };
-  }, []);
 
   // Set config (model and notes) - must be called before riffing
   const setConfig = useCallback((model: string, notes: NoteInfo[]) => {
@@ -108,285 +95,218 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
     notesRef.current = notes;
   }, []);
 
-  // Get pending text (not yet crystallized)
-  const getPendingText = useCallback((): string => {
-    return stateRef.current.rawLog.slice(stateRef.current.crystallizedOffset);
+  // Set input text (simple setter, no auto-triggers)
+  const setInputText = useCallback((text: string) => {
+    setState(prev => ({ ...prev, inputText: text }));
   }, []);
 
-  // Persist rawLog and crystallizedOffset to draft frontmatter (for crash recovery)
-  const persistToDraft = useCallback(async () => {
-    const { draftFilename, rawLog, crystallizedOffset, isDirty } = stateRef.current;
-    // Only persist if user has actually typed something
-    if (!draftFilename || !rawLog || !isDirty) return;
+  // Persist messages to draft frontmatter
+  const persistMessages = useCallback(async () => {
+    const { draftFilename, messages, artifactType } = stateRef.current;
+    if (!draftFilename || messages.length === 0) return;
 
     try {
-      await riffService.updateDraftRawInput(draftFilename, rawLog, crystallizedOffset);
+      await riffService.updateDraftMessages(draftFilename, messages, artifactType);
     } catch (error) {
-      console.error('[RiffContext] Failed to persist:', error);
+      console.error('[RiffContext] Failed to persist messages:', error);
     }
   }, []);
 
-  // Crystallize pending text
-  const crystallizeNow = useCallback(async () => {
-    const current = stateRef.current;
+  // Fire-and-forget LLM work (parallel — no queue, no abort)
+  const fireUpdate = useCallback((work: () => Promise<void>) => {
+    activeUpdatesRef.current++;
+    setState(prev => ({ ...prev, isUpdating: true }));
 
-    // Guards - use synchronous ref to prevent race conditions
-    // (setState is async, so checking state.isCrystallizing can allow duplicates)
-    if (isCrystallizingRef.current) return;
-    if (!current.draftFilename) return;
+    (async () => {
+      try {
+        await work();
+      } catch (error: any) {
+        console.error('[RiffContext] Update error:', error);
+      }
+      activeUpdatesRef.current--;
+      if (activeUpdatesRef.current === 0) {
+        setState(prev => ({ ...prev, isUpdating: false }));
+      }
+    })();
+  }, []);
 
-    const pendingText = current.rawLog.slice(current.crystallizedOffset);
-    if (!pendingText.trim()) return;
+  // Generate comments asynchronously (independent from artifact updates)
+  const generateCommentsAsync = useCallback(async (draftFilename: string, recentInput: string) => {
+    if (!modelRef.current) return;
 
-    // Set flag synchronously BEFORE any async work
-    isCrystallizingRef.current = true;
+    // Derive eagerness from existing state: how many messages since the last comment?
+    const { messages, comments } = stateRef.current;
+    const lastCommentTime = comments.length > 0
+      ? Math.max(...comments.map(c => new Date(c.timestamp).getTime()))
+      : 0;
+    const messagesSinceLastComment = lastCommentTime === 0
+      ? messages.length
+      : messages.filter(m => new Date(m.timestamp).getTime() > lastCommentTime).length;
 
-    // Capture the target offset NOW, before async work
-    // This is the length of rawLog at crystallization start - any text added
-    // during crystallization should NOT be marked as crystallized
-    const targetOffset = current.rawLog.length;
+    // Existing comment paragraph indices for density filtering
+    const existingCommentParagraphs = comments.map(c => c.anchor.paragraphIndex);
 
-
-    setState(prev => ({ ...prev, isCrystallizing: true }));
-
+    setState(prev => ({ ...prev, isCommenting: true }));
     try {
-      abortControllerRef.current = new AbortController();
-
-      await riffService.crystallize(
-        pendingText,
-        current.draftFilename,
+      const commentAbort = new AbortController();
+      const newComments = await riffService.generateComments(
+        draftFilename,
+        recentInput,
         notesRef.current,
         modelRef.current,
-        abortControllerRef.current.signal,
-        current.artifactType
+        commentAbort.signal,
+        messagesSinceLastComment,
+        existingCommentParagraphs
       );
-
-      // Advance the offset to mark only the text that was actually crystallized
-      // Use the captured targetOffset, not prev.rawLog.length, to avoid marking
-      // text typed during crystallization as already processed
-      isCrystallizingRef.current = false;
-      setState(prev => ({
-        ...prev,
-        crystallizedOffset: targetOffset,
-        isCrystallizing: false,
-        crystallizationCount: prev.crystallizationCount + 1,
-      }));
-
-    } catch (error: any) {
-      isCrystallizingRef.current = false;
-      if (error?.name !== 'AbortError') {
-        console.error('[RiffContext] Crystallization error:', error);
-      }
-      setState(prev => ({ ...prev, isCrystallizing: false }));
+      setState(prev => {
+        const merged = [...prev.comments, ...newComments];
+        riffService.updateDraftComments(draftFilename, merged);
+        return { ...prev, comments: merged, isCommenting: false };
+      });
+    } catch (error) {
+      console.error('[RiffContext] Comment generation error:', error);
+      setState(prev => ({ ...prev, isCommenting: false }));
     }
   }, []);
 
-  // Schedule crystallization with debounce
-  const schedulecrystallization = useCallback(() => {
-    // Clear existing timer
-    if (crystallizeTimerRef.current) {
-      clearTimeout(crystallizeTimerRef.current);
-      crystallizeTimerRef.current = null;
+  // Send message — adds to history immediately, all LLM work is fire-and-forget
+  // textOverride bypasses React state (used by dictation to avoid stale reads)
+  const sendMessage = useCallback(async (textOverride?: string) => {
+    const current = stateRef.current;
+    const messageText = (textOverride ?? current.inputText).trim();
+    if (!messageText) return;
+
+    // Clear input immediately
+    setState(prev => ({ ...prev, inputText: '' }));
+
+    // Create draft if needed (fast file I/O, only on first message)
+    let draftFilename = current.draftFilename;
+    if (!draftFilename) {
+      draftFilename = await riffService.getOrCreateRiffNote();
+      setState(prev => ({ ...prev, draftFilename, phase: 'riffing' }));
     }
 
-    const pending = getPendingText();
+    // Add message to state immediately
+    const newMessage: RiffMessage = {
+      role: 'user',
+      timestamp: new Date().toISOString(),
+      content: messageText,
+    };
+    const updatedMessages = [...current.messages, newMessage];
+    setState(prev => ({ ...prev, messages: updatedMessages, draftFilename }));
 
-    // Emergency valve - too much text, crystallize now
-    if (pending.length >= EMERGENCY_THRESHOLD) {
-      crystallizeNow();
-      return;
-    }
+    // All LLM work runs in the background — sendMessage returns here
+    const draftFn = draftFilename;
+    const userSetType = current.artifactTypeSetByUser;
 
-    // Normal pause-based trigger
-    if (pending.trim().length >= MIN_CHARS_TO_CRYSTALLIZE) {
-      crystallizeTimerRef.current = setTimeout(() => {
-        crystallizeNow();
-      }, PAUSE_DELAY_MS);
-    }
-  }, [getPendingText, crystallizeNow]);
-
-  // Schedule persistence with debounce
-  const schedulePersistence = useCallback(() => {
-    if (persistTimerRef.current) {
-      clearTimeout(persistTimerRef.current);
-    }
-
-    persistTimerRef.current = setTimeout(() => {
-      persistToDraft();
-    }, PERSIST_DELAY_MS);
-  }, [persistToDraft]);
-
-  // Update the raw log (allows editing pending text, but not crystallized text)
-  const setRawLog = useCallback((newLog: string) => {
-    const current = stateRef.current.rawLog;
-    const addedText = newLog.slice(current.length);
-
-    // macOS dictation duplicate: added text equals existing content
-    if (addedText.length > 20 && addedText === current) {
-      return;
-    }
-
-    let didChange = false;
-    setState(prev => {
-      // Clamp crystallizedOffset to actual content length (handles edge cases)
-      const effectiveOffset = Math.min(prev.crystallizedOffset, prev.rawLog.length);
-
-      // Can't shrink below crystallizedOffset (protect crystallized text)
-      if (newLog.length < effectiveOffset) {
-        const fixedLog = prev.rawLog.slice(0, effectiveOffset) + newLog.slice(effectiveOffset);
-        didChange = fixedLog !== prev.rawLog;
-        return { ...prev, rawLog: fixedLog, isDirty: prev.isDirty || didChange };
+    fireUpdate(async () => {
+      // Detect artifact type on every message (unless user explicitly set via dropdown)
+      let artifactType = stateRef.current.artifactType;
+      if (!userSetType && modelRef.current) {
+        try {
+          const detected = await riffService.detectArtifactType(messageText, modelRef.current);
+          if (detected !== artifactType) {
+            artifactType = detected;
+            setState(prev => ({ ...prev, artifactType: detected }));
+          }
+        } catch (error) {
+          console.error('[RiffContext] Failed to detect artifact type:', error);
+        }
       }
-      // Can't modify crystallized portion
-      if (!newLog.startsWith(prev.rawLog.slice(0, effectiveOffset))) {
-        return prev; // Reject modification to crystallized text
-      }
-      didChange = newLog !== prev.rawLog;
-      return { ...prev, rawLog: newLog, isDirty: prev.isDirty || didChange };
-    });
 
-    // Only schedule crystallization and persistence if something changed
-    // Note: didChange may not reflect the actual state change due to React batching,
-    // but the schedulers check pending text anyway
-    schedulecrystallization();
-    schedulePersistence();
-  }, [schedulecrystallization, schedulePersistence]);
-
-  // Create draft if needed (when enough text accumulates)
-  useEffect(() => {
-    const createDraftIfNeeded = async () => {
-      const { rawLog, draftFilename, isRiffMode, isDirty } = stateRef.current;
-
-      // Only create draft if in riff mode, no draft yet, user has typed, and enough content
-      if (!isRiffMode || draftFilename || !isDirty || rawLog.trim().length < 10) return;
-
-      try {
-        const filename = await riffService.getOrCreateRiffNote(rawLog);
+      if (artifactType === 'note') {
+        // Classify input (append vs command)
+        const action = await riffService.classifyInput(messageText);
+        // Update the message's action in state
+        const msgWithAction: RiffMessage = { ...newMessage, action };
         setState(prev => ({
           ...prev,
-          draftFilename: filename,
-          phase: 'riffing',
+          messages: prev.messages.map(m =>
+            m.timestamp === newMessage.timestamp ? msgWithAction : m
+          ),
         }));
-      } catch (error) {
-        console.error('[RiffContext] Failed to create draft:', error);
-      }
-    };
 
-    createDraftIfNeeded();
-  }, [state.rawLog, state.draftFilename, state.isRiffMode, state.isDirty]);
-
-  // Re-crystallize when offset resets to 0 (artifact type change)
-  useEffect(() => {
-    const { crystallizedOffset, rawLog, draftFilename, isRiffMode } = stateRef.current;
-    if (crystallizedOffset === 0 && rawLog.trim().length >= MIN_CHARS_TO_CRYSTALLIZE && draftFilename && isRiffMode) {
-      // Offset was reset — schedule re-crystallization
-      schedulecrystallization();
-    }
-  }, [state.artifactType, schedulecrystallization]);
-
-  // Auto-detect artifact type after first crystallization completes
-  useEffect(() => {
-    const detectType = async () => {
-      const { crystallizationCount, artifactTypeSetByUser, rawLog, draftFilename } = stateRef.current;
-
-      // Only run once: after first crystallization, if user hasn't manually set the type
-      if (crystallizationCount !== 1 || artifactTypeSetByUser || !rawLog || !draftFilename) return;
-      if (!modelRef.current) return;
-
-      try {
-        const detectedType = await riffService.detectArtifactType(rawLog, modelRef.current);
-        const current = stateRef.current;
-        if (detectedType !== current.artifactType && !current.artifactTypeSetByUser) {
-          // Type changed — update and re-crystallize
-          setState(prev => ({
-            ...prev,
-            artifactType: detectedType,
-            crystallizedOffset: 0,
-          }));
-          // Persist the detected type
-          if (current.draftFilename) {
-            await riffService.updateDraftRawInput(current.draftFilename, current.rawLog, 0, detectedType);
-          }
+        if (action === 'append') {
+          await riffService.appendToDocument(draftFn, messageText);
+        } else {
+          await riffService.applyCommand(messageText, draftFn, modelRef.current);
         }
-      } catch (error) {
-        console.error('[RiffContext] Failed to detect artifact type:', error);
+
+        await riffService.updateDraftMessages(draftFn, stateRef.current.messages, artifactType);
+        generateCommentsAsync(draftFn, messageText);
+      } else {
+        // Mermaid/table: AI-rewrite paradigm
+        await riffService.updateArtifact(
+          messageText,
+          stateRef.current.messages,
+          draftFn,
+          notesRef.current,
+          modelRef.current,
+          undefined,
+          artifactType
+        );
+        await riffService.updateDraftMessages(draftFn, stateRef.current.messages, artifactType);
       }
-    };
+    });
+  }, [fireUpdate, generateCommentsAsync]);
 
-    detectType();
-  }, [state.crystallizationCount]);
-
-  // Set artifact type (user override)
-  const setArtifactType = useCallback(async (type: RiffArtifactType) => {
+  // Resolve (dismiss) a comment
+  const resolveComment = useCallback(async (commentId: string) => {
     const current = stateRef.current;
-    if (type === current.artifactType) return;
+    const updated = current.comments.filter(c => c.id !== commentId);
+    setState(prev => ({ ...prev, comments: updated }));
 
-    // Cancel any pending crystallization
-    if (crystallizeTimerRef.current) {
-      clearTimeout(crystallizeTimerRef.current);
-      crystallizeTimerRef.current = null;
-    }
-    abortControllerRef.current?.abort();
-    isCrystallizingRef.current = false;
-
-    setState(prev => ({
-      ...prev,
-      artifactType: type,
-      artifactTypeSetByUser: true,
-      crystallizedOffset: 0,
-      isCrystallizing: false,
-    }));
-
-    // Persist the type to frontmatter
+    // Persist to frontmatter
     if (current.draftFilename) {
-      await riffService.updateDraftRawInput(current.draftFilename, current.rawLog, 0, type);
+      try {
+        await riffService.updateDraftComments(current.draftFilename, updated);
+      } catch (error) {
+        console.error('[RiffContext] Failed to persist comment removal:', error);
+      }
     }
   }, []);
 
   // Enter riff mode
   const enterRiffMode = useCallback(async (existingDraftFilename?: string) => {
-    // Clear any existing timers
-    if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
-    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
 
     if (existingDraftFilename) {
-      // Resume existing draft - load rawInput, crystallizedOffset, and artifactType from frontmatter
+      // Resume existing draft - load messages, artifactType, and comments from frontmatter
       try {
-        const { rawInput, crystallizedOffset, artifactType } = await riffService.getDraftRawInput(existingDraftFilename);
+        const { messages, artifactType, comments } = await riffService.getDraftMessages(existingDraftFilename);
         setState(prev => ({
           ...prev,
           isRiffMode: true,
           draftFilename: existingDraftFilename,
-          rawLog: rawInput,
-          crystallizedOffset,
+          inputText: '',
+          messages,
           artifactType,
           artifactTypeSetByUser: true,  // Don't re-detect when resuming
-          isDirty: false,
+          comments,
           phase: 'riffing',
         }));
       } catch (error) {
-        console.error('[RiffContext] Failed to load rawInput:', error);
+        console.error('[RiffContext] Failed to load draft messages:', error);
         setState(prev => ({
           ...prev,
           isRiffMode: true,
           draftFilename: existingDraftFilename,
-          rawLog: '',
-          crystallizedOffset: 0,
-          isDirty: false,
+          inputText: '',
+          messages: [],
+          comments: [],
           phase: 'riffing',
         }));
       }
     } else {
-      // Fresh start - empty input
+      // Fresh start - empty
       setState(prev => ({
         ...prev,
         isRiffMode: true,
         draftFilename: null,
-        rawLog: '',
-        crystallizedOffset: 0,
+        inputText: '',
+        messages: [],
+        comments: [],
         artifactType: 'note',
         artifactTypeSetByUser: false,
-        isDirty: false,
         phase: 'idle',
       }));
     }
@@ -394,48 +314,66 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
 
   // Exit riff mode
   const exitRiffMode = useCallback(async () => {
-    // Cancel timers and abort any ongoing crystallization
-    if (crystallizeTimerRef.current) clearTimeout(crystallizeTimerRef.current);
-    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-    abortControllerRef.current?.abort();
 
-    // Persist before exiting
-    await persistToDraft();
+    // Persist messages before exiting
+    await persistMessages();
 
     setState(initialState);
-  }, [persistToDraft]);
+  }, [persistMessages]);
 
-  // Integrate - crystallize remaining and generate proposals
+  // Set artifact type (user override)
+  const setArtifactType = useCallback(async (type: RiffArtifactType) => {
+    const current = stateRef.current;
+    if (type === current.artifactType) return;
+
+    setState(prev => ({
+      ...prev,
+      artifactType: type,
+      artifactTypeSetByUser: true,
+    }));
+
+    // Update draft body for new type
+    if (current.draftFilename) {
+      const draftFn = current.draftFilename;
+      const msgs = current.messages;
+
+      if (type === 'note') {
+        // Note mode: verbatim concat of messages as paragraphs (no AI rewrite)
+        const body = msgs.map(m => m.content).join('\n\n');
+        await riffService.updateDraft(draftFn, body);
+        await riffService.updateDraftMessages(draftFn, msgs, type);
+      } else {
+        // AI-rewrite for mermaid/table/summary
+        await riffService.updateDraft(draftFn, '');
+        await riffService.updateDraftMessages(draftFn, msgs, type);
+
+        if (msgs.length > 0 && modelRef.current) {
+          fireUpdate(async () => {
+            await riffService.updateArtifact(
+              msgs[msgs.length - 1].content,
+              msgs,
+              draftFn,
+              notesRef.current,
+              modelRef.current,
+              undefined,
+              type
+            );
+          });
+        }
+      }
+    }
+  }, [fireUpdate]);
+
+  // Integrate - generate proposals
   const integrateNow = useCallback(async () => {
     const current = stateRef.current;
     if (!current.draftFilename) return;
 
-    // Cancel any pending crystallization
-    if (crystallizeTimerRef.current) {
-      clearTimeout(crystallizeTimerRef.current);
-      crystallizeTimerRef.current = null;
-    }
-
     setState(prev => ({ ...prev, isProcessing: true }));
 
     try {
-      // Final crystallization if there's pending text
-      const pending = current.rawLog.slice(current.crystallizedOffset);
-      const targetOffset = current.rawLog.length; // Capture before async work
-      if (pending.trim()) {
-        await riffService.crystallize(
-          pending,
-          current.draftFilename,
-          notesRef.current,
-          modelRef.current,
-          undefined,
-          current.artifactType
-        );
-        setState(prev => ({ ...prev, crystallizedOffset: targetOffset }));
-      }
-
-      // Persist
-      await persistToDraft();
+      // Persist messages
+      await persistMessages();
 
       // Generate integration proposals
       setState(prev => ({ ...prev, phase: 'integrating' }));
@@ -460,7 +398,7 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
         isProcessing: false,
       }));
     }
-  }, [persistToDraft]);
+  }, [persistMessages]);
 
   // Apply proposed changes
   const applyChanges = useCallback(async () => {
@@ -501,10 +439,12 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
 
   const value: RiffContextValue = {
     ...state,
-    setRawLog,
+    setInputText,
+    sendMessage,
     enterRiffMode,
     exitRiffMode,
     setArtifactType,
+    resolveComment,
     integrateNow,
     applyChanges,
     cancelIntegration,

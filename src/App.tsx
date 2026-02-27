@@ -55,6 +55,7 @@ const RiffApprovalModal: React.FC = () => {
 interface MainPanelWithRiffProps {
   notes: NoteInfo[];
   selectedModel: string;
+  sonioxApiKey?: string;
   onNavigateToNote: (filename: string) => void;
   onNavigateToConversation: (conversationId: string, messageId?: string) => void;
   conversations: { id: string; title?: string }[];
@@ -69,6 +70,7 @@ interface MainPanelWithRiffProps {
 const MainPanelWithRiff: React.FC<MainPanelWithRiffProps> = ({
   notes,
   selectedModel,
+  sonioxApiKey,
   onNavigateToNote,
   onNavigateToConversation,
   conversations,
@@ -108,6 +110,7 @@ const MainPanelWithRiff: React.FC<MainPanelWithRiffProps> = ({
         <RiffView
           notes={notes}
           model={selectedModel}
+          sonioxApiKey={sonioxApiKey}
           onNavigateToNote={onNavigateToNote}
           onNavigateToConversation={onNavigateToConversation}
           conversations={conversations}
@@ -1442,6 +1445,7 @@ function AppContent() {
                 <RiffView
                   notes={notes}
                   model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+                  sonioxApiKey={config?.SONIOX_API_KEY}
                   onNavigateToNote={handleSelectNote}
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                   conversations={conversations}
@@ -1511,6 +1515,7 @@ function AppContent() {
       <MainPanelWithRiff
         notes={notes}
         selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+        sonioxApiKey={config?.SONIOX_API_KEY}
         onNavigateToNote={handleSelectNote}
         onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
         conversations={conversations}

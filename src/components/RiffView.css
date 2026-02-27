@@ -1,4 +1,5 @@
 .riff-view {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -65,31 +66,17 @@
   opacity: 0.9;
 }
 
-/* Draft section */
-.riff-draft-section {
-  flex: 0 0 auto;
-  max-height: 40%;
+/* Two-pane content area */
+.riff-content-area {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  flex-direction: column;
+  overflow: hidden;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.riff-draft-header {
-  padding: 0.75rem 1.5rem;
-  background: var(--bg-secondary, #f8f9fa);
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-}
-
-.riff-draft-header h3 {
-  margin: 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary, #666);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.riff-draft-content {
+/* Document pane - left side */
+.riff-document-pane {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -101,80 +88,350 @@
   min-width: 0;
 }
 
-/* Highlight animation for recently crystallized content */
-.riff-draft-content.just-crystallized {
-  animation: crystallize-fade 3s ease-out forwards;
-}
-
-.riff-draft-content.just-crystallized .markdown-content {
-  animation: crystallize-glow 3s ease-out forwards;
-}
-
-@keyframes crystallize-fade {
-  0% {
-    background-color: rgba(102, 126, 234, 0.08);
-  }
-  100% {
-    background-color: transparent;
-  }
-}
-
-@keyframes crystallize-glow {
-  0% {
-    box-shadow: inset 0 0 0 2px rgba(102, 126, 234, 0.4);
-    border-radius: 6px;
-  }
-  100% {
-    box-shadow: inset 0 0 0 2px transparent;
-  }
-}
-
-/* Log section */
-.riff-log-section {
-  flex: 1;
+.riff-document-pane.riff-draft-canvas {
+  padding: 0.5rem;
   display: flex;
-  flex-direction: column;
-  min-height: 0;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.riff-log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1.5rem;
+.riff-document-pane.riff-draft-canvas .mermaid-diagram {
+  width: 100%;
+}
+
+.riff-document-pane.riff-draft-canvas .mermaid-diagram svg {
+  width: 100%;
+  height: auto;
+}
+
+.riff-document-pane.riff-draft-table {
+  overflow-x: auto;
+}
+
+.riff-document-pane.riff-draft-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.riff-document-pane.riff-draft-table th,
+.riff-document-pane.riff-draft-table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  text-align: left;
+}
+
+.riff-document-pane.riff-draft-table th {
   background: var(--bg-secondary, #f8f9fa);
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-}
-
-.riff-log-header h3 {
-  margin: 0;
-  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-secondary, #666);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
-.riff-log-hint {
-  font-size: 0.75rem;
-  color: var(--text-tertiary, #999);
-  font-style: italic;
+.riff-document-pane.riff-draft-table td {
+  font-size: 0.85rem;
 }
 
-.riff-log-input {
-  flex: 1;
+.riff-document-pane.riff-draft-table tr:hover td {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.02));
+}
+
+/* Transcript mode: reserve right margin for comments */
+.riff-document-pane.riff-transcript {
+  padding-right: 280px;
+}
+
+/* Paragraph blocks for comment anchoring */
+.riff-paragraphs {
   display: flex;
   flex-direction: column;
-  padding: 1rem 1.5rem;
-  min-height: 0;
+  gap: 0;
+}
+
+.riff-paragraph {
+  position: relative;
+  padding: 0.25rem 0.5rem;
+  border-left: 3px solid transparent;
+  border-radius: 2px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.riff-paragraph.has-comment {
+  border-left-color: #667eea;
+  background: rgba(102, 126, 234, 0.04);
+  cursor: pointer;
+}
+
+.riff-paragraph.active-comment {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+/* Margin-positioned comments — scroll with document */
+.riff-margin-comments {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: 240px;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 1;
+}
+
+.riff-margin-comments.active {
+  z-index: 10;
+}
+
+.riff-comment-card {
+  position: relative;
+  background: var(--bg-primary, white);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  padding-right: 1.5rem;
+  font-size: 0.8rem;
+  cursor: default;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* Collapsed state for dense comments (adjacent paragraphs both have comments) */
+.riff-margin-comments.collapsed .riff-comment-card {
+  max-height: 3.2em;
   overflow: hidden;
 }
 
-.riff-log-input .append-only-wrapper {
+.riff-margin-comments.collapsed .riff-comment-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.2em;
+  background: linear-gradient(transparent, var(--bg-primary, white));
+  pointer-events: none;
+}
+
+/* Active (expanded) state */
+.riff-margin-comments.active .riff-comment-card {
+  max-height: none;
+  overflow: visible;
+  border-color: #667eea;
+  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.2);
+}
+
+.riff-margin-comments.active .riff-comment-card::after {
+  display: none;
+}
+
+.riff-comment-content {
+  color: var(--text-primary, #333);
+  line-height: 1.4;
+}
+
+.riff-comment-dismiss {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--text-tertiary, #999);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.riff-comment-dismiss:hover {
+  color: var(--text-primary, #333);
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+/* Subtle commenting indicator - bottom right */
+.riff-commenting-indicator {
+  position: absolute;
+  bottom: 4rem;
+  right: 1rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px solid var(--border-color, #e0e0e0);
+  opacity: 0.7;
+}
+
+.riff-commenting-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-color, #e0e0e0);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: riff-spin 0.8s linear infinite;
+}
+
+@keyframes riff-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* History section - collapsible, for mermaid/table */
+.riff-history-section {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+.riff-history-toggle {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 1.5rem;
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #999);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: color 0.15s ease;
+}
+
+.riff-history-toggle:hover {
+  color: var(--text-secondary, #666);
+}
+
+.riff-history-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0 1.5rem 0.5rem;
+}
+
+.riff-history-entry {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.riff-history-time {
+  color: var(--text-tertiary, #999);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  min-width: 4.5rem;
+}
+
+.riff-history-change {
+  color: var(--text-secondary, #666);
+}
+
+/* Input area - chat-like input at bottom */
+.riff-input-area {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem 1.5rem;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
+}
+
+.riff-input-area textarea {
   flex: 1;
+  padding: 8px 12px;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
+  resize: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  max-height: 120px;
+  overflow-y: auto;
   background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+}
+
+.riff-input-area textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+.riff-input-area textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.riff-send-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  cursor: pointer;
+  font-size: 1rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease;
+}
+
+.riff-send-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.riff-send-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Microphone / dictation button */
+.riff-mic-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.riff-mic-button:hover:not(:disabled) {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.riff-mic-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.riff-mic-button.recording {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+}
+
+.riff-dictation-error {
+  padding: 0.25rem 1.5rem;
+  font-size: 0.75rem;
+  color: #ef4444;
 }
 
 /* Mobile styles */
@@ -184,40 +441,23 @@
     height: 100dvh;
   }
 
-  .riff-draft-header {
-    padding: 0.5rem 1rem;
-  }
-
-  .riff-draft-content {
+  .riff-document-pane {
     padding: 0.75rem 1rem;
   }
 
-  /* Draft section takes dominant space on mobile */
-  .riff-draft-section {
-    flex: 1;
-    max-height: none;
-    min-height: 0;
+  .riff-document-pane.riff-transcript {
+    padding-right: 1rem;
   }
 
-  /* Log section stays compact on mobile */
-  .riff-log-section {
-    flex: 0 0 auto;
+  .riff-margin-comments {
+    position: static;
+    width: auto;
+    padding-left: 0;
+    padding-top: 0.5rem;
   }
 
-  /* Hide log header on mobile to save space */
-  .riff-log-header {
-    display: none;
-  }
-
-  .riff-log-input {
+  .riff-input-area {
     padding: 0.5rem 1rem;
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
-  }
-
-  /* Limit textarea wrapper to ~2 lines on mobile */
-  .riff-log-input .append-only-wrapper {
-    flex: 0 0 auto;
-    max-height: 64px;
-    overflow: hidden;
   }
 }

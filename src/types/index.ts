@@ -164,6 +164,7 @@ export interface Config {
   OLLAMA_BASE_URL?: string;
   GEMINI_API_KEY?: string;
   XAI_API_KEY?: string;
+  SONIOX_API_KEY?: string;
 }
 
 export interface AppState {
@@ -189,7 +190,26 @@ export interface ConversationStreamingState {
 // Timeline filter type (replaces old SidebarTab)
 export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'triggers' | 'riffs';
 
-export type RiffArtifactType = 'note' | 'mermaid';
+export type RiffArtifactType = 'note' | 'mermaid' | 'table' | 'summary';
+
+export interface RiffMessage {
+  role: 'user';
+  timestamp: string;
+  content: string;
+  action?: 'append' | 'command';
+}
+
+export interface RiffCommentAnchor {
+  paragraphIndex: number;
+  snippet: string;
+}
+
+export interface RiffComment {
+  id: string;
+  timestamp: string;
+  anchor: RiffCommentAnchor;
+  content: string;
+}
 
 // Note metadata for sidebar display
 export interface NoteInfo {

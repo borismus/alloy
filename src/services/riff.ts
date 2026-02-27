@@ -1,8 +1,9 @@
 import { readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Message, NoteInfo, ProposedChange, RiffArtifactType, getProviderFromModel, getModelIdFromModel } from '../types';
+import { Message, NoteInfo, ProposedChange, RiffArtifactType, RiffMessage, RiffComment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from './providers';
+import { getOrchestratorModel } from './background';
 
 interface RiffHistoryFile {
   messages: Message[];
@@ -10,18 +11,6 @@ interface RiffHistoryFile {
 
 const MAX_MESSAGES = 50;
 const RIFF_FILENAME = 'riff_history.yaml';
-const RIFF_LOG_FILENAME = 'raw_input';
-
-// Terse system prompt for action-focused responses
-export const RIFF_SYSTEM_PROMPT = `You are a quick-action assistant. Be extremely terse. Focus on doing, not explaining.
-
-Rules:
-- Respond in 1-2 sentences max unless showing code/results
-- Prefer tool use over explanation
-- Skip pleasantries and acknowledgments
-- Just do the task, don't narrate
-- If asked to do something, do it immediately
-- Only explain if explicitly asked`;
 
 export class RiffService {
   private vaultPath: string | null = null;
@@ -37,72 +26,6 @@ export class RiffService {
   async getRiffFilePath(): Promise<string | null> {
     if (!this.vaultPath) return null;
     return await join(this.vaultPath, RIFF_FILENAME);
-  }
-
-  // Get the riff log file path (append-only journal)
-  async getRiffLogPath(): Promise<string | null> {
-    if (!this.vaultPath) return null;
-    const riffsPath = await join(this.vaultPath, 'riffs');
-    return await join(riffsPath, RIFF_LOG_FILENAME);
-  }
-
-  // Read the entire riff log (append-only journal)
-  async getRiffLog(): Promise<string> {
-    const logPath = await this.getRiffLogPath();
-    if (!logPath || !(await exists(logPath))) {
-      return '';
-    }
-    try {
-      return await readTextFile(logPath);
-    } catch (error) {
-      console.error('[RiffService] Failed to read riff log:', error);
-      return '';
-    }
-  }
-
-  // Write the full log content (replaces file)
-  async writeLog(content: string): Promise<void> {
-    if (!this.vaultPath) return;
-
-    // Ensure riffs directory exists
-    const riffsPath = await join(this.vaultPath, 'riffs');
-    if (!(await exists(riffsPath))) {
-      await mkdir(riffsPath, { recursive: true });
-    }
-
-    const logPath = await this.getRiffLogPath();
-    if (!logPath) return;
-
-    try {
-      await writeTextFile(logPath, content);
-    } catch (error) {
-      console.error('[RiffService] Failed to write riff log:', error);
-    }
-  }
-
-  // Append text to the global log (more efficient than full rewrite)
-  async appendToLog(text: string): Promise<void> {
-    if (!this.vaultPath || !text) return;
-
-    // Ensure riffs directory exists
-    const riffsPath = await join(this.vaultPath, 'riffs');
-    if (!(await exists(riffsPath))) {
-      await mkdir(riffsPath, { recursive: true });
-    }
-
-    const logPath = await this.getRiffLogPath();
-    if (!logPath) return;
-
-    try {
-      // Read existing content and append
-      let existingContent = '';
-      if (await exists(logPath)) {
-        existingContent = await readTextFile(logPath);
-      }
-      await writeTextFile(logPath, existingContent + text);
-    } catch (error) {
-      console.error('[RiffService] Failed to append to riff log:', error);
-    }
   }
 
   async loadHistory(): Promise<Message[]> {
@@ -154,7 +77,7 @@ export class RiffService {
   }
 
   // Get or create a timestamped riff note
-  async getOrCreateRiffNote(initialRawInput = ''): Promise<string> {
+  async getOrCreateRiffNote(): Promise<string> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
     // Ensure riffs directory exists
@@ -171,16 +94,11 @@ export class RiffService {
 
     const fullPath = await join(this.vaultPath, filename);
 
-    // Create the file with frontmatter (including rawInput) and header
-    // Use YAML literal block scalar for multi-line rawInput
-    const rawInputYaml = initialRawInput
-      ? `rawInput: |\n${initialRawInput.split('\n').map(line => '  ' + line).join('\n')}`
-      : 'rawInput: ""';
-
     const initialContent = `---
 integrated: false
 artifactType: note
-${rawInputYaml}
+history: []
+messages: []
 ---
 # Riff - ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
 
@@ -190,55 +108,70 @@ ${rawInputYaml}
     return filename;
   }
 
-  // Get the rawInput, crystallizedOffset, and artifactType from a draft's frontmatter
-  async getDraftRawInput(riffNotePath: string): Promise<{ rawInput: string; crystallizedOffset: number; artifactType: RiffArtifactType }> {
-    if (!this.vaultPath) return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
+  // Get messages, artifactType, and comments from a draft's frontmatter
+  async getDraftMessages(riffNotePath: string): Promise<{ messages: RiffMessage[]; artifactType: RiffArtifactType; comments: RiffComment[] }> {
+    if (!this.vaultPath) return { messages: [], artifactType: 'note', comments: [] };
 
     try {
       const fullPath = await join(this.vaultPath, riffNotePath);
-      if (!(await exists(fullPath))) return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
+      if (!(await exists(fullPath))) return { messages: [], artifactType: 'note', comments: [] };
 
       const content = await readTextFile(fullPath);
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
+      if (!fmMatch) return { messages: [], artifactType: 'note', comments: [] };
 
-      const frontmatter = fmMatch[1];
-
-      // Parse rawInput (handles YAML literal block scalar)
-      let rawInput = '';
-      const rawInputMatch = frontmatter.match(/rawInput:\s*\|?\n?([\s\S]*?)(?=\n\w+:|$)/);
-      if (rawInputMatch) {
-        const rawValue = rawInputMatch[1];
-        if (rawValue.startsWith('  ')) {
-          rawInput = rawValue.split('\n').map(line => line.slice(2)).join('\n').trim();
-        } else {
-          rawInput = rawValue.replace(/^["']|["']$/g, '').trim();
-        }
-      }
-
-      // Parse crystallizedOffset
-      let crystallizedOffset = 0; // Default to nothing crystallized (allow editing)
-      const offsetMatch = frontmatter.match(/crystallizedOffset:\s*(\d+)/);
-      if (offsetMatch) {
-        crystallizedOffset = parseInt(offsetMatch[1], 10);
-      }
+      const fmBody = fmMatch[1];
+      const parsed = yaml.load(fmBody) as Record<string, any> || {};
 
       // Parse artifactType
       let artifactType: RiffArtifactType = 'note';
-      const typeMatch = frontmatter.match(/artifactType:\s*(\w+)/);
-      if (typeMatch && (typeMatch[1] === 'note' || typeMatch[1] === 'mermaid')) {
-        artifactType = typeMatch[1] as RiffArtifactType;
+      if (parsed.artifactType === 'mermaid' || parsed.artifactType === 'table' || parsed.artifactType === 'note' || parsed.artifactType === 'summary') {
+        artifactType = parsed.artifactType;
       }
 
-      return { rawInput, crystallizedOffset, artifactType };
+      // Parse comments
+      const comments: RiffComment[] = Array.isArray(parsed.comments)
+        ? parsed.comments.map((c: any) => ({
+            id: c.id || `comment-${Date.now()}`,
+            timestamp: c.timestamp || '',
+            anchor: {
+              paragraphIndex: c.anchor?.paragraphIndex ?? 0,
+              snippet: c.anchor?.snippet || '',
+            },
+            content: c.content || '',
+          }))
+        : [];
+
+      // Parse messages (new format)
+      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+        const messages: RiffMessage[] = parsed.messages.map((m: any) => ({
+          role: 'user' as const,
+          timestamp: m.timestamp || '',
+          content: m.content || '',
+          ...(m.action && { action: m.action }),
+        }));
+        return { messages, artifactType, comments };
+      }
+
+      // Backward compat: migrate from old rawInput format
+      if (parsed.rawInput && typeof parsed.rawInput === 'string' && parsed.rawInput.trim()) {
+        const messages: RiffMessage[] = [{
+          role: 'user',
+          timestamp: new Date().toISOString(),
+          content: parsed.rawInput.trim(),
+        }];
+        return { messages, artifactType, comments };
+      }
+
+      return { messages: [], artifactType, comments };
     } catch (error) {
-      console.error('[RiffService] Failed to get draft rawInput:', error);
-      return { rawInput: '', crystallizedOffset: 0, artifactType: 'note' };
+      console.error('[RiffService] Failed to get draft messages:', error);
+      return { messages: [], artifactType: 'note', comments: [] };
     }
   }
 
-  // Update the rawInput, crystallizedOffset, and optionally artifactType in a draft's frontmatter
-  async updateDraftRawInput(riffNotePath: string, rawInput: string, crystallizedOffset?: number, artifactType?: RiffArtifactType): Promise<void> {
+  // Update messages and optionally artifactType in a draft's frontmatter
+  async updateDraftMessages(riffNotePath: string, messages: RiffMessage[], artifactType?: RiffArtifactType): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
     const fullPath = await join(this.vaultPath, riffNotePath);
@@ -248,39 +181,27 @@ ${rawInputYaml}
     const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
     if (!fmMatch) return;
 
-    const [, frontmatter, body] = fmMatch;
+    const [, fmBody, body] = fmMatch;
+    const parsed = yaml.load(fmBody) as Record<string, any> || {};
 
-    // Build new frontmatter with updated rawInput and crystallizedOffset
-    const rawInputYaml = rawInput
-      ? `rawInput: |\n${rawInput.split('\n').map(line => '  ' + line).join('\n')}`
-      : 'rawInput: ""';
-    const offsetYaml = `crystallizedOffset: ${crystallizedOffset ?? rawInput.length}`;
+    // Update messages (cap at MAX_MESSAGES)
+    parsed.messages = messages.slice(-MAX_MESSAGES).map(m => ({
+      role: m.role,
+      timestamp: m.timestamp,
+      content: m.content,
+      ...(m.action && { action: m.action }),
+    }));
 
-    // Replace or add rawInput in frontmatter
-    let newFrontmatter: string;
-    if (frontmatter.includes('rawInput:')) {
-      newFrontmatter = frontmatter.replace(/rawInput:[\s\S]*?(?=\n\w+:|$)/, rawInputYaml);
-    } else {
-      newFrontmatter = frontmatter.trim() + '\n' + rawInputYaml;
-    }
-
-    // Replace or add crystallizedOffset
-    if (newFrontmatter.includes('crystallizedOffset:')) {
-      newFrontmatter = newFrontmatter.replace(/crystallizedOffset:\s*\d+/, offsetYaml);
-    } else {
-      newFrontmatter = newFrontmatter.trim() + '\n' + offsetYaml;
-    }
-
-    // Replace or add artifactType
+    // Update artifactType if provided
     if (artifactType) {
-      if (newFrontmatter.includes('artifactType:')) {
-        newFrontmatter = newFrontmatter.replace(/artifactType:\s*\w+/, `artifactType: ${artifactType}`);
-      } else {
-        newFrontmatter = newFrontmatter.trim() + `\nartifactType: ${artifactType}`;
-      }
+      parsed.artifactType = artifactType;
     }
 
-    await writeTextFile(fullPath, `---\n${newFrontmatter}\n---\n${body}`);
+    // Remove old fields if present
+    delete parsed.rawInput;
+    delete parsed.crystallizedOffset;
+
+    await writeTextFile(fullPath, `---\n${yaml.dump(parsed, { lineWidth: -1 })}---\n${body}`);
   }
 
   // Update draft content directly (preserves frontmatter)
@@ -318,52 +239,123 @@ ${rawInputYaml}
     await writeTextFile(fullPath, updatedContent);
   }
 
-  // Build the system prompt for crystallization based on artifact type
-  private buildCrystallizePrompt(
+  // Build the system prompt for artifact update based on type
+  private buildUpdatePrompt(
     artifactType: RiffArtifactType,
     existingContent: string,
-    newIncrementalText: string,
+    messageHistory: RiffMessage[],
+    latestMessage: string,
     headerDate: string,
     notesList: string
   ): string {
+    // Format conversation history (all messages except the latest)
+    const historyLines = messageHistory.slice(0, -1).map((m, i) =>
+      `[${i + 1}] ${m.content}`
+    ).join('\n');
+    const historySection = historyLines
+      ? `\nCONVERSATION HISTORY:\n${historyLines}\n`
+      : '';
+
     if (artifactType === 'mermaid') {
-      return `You are a visual thinking partner helping the user develop their ideas as a Mermaid diagram. You receive only the NEW text since the last update.
+      return `You are a visual thinking partner helping the user develop their ideas as a Mermaid diagram.
 
 EXISTING DIAGRAM:
 ${existingContent || '(empty - start fresh)'}
-
-NEW RAW INPUT to incorporate:
-${newIncrementalText}
+${historySection}
+LATEST MESSAGE:
+${latestMessage}
 
 YOUR ROLE:
 1. **Visualize their thoughts** as a Mermaid diagram (flowchart, mindmap, sequence diagram, etc.)
 2. **Choose the best diagram type** based on the content (flowchart for processes, mindmap for brainstorming, sequence for interactions, etc.)
-3. **Answer questions** they ask mid-riff by incorporating the answer into the diagram
+3. **Answer questions** by incorporating the answer into the diagram
 4. **Fill in gaps** when they express uncertainty
+5. **Follow instructions** — if they ask to change, add, or remove something, do it
 
 RULES:
 - Output ONLY a valid Mermaid diagram inside a \`\`\`mermaid code fence
 - The entire output must be the fenced mermaid code block - nothing else before or after
-- If there's an existing diagram, update it with the new thoughts woven in
+- If there's an existing diagram, update it based on the latest message
 - Keep the diagram readable - don't overcrowd nodes
 - Use clear, concise labels on nodes and edges
-- Preserve all existing nodes/relationships and add new ones as needed`;
+- Preserve existing nodes/relationships unless the user asks to change them
+
+CHANGE LOG:
+Before your main output, include a single <changes> tag with a brief description of what you changed and why:
+<changes>Your change description here</changes>`;
     }
 
-    // Default: note type (existing behavior)
-    return `You are a thinking partner helping the user develop their thoughts. You receive only the NEW text since the last crystallization.
+    if (artifactType === 'summary') {
+      return `You are a concise summarizer helping the user distill their thoughts.
+
+EXISTING SUMMARY:
+${existingContent || '(empty - start fresh)'}
+${historySection}
+LATEST MESSAGE:
+${latestMessage}
+
+YOUR ROLE:
+1. **Distill** all messages and existing content into a clear, concise summary
+2. **Organize** by theme or topic, not chronologically
+3. **Highlight** key decisions, insights, and open questions
+4. **Follow instructions** — if they ask to adjust focus, expand, or trim, do it
+
+RULES:
+- Output a well-structured Markdown summary (use headings, bullets, bold for emphasis)
+- Be concise — aim for ~30% of the original content length
+- Preserve key facts and decisions, drop filler and repetition
+- Output ONLY the summary content (no meta-commentary)
+
+CHANGE LOG:
+Before your main output, include a single <changes> tag with a brief description of what you changed and why:
+<changes>Your change description here</changes>`;
+    }
+
+    if (artifactType === 'table') {
+      return `You are a structured thinking partner helping the user develop their ideas as a Markdown table.
+
+EXISTING TABLE:
+${existingContent || '(empty - start fresh)'}
+${historySection}
+LATEST MESSAGE:
+${latestMessage}
+
+YOUR ROLE:
+1. **Structure their thoughts** into a well-organized Markdown table
+2. **Choose appropriate columns** based on the content (comparisons, features, pros/cons, timelines, etc.)
+3. **Answer questions** by incorporating the answer into the table
+4. **Fill in gaps** when they express uncertainty
+5. **Reorganize** columns or rows when the data calls for it
+6. **Follow instructions** — if they ask to change, add, or remove something, do it
+
+RULES:
+- Output ONLY a valid Markdown table - nothing else before or after
+- Use standard Markdown table syntax with | delimiters and header separators (---)
+- If there's an existing table, update it based on the latest message
+- Keep cells concise - use short phrases, not paragraphs
+- Preserve existing rows/columns unless the user asks to change them
+- Use alignment (left/center/right) when it improves readability
+
+CHANGE LOG:
+Before your main output, include a single <changes> tag with a brief description of what you changed and why:
+<changes>Your change description here</changes>`;
+    }
+
+    // Default: note type
+    return `You are a thinking partner helping the user develop their thoughts.
 
 EXISTING NOTE:
 ${existingContent || `# Riff - ${headerDate}\n\n(empty - start fresh)`}
-
-NEW RAW INPUT to incorporate:
-${newIncrementalText}
+${historySection}
+LATEST MESSAGE:
+${latestMessage}
 
 YOUR ROLE:
 1. **Organize their thoughts** into the note structure
-2. **Answer questions** they ask mid-riff (e.g., "what was that film with...?" → provide the answer inline)
+2. **Answer questions** they ask (e.g., "what was that film with...?" → provide the answer inline)
 3. **Fill in gaps** when they express uncertainty ("I can't remember...", "what was that...", "something like...")
-4. **Occasionally prompt** with a brief question to deepen their thinking (sparingly - don't overdo it)
+4. **Follow instructions** — if they ask to rephrase, restructure, or change something, do it
+5. **Occasionally prompt** with a brief question to deepen their thinking (sparingly)
 
 FORMAT FOR YOUR CONTRIBUTIONS:
 - Mark your contributions with *italics* so they're visually distinct from the user's thoughts
@@ -376,6 +368,10 @@ RULES:
 - Add new thoughts in appropriate sections or create new sections as needed
 - Be concise but preserve the essence of all ideas
 - Output ONLY the note content (no meta-commentary)
+
+CHANGE LOG:
+Before your main output, include a single <changes> tag with a brief description of what you changed and why:
+<changes>Your change description here</changes>
 
 WIKILINK FORMAT:
 - Use ONLY double-bracket syntax: [[Note Name]]
@@ -396,9 +392,13 @@ Existing notes in vault: ${notesList}`;
 
 Types:
 - note: General thoughts, writing, brainstorming, questions, notes
-- mermaid: Relationships between things, processes, flows, hierarchies, comparisons, system architecture, sequences of events
+- mermaid: Relationships between things, processes, flows, hierarchies, system architecture, sequences of events
+- table: Comparisons, lists of items with attributes, pros/cons, feature matrices, rankings, structured data
+- summary: Explicit requests to summarize, condense, or distill (e.g., "summarize this", "give me a summary", "condense everything")
 
-Default to "note" unless the input clearly describes visual relationships, processes, or structures that would benefit from a diagram.`;
+Also detect mode-switch requests: "show this as a table", "turn this into a diagram", "make a mermaid chart", "summarize everything so far".
+
+Default to "note" unless the input clearly matches another type.`;
 
       const messages: Message[] = [
         { role: 'user', timestamp: new Date().toISOString(), content: text }
@@ -413,6 +413,8 @@ Default to "note" unless the input clearly describes visual relationships, proce
 
       const trimmed = response.trim().toLowerCase();
       if (trimmed === 'mermaid') return 'mermaid';
+      if (trimmed === 'table') return 'table';
+      if (trimmed === 'summary') return 'summary';
       return 'note';
     } catch (error) {
       console.error('[RiffService] Failed to detect artifact type:', error);
@@ -420,16 +422,16 @@ Default to "note" unless the input clearly describes visual relationships, proce
     }
   }
 
-  // Crystallize: incrementally extend the note with new thoughts
-  // Only processes new text since last crystallization, using existing note as context
-  async crystallize(
-    newIncrementalText: string,  // Only the new text since last crystallize
+  // Update the artifact based on the user's latest message and conversation history
+  async updateArtifact(
+    latestMessage: string,
+    messageHistory: RiffMessage[],
     riffNotePath: string,
     existingNotes: NoteInfo[],
     model: string,
     signal?: AbortSignal,
     artifactType: RiffArtifactType = 'note'
-  ): Promise<void> {
+  ): Promise<{ changeDescription: string }> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
     const providerType = getProviderFromModel(model);
@@ -448,7 +450,7 @@ Default to "note" unless the input clearly describes visual relationships, proce
       .map(n => n.filename.replace('.md', ''))
       .join(', ');
 
-    // Read existing crystallized content for context
+    // Read existing content for context
     let existingContent = '';
     let frontmatter = '---\nintegrated: false\n---\n';
     if (await exists(fullPath)) {
@@ -470,29 +472,341 @@ Default to "note" unless the input clearly describes visual relationships, proce
       headerDate = `${date} ${timeFormatted}`;
     }
 
-    const systemPrompt = this.buildCrystallizePrompt(
-      artifactType, existingContent, newIncrementalText, headerDate, notesList
+    const systemPrompt = this.buildUpdatePrompt(
+      artifactType, existingContent, messageHistory, latestMessage, headerDate, notesList
     );
 
     const messages: Message[] = [
-      { role: 'user', timestamp: new Date().toISOString(), content: `Incorporate the new input into the ${artifactType === 'mermaid' ? 'diagram' : 'note'}.` }
+      { role: 'user', timestamp: new Date().toISOString(), content: `Update the ${artifactType === 'mermaid' ? 'diagram' : artifactType === 'table' ? 'table' : 'note'} based on the latest message.` }
     ];
 
     // Stream the response
-    let crystallized = '';
+    let response = '';
     await provider.sendMessage(messages, {
       model: modelId,
       onChunk: (chunk: string) => {
-        crystallized += chunk;
+        response += chunk;
       },
       signal,
       systemPrompt,
     });
 
-    // Write the updated note, preserving frontmatter
-    if (crystallized.trim()) {
-      await writeTextFile(fullPath, frontmatter + crystallized.trim() + '\n');
+    // Extract <changes> tag from response (if present) and strip it from content
+    let changeDescription = '';
+    const changesMatch = response.match(/<changes>([\s\S]*?)<\/changes>/);
+    if (changesMatch) {
+      changeDescription = changesMatch[1].trim();
+      response = response.replace(/<changes>[\s\S]*?<\/changes>\s*/, '');
     }
+
+    // Write the updated artifact
+    if (response.trim()) {
+      // Re-read frontmatter to avoid clobbering concurrent updates
+      let currentFrontmatter = frontmatter;
+      if (await exists(fullPath)) {
+        const currentContent = await readTextFile(fullPath);
+        const fmMatch = currentContent.match(/^---\n[\s\S]*?\n---\n/);
+        if (fmMatch) {
+          currentFrontmatter = fmMatch[0];
+        }
+      }
+
+      // Add history entry to frontmatter if we got a change description
+      if (changeDescription) {
+        const fmBody = currentFrontmatter.replace(/^---\n/, '').replace(/\n---\n$/, '');
+        const parsed = yaml.load(fmBody) as Record<string, any> || {};
+        const history: Array<{ timestamp: string; change: string }> = Array.isArray(parsed.history) ? parsed.history : [];
+        history.push({ timestamp: new Date().toISOString(), change: changeDescription });
+        // Cap at 50 entries
+        if (history.length > MAX_MESSAGES) {
+          history.splice(0, history.length - MAX_MESSAGES);
+        }
+        parsed.history = history;
+        currentFrontmatter = `---\n${yaml.dump(parsed, { lineWidth: -1 })}---\n`;
+      }
+
+      await writeTextFile(fullPath, currentFrontmatter + response.trim() + '\n');
+    }
+
+    return { changeDescription };
+  }
+
+  // Classify user input as content to append or a command to modify the document
+  async classifyInput(text: string): Promise<'append' | 'command'> {
+    // Fast path: long text is almost always content to append
+    if (text.split(/\s+/).length > 30) return 'append';
+
+    try {
+      const modelKey = getOrchestratorModel();
+      if (!modelKey) return 'append';
+
+      const providerType = getProviderFromModel(modelKey);
+      const modelId = getModelIdFromModel(modelKey);
+      const provider = providerRegistry.getProvider(providerType);
+
+      if (!provider || !provider.isInitialized()) return 'append';
+
+      const systemPrompt = `Classify the user's input. Is it:
+- APPEND: Content to add to a document (thoughts, notes, ideas, paragraphs, sentences)
+- COMMAND: An instruction to modify existing document content (edit, delete, rewrite, restructure, fix)
+
+Reply with ONLY the word APPEND or COMMAND.`;
+
+      const messages: Message[] = [
+        { role: 'user', timestamp: new Date().toISOString(), content: text }
+      ];
+
+      let response = '';
+      await provider.sendMessage(messages, {
+        model: modelId,
+        onChunk: (chunk: string) => { response += chunk; },
+        systemPrompt,
+      });
+
+      return response.trim().toUpperCase().includes('COMMAND') ? 'command' : 'append';
+    } catch (error) {
+      console.error('[RiffService] Failed to classify input:', error);
+      return 'append';
+    }
+  }
+
+  // Append text directly to the document body, preserving frontmatter
+  async appendToDocument(riffNotePath: string, text: string): Promise<void> {
+    if (!this.vaultPath) throw new Error('Vault path not set');
+
+    const fullPath = await join(this.vaultPath, riffNotePath);
+    if (!(await exists(fullPath))) throw new Error('Draft file not found');
+
+    const content = await readTextFile(fullPath);
+    const fmMatch = content.match(/^(---\n[\s\S]*?\n---\n)([\s\S]*)$/);
+
+    if (fmMatch) {
+      const [, frontmatter, body] = fmMatch;
+      const separator = body.trim() ? '\n\n' : '';
+      await writeTextFile(fullPath, frontmatter + body.trimEnd() + separator + text + '\n');
+    } else {
+      // No frontmatter — just append
+      const separator = content.trim() ? '\n\n' : '';
+      await writeTextFile(fullPath, content.trimEnd() + separator + text + '\n');
+    }
+  }
+
+  // Apply a command/change to the document using AI
+  async applyCommand(
+    command: string,
+    riffNotePath: string,
+    model: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (!this.vaultPath) throw new Error('Vault path not set');
+
+    const providerType = getProviderFromModel(model);
+    const modelId = getModelIdFromModel(model);
+    const provider = providerRegistry.getProvider(providerType);
+
+    if (!provider || !provider.isInitialized()) {
+      throw new Error(`Provider ${providerType} not initialized`);
+    }
+
+    const fullPath = await join(this.vaultPath, riffNotePath);
+    if (!(await exists(fullPath))) throw new Error('Draft file not found');
+
+    const content = await readTextFile(fullPath);
+    const fmMatch = content.match(/^(---\n[\s\S]*?\n---\n)([\s\S]*)$/);
+    const frontmatter = fmMatch ? fmMatch[1] : '';
+    const body = fmMatch ? fmMatch[2] : content;
+
+    const systemPrompt = `You are editing a document based on the user's instruction.
+
+CURRENT DOCUMENT:
+${body}
+
+Output the COMPLETE updated document. Only change what the user requested. Preserve everything else exactly as-is. Output ONLY the document content, no commentary.`;
+
+    const messages: Message[] = [
+      { role: 'user', timestamp: new Date().toISOString(), content: command }
+    ];
+
+    let response = '';
+    await provider.sendMessage(messages, {
+      model: modelId,
+      onChunk: (chunk: string) => { response += chunk; },
+      signal,
+      systemPrompt,
+    });
+
+    if (response.trim()) {
+      // Re-read frontmatter to avoid clobbering concurrent updates
+      let currentFrontmatter = frontmatter;
+      if (await exists(fullPath)) {
+        const currentContent = await readTextFile(fullPath);
+        const fm = currentContent.match(/^(---\n[\s\S]*?\n---\n)/);
+        if (fm) currentFrontmatter = fm[1];
+      }
+      await writeTextFile(fullPath, currentFrontmatter + response.trim() + '\n');
+    }
+  }
+
+  // Generate AI comments on the document — acts as a conversational nudge
+  async generateComments(
+    riffNotePath: string,
+    recentInput: string,
+    existingNotes: NoteInfo[],
+    model: string,
+    signal?: AbortSignal,
+    messagesSinceLastComment: number = 0,
+    existingCommentParagraphs: number[] = []
+  ): Promise<RiffComment[]> {
+    if (!this.vaultPath) return [];
+
+    try {
+      const providerType = getProviderFromModel(model);
+      const modelId = getModelIdFromModel(model);
+      const provider = providerRegistry.getProvider(providerType);
+
+      if (!provider || !provider.isInitialized()) return [];
+
+      const fullPath = await join(this.vaultPath, riffNotePath);
+      if (!(await exists(fullPath))) return [];
+
+      const content = await readTextFile(fullPath);
+      const fmMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+      const body = fmMatch ? fmMatch[1] : content;
+
+      if (!body.trim()) return [];
+
+      // Split body into paragraphs for reference
+      const allParagraphs = body.split(/\n\n+/).filter(p => p.trim());
+
+      const notesList = existingNotes
+        .filter(n => !n.filename.startsWith('riffs/'))
+        .map(n => n.filename.replace('.md', ''))
+        .join(', ');
+
+      // Send last N paragraphs for context, allow comments on last K
+      const CONTEXT_WINDOW = 10;
+      const COMMENT_WINDOW = 3;
+      const contextStart = Math.max(0, allParagraphs.length - CONTEXT_WINDOW);
+      const commentStart = Math.max(0, allParagraphs.length - COMMENT_WINDOW);
+      const contextParagraphs = allParagraphs.slice(contextStart);
+
+      const commentRange = allParagraphs.length > 0
+        ? `[${commentStart}] through [${allParagraphs.length - 1}]`
+        : 'none';
+
+      // Lower the bar progressively when we haven't commented in a while
+      const eagernessGuidance = messagesSinceLastComment >= 5
+        ? `It's been a while since you commented. If something interesting has come up, now would be a good time.`
+        : messagesSinceLastComment >= 3
+        ? `Feel free to comment if something genuinely stands out — a contradiction, an unexplored angle, or a connection to an existing note.`
+        : `Only comment if something is genuinely surprising, contradictory, or connects to an existing vault note. When in doubt, return an empty array.`;
+
+      const existingNote = existingCommentParagraphs.length > 0
+        ? `\nParagraphs that ALREADY have comments: [${existingCommentParagraphs.join(', ')}]. Do NOT comment on these again.`
+        : '';
+
+      const systemPrompt = `You are a curious, engaged thinking partner in a live note-taking session. The user is speaking or typing their thoughts and you can leave short margin comments.
+
+RECENT TRANSCRIPT (paragraphs numbered for reference):
+${contextParagraphs.map((p, i) => `[${contextStart + i}] ${p}`).join('\n\n')}
+
+WHAT THE USER JUST ADDED:
+${recentInput}
+
+EXISTING NOTES IN VAULT:
+${notesList || '(none)'}
+
+SCOPE: Only comment on paragraphs ${commentRange}.${existingNote}
+
+DENSITY RULES:
+- Return AT MOST 1 comment total.
+- Never comment on a paragraph that already has a comment.
+- Avoid commenting on a paragraph immediately adjacent to one that has a comment.
+
+EAGERNESS: ${eagernessGuidance}
+
+Good comments include:
+- A short question that prompts the user to say more ("What made you choose X over Y?", "How did that turn out?")
+- A connection to an existing vault note (use [[Note Name]] syntax)
+- A brief reaction or observation ("This contradicts what you said earlier about...", "Interesting — this reminds me of...")
+- Flagging something worth exploring ("You mentioned X but didn't elaborate — worth expanding?")
+
+Keep comments to 1-2 sentences max. Be conversational, not formal. Think of yourself as a smart friend listening and occasionally chiming in.
+
+Return a JSON array with 0 or 1 items. Each item: {"paragraphIndex": <number>, "snippet": "<first 50 chars of that paragraph>", "content": "<your comment>"}
+
+Return an empty array [] if nothing compelling stands out or all eligible paragraphs already have comments.
+
+Return ONLY the JSON array, no other text.`;
+
+      const messages: Message[] = [
+        { role: 'user', timestamp: new Date().toISOString(), content: 'Review the document.' }
+      ];
+
+      let response = '';
+      await provider.sendMessage(messages, {
+        model: modelId,
+        onChunk: (chunk: string) => { response += chunk; },
+        signal,
+        systemPrompt,
+      });
+
+      // Parse JSON response
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) return [];
+
+      const parsed = JSON.parse(jsonMatch[0]) as Array<{
+        paragraphIndex: number;
+        snippet: string;
+        content: string;
+      }>;
+
+      // Enforce density: only recent window, skip already-commented and adjacent
+      const commentedSet = new Set(existingCommentParagraphs);
+      const filtered = parsed
+        .filter(c => c.paragraphIndex >= commentStart)
+        .filter(c => !commentedSet.has(c.paragraphIndex))
+        .filter(c => !commentedSet.has(c.paragraphIndex - 1) && !commentedSet.has(c.paragraphIndex + 1))
+        .slice(0, 1); // At most 1 new comment
+
+      const now = new Date().toISOString();
+      return filtered.map((c, i) => ({
+        id: `comment-${Date.now()}-${i}`,
+        timestamp: now,
+        anchor: {
+          paragraphIndex: c.paragraphIndex,
+          snippet: c.snippet || '',
+        },
+        content: c.content,
+      }));
+    } catch (error) {
+      console.error('[RiffService] Failed to generate comments:', error);
+      return [];
+    }
+  }
+
+  // Persist comments to frontmatter
+  async updateDraftComments(riffNotePath: string, comments: RiffComment[]): Promise<void> {
+    if (!this.vaultPath) return;
+
+    const fullPath = await join(this.vaultPath, riffNotePath);
+    if (!(await exists(fullPath))) return;
+
+    const content = await readTextFile(fullPath);
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    if (!fmMatch) return;
+
+    const [, fmBody, body] = fmMatch;
+    const parsed = yaml.load(fmBody) as Record<string, any> || {};
+
+    parsed.comments = comments.map(c => ({
+      id: c.id,
+      timestamp: c.timestamp,
+      anchor: { paragraphIndex: c.anchor.paragraphIndex, snippet: c.anchor.snippet },
+      content: c.content,
+    }));
+
+    await writeTextFile(fullPath, `---\n${yaml.dump(parsed, { lineWidth: -1 })}---\n${body}`);
   }
 
   // Generate integration proposals for other notes
