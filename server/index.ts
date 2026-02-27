@@ -6,6 +6,7 @@
  */
 
 import express, { Request, Response, NextFunction } from 'express';
+import compression from 'compression';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import chokidar from 'chokidar';
@@ -57,6 +58,7 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+app.use(compression());
 app.use(express.json({ limit: '50mb' }));
 
 // Helper to resolve paths safely within vault
@@ -182,12 +184,23 @@ app.post('/api/path/join', (req: Request, res: Response) => {
   res.json({ path: path.join(...segments) });
 });
 
-// Serve static files from dist-web/
-app.use(express.static(path.join(process.cwd(), 'dist-web')));
+// Serve hashed assets with immutable caching (Vite includes content hash in filenames)
+app.use('/assets', express.static(path.join(process.cwd(), 'dist-web', 'assets'), {
+  maxAge: '1y',
+  immutable: true,
+}));
+
+// Serve other static files (index.html, manifest, icons) with revalidation
+app.use(express.static(path.join(process.cwd(), 'dist-web'), {
+  maxAge: 0,
+  etag: true,
+  lastModified: true,
+}));
 
 // SPA fallback - serve index.html for non-API routes
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (!req.path.startsWith('/api') && req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(process.cwd(), 'dist-web', 'index.html'));
   } else {
     next();
