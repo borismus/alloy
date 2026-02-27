@@ -347,9 +347,11 @@ export const RiffView: React.FC<RiffViewProps> = ({
               <option value="table">Table</option>
               <option value="summary">Summary</option>
             </select>
-            <span className="draft-indicator">
-              {isProcessing ? 'Integrating...' : isUpdating ? 'Updating...' : 'Draft'}
-            </span>
+            {(isProcessing || isUpdating) && (
+              <span className="draft-indicator">
+                {isProcessing ? 'Integrating...' : 'Updating...'}
+              </span>
+            )}
             <button
               className="btn-small btn-accent"
               onClick={handleIntegrate}
@@ -439,9 +441,9 @@ export const RiffView: React.FC<RiffViewProps> = ({
         <div className="riff-content-area" />
       )}
 
-      {isCommenting && (
-        <div className="riff-commenting-indicator" title="Generating comments...">
-          <span className="riff-commenting-spinner" />
+      {(isCommenting || isUpdating) && (
+        <div className="riff-activity-indicator" title={isUpdating ? 'Updating...' : 'Generating comments...'}>
+          <span className="riff-activity-spinner" />
         </div>
       )}
 

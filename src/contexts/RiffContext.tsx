@@ -197,12 +197,13 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
 
     // All LLM work runs in the background — sendMessage returns here
     const draftFn = draftFilename;
+    const isFirstMessage = current.messages.length === 0;
     const userSetType = current.artifactTypeSetByUser;
 
     fireUpdate(async () => {
-      // Detect artifact type on every message (unless user explicitly set via dropdown)
+      // Auto-detect artifact type only on the first message of a new riff
       let artifactType = stateRef.current.artifactType;
-      if (!userSetType && modelRef.current) {
+      if (isFirstMessage && !userSetType && modelRef.current) {
         try {
           const detected = await riffService.detectArtifactType(messageText, modelRef.current);
           if (detected !== artifactType) {
