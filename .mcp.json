@@ -1,8 +1,7 @@
 {
   "mcpServers": {
     "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
+      "url": "http://localhost:3100/sse"
     }
   }
 }

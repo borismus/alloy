@@ -40,12 +40,14 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "test:mcp": "VAULT_PATH=tests/fixtures/test-vault concurrently -n server,vite,mcp -c blue,green,magenta \"node --import tsx server/index.ts\" \"SERVER_MODE=true VITE_API_URL=http://localhost:3001 vite\" \"npx @playwright/mcp --port 3100\"",
     "playwright:install": "playwright install chromium",
     "generate-icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@google/generative-ai": "^0.24.1",
+    "@soniox/speech-to-text-web": "^1.4.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.5.0",
     "@tauri-apps/plugin-fs": "^2.4.5",
@@ -69,7 +71,6 @@
     "ws": "^8"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.2",
     "@playwright/test": "^1.57.0",
     "@tauri-apps/cli": "^2",
     "@types/express": "^5",
