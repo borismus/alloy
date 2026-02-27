@@ -165,16 +165,13 @@
 
 /* Mermaid diagram rendering */
 .markdown-content .mermaid-diagram {
-  margin: 1rem 0;
-  padding: 1rem;
-  background: var(--bg-secondary, #f8f9fa);
-  border-radius: 8px;
-  overflow-x: auto;
+  margin: 0;
+  padding: 0;
   text-align: center;
 }
 
 .markdown-content .mermaid-diagram svg {
-  max-width: 100%;
+  width: 100%;
   height: auto;
 }
 

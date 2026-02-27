@@ -159,7 +159,7 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
     },
     code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: any }) => {
       // Render mermaid code blocks as diagrams
-      if (className === 'language-mermaid') {
+      if (className?.includes('language-mermaid')) {
         const code = String(children).replace(/\n$/, '');
         return React.createElement(MermaidDiagram, { code });
       }
