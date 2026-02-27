@@ -398,7 +398,6 @@
   background: var(--bg-primary, #fff);
   color: var(--text-secondary, #666);
   cursor: pointer;
-  font-size: 0.85rem;
   flex-shrink: 0;
   display: flex;
   align-items: center;
