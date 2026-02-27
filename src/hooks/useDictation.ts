@@ -62,6 +62,11 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       return;
     }
 
+    if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
+      setError('Dictation is not supported in this browser.');
+      return;
+    }
+
     setError(null);
     setDictationState('starting');
 
