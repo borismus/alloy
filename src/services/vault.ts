@@ -83,6 +83,9 @@ export class VaultService {
 
 # API keys for skills
 # SERPER_API_KEY: ...
+
+# Speech-to-text (Soniox) for dictation
+# SONIOX_API_KEY: ...
 `;
       await writeTextFile(configPath, defaultConfigYaml);
     }
