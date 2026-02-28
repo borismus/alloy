@@ -61,6 +61,28 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 app.use(compression());
 app.use(express.json({ limit: '50mb' }));
 
+// Request timing logger - tracks API call frequency during load
+let requestCount = 0;
+let lastRequestTime = Date.now();
+let sessionStart = Date.now();
+app.use('/api/fs', (req: Request, _res: Response, next: NextFunction) => {
+  const now = Date.now();
+  // Reset counter on new session (2s gap between requests = new page load)
+  if (now - lastRequestTime > 2000) {
+    if (requestCount > 0) {
+      console.log(`[API] --- Previous session: ${requestCount} requests in ${lastRequestTime - sessionStart}ms ---`);
+    }
+    requestCount = 0;
+    sessionStart = now;
+    console.log(`[API] --- New session ---`);
+  }
+  requestCount++;
+  lastRequestTime = now;
+  const elapsed = now - sessionStart;
+  console.log(`[API] #${requestCount} +${elapsed}ms ${req.path} ${req.body?.path || ''}`);
+  next();
+});
+
 // Helper to resolve paths safely within vault
 function resolvePath(requestPath: string): string {
   // Normalize and join with vault path
@@ -133,6 +155,32 @@ app.post('/api/fs/readDir', async (req: Request, res: Response) => {
   }
 });
 
+// Batch read: read headers of all files in a directory (1 request instead of N)
+// Returns first `bytes` of each file matching `ext` filter
+app.post('/api/fs/readDirHeaders', async (req: Request, res: Response) => {
+  try {
+    const dirPath = resolvePath(req.body.path);
+    const ext: string = req.body.ext || '';
+    const maxBytes: number = req.body.bytes || 512;
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const files: Record<string, string> = {};
+    await Promise.all(
+      entries
+        .filter(e => e.isFile() && (!ext || e.name.endsWith(ext)))
+        .map(async (entry) => {
+          const fd = await fs.open(path.join(dirPath, entry.name), 'r');
+          const buf = Buffer.alloc(maxBytes);
+          const { bytesRead } = await fd.read(buf, 0, maxBytes, 0);
+          await fd.close();
+          files[entry.name] = buf.toString('utf-8', 0, bytesRead);
+        })
+    );
+    res.json({ files });
+  } catch (err) {
+    res.status(404).json({ error: `Directory not found: ${req.body.path}` });
+  }
+});
+
 app.post('/api/fs/mkdir', async (req: Request, res: Response) => {
   try {
     const dirPath = resolvePath(req.body.path);
@@ -175,6 +223,74 @@ app.post('/api/fs/stat', async (req: Request, res: Response) => {
     });
   } catch (err) {
     res.status(404).json({ error: `Path not found: ${req.body.path}` });
+  }
+});
+
+// HTTP proxy endpoint - forwards external requests server-side to avoid CORS/localhost issues
+app.post('/api/proxy', async (req: Request, res: Response) => {
+  const { url, method, headers, body } = req.body;
+
+  if (!url || !method) {
+    return res.status(400).json({ error: 'Missing url or method' });
+  }
+
+  const controller = new AbortController();
+
+  // Cancel upstream request if client disconnects
+  req.on('close', () => controller.abort());
+
+  try {
+    const upstreamResponse = await globalThis.fetch(url, {
+      method,
+      headers: headers || {},
+      body: body || undefined,
+      signal: controller.signal,
+    });
+
+    // Forward status code
+    res.status(upstreamResponse.status);
+
+    // Forward response headers as x-proxied-* to avoid Express conflicts
+    for (const [key, value] of upstreamResponse.headers.entries()) {
+      res.setHeader(`x-proxied-${key}`, value);
+    }
+
+    // Also set content-type directly so the browser can interpret the stream
+    const contentType = upstreamResponse.headers.get('content-type');
+    if (contentType) {
+      res.setHeader('content-type', contentType);
+    }
+
+    // Stream the response body
+    if (upstreamResponse.body) {
+      const reader = upstreamResponse.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const canContinue = res.write(value);
+          if (!canContinue) {
+            await new Promise<void>(resolve => res.once('drain', resolve));
+          }
+        }
+      } catch {
+        reader.cancel();
+      }
+      res.end();
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    if (!res.headersSent) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return; // Client disconnected, nothing to send
+      }
+      res.status(502).json({
+        error: `Proxy error: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    } else {
+      res.end();
+    }
   }
 });
 

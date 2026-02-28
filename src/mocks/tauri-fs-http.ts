@@ -113,6 +113,11 @@ export async function readDir(path: string): Promise<DirEntry[]> {
   return result.entries;
 }
 
+export async function readDirHeaders(path: string, ext?: string, bytes?: number): Promise<Record<string, string>> {
+  const result = await apiCall<{ files: Record<string, string> }>('/api/fs/readDirHeaders', { path, ext, bytes });
+  return result.files;
+}
+
 export async function remove(path: string): Promise<void> {
   await apiCall('/api/fs/remove', { path });
 }
