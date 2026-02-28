@@ -34,12 +34,10 @@ export class ProviderRegistry {
       openai?.initialize(config.OPENAI_API_KEY);
     }
 
-    // Initialize Ollama if base URL is present
+    // Initialize Ollama if base URL is present (model discovery is async/non-blocking)
     if (config.OLLAMA_BASE_URL) {
       const ollama = this.providers.get('ollama') as OllamaService;
       ollama?.initialize(config.OLLAMA_BASE_URL);
-      // Discover available models
-      await ollama?.discoverModels();
     }
 
     // Initialize Gemini if key is present
@@ -52,6 +50,13 @@ export class ProviderRegistry {
     if (config.XAI_API_KEY) {
       const grok = this.providers.get('grok');
       grok?.initialize(config.XAI_API_KEY);
+    }
+  }
+
+  async discoverOllamaModels(): Promise<void> {
+    const ollama = this.providers.get('ollama') as OllamaService;
+    if (ollama?.isInitialized()) {
+      await ollama.discoverModels();
     }
   }
 

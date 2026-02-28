@@ -1,3 +1,4 @@
+import { fetch } from '@tauri-apps/plugin-http';
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolDefinition, ToolCall } from '../../types/tools';
 import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
@@ -95,7 +96,12 @@ export class OllamaService implements IProviderService {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
       if (!response.ok) {
         throw new Error(`Failed to fetch models: ${response.status}`);
       }
