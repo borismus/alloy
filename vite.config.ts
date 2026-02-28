@@ -42,7 +42,8 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    host: host || (isServerMode ? '0.0.0.0' : false),
+    allowedHosts: ['.ts.net'],
     hmr: host
       ? {
           protocol: "ws",
@@ -54,6 +55,15 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+    // Proxy API requests to the Alloy server in dev mode
+    ...(isServerMode ? {
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          ws: true,
+        },
+      },
+    } : {}),
   },
   test: {
     globals: true,
