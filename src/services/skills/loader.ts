@@ -86,16 +86,15 @@ export async function loadSkillsFromVault(vaultPath: string): Promise<Skill[]> {
     }
 
     const entries = await readDir(skillsPath);
+    const dirEntries = entries.filter(e => e.isDirectory && e.name);
 
-    for (const entry of entries) {
-      if (entry.isDirectory && entry.name) {
-        const skillPath = await join(skillsPath, entry.name);
-        const skill = await loadSkillFromPath(skillPath);
-        if (skill) {
-          skills.push(skill);
-        }
-      }
-    }
+    const results = await Promise.all(
+      dirEntries.map(async (entry) => {
+        const skillPath = await join(skillsPath, entry.name!);
+        return loadSkillFromPath(skillPath);
+      })
+    );
+    skills.push(...results.filter((s): s is Skill => s !== null));
   } catch (error) {
     console.error('Error loading skills from vault:', error);
   }

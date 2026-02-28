@@ -632,31 +632,29 @@ function AppContent() {
         await providerRegistry.initializeFromConfig(loadedConfig);
         setAvailableModels(providerRegistry.getAllAvailableModels());
 
-        const loadedConversations = await vaultService.loadConversations();
-        setConversations(loadedConversations);
+        // Discover Ollama models in background (don't block vault loading)
+        providerRegistry.discoverOllamaModels().then(() => {
+          setAvailableModels(providerRegistry.getAllAvailableModels());
+        });
 
-        // Load triggers from triggers/ directory
-        const loadedTriggers = await vaultService.loadTriggers();
-        setTriggers(loadedTriggers);
-
-        // Load notes from vault
-        const loadedNotes = await vaultService.loadNotes();
-        setNotes(loadedNotes);
-
-        // Load skills from vault
+        // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
-        await skillRegistry.loadSkills();
-
-        // Initialize riff service
         riffService.setVaultPath(path);
-
-        // Load memory for system prompt injection
-        const loadedMemory = await vaultService.loadMemory();
-        setMemory(loadedMemory);
-
-        // Load background conversation
         const bgDefaultModel = loadedConfig.favoriteModels?.[0] || providerRegistry.getAllAvailableModels()[0]?.key || '';
-        const bgConv = await vaultService.loadBackgroundConversation(bgDefaultModel);
+
+        const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory, bgConv] = await Promise.all([
+          vaultService.loadConversations(),
+          vaultService.loadTriggers(),
+          vaultService.loadNotes(),
+          skillRegistry.loadSkills(),
+          vaultService.loadMemory(),
+          vaultService.loadBackgroundConversation(bgDefaultModel),
+        ]);
+
+        setConversations(loadedConversations);
+        setTriggers(loadedTriggers);
+        setNotes(loadedNotes);
+        setMemory(loadedMemory);
         setBackgroundConversation(bgConv);
       } else {
         localStorage.removeItem('vaultPath');

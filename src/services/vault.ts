@@ -24,40 +24,25 @@ export class VaultService {
   }
 
   async initializeVault(path: string): Promise<void> {
-    // Create necessary directories
-    const conversationsPath = await join(path, 'conversations');
-    const skillsPath = await join(path, 'skills');
-
-    if (!(await exists(conversationsPath))) {
-      await mkdir(conversationsPath, { recursive: true });
-    }
-
-    if (!(await exists(skillsPath))) {
-      await mkdir(skillsPath, { recursive: true });
-    }
-
-    // Create notes directory for AI-managed notes
-    const notesPath = await join(path, 'notes');
-    if (!(await exists(notesPath))) {
-      await mkdir(notesPath, { recursive: true });
-    }
-
-    // Create triggers directory for trigger logs
-    const triggersPath = await join(path, 'triggers');
-    if (!(await exists(triggersPath))) {
-      await mkdir(triggersPath, { recursive: true });
-    }
-
-    // Create attachments directory for images
-    const attachmentsPath = await join(path, 'conversations', 'attachments');
-    if (!(await exists(attachmentsPath))) {
-      await mkdir(attachmentsPath, { recursive: true });
-    }
-
-    // Create memory.md if it doesn't exist
+    // Ensure all directories and default files exist in parallel
+    const dirs = [
+      await join(path, 'conversations'),
+      await join(path, 'skills'),
+      await join(path, 'notes'),
+      await join(path, 'triggers'),
+      await join(path, 'conversations', 'attachments'),
+    ];
     const memoryPath = await join(path, 'memory.md');
-    if (!(await exists(memoryPath))) {
-      const defaultMemory = `# Memory
+
+    await Promise.all([
+      ...dirs.map(async (dir) => {
+        if (!(await exists(dir))) {
+          await mkdir(dir, { recursive: true });
+        }
+      }),
+      (async () => {
+        if (!(await exists(memoryPath))) {
+          const defaultMemory = `# Memory
 
 ## About me
 - Add information about yourself here
@@ -65,8 +50,10 @@ export class VaultService {
 ## Preferences
 - Add your preferences here
 `;
-      await writeTextFile(memoryPath, defaultMemory);
-    }
+          await writeTextFile(memoryPath, defaultMemory);
+        }
+      })(),
+    ]);
 
     // Create config.yaml if it doesn't exist
     const configPath = await join(path, 'config.yaml');
@@ -244,18 +231,17 @@ export class VaultService {
     }
 
     const entries = await readDir(conversationsPath);
-    const conversations: Conversation[] = [];
+    const yamlEntries = entries.filter(e => e.name?.endsWith('.yaml'));
 
-    for (const entry of entries) {
-      if (entry.name?.endsWith('.yaml')) {
-        const filePath = await join(conversationsPath, entry.name);
+    const conversations = await Promise.all(
+      yamlEntries.map(async (entry) => {
+        const filePath = await join(conversationsPath, entry.name!);
         const content = await readTextFile(filePath);
         const conversation = yaml.load(content) as Conversation;
-        // Migrate old trigger format if needed
         this.migrateConversationFormat(conversation);
-        conversations.push(conversation);
-      }
-    }
+        return conversation;
+      })
+    );
 
     // Filter out the background conversation from the regular list
     const filtered = conversations.filter(c => c.id !== '_background');
@@ -313,30 +299,25 @@ export class VaultService {
     }
 
     const entries = await readDir(triggersPath);
-    const triggers: Trigger[] = [];
+    const yamlEntries = entries.filter(e => e.name?.endsWith('.yaml') && e.name !== 'logs.yaml');
 
-    for (const entry of entries) {
-      // Skip logs.yaml and non-yaml files
-      if (!entry.name?.endsWith('.yaml') || entry.name === 'logs.yaml') {
-        continue;
-      }
-
-      try {
-        const filePath = await join(triggersPath, entry.name);
-        const content = await readTextFile(filePath);
-        let trigger = yaml.load(content) as any;
-
-        // Migrate old nested format to flat format
-        trigger = this.migrateTriggerFormat(trigger);
-
-        // Basic validation - ensure required fields exist (now flat)
-        if (trigger.id && trigger.triggerPrompt) {
-          triggers.push(trigger as Trigger);
+    const results = await Promise.all(
+      yamlEntries.map(async (entry) => {
+        try {
+          const filePath = await join(triggersPath, entry.name!);
+          const content = await readTextFile(filePath);
+          let trigger = yaml.load(content) as any;
+          trigger = this.migrateTriggerFormat(trigger);
+          if (trigger.id && trigger.triggerPrompt) {
+            return trigger as Trigger;
+          }
+        } catch (error) {
+          console.error(`[VaultService] Failed to load trigger ${entry.name}:`, error);
         }
-      } catch (error) {
-        console.error(`[VaultService] Failed to load trigger ${entry.name}:`, error);
-      }
-    }
+        return null;
+      })
+    );
+    const triggers = results.filter((t): t is Trigger => t !== null);
 
     // Sort by updated date, newest first
     return triggers.sort((a, b) =>
@@ -764,26 +745,21 @@ export class VaultService {
     }
 
     const entries = await readDir(notesPath);
+    const mdEntries = entries.filter(e => e.name?.endsWith('.md'));
 
-    for (const entry of entries) {
-      if (entry.name?.endsWith('.md')) {
-        const filePath = await join(notesPath, entry.name);
-
-        // Get file stats for modification time
-        const fileStat = await stat(filePath);
+    const noteResults = await Promise.all(
+      mdEntries.map(async (entry) => {
+        const filePath = await join(notesPath, entry.name!);
+        const [fileStat, content] = await Promise.all([
+          stat(filePath),
+          readTextFile(filePath),
+        ]);
         const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
-
-        // Read file content to check for skill markers
-        const content = await readTextFile(filePath);
         const hasSkillContent = content.includes('&[[');
-
-        notes.push({
-          filename: entry.name,
-          lastModified,
-          hasSkillContent,
-        });
-      }
-    }
+        return { filename: entry.name!, lastModified, hasSkillContent } as NoteInfo;
+      })
+    );
+    notes.push(...noteResults);
 
     // Load riff notes from riffs/ directory
     const riffsPath = await join(this.vaultPath, 'riffs');
