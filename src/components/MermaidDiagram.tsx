@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import mermaid from 'mermaid';
+import type mermaidAPI from 'mermaid';
 
-let mermaidInitialized = false;
+let mermaidInstance: typeof mermaidAPI | null = null;
+let mermaidLoading: Promise<typeof mermaidAPI> | null = null;
 
-function ensureMermaidInit() {
-  if (!mermaidInitialized) {
+async function getMermaid(): Promise<typeof mermaidAPI> {
+  if (mermaidInstance) return mermaidInstance;
+  if (mermaidLoading) return mermaidLoading;
+
+  mermaidLoading = import('mermaid').then((mod) => {
+    const mermaid = mod.default;
     mermaid.initialize({
       startOnLoad: false,
       theme: 'base',
@@ -52,8 +57,11 @@ function ensureMermaidInit() {
         useMaxWidth: false,
       },
     });
-    mermaidInitialized = true;
-  }
+    mermaidInstance = mermaid;
+    return mermaid;
+  });
+
+  return mermaidLoading;
 }
 
 interface MermaidDiagramProps {
@@ -76,13 +84,14 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ code }) => {
     if (!code.trim() || !layerARef.current || !layerBRef.current) return;
     if (code.trim() === lastRenderedCodeRef.current) return;
 
-    ensureMermaidInit();
-
     const id = `mermaid-${++renderCounter}`;
     let cancelled = false;
 
     (async () => {
       try {
+        const mermaid = await getMermaid();
+        if (cancelled) return;
+
         const { svg } = await mermaid.render(id, code.trim());
         if (cancelled || !layerARef.current || !layerBRef.current) return;
 
