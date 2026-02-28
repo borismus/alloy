@@ -1,3 +1,4 @@
+import { fetch } from '@tauri-apps/plugin-http';
 import { SearchProvider, SearchOptions, SearchResult } from './types';
 
 const HTTP_TIMEOUT = 15000; // 15 seconds for search
