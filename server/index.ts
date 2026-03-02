@@ -236,8 +236,12 @@ app.post('/api/proxy', async (req: Request, res: Response) => {
 
   const controller = new AbortController();
 
-  // Cancel upstream request if client disconnects
-  req.on('close', () => controller.abort());
+  // Cancel upstream request if client disconnects (not when response completes normally)
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      controller.abort();
+    }
+  });
 
   try {
     const upstreamResponse = await globalThis.fetch(url, {
