@@ -231,7 +231,19 @@ function AppContent() {
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
 
   // Selected item and navigation history
-  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
+  const [selectedItem, setSelectedItemRaw] = useState<SelectedItem>(() => {
+    try {
+      const saved = sessionStorage.getItem('selectedItem');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const setSelectedItem = useCallback((item: SelectedItem) => {
+    setSelectedItemRaw(item);
+    try {
+      if (item) sessionStorage.setItem('selectedItem', JSON.stringify(item));
+      else sessionStorage.removeItem('selectedItem');
+    } catch { /* ignore */ }
+  }, []);
   const [previousItem, setPreviousItem] = useState<SelectedItem>(null);
 
   // Navigate to a new item, saving current as previous (for back button)
