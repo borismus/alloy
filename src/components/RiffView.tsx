@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import * as yaml from 'js-yaml';
-import { NoteInfo, RiffArtifactType, RiffIntervention } from '../types';
+import { NoteInfo, RiffIntervention } from '../types';
 import { riffService } from '../services/riff';
 import { useRiffContext } from '../contexts/RiffContext';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
@@ -112,7 +112,6 @@ export const RiffView: React.FC<RiffViewProps> = ({
     setInputText,
     sendMessage,
     exitRiffMode,
-    setArtifactType,
     dismissIntervention,
     integrateNow,
     setConfig,
