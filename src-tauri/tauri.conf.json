@@ -148,7 +148,8 @@
     "active": true,
     "targets": ["app", "appimage", "nsis", "deb"],
     "macOS": {
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "entitlements": "Entitlements.plist"
     },
     "createUpdaterArtifacts": "v1Compatible",
     "icon": [
