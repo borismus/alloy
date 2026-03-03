@@ -137,12 +137,7 @@
   background: var(--bg-hover, rgba(0, 0, 0, 0.02));
 }
 
-/* Transcript mode: reserve right margin for comments */
-.riff-document-pane.riff-transcript {
-  padding-right: 280px;
-}
-
-/* Paragraph blocks for comment anchoring */
+/* Paragraph blocks */
 .riff-paragraphs {
   display: flex;
   flex-direction: column;
@@ -150,104 +145,94 @@
 }
 
 .riff-paragraph {
-  position: relative;
   padding: 0.25rem 0.5rem;
-  border-left: 3px solid transparent;
   border-radius: 2px;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.riff-paragraph.has-comment {
-  border-left-color: #667eea;
-  background: rgba(102, 126, 234, 0.04);
-  cursor: pointer;
-}
-
-.riff-paragraph.active-comment {
-  background: rgba(102, 126, 234, 0.1);
-}
-
-/* Margin-positioned comments — scroll with document */
-.riff-margin-comments {
-  position: absolute;
-  top: 0;
-  left: 100%;
-  width: 240px;
-  padding-left: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  z-index: 1;
-}
-
-.riff-margin-comments.active {
-  z-index: 10;
-}
-
-.riff-comment-card {
+/* Inline intervention cards - PROMINENT */
+.riff-intervention-card {
   position: relative;
   background: var(--bg-primary, white);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  padding-right: 1.5rem;
-  font-size: 0.8rem;
-  cursor: default;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 2px solid var(--intervention-color);
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+  margin: 1.5rem 1rem;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Collapsed state for dense comments (adjacent paragraphs both have comments) */
-.riff-margin-comments.collapsed .riff-comment-card {
-  max-height: 3.2em;
-  overflow: hidden;
+.riff-intervention-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
 }
 
-.riff-margin-comments.collapsed .riff-comment-card::after {
-  content: '';
+/* Intervention type colors */
+:root {
+  --intervention-question: #8b5cf6;
+  --intervention-memory: #10b981;
+  --intervention-answer: #14b8a6;
+}
+
+.riff-intervention-big-question {
+  --intervention-color: var(--intervention-question);
+  background: rgba(139, 92, 246, 0.03);
+}
+
+.riff-intervention-memory-recall {
+  --intervention-color: var(--intervention-memory);
+  background: rgba(16, 185, 129, 0.03);
+}
+
+.riff-intervention-question-answer {
+  --intervention-color: var(--intervention-answer);
+  background: rgba(20, 184, 166, 0.03);
+}
+
+.riff-intervention-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  color: var(--intervention-color);
+}
+
+.riff-intervention-icon {
+  font-size: 1.5rem;
+}
+
+.riff-intervention-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.riff-intervention-dismiss {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1.2em;
-  background: linear-gradient(transparent, var(--bg-primary, white));
-  pointer-events: none;
-}
-
-/* Active (expanded) state */
-.riff-margin-comments.active .riff-comment-card {
-  max-height: none;
-  overflow: visible;
-  border-color: #667eea;
-  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.2);
-}
-
-.riff-margin-comments.active .riff-comment-card::after {
-  display: none;
-}
-
-.riff-comment-content {
-  color: var(--text-primary, #333);
-  line-height: 1.4;
-}
-
-.riff-comment-dismiss {
-  position: absolute;
-  top: 0.3rem;
-  right: 0.3rem;
+  top: 0.75rem;
+  right: 0.75rem;
   background: none;
   border: none;
   color: var(--text-tertiary, #999);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1.25rem;
   line-height: 1;
-  padding: 0.1rem 0.25rem;
-  border-radius: 3px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
   transition: color 0.15s ease, background 0.15s ease;
 }
 
-.riff-comment-dismiss:hover {
+.riff-intervention-dismiss:hover {
   color: var(--text-primary, #333);
   background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.riff-intervention-content {
+  color: var(--text-primary, #333);
+  line-height: 1.6;
+  font-size: 1.1rem;
 }
 
 /* Subtle activity indicator - bottom right */
