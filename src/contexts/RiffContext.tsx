@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
-import { ProposedChange, NoteInfo, RiffArtifactType, RiffMessage, RiffComment } from '../types';
+import { ProposedChange, NoteInfo, RiffArtifactType, RiffMessage, RiffIntervention } from '../types';
 import { riffService } from '../services/riff';
 import { vaultService } from '../services/vault';
 
@@ -15,9 +15,9 @@ interface RiffState {
   artifactType: RiffArtifactType;
   artifactTypeSetByUser: boolean;
 
-  // Comments
-  comments: RiffComment[];
-  isCommenting: boolean;           // AI generating comments
+  // Interventions
+  interventions: RiffIntervention[];
+  isGeneratingIntervention: boolean;           // AI generating interventions
 
   // UI state
   isRiffMode: boolean;
@@ -41,8 +41,8 @@ interface RiffContextValue extends RiffState {
   // Artifact type
   setArtifactType: (type: RiffArtifactType) => void;
 
-  // Comments
-  resolveComment: (commentId: string) => void;
+  // Interventions
+  dismissIntervention: (interventionId: string) => void;
 
   // Integration
   integrateNow: () => Promise<void>;
@@ -59,8 +59,8 @@ const initialState: RiffState = {
   draftFilename: null,
   artifactType: 'note',
   artifactTypeSetByUser: false,
-  comments: [],
-  isCommenting: false,
+  interventions: [],
+  isGeneratingIntervention: false,
   isRiffMode: false,
   isUpdating: false,
   isProcessing: false,
@@ -130,42 +130,42 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
     })();
   }, []);
 
-  // Generate comments asynchronously (independent from artifact updates)
-  const generateCommentsAsync = useCallback(async (draftFilename: string, recentInput: string) => {
+  // Generate interventions asynchronously (independent from artifact updates)
+  const generateInterventionsAsync = useCallback(async (draftFilename: string, recentInput: string) => {
     if (!modelRef.current) return;
 
-    // Derive eagerness from existing state: how many messages since the last comment?
-    const { messages, comments } = stateRef.current;
-    const lastCommentTime = comments.length > 0
-      ? Math.max(...comments.map(c => new Date(c.timestamp).getTime()))
+    // Derive eagerness from existing state: how many messages since the last intervention?
+    const { messages, interventions } = stateRef.current;
+    const lastInterventionTime = interventions.length > 0
+      ? Math.max(...interventions.map(i => new Date(i.timestamp).getTime()))
       : 0;
-    const messagesSinceLastComment = lastCommentTime === 0
+    const messagesSinceLastIntervention = lastInterventionTime === 0
       ? messages.length
-      : messages.filter(m => new Date(m.timestamp).getTime() > lastCommentTime).length;
+      : messages.filter(m => new Date(m.timestamp).getTime() > lastInterventionTime).length;
 
-    // Existing comment paragraph indices for density filtering
-    const existingCommentParagraphs = comments.map(c => c.anchor.paragraphIndex);
+    // Existing intervention paragraph indices for density filtering
+    const existingInterventionParagraphs = interventions.map(i => i.anchor.paragraphIndex);
 
-    setState(prev => ({ ...prev, isCommenting: true }));
+    setState(prev => ({ ...prev, isGeneratingIntervention: true }));
     try {
-      const commentAbort = new AbortController();
-      const newComments = await riffService.generateComments(
+      const interventionAbort = new AbortController();
+      const newInterventions = await riffService.generateInterventions(
         draftFilename,
         recentInput,
         notesRef.current,
         modelRef.current,
-        commentAbort.signal,
-        messagesSinceLastComment,
-        existingCommentParagraphs
+        interventionAbort.signal,
+        messagesSinceLastIntervention,
+        existingInterventionParagraphs
       );
       setState(prev => {
-        const merged = [...prev.comments, ...newComments];
-        riffService.updateDraftComments(draftFilename, merged);
-        return { ...prev, comments: merged, isCommenting: false };
+        const merged = [...prev.interventions, ...newInterventions];
+        riffService.updateDraftInterventions(draftFilename, merged);
+        return { ...prev, interventions: merged, isGeneratingIntervention: false };
       });
     } catch (error) {
-      console.error('[RiffContext] Comment generation error:', error);
-      setState(prev => ({ ...prev, isCommenting: false }));
+      console.error('[RiffContext] Intervention generation error:', error);
+      setState(prev => ({ ...prev, isGeneratingIntervention: false }));
     }
   }, []);
 
@@ -216,25 +216,23 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
       }
 
       if (artifactType === 'note') {
-        // Classify input (append vs command)
-        const action = await riffService.classifyInput(messageText);
-        // Update the message's action in state
-        const msgWithAction: RiffMessage = { ...newMessage, action };
-        setState(prev => ({
-          ...prev,
-          messages: prev.messages.map(m =>
-            m.timestamp === newMessage.timestamp ? msgWithAction : m
-          ),
-        }));
-
-        if (action === 'append') {
-          await riffService.appendToDocument(draftFn, messageText);
-        } else {
-          await riffService.applyCommand(messageText, draftFn, modelRef.current);
-        }
-
+        // Just append - no LLM classification needed for brain dump mode
+        await riffService.appendToDocument(draftFn, messageText);
         await riffService.updateDraftMessages(draftFn, stateRef.current.messages, artifactType);
-        generateCommentsAsync(draftFn, messageText);
+
+        // Only generate interventions every 3-5 messages (moderate frequency)
+        const { interventions } = stateRef.current;
+        const lastInterventionTime = interventions.length > 0
+          ? Math.max(...interventions.map(i => new Date(i.timestamp).getTime()))
+          : 0;
+        const messagesSinceLastIntervention = lastInterventionTime === 0
+          ? stateRef.current.messages.length
+          : stateRef.current.messages.filter(m => new Date(m.timestamp).getTime() > lastInterventionTime).length;
+
+        // Call intervention generation only if 3+ messages have passed
+        if (messagesSinceLastIntervention >= 3) {
+          generateInterventionsAsync(draftFn, messageText);
+        }
       } else {
         // Mermaid/table: AI-rewrite paradigm
         await riffService.updateArtifact(
@@ -249,20 +247,20 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
         await riffService.updateDraftMessages(draftFn, stateRef.current.messages, artifactType);
       }
     });
-  }, [fireUpdate, generateCommentsAsync]);
+  }, [fireUpdate, generateInterventionsAsync]);
 
-  // Resolve (dismiss) a comment
-  const resolveComment = useCallback(async (commentId: string) => {
+  // Dismiss an intervention
+  const dismissIntervention = useCallback(async (interventionId: string) => {
     const current = stateRef.current;
-    const updated = current.comments.filter(c => c.id !== commentId);
-    setState(prev => ({ ...prev, comments: updated }));
+    const updated = current.interventions.filter(i => i.id !== interventionId);
+    setState(prev => ({ ...prev, interventions: updated }));
 
     // Persist to frontmatter
     if (current.draftFilename) {
       try {
-        await riffService.updateDraftComments(current.draftFilename, updated);
+        await riffService.updateDraftInterventions(current.draftFilename, updated);
       } catch (error) {
-        console.error('[RiffContext] Failed to persist comment removal:', error);
+        console.error('[RiffContext] Failed to persist intervention removal:', error);
       }
     }
   }, []);
@@ -271,9 +269,9 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
   const enterRiffMode = useCallback(async (existingDraftFilename?: string) => {
 
     if (existingDraftFilename) {
-      // Resume existing draft - load messages, artifactType, and comments from frontmatter
+      // Resume existing draft - load messages, artifactType, and interventions from frontmatter
       try {
-        const { messages, artifactType, comments } = await riffService.getDraftMessages(existingDraftFilename);
+        const { messages, artifactType, interventions } = await riffService.getDraftMessages(existingDraftFilename);
         setState(prev => ({
           ...prev,
           isRiffMode: true,
@@ -282,7 +280,7 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
           messages,
           artifactType,
           artifactTypeSetByUser: true,  // Don't re-detect when resuming
-          comments,
+          interventions,
           phase: 'riffing',
         }));
       } catch (error) {
@@ -293,7 +291,7 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
           draftFilename: existingDraftFilename,
           inputText: '',
           messages: [],
-          comments: [],
+          interventions: [],
           phase: 'riffing',
         }));
       }
@@ -305,7 +303,7 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
         draftFilename: null,
         inputText: '',
         messages: [],
-        comments: [],
+        interventions: [],
         artifactType: 'note',
         artifactTypeSetByUser: false,
         phase: 'idle',
@@ -445,7 +443,7 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
     enterRiffMode,
     exitRiffMode,
     setArtifactType,
-    resolveComment,
+    dismissIntervention,
     integrateNow,
     applyChanges,
     cancelIntegration,
