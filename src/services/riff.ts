@@ -1,9 +1,10 @@
 import { readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Message, NoteInfo, ProposedChange, RiffArtifactType, RiffMessage, RiffComment, getProviderFromModel, getModelIdFromModel } from '../types';
+import { Message, NoteInfo, ProposedChange, RiffArtifactType, RiffMessage, RiffIntervention, RiffInterventionType, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from './providers';
 import { getOrchestratorModel } from './background';
+import { obliqueStrategies } from './oblique-strategies';
 
 interface RiffHistoryFile {
   messages: Message[];
@@ -108,17 +109,17 @@ messages: []
     return filename;
   }
 
-  // Get messages, artifactType, and comments from a draft's frontmatter
-  async getDraftMessages(riffNotePath: string): Promise<{ messages: RiffMessage[]; artifactType: RiffArtifactType; comments: RiffComment[] }> {
-    if (!this.vaultPath) return { messages: [], artifactType: 'note', comments: [] };
+  // Get messages, artifactType, and interventions from a draft's frontmatter
+  async getDraftMessages(riffNotePath: string): Promise<{ messages: RiffMessage[]; artifactType: RiffArtifactType; interventions: RiffIntervention[] }> {
+    if (!this.vaultPath) return { messages: [], artifactType: 'note', interventions: [] };
 
     try {
       const fullPath = await join(this.vaultPath, riffNotePath);
-      if (!(await exists(fullPath))) return { messages: [], artifactType: 'note', comments: [] };
+      if (!(await exists(fullPath))) return { messages: [], artifactType: 'note', interventions: [] };
 
       const content = await readTextFile(fullPath);
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) return { messages: [], artifactType: 'note', comments: [] };
+      if (!fmMatch) return { messages: [], artifactType: 'note', interventions: [] };
 
       const fmBody = fmMatch[1];
       const parsed = yaml.load(fmBody) as Record<string, any> || {};
@@ -129,16 +130,19 @@ messages: []
         artifactType = parsed.artifactType;
       }
 
-      // Parse comments
-      const comments: RiffComment[] = Array.isArray(parsed.comments)
-        ? parsed.comments.map((c: any) => ({
-            id: c.id || `comment-${Date.now()}`,
-            timestamp: c.timestamp || '',
+      // Parse interventions (with backward compat for old "comments" field)
+      const rawInterventions = parsed.interventions || parsed.comments || [];
+      const interventions: RiffIntervention[] = Array.isArray(rawInterventions)
+        ? rawInterventions.map((i: any) => ({
+            id: i.id || `intervention-${Date.now()}`,
+            type: (i.type as RiffInterventionType) || 'big-question',
+            timestamp: i.timestamp || '',
             anchor: {
-              paragraphIndex: c.anchor?.paragraphIndex ?? 0,
-              snippet: c.anchor?.snippet || '',
+              paragraphIndex: i.anchor?.paragraphIndex ?? 0,
+              snippet: i.anchor?.snippet || '',
             },
-            content: c.content || '',
+            content: i.content || '',
+            ...(i.metadata && { metadata: i.metadata }),
           }))
         : [];
 
@@ -150,7 +154,7 @@ messages: []
           content: m.content || '',
           ...(m.action && { action: m.action }),
         }));
-        return { messages, artifactType, comments };
+        return { messages, artifactType, interventions };
       }
 
       // Backward compat: migrate from old rawInput format
@@ -160,13 +164,13 @@ messages: []
           timestamp: new Date().toISOString(),
           content: parsed.rawInput.trim(),
         }];
-        return { messages, artifactType, comments };
+        return { messages, artifactType, interventions };
       }
 
-      return { messages: [], artifactType, comments };
+      return { messages: [], artifactType, interventions };
     } catch (error) {
       console.error('[RiffService] Failed to get draft messages:', error);
-      return { messages: [], artifactType: 'note', comments: [] };
+      return { messages: [], artifactType: 'note', interventions: [] };
     }
   }
 
@@ -647,16 +651,16 @@ Output the COMPLETE updated document. Only change what the user requested. Prese
     }
   }
 
-  // Generate AI comments on the document — acts as a conversational nudge
-  async generateComments(
+  // Generate AI interventions on the document — acts as intelligent conversational prompts
+  async generateInterventions(
     riffNotePath: string,
     recentInput: string,
     existingNotes: NoteInfo[],
     model: string,
     signal?: AbortSignal,
-    messagesSinceLastComment: number = 0,
-    existingCommentParagraphs: number[] = []
-  ): Promise<RiffComment[]> {
+    messagesSinceLastIntervention: number = 0,
+    existingInterventionParagraphs: number[] = []
+  ): Promise<RiffIntervention[]> {
     if (!this.vaultPath) return [];
 
     try {
@@ -695,17 +699,17 @@ Output the COMPLETE updated document. Only change what the user requested. Prese
         : 'none';
 
       // Lower the bar progressively when we haven't commented in a while
-      const eagernessGuidance = messagesSinceLastComment >= 5
+      const eagernessGuidance = messagesSinceLastIntervention >= 5
         ? `It's been a while since you commented. If something interesting has come up, now would be a good time.`
-        : messagesSinceLastComment >= 3
+        : messagesSinceLastIntervention >= 3
         ? `Feel free to comment if something genuinely stands out — a contradiction, an unexplored angle, or a connection to an existing note.`
         : `Only comment if something is genuinely surprising, contradictory, or connects to an existing vault note. When in doubt, return an empty array.`;
 
-      const existingNote = existingCommentParagraphs.length > 0
-        ? `\nParagraphs that ALREADY have comments: [${existingCommentParagraphs.join(', ')}]. Do NOT comment on these again.`
+      const existingNote = existingInterventionParagraphs.length > 0
+        ? `\nParagraphs that ALREADY have comments: [${existingInterventionParagraphs.join(', ')}]. Do NOT comment on these again.`
         : '';
 
-      const systemPrompt = `You are a curious, engaged thinking partner in a live note-taking session. The user is speaking or typing their thoughts and you can leave short margin comments.
+      const systemPrompt = `You are an intelligent thinking partner in a live brain-dump session. The user is speaking or typing their thoughts and you can insert occasional inline interventions to enhance their thinking.
 
 RECENT TRANSCRIPT (paragraphs numbered for reference):
 ${contextParagraphs.map((p, i) => `[${contextStart + i}] ${p}`).join('\n\n')}
@@ -716,26 +720,60 @@ ${recentInput}
 EXISTING NOTES IN VAULT:
 ${notesList || '(none)'}
 
-SCOPE: Only comment on paragraphs ${commentRange}.${existingNote}
+SCOPE: Only intervene on paragraphs ${commentRange}.${existingNote}
 
 DENSITY RULES:
-- Return AT MOST 1 comment total.
-- Never comment on a paragraph that already has a comment.
-- Avoid commenting on a paragraph immediately adjacent to one that has a comment.
+- Return AT MOST 1 intervention total.
+- Never intervene on a paragraph that already has an intervention.
+- Avoid intervening on a paragraph immediately adjacent to one that has an intervention.
 
 EAGERNESS: ${eagernessGuidance}
 
-Good comments include:
-- A short question that prompts the user to say more ("What made you choose X over Y?", "How did that turn out?")
-- A connection to an existing vault note (use [[Note Name]] syntax)
-- A brief reaction or observation ("This contradicts what you said earlier about...", "Interesting — this reminds me of...")
-- Flagging something worth exploring ("You mentioned X but didn't elaborate — worth expanding?")
+INTERVENTION TYPES:
 
-Keep comments to 1-2 sentences max. Be conversational, not formal. Think of yourself as a smart friend listening and occasionally chiming in.
+1. **big-question** - Socratic dialogue prompts to deepen thinking
+   - Ask "why?" to probe assumptions
+   - Challenge surface-level thinking
+   - Examples: "What makes you think that?", "What's the underlying reason?"
 
-Return a JSON array with 0 or 1 items. Each item: {"paragraphIndex": <number>, "snippet": "<first 50 chars of that paragraph>", "content": "<your comment>"}
+2. **memory-recall** - Reference previous vault notes when relevant
+   - Use [[Note Name]] syntax for note references
+   - Connect current thoughts to past thinking
+   - Examples: "Remember in [[Project Planning]] you mentioned...", "This connects to [[Design Ideas]]..."
 
-Return an empty array [] if nothing compelling stands out or all eligible paragraphs already have comments.
+3. **oblique-strategy** - Creative prompt from Brian Eno's Oblique Strategies deck
+   - Use when user seems stuck, repetitive, or could benefit from lateral thinking
+   - Pick one of these strategies: ${obliqueStrategies.join(', ')}
+   - Return the exact strategy text in metadata.obliqueCard
+   - Connect the strategy to their current discussion in content
+   - Example: For "Use an old idea" → content: "What if you revisited an earlier approach?"
+
+4. **question-answer** - Inline answers when user asks questions or expresses confusion
+   - Detect when user is stuck on a fact or detail
+   - Provide brief, helpful answers
+   - Examples: Answering "What was that movie called?" or "When did that happen?"
+
+INTERVENTION SELECTION:
+- Choose the type that best fits the moment
+- Prefer big-question for deep thinking, memory-recall when connections exist
+- Use oblique-strategy when detecting stuckness or repetitive patterns
+- Use question-answer when user is stuck on facts
+
+Keep interventions to 1-2 sentences max. Be conversational, not formal.
+
+Return a JSON array with 0 or 1 items. Each item must have:
+{
+  "type": "big-question" | "memory-recall" | "oblique-strategy" | "question-answer",
+  "paragraphIndex": <number>,
+  "snippet": "<first 50 chars of that paragraph>",
+  "content": "<your intervention text>",
+  "metadata": {
+    "noteReference": "<filename.md>",  // Only for memory-recall
+    "obliqueCard": "<exact strategy text>"  // Only for oblique-strategy
+  }
+}
+
+Return an empty array [] if nothing compelling stands out.
 
 Return ONLY the JSON array, no other text.`;
 
@@ -756,28 +794,35 @@ Return ONLY the JSON array, no other text.`;
       if (!jsonMatch) return [];
 
       const parsed = JSON.parse(jsonMatch[0]) as Array<{
+        type: RiffInterventionType;
         paragraphIndex: number;
         snippet: string;
         content: string;
+        metadata?: {
+          noteReference?: string;
+          obliqueCard?: string;
+        };
       }>;
 
-      // Enforce density: only recent window, skip already-commented and adjacent
-      const commentedSet = new Set(existingCommentParagraphs);
+      // Enforce density: only recent window, skip already-intervened and adjacent
+      const interventionSet = new Set(existingInterventionParagraphs);
       const filtered = parsed
-        .filter(c => c.paragraphIndex >= commentStart)
-        .filter(c => !commentedSet.has(c.paragraphIndex))
-        .filter(c => !commentedSet.has(c.paragraphIndex - 1) && !commentedSet.has(c.paragraphIndex + 1))
-        .slice(0, 1); // At most 1 new comment
+        .filter(i => i.paragraphIndex >= commentStart)
+        .filter(i => !interventionSet.has(i.paragraphIndex))
+        .filter(i => !interventionSet.has(i.paragraphIndex - 1) && !interventionSet.has(i.paragraphIndex + 1))
+        .slice(0, 1); // At most 1 new intervention
 
       const now = new Date().toISOString();
-      return filtered.map((c, i) => ({
-        id: `comment-${Date.now()}-${i}`,
+      return filtered.map((i, idx) => ({
+        id: `intervention-${Date.now()}-${idx}`,
+        type: i.type || 'big-question',
         timestamp: now,
         anchor: {
-          paragraphIndex: c.paragraphIndex,
-          snippet: c.snippet || '',
+          paragraphIndex: i.paragraphIndex,
+          snippet: i.snippet || '',
         },
-        content: c.content,
+        content: i.content,
+        ...(i.metadata && { metadata: i.metadata }),
       }));
     } catch (error) {
       console.error('[RiffService] Failed to generate comments:', error);
@@ -785,8 +830,8 @@ Return ONLY the JSON array, no other text.`;
     }
   }
 
-  // Persist comments to frontmatter
-  async updateDraftComments(riffNotePath: string, comments: RiffComment[]): Promise<void> {
+  // Persist interventions to frontmatter
+  async updateDraftInterventions(riffNotePath: string, interventions: RiffIntervention[]): Promise<void> {
     if (!this.vaultPath) return;
 
     const fullPath = await join(this.vaultPath, riffNotePath);
@@ -799,11 +844,13 @@ Return ONLY the JSON array, no other text.`;
     const [, fmBody, body] = fmMatch;
     const parsed = yaml.load(fmBody) as Record<string, any> || {};
 
-    parsed.comments = comments.map(c => ({
-      id: c.id,
-      timestamp: c.timestamp,
-      anchor: { paragraphIndex: c.anchor.paragraphIndex, snippet: c.anchor.snippet },
-      content: c.content,
+    parsed.interventions = interventions.map(i => ({
+      id: i.id,
+      type: i.type,
+      timestamp: i.timestamp,
+      anchor: { paragraphIndex: i.anchor.paragraphIndex, snippet: i.anchor.snippet },
+      content: i.content,
+      ...(i.metadata && { metadata: i.metadata }),
     }));
 
     await writeTextFile(fullPath, `---\n${yaml.dump(parsed, { lineWidth: -1 })}---\n${body}`);

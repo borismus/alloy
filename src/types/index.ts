@@ -199,16 +199,23 @@ export interface RiffMessage {
   action?: 'append' | 'command';
 }
 
-export interface RiffCommentAnchor {
+export type RiffInterventionType = 'big-question' | 'memory-recall' | 'question-answer' | 'oblique-strategy';
+
+export interface RiffInterventionAnchor {
   paragraphIndex: number;
   snippet: string;
 }
 
-export interface RiffComment {
+export interface RiffIntervention {
   id: string;
+  type: RiffInterventionType;
   timestamp: string;
-  anchor: RiffCommentAnchor;
+  anchor: RiffInterventionAnchor;
   content: string;
+  metadata?: {
+    noteReference?: string;   // For memory-recall type
+    obliqueCard?: string;      // For oblique-strategy type
+  };
 }
 
 // Note metadata for sidebar display

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import * as yaml from 'js-yaml';
-import { NoteInfo, RiffArtifactType, RiffComment } from '../types';
+import { NoteInfo, RiffArtifactType, RiffIntervention } from '../types';
 import { riffService } from '../services/riff';
 import { useRiffContext } from '../contexts/RiffContext';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
@@ -8,6 +8,7 @@ import { useDictation } from '../hooks/useDictation';
 import { MarkdownContent } from './MarkdownContent';
 import { MermaidDiagram } from './MermaidDiagram';
 import { ItemHeader } from './ItemHeader';
+import { InterventionCard } from './InterventionCard';
 import './RiffView.css';
 
 interface ConversationInfo {
@@ -74,15 +75,15 @@ function splitIntoParagraphs(body: string): string[] {
   return body.split(/\n\n+/).filter(p => p.trim());
 }
 
-// Find which paragraph index a comment anchors to (by index, with snippet fallback)
-function resolveCommentAnchor(comment: RiffComment, paragraphs: string[]): number {
+// Find which paragraph index an intervention anchors to (by index, with snippet fallback)
+function resolveInterventionAnchor(intervention: RiffIntervention, paragraphs: string[]): number {
   // Try exact index first
-  if (comment.anchor.paragraphIndex < paragraphs.length) {
-    return comment.anchor.paragraphIndex;
+  if (intervention.anchor.paragraphIndex < paragraphs.length) {
+    return intervention.anchor.paragraphIndex;
   }
   // Fallback: fuzzy match by snippet
-  if (comment.anchor.snippet) {
-    const idx = paragraphs.findIndex(p => p.includes(comment.anchor.snippet));
+  if (intervention.anchor.snippet) {
+    const idx = paragraphs.findIndex(p => p.includes(intervention.anchor.snippet));
     if (idx !== -1) return idx;
   }
   return -1;
@@ -105,26 +106,23 @@ export const RiffView: React.FC<RiffViewProps> = ({
     isRiffMode,
     isUpdating,
     isProcessing,
-    isCommenting,
+    isGeneratingIntervention,
     artifactType,
-    comments,
+    interventions,
     setInputText,
     sendMessage,
     exitRiffMode,
     setArtifactType,
-    resolveComment,
+    dismissIntervention,
     integrateNow,
     setConfig,
   } = useRiffContext();
 
   const [draftContent, setDraftContent] = useState('');
-  const [activeCommentParagraph, setActiveCommentParagraph] = useState<number | null>(null);
-  const [collapsedParagraphs, setCollapsedParagraphs] = useState<Set<number>>(new Set());
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const documentPaneRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preExistingTextRef = useRef('');
-  const commentElsRef = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // Dictation
   const handleTranscript = useCallback((text: string) => {
@@ -200,11 +198,6 @@ export const RiffView: React.FC<RiffViewProps> = ({
     }
   }, [draftContent, artifactType]);
 
-  // Handle artifact type change
-  const handleArtifactTypeChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setArtifactType(e.target.value as RiffArtifactType);
-  }, [setArtifactType]);
-
   // Handle integrate
   const handleIntegrate = useCallback(() => {
     integrateNow();
@@ -259,52 +252,18 @@ export const RiffView: React.FC<RiffViewProps> = ({
     return splitIntoParagraphs(draftBody);
   }, [artifactType, draftBody]);
 
-  // Build a set of paragraph indices that have comments
-  const commentsByParagraph = useMemo(() => {
-    const map = new Map<number, RiffComment[]>();
-    for (const comment of comments) {
-      const idx = resolveCommentAnchor(comment, paragraphs);
+  // Build a set of paragraph indices that have interventions
+  const interventionsByParagraph = useMemo(() => {
+    const map = new Map<number, RiffIntervention[]>();
+    for (const intervention of interventions) {
+      const idx = resolveInterventionAnchor(intervention, paragraphs);
       if (idx === -1) continue;
       const existing = map.get(idx) || [];
-      existing.push(comment);
+      existing.push(intervention);
       map.set(idx, existing);
     }
     return map;
-  }, [comments, paragraphs]);
-
-  // Detect overlapping comment bubbles and collapse them
-  useLayoutEffect(() => {
-    const entries: { index: number; el: HTMLDivElement }[] = [];
-    for (const [index, el] of commentElsRef.current.entries()) {
-      entries.push({ index, el });
-    }
-    if (entries.length < 2) {
-      setCollapsedParagraphs(prev => prev.size === 0 ? prev : new Set());
-      return;
-    }
-    entries.sort((a, b) => a.el.getBoundingClientRect().top - b.el.getBoundingClientRect().top);
-
-    const COLLAPSED_HEIGHT = 40;
-    const newCollapsed = new Set<number>();
-    let occupiedBottom = -Infinity;
-
-    for (const { index, el } of entries) {
-      const rect = el.getBoundingClientRect();
-      const isActive = activeCommentParagraph === index;
-
-      if (!isActive && rect.top < occupiedBottom) {
-        newCollapsed.add(index);
-        occupiedBottom = Math.max(occupiedBottom, rect.top + COLLAPSED_HEIGHT);
-      } else {
-        occupiedBottom = rect.bottom;
-      }
-    }
-
-    setCollapsedParagraphs(prev => {
-      if (prev.size === newCollapsed.size && [...newCollapsed].every(i => prev.has(i))) return prev;
-      return newCollapsed;
-    });
-  }, [comments, paragraphs, activeCommentParagraph]);
+  }, [interventions, paragraphs]);
 
   // Extract mermaid code from draft body
   const mermaidCode = useMemo(() => {
@@ -335,18 +294,6 @@ export const RiffView: React.FC<RiffViewProps> = ({
       >
         {draftFilename && (
           <>
-            <select
-              className="artifact-type-select"
-              value={artifactType}
-              onChange={handleArtifactTypeChange}
-              disabled={isProcessing || isUpdating}
-              title="Artifact type"
-            >
-              <option value="note">Transcript</option>
-              <option value="mermaid">Mermaid Diagram</option>
-              <option value="table">Table</option>
-              <option value="summary">Summary</option>
-            </select>
             <button
               className="btn-small btn-accent"
               onClick={handleIntegrate}
@@ -363,7 +310,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
       {draftFilename && draftBody ? (
         <div className="riff-content-area">
           <div
-            className={`riff-document-pane ${mermaidCode ? 'riff-draft-canvas' : ''} ${artifactType === 'table' ? 'riff-draft-table' : ''} ${isNoteType && comments.length > 0 ? 'riff-transcript' : ''}`}
+            className={`riff-document-pane ${mermaidCode ? 'riff-draft-canvas' : ''} ${artifactType === 'table' ? 'riff-draft-table' : ''}`}
             ref={documentPaneRef}
           >
             {mermaidCode ? (
@@ -371,52 +318,28 @@ export const RiffView: React.FC<RiffViewProps> = ({
             ) : isNoteType ? (
               <div className="riff-paragraphs">
                 {paragraphs.map((paragraph, index) => {
-                  const paragraphComments = commentsByParagraph.get(index);
-                  const hasComment = !!paragraphComments;
-                  const isActive = activeCommentParagraph === index;
-                  const isCollapsed = collapsedParagraphs.has(index);
+                  const paragraphInterventions = interventionsByParagraph.get(index);
                   return (
-                    <div
-                      key={index}
-                      className={`riff-paragraph ${hasComment ? 'has-comment' : ''} ${isActive ? 'active-comment' : ''}`}
-                      data-paragraph-index={index}
-                      onClick={hasComment ? () => setActiveCommentParagraph(isActive ? null : index) : undefined}
-                    >
-                      <MarkdownContent
-                        content={paragraph}
-                        className="note-content"
-                        onNavigateToNote={onNavigateToNote}
-                        onNavigateToConversation={onNavigateToConversation}
-                        conversations={conversations}
-                        urlTransform={urlTransform}
-                      />
-                      {paragraphComments && (
-                        <div
-                          className={`riff-margin-comments ${isActive ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
-                          ref={el => { if (el) commentElsRef.current.set(index, el); else commentElsRef.current.delete(index); }}
-                        >
-                          {paragraphComments.map(comment => (
-                            <div key={comment.id} className="riff-comment-card">
-                              <MarkdownContent
-                                content={comment.content}
-                                className="riff-comment-content"
-                                onNavigateToNote={onNavigateToNote}
-                                onNavigateToConversation={onNavigateToConversation}
-                                conversations={conversations}
-                                urlTransform={urlTransform}
-                              />
-                              <button
-                                className="riff-comment-dismiss"
-                                onClick={(e) => { e.stopPropagation(); resolveComment(comment.id); }}
-                                title="Dismiss comment"
-                              >
-                                &times;
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <React.Fragment key={index}>
+                      <div className="riff-paragraph" data-paragraph-index={index}>
+                        <MarkdownContent
+                          content={paragraph}
+                          className="note-content"
+                          onNavigateToNote={onNavigateToNote}
+                          onNavigateToConversation={onNavigateToConversation}
+                          conversations={conversations}
+                          urlTransform={urlTransform}
+                        />
+                      </div>
+                      {paragraphInterventions?.map(intervention => (
+                        <InterventionCard
+                          key={intervention.id}
+                          intervention={intervention}
+                          onDismiss={dismissIntervention}
+                          onNavigateToNote={onNavigateToNote}
+                        />
+                      ))}
+                    </React.Fragment>
                   );
                 })}
               </div>
@@ -436,7 +359,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
         <div className="riff-content-area" />
       )}
 
-      {(isCommenting || isUpdating) && (
+      {(isGeneratingIntervention || isUpdating) && (
         <div className="riff-activity-indicator" title={isUpdating ? 'Updating...' : 'Generating comments...'}>
           <span className="riff-activity-spinner" />
         </div>
