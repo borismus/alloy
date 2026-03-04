@@ -16,6 +16,7 @@ Key features:
 ## Project Context
 
 - This is a TypeScript Tauri app. The primary codebase is TypeScript. When debugging platform-specific issues (dictation, WKWebView, native behaviors), recognize early when the issue is at the system/platform level rather than app level, and communicate that clearly instead of cycling through incorrect hypotheses.
+- **Dual runtime modes**: The app runs in both **Tauri mode** (native desktop) and **server mode** (web browser). Both modes must be maintained and tested. In server mode, Tauri plugins are swapped for HTTP-based mocks via Vite aliases (see `vite.config.ts`). Key differences: Tauri mode uses `@tauri-apps/plugin-http` (subject to URL scope in `tauri.conf.json`), server mode proxies external requests through the Alloy server (`src/mocks/tauri-http.ts`). When adding features that make HTTP requests or use Tauri APIs, ensure they work in both modes.
 
 ## General Principles
 

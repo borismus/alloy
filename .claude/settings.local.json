@@ -25,7 +25,10 @@
       "Bash(docker rm:*)",
       "Bash(docker run:*)",
       "Bash(git -C /Users/smus/Projects/promptbox log --all --pretty=format:\"%h %s\")",
-      "Bash(npx tauri icon:*)"
+      "Bash(npx tauri icon:*)",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_run_code",
+      "mcp__playwright__browser_wait_for"
     ]
   },
   "enableAllProjectMcpServers": true,
