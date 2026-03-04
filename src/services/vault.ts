@@ -756,12 +756,10 @@ export class VaultService {
     if (await exists(memoryPath)) {
       const fileStat = await stat(memoryPath);
       const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
-      const content = await readTextFile(memoryPath);
-      const hasSkillContent = content.includes('&[[');
       notes.push({
         filename: 'memory.md',
         lastModified,
-        hasSkillContent,
+        hasSkillContent: false,
       });
     }
 
@@ -779,13 +777,9 @@ export class VaultService {
     const noteResults = await Promise.all(
       mdEntries.map(async (entry) => {
         const filePath = await join(notesPath, entry.name!);
-        const [fileStat, content] = await Promise.all([
-          stat(filePath),
-          readTextFile(filePath),
-        ]);
+        const fileStat = await stat(filePath);
         const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
-        const hasSkillContent = content.includes('&[[');
-        return { filename: entry.name!, lastModified, hasSkillContent } as NoteInfo;
+        return { filename: entry.name!, lastModified, hasSkillContent: false } as NoteInfo;
       })
     );
     notes.push(...noteResults);
@@ -793,50 +787,67 @@ export class VaultService {
     // Load riff notes from riffs/ directory
     const riffsPath = await join(this.vaultPath, 'riffs');
     if (await exists(riffsPath)) {
-      const riffEntries = await readDir(riffsPath);
-      for (const entry of riffEntries) {
-        if (entry.name?.endsWith('.md')) {
-          const filePath = await join(riffsPath, entry.name);
-          const fileStat = await stat(filePath);
-          const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
-          const content = await readTextFile(filePath);
-          const hasSkillContent = content.includes('&[[');
+      const { isServerMode } = await import('../mocks');
 
-          // Parse frontmatter to get integrated status, title, and artifact type
-          let isIntegrated = false;
-          let title: string | undefined;
-          let artifactType: 'note' | 'mermaid' | undefined;
-          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-          if (frontmatterMatch) {
-            try {
-              const frontmatter = yaml.load(frontmatterMatch[1]) as Record<string, unknown>;
-              isIntegrated = frontmatter.integrated === true;
-              if (typeof frontmatter.title === 'string') {
-                title = frontmatter.title;
-              }
-              if (frontmatter.artifactType === 'note' || frontmatter.artifactType === 'mermaid') {
-                artifactType = frontmatter.artifactType;
-              }
-            } catch {
-              // Ignore frontmatter parse errors
-            }
+      if (isServerMode()) {
+        // Server mode: batch-read all riff headers in one HTTP request
+        const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
+        const headers: Record<string, { content: string; mtime: number }> = await readDirHeaders(riffsPath, '.md', 300);
+        for (const [name, { content, mtime }] of Object.entries(headers)) {
+          const lastModified = mtime;
+          const riffInfo = this.parseRiffFrontmatter(name, content, lastModified);
+          notes.push(riffInfo);
+        }
+      } else {
+        // Tauri mode: individual file reads (fast native IPC)
+        const riffEntries = await readDir(riffsPath);
+        for (const entry of riffEntries) {
+          if (entry.name?.endsWith('.md')) {
+            const filePath = await join(riffsPath, entry.name);
+            const [fileStat, content] = await Promise.all([
+              stat(filePath),
+              readTextFile(filePath),
+            ]);
+            const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
+            const riffInfo = this.parseRiffFrontmatter(entry.name, content, lastModified);
+            notes.push(riffInfo);
           }
-
-          notes.push({
-            filename: `riffs/${entry.name}`,
-            lastModified,
-            hasSkillContent,
-            isRiff: true,
-            isIntegrated,
-            title,
-            artifactType,
-          });
         }
       }
     }
 
     // Sort by lastModified descending (newest first)
     return notes.sort((a, b) => b.lastModified - a.lastModified);
+  }
+
+  private parseRiffFrontmatter(name: string, content: string, lastModified: number): NoteInfo {
+    let isIntegrated = false;
+    let title: string | undefined;
+    let artifactType: 'note' | 'mermaid' | undefined;
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (frontmatterMatch) {
+      try {
+        const frontmatter = yaml.load(frontmatterMatch[1]) as Record<string, unknown>;
+        isIntegrated = frontmatter.integrated === true;
+        if (typeof frontmatter.title === 'string') {
+          title = frontmatter.title;
+        }
+        if (frontmatter.artifactType === 'note' || frontmatter.artifactType === 'mermaid') {
+          artifactType = frontmatter.artifactType;
+        }
+      } catch {
+        // Ignore frontmatter parse errors
+      }
+    }
+    return {
+      filename: `riffs/${name}`,
+      lastModified,
+      hasSkillContent: false,
+      isRiff: true,
+      isIntegrated,
+      title,
+      artifactType,
+    };
   }
 
   /**
