@@ -146,6 +146,12 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
           if (href) {
             openUrl(href);
           }
+        },
+        onAuxClick: (e: React.MouseEvent) => {
+          e.preventDefault();
+          if (href) {
+            openUrl(href);
+          }
         }
       }, children);
     },
