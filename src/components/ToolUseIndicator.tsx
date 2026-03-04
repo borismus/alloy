@@ -99,6 +99,7 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
   onNavigateToNote,
 }) => {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   if (toolUse.length === 0) return null;
 
@@ -158,11 +159,17 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
           label = isToolComplete ? `Searched "${query}"` : `Searching "${query}"`;
         }
 
+        const isError = tool.isError && tool.result;
         return (
           <div
             key={idx}
-            className={`tool-use-indicator ${tool.isError ? 'error' : ''}`}
-            title={tool.isError && tool.result ? tool.result : undefined}
+            className={`tool-use-indicator ${tool.isError ? 'error' : ''} ${isError ? 'clickable' : ''}`}
+            title={isError ? tool.result : undefined}
+            onClick={isError ? () => {
+              navigator.clipboard.writeText(tool.result!);
+              setCopiedIdx(idx);
+              setTimeout(() => setCopiedIdx(null), 1500);
+            } : undefined}
           >
             <span className="tool-use-icon">
               <ToolIcon type={tool.type} />
@@ -213,6 +220,7 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
               <span className="tool-use-path">({tool.input.recency})</span>
             )}
             {isStreaming && !tool.result && <span className="tool-use-spinner" />}
+            {copiedIdx === idx && <span className="tool-use-copied">Copied!</span>}
           </div>
         );
       })}

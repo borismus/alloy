@@ -72,6 +72,7 @@ interface ChatInputFormProps {
 export interface ChatInputFormHandle {
   focus: () => void;
   addImages: (images: PendingImage[]) => void;
+  setText: (text: string) => void;
 }
 
 // Separate component for input form to isolate re-renders during typing
@@ -93,6 +94,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
     addImages: (images: PendingImage[]) => setPendingImages(prev => [...prev, ...images]),
+    setText: (text: string) => setInput(text),
   }));
 
   useAutoResizeTextarea(textareaRef, input);
@@ -284,6 +286,7 @@ interface ChatInterfaceProps {
 export interface ChatInterfaceHandle {
   focusInput: () => void;
   openFind: () => void;
+  setInputText: (text: string) => void;
 }
 
 const getAssistantName = (model: string): string => {
@@ -465,7 +468,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       } else {
         setShowFind(true);
       }
-    }
+    },
+    setInputText: (text: string) => {
+      chatInputRef.current?.setText(text);
+    },
   }));
 
   // Scroll to bottom when switching conversations (unless scrollToMessageId is set)

@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { ModelInfo, TimelineItem, TimelineFilter } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
@@ -95,7 +95,6 @@ interface SidebarProps {
   unreadConversationIds: string[];
   availableModels: ModelInfo[];
   onNewConversation: () => void;
-  onNewTrigger: () => void;
   onNewRiff: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onRenameRiff: (oldFilename: string, newName: string) => void;
@@ -121,7 +120,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   unreadConversationIds,
   availableModels,
   onNewConversation,
-  onNewTrigger,
   onNewRiff,
   onRenameConversation,
   onRenameRiff,
@@ -134,12 +132,23 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const textareaProps = useTextareaProps();
   const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
   const firedTriggerIds = firedTriggers.map(f => f.conversationId);
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingType, setRenamingType] = useState<'conversation' | 'riff' | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger' | 'riff'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Debounce search query to avoid scanning all message text on every keystroke
+  useEffect(() => {
+    if (!searchInput.trim()) {
+      setSearchQuery('');
+      return;
+    }
+    const timer = setTimeout(() => setSearchQuery(searchInput), 200);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   useImperativeHandle(ref, () => ({
     focusSearch: () => {
@@ -292,14 +301,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               onNewConversation();
             }
           },
-          {
-            id: 'new-trigger',
-            text: 'New Trigger',
-            action: () => {
-              onNewTrigger();
-            }
-          },
-          {
+{
             id: 'new-riff',
             text: 'New Riff',
             action: () => {
@@ -410,14 +412,14 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             ref={searchInputRef}
             type="text"
             placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="search-input"
             {...textareaProps}
           />
-          {searchQuery && (
+          {searchInput && (
             <button
-              onClick={() => setSearchQuery('')}
+              onClick={() => setSearchInput('')}
               className="clear-search-button"
               title="Clear search"
             >

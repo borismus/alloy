@@ -86,6 +86,9 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
   // Track active parallel updates
   const activeUpdatesRef = useRef(0);
 
+  // Track whether messages were modified during this session
+  const dirtyRef = useRef(false);
+
   // Keep stateRef in sync
   stateRef.current = state;
 
@@ -156,7 +159,8 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
         modelRef.current,
         interventionAbort.signal,
         messagesSinceLastIntervention,
-        existingInterventionParagraphs
+        existingInterventionParagraphs,
+        interventions
       );
       setState(prev => {
         const merged = [...prev.interventions, ...newInterventions];
@@ -193,6 +197,7 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
       content: messageText,
     };
     const updatedMessages = [...current.messages, newMessage];
+    dirtyRef.current = true;
     setState(prev => ({ ...prev, messages: updatedMessages, draftFilename }));
 
     // All LLM work runs in the background — sendMessage returns here
@@ -268,6 +273,8 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
   // Enter riff mode
   const enterRiffMode = useCallback(async (existingDraftFilename?: string) => {
 
+    dirtyRef.current = false;
+
     if (existingDraftFilename) {
       // Resume existing draft - load messages, artifactType, and interventions from frontmatter
       try {
@@ -314,9 +321,12 @@ export const RiffProvider: React.FC<RiffProviderProps> = ({ children }) => {
   // Exit riff mode
   const exitRiffMode = useCallback(async () => {
 
-    // Persist messages before exiting
-    await persistMessages();
+    // Only persist if messages were modified during this session
+    if (dirtyRef.current) {
+      await persistMessages();
+    }
 
+    dirtyRef.current = false;
     setState(initialState);
   }, [persistMessages]);
 

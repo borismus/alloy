@@ -29,22 +29,28 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => new Set());
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
 
+  // Use refs for reader functions to keep callback identity stable across state changes
+  const streamingStatesRef = useRef(streamingStates);
+  streamingStatesRef.current = streamingStates;
+  const unreadIdsRef = useRef(unreadIds);
+  unreadIdsRef.current = unreadIds;
+
   const getStreamingState = useCallback(
     (id: string): ConversationStreamingState | null => {
-      return streamingStates.get(id) ?? null;
+      return streamingStatesRef.current.get(id) ?? null;
     },
-    [streamingStates]
+    []
   );
 
   const getStreamingConversationIds = useCallback((): string[] => {
-    return Array.from(streamingStates.entries())
+    return Array.from(streamingStatesRef.current.entries())
       .filter(([, state]) => state.isStreaming)
       .map(([id]) => id);
-  }, [streamingStates]);
+  }, []);
 
   const getUnreadConversationIds = useCallback((): string[] => {
-    return Array.from(unreadIds);
-  }, [unreadIds]);
+    return Array.from(unreadIdsRef.current);
+  }, []);
 
   const startStreaming = useCallback((id: string): AbortController => {
     // Abort any existing stream for this conversation

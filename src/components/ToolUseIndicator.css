@@ -112,6 +112,13 @@
   background: #ffe0e0;
 }
 
+.tool-use-copied {
+  font-size: 0.7rem;
+  color: #4caf50;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 .tool-use-subagent-wrapper {
   flex-basis: 100%;
 }
