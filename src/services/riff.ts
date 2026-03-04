@@ -3,15 +3,9 @@ import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
 import { Message, NoteInfo, ProposedChange, RiffArtifactType, RiffMessage, RiffIntervention, RiffInterventionType, getProviderFromModel, getModelIdFromModel } from '../types';
 import { providerRegistry } from './providers';
-import { getOrchestratorModel } from './background';
 import { obliqueStrategies } from './oblique-strategies';
 
-interface RiffHistoryFile {
-  messages: Message[];
-}
-
 const MAX_MESSAGES = 50;
-const RIFF_FILENAME = 'riff_history.yaml';
 
 export class RiffService {
   private vaultPath: string | null = null;
@@ -22,59 +16,6 @@ export class RiffService {
 
   getVaultPath(): string | null {
     return this.vaultPath;
-  }
-
-  async getRiffFilePath(): Promise<string | null> {
-    if (!this.vaultPath) return null;
-    return await join(this.vaultPath, RIFF_FILENAME);
-  }
-
-  async loadHistory(): Promise<Message[]> {
-    if (!this.vaultPath) return [];
-
-    const filePath = await this.getRiffFilePath();
-    if (!filePath || !(await exists(filePath))) {
-      return [];
-    }
-
-    try {
-      const content = await readTextFile(filePath);
-      const data = yaml.load(content) as RiffHistoryFile;
-      return data?.messages || [];
-    } catch (error) {
-      console.error('[RiffService] Failed to load history:', error);
-      return [];
-    }
-  }
-
-  async saveHistory(messages: Message[]): Promise<void> {
-    if (!this.vaultPath) return;
-
-    const filePath = await this.getRiffFilePath();
-    if (!filePath) return;
-
-    // Keep only the last MAX_MESSAGES
-    const trimmedMessages = messages.slice(-MAX_MESSAGES);
-
-    const data: RiffHistoryFile = {
-      messages: trimmedMessages,
-    };
-
-    try {
-      await writeTextFile(filePath, yaml.dump(data));
-    } catch (error) {
-      console.error('[RiffService] Failed to save history:', error);
-    }
-  }
-
-  async addMessage(message: Message): Promise<void> {
-    const history = await this.loadHistory();
-    history.push(message);
-    await this.saveHistory(history);
-  }
-
-  async clearHistory(): Promise<void> {
-    await this.saveHistory([]);
   }
 
   // Get or create a timestamped riff note
@@ -130,8 +71,7 @@ messages: []
         artifactType = parsed.artifactType;
       }
 
-      // Parse interventions (with backward compat for old "comments" field)
-      const rawInterventions = parsed.interventions || parsed.comments || [];
+      const rawInterventions = parsed.interventions || [];
       const interventions: RiffIntervention[] = Array.isArray(rawInterventions)
         ? rawInterventions.map((i: any) => ({
             id: i.id || `intervention-${Date.now()}`,
@@ -152,18 +92,7 @@ messages: []
           role: 'user' as const,
           timestamp: m.timestamp || '',
           content: m.content || '',
-          ...(m.action && { action: m.action }),
         }));
-        return { messages, artifactType, interventions };
-      }
-
-      // Backward compat: migrate from old rawInput format
-      if (parsed.rawInput && typeof parsed.rawInput === 'string' && parsed.rawInput.trim()) {
-        const messages: RiffMessage[] = [{
-          role: 'user',
-          timestamp: new Date().toISOString(),
-          content: parsed.rawInput.trim(),
-        }];
         return { messages, artifactType, interventions };
       }
 
@@ -193,17 +122,12 @@ messages: []
       role: m.role,
       timestamp: m.timestamp,
       content: m.content,
-      ...(m.action && { action: m.action }),
     }));
 
     // Update artifactType if provided
     if (artifactType) {
       parsed.artifactType = artifactType;
     }
-
-    // Remove old fields if present
-    delete parsed.rawInput;
-    delete parsed.crystallizedOffset;
 
     await writeTextFile(fullPath, `---\n${yaml.dump(parsed, { lineWidth: -1 })}---\n${body}`);
   }
@@ -535,45 +459,6 @@ Default to "note" unless the input clearly matches another type.`;
     return { changeDescription };
   }
 
-  // Classify user input as content to append or a command to modify the document
-  async classifyInput(text: string): Promise<'append' | 'command'> {
-    // Fast path: long text is almost always content to append
-    if (text.split(/\s+/).length > 30) return 'append';
-
-    try {
-      const modelKey = getOrchestratorModel();
-      if (!modelKey) return 'append';
-
-      const providerType = getProviderFromModel(modelKey);
-      const modelId = getModelIdFromModel(modelKey);
-      const provider = providerRegistry.getProvider(providerType);
-
-      if (!provider || !provider.isInitialized()) return 'append';
-
-      const systemPrompt = `Classify the user's input. Is it:
-- APPEND: Content to add to a document (thoughts, notes, ideas, paragraphs, sentences)
-- COMMAND: An instruction to modify existing document content (edit, delete, rewrite, restructure, fix)
-
-Reply with ONLY the word APPEND or COMMAND.`;
-
-      const messages: Message[] = [
-        { role: 'user', timestamp: new Date().toISOString(), content: text }
-      ];
-
-      let response = '';
-      await provider.sendMessage(messages, {
-        model: modelId,
-        onChunk: (chunk: string) => { response += chunk; },
-        systemPrompt,
-      });
-
-      return response.trim().toUpperCase().includes('COMMAND') ? 'command' : 'append';
-    } catch (error) {
-      console.error('[RiffService] Failed to classify input:', error);
-      return 'append';
-    }
-  }
-
   // Append text directly to the document body, preserving frontmatter
   async appendToDocument(riffNotePath: string, text: string): Promise<void> {
     if (!this.vaultPath) throw new Error('Vault path not set');
@@ -595,62 +480,6 @@ Reply with ONLY the word APPEND or COMMAND.`;
     }
   }
 
-  // Apply a command/change to the document using AI
-  async applyCommand(
-    command: string,
-    riffNotePath: string,
-    model: string,
-    signal?: AbortSignal
-  ): Promise<void> {
-    if (!this.vaultPath) throw new Error('Vault path not set');
-
-    const providerType = getProviderFromModel(model);
-    const modelId = getModelIdFromModel(model);
-    const provider = providerRegistry.getProvider(providerType);
-
-    if (!provider || !provider.isInitialized()) {
-      throw new Error(`Provider ${providerType} not initialized`);
-    }
-
-    const fullPath = await join(this.vaultPath, riffNotePath);
-    if (!(await exists(fullPath))) throw new Error('Draft file not found');
-
-    const content = await readTextFile(fullPath);
-    const fmMatch = content.match(/^(---\n[\s\S]*?\n---\n)([\s\S]*)$/);
-    const frontmatter = fmMatch ? fmMatch[1] : '';
-    const body = fmMatch ? fmMatch[2] : content;
-
-    const systemPrompt = `You are editing a document based on the user's instruction.
-
-CURRENT DOCUMENT:
-${body}
-
-Output the COMPLETE updated document. Only change what the user requested. Preserve everything else exactly as-is. Output ONLY the document content, no commentary.`;
-
-    const messages: Message[] = [
-      { role: 'user', timestamp: new Date().toISOString(), content: command }
-    ];
-
-    let response = '';
-    await provider.sendMessage(messages, {
-      model: modelId,
-      onChunk: (chunk: string) => { response += chunk; },
-      signal,
-      systemPrompt,
-    });
-
-    if (response.trim()) {
-      // Re-read frontmatter to avoid clobbering concurrent updates
-      let currentFrontmatter = frontmatter;
-      if (await exists(fullPath)) {
-        const currentContent = await readTextFile(fullPath);
-        const fm = currentContent.match(/^(---\n[\s\S]*?\n---\n)/);
-        if (fm) currentFrontmatter = fm[1];
-      }
-      await writeTextFile(fullPath, currentFrontmatter + response.trim() + '\n');
-    }
-  }
-
   // Generate AI interventions on the document — acts as intelligent conversational prompts
   async generateInterventions(
     riffNotePath: string,
@@ -659,7 +488,8 @@ Output the COMPLETE updated document. Only change what the user requested. Prese
     model: string,
     signal?: AbortSignal,
     messagesSinceLastIntervention: number = 0,
-    existingInterventionParagraphs: number[] = []
+    existingInterventionParagraphs: number[] = [],
+    existingInterventions: RiffIntervention[] = []
   ): Promise<RiffIntervention[]> {
     if (!this.vaultPath) return [];
 
@@ -720,7 +550,10 @@ ${recentInput}
 EXISTING NOTES IN VAULT:
 ${notesList || '(none)'}
 
-SCOPE: Only intervene on paragraphs ${commentRange}.${existingNote}
+SCOPE: Only intervene on paragraphs ${commentRange}.${existingNote}${existingInterventions.length > 0 ? `
+
+RECENT INTERVENTIONS (already shown to user — do NOT repeat similar ideas):
+${existingInterventions.map(i => `- [${i.type} on ¶${i.anchor.paragraphIndex}] "${i.content}"`).join('\n')}` : ''}
 
 DENSITY RULES:
 - Return AT MOST 1 intervention total.

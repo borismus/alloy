@@ -17,7 +17,6 @@ interface TriggerContextValue {
   startScheduler: () => void;
   stopScheduler: () => void;
   dismissFiredTrigger: (conversationId: string) => void;
-  clearAllFiredTriggers: () => void;
 }
 
 const TriggerContext = createContext<TriggerContextValue | null>(null);
@@ -201,10 +200,6 @@ export function TriggerProvider({
     );
   }, []);
 
-  const clearAllFiredTriggers = useCallback(() => {
-    setFiredTriggers([]);
-  }, []);
-
   // Auto-start scheduler when vault is available
   useEffect(() => {
     if (vaultPath && !isSchedulerRunning) {
@@ -224,7 +219,6 @@ export function TriggerProvider({
     startScheduler,
     stopScheduler,
     dismissFiredTrigger,
-    clearAllFiredTriggers,
   };
 
   return (

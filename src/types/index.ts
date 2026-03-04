@@ -2,6 +2,12 @@
 
 export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini' | 'grok';
 
+/** Minimal conversation reference for wiki-link title lookups */
+export interface ConversationInfo {
+  id: string;
+  title?: string;
+}
+
 // Helper functions for unified model format: "provider/model-id"
 export function parseModelId(modelString: string): { provider: ProviderType; modelId: string } {
   const [provider, ...rest] = modelString.split('/');
@@ -167,14 +173,6 @@ export interface Config {
   SONIOX_API_KEY?: string;
 }
 
-export interface AppState {
-  config: Config | null;
-  currentConversation: Conversation | null;
-  conversations: Conversation[];
-  memory: string;
-  isLoading: boolean;
-}
-
 // Per-conversation streaming state
 export interface ConversationStreamingState {
   isStreaming: boolean;
@@ -196,7 +194,6 @@ export interface RiffMessage {
   role: 'user';
   timestamp: string;
   content: string;
-  action?: 'append' | 'command';
 }
 
 export type RiffInterventionType = 'big-question' | 'memory-recall' | 'question-answer' | 'oblique-strategy';
