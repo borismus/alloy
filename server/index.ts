@@ -163,16 +163,20 @@ app.post('/api/fs/readDirHeaders', async (req: Request, res: Response) => {
     const ext: string = req.body.ext || '';
     const maxBytes: number = req.body.bytes || 512;
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
-    const files: Record<string, string> = {};
+    const files: Record<string, { content: string; mtime: number }> = {};
     await Promise.all(
       entries
         .filter(e => e.isFile() && (!ext || e.name.endsWith(ext)))
         .map(async (entry) => {
-          const fd = await fs.open(path.join(dirPath, entry.name), 'r');
+          const filePath = path.join(dirPath, entry.name);
+          const [fd, fileStat] = await Promise.all([
+            fs.open(filePath, 'r'),
+            fs.stat(filePath),
+          ]);
           const buf = Buffer.alloc(maxBytes);
           const { bytesRead } = await fd.read(buf, 0, maxBytes, 0);
           await fd.close();
-          files[entry.name] = buf.toString('utf-8', 0, bytesRead);
+          files[entry.name] = { content: buf.toString('utf-8', 0, bytesRead), mtime: fileStat.mtimeMs };
         })
     );
     res.json({ files });
