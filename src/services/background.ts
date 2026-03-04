@@ -4,7 +4,24 @@ import { providerRegistry } from './providers/registry';
 import { parseModelId } from '../types';
 import { skillRegistry } from './skills/registry';
 
-export const BACKGROUND_CONVERSATION_ID = '_background';
+/**
+ * Get today's background conversation ID.
+ * Each day gets its own file: `_background-YYYY-MM-DD`.
+ */
+export function getBackgroundConversationId(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `_background-${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Check if a conversation ID is a background conversation (any day).
+ */
+export function isBackgroundConversation(id: string): boolean {
+  return id === '_background' || id.startsWith('_background-');
+}
 
 // Fast models for the orchestrator, in preference order
 const FAST_MODEL_CANDIDATES = [
@@ -78,7 +95,7 @@ Examples of how to respond:
 export function getTaskSystemPrompt(memoryContent?: string): string {
   // Get the skill registry's standard prompt (includes time, memory, skills)
   const skillPrompt = skillRegistry.buildSystemPrompt(
-    { id: BACKGROUND_CONVERSATION_ID, title: 'Background' },
+    { id: getBackgroundConversationId(), title: 'Background' },
     memoryContent,
   );
 

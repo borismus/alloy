@@ -29,8 +29,10 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
   const {
     conversation,
     tasks,
+    isOrchestratorBusy,
     queueLength,
     cancelTask,
+    clearHistory,
   } = useBackgroundContext();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -67,36 +69,42 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
   // Find active (running) tasks for streaming display
   const runningTasks = tasks.filter(t => t.status === 'running');
 
+  const orchestratorModel = getOrchestratorModel();
+  const hasContent = messages.length > 0 || runningTasks.length > 0;
+
   return (
     <div className="background-view">
+      <div className="background-header">
+        <span className="background-header-label">Background</span>
+        {orchestratorModel && (
+          <>
+            <span className="model-separator">·</span>
+            <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(orchestratorModel)]}</span>
+            <span className="model-separator">·</span>
+            <span className="model-name">{getModelIdFromModel(orchestratorModel)}</span>
+          </>
+        )}
+        {totalCost !== undefined && (
+          <>
+            <span className="model-separator">·</span>
+            <span className="model-cost">${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}</span>
+          </>
+        )}
+        {hasContent && (
+          <button className="background-clear-btn" onClick={clearHistory} title="Clear history">
+            Clear
+          </button>
+        )}
+      </div>
+
       <div className="background-messages" ref={messagesContainerRef} onScroll={handleScroll}>
-        {messages.length === 0 && runningTasks.length === 0 ? (
+        {!hasContent ? (
           <div className="background-empty">
             <h2>Alloy</h2>
             <p>Type a command, ask a question, or think out loud. Work gets delegated to background agents automatically.</p>
           </div>
         ) : (
           <>
-            {(() => {
-              const orchestratorModel = getOrchestratorModel();
-              return orchestratorModel || totalCost !== undefined ? (
-                <div className="model-info">
-                  {orchestratorModel && (
-                    <>
-                      <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(orchestratorModel)]}</span>
-                      <span className="model-separator">·</span>
-                      <span className="model-name">{getModelIdFromModel(orchestratorModel)}</span>
-                    </>
-                  )}
-                  {totalCost !== undefined && (
-                    <>
-                      {orchestratorModel && <span className="model-separator">·</span>}
-                      <span className="model-cost">${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}</span>
-                    </>
-                  )}
-                </div>
-              ) : null;
-            })()}
             {messages.map((message, index) => (
               <MessageRow
                 key={message.id || index}
@@ -105,6 +113,15 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
                 onNavigateToConversation={onNavigateToConversation}
               />
             ))}
+
+            {/* Orchestrator thinking indicator */}
+            {isOrchestratorBusy && (
+              <div className="background-thinking">
+                <span className="thinking-dots">
+                  <span /><span /><span />
+                </span>
+              </div>
+            )}
 
             {/* Show running tasks with streaming content */}
             {runningTasks.map(task => (

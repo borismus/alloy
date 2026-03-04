@@ -233,18 +233,24 @@ export class VaultService {
     const entries = await readDir(conversationsPath);
     const yamlEntries = entries.filter(e => e.name?.endsWith('.yaml'));
 
-    const conversations = await Promise.all(
+    const results = await Promise.all(
       yamlEntries.map(async (entry) => {
-        const filePath = await join(conversationsPath, entry.name!);
-        const content = await readTextFile(filePath);
-        const conversation = yaml.load(content) as Conversation;
-        this.migrateConversationFormat(conversation);
-        return conversation;
+        try {
+          const filePath = await join(conversationsPath, entry.name!);
+          const content = await readTextFile(filePath);
+          const conversation = yaml.load(content) as Conversation;
+          this.migrateConversationFormat(conversation);
+          return conversation;
+        } catch (error) {
+          console.error(`[VaultService] Failed to load conversation ${entry.name}:`, error);
+          return null;
+        }
       })
     );
+    const conversations = results.filter((c): c is Conversation => c !== null);
 
-    // Filter out the background conversation from the regular list
-    const filtered = conversations.filter(c => c.id !== '_background');
+    // Filter out all background conversations (current and historical daily files)
+    const filtered = conversations.filter(c => c.id !== '_background' && !c.id.startsWith('_background-'));
 
     // Sort by updated date, newest first (fall back to created for older conversations)
     return filtered.sort((a, b) =>
@@ -270,19 +276,29 @@ export class VaultService {
   }
 
   /**
-   * Load the background conversation, or create a new empty one.
+   * Load today's background conversation, or create a new empty one.
+   * Uses date-stamped ID so each day gets a fresh file.
    */
-  async loadBackgroundConversation(defaultModel: string): Promise<Conversation> {
-    const existing = await this.loadConversation('_background');
+  async loadBackgroundConversation(defaultModel: string, id?: string): Promise<Conversation> {
+    const bgId = id || this.getTodayBackgroundId();
+    const existing = await this.loadConversation(bgId);
     if (existing) return existing;
 
     return {
-      id: '_background',
+      id: bgId,
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
       model: defaultModel,
       messages: [],
     };
+  }
+
+  private getTodayBackgroundId(): string {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `_background-${yyyy}-${mm}-${dd}`;
   }
 
   /**
@@ -415,6 +431,19 @@ export class VaultService {
     }
 
     return trigger as Trigger;
+  }
+
+  /**
+   * Delete a trigger file by ID.
+   */
+  async deleteTrigger(id: string): Promise<boolean> {
+    if (!this.vaultPath) return false;
+
+    const filePath = await this.findTriggerFile(id);
+    if (!filePath) return false;
+
+    await remove(filePath);
+    return true;
   }
 
   /**
@@ -814,11 +843,11 @@ export class VaultService {
    * Build a unified timeline of all content types, sorted by last updated.
    * Returns conversations, notes (excluding riffs), triggers, and riffs as TimelineItems.
    */
-  async buildTimeline(
+  buildTimeline(
     conversations: Conversation[],
     notes: NoteInfo[],
     triggers: Trigger[]
-  ): Promise<TimelineItem[]> {
+  ): TimelineItem[] {
     const items: TimelineItem[] = [];
 
     // Add conversations

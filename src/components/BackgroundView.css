@@ -8,6 +8,74 @@
   overflow: hidden;
 }
 
+/* Header bar */
+.background-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 2rem;
+  border-bottom: 1px solid #e5e5e5;
+  font-size: 0.75rem;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.background-header-label {
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.background-clear-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.background-clear-btn:hover {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+/* Orchestrator thinking indicator */
+.background-thinking {
+  padding-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.thinking-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #aaa;
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinking-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
 .background-messages {
   flex: 1;
   overflow-y: auto;

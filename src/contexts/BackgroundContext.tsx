@@ -3,7 +3,7 @@ import { Conversation, Message, ToolUse, Usage } from '../types';
 import { estimateCost } from '../services/pricing';
 import { BUILTIN_TOOLS } from '../types/tools';
 import {
-  BACKGROUND_CONVERSATION_ID,
+  getBackgroundConversationId,
   DELEGATE_TOOL,
   getOrchestratorSystemPrompt,
   getTaskSystemPrompt,
@@ -13,8 +13,8 @@ import {
 import { executeWithTools } from '../services/tools/executor';
 import { useApproval } from './ApprovalContext';
 import { vaultService } from '../services/vault';
+import { generateMessageId } from '../utils/ids';
 
-const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
 const generateTaskId = () => `task-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
 
 export interface BackgroundTask {
@@ -91,7 +91,7 @@ export function BackgroundProvider({
   const clearHistory = useCallback(async () => {
     const model = defaultModelRef.current;
     const cleared: Conversation = {
-      id: BACKGROUND_CONVERSATION_ID,
+      id: getBackgroundConversationId(),
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
       model,
@@ -127,7 +127,7 @@ export function BackgroundProvider({
     if (!current) {
       // Create conversation if it doesn't exist
       const conv: Conversation = {
-        id: BACKGROUND_CONVERSATION_ID,
+        id: getBackgroundConversationId(),
         created: new Date().toISOString(),
         updated: new Date().toISOString(),
         model: defaultModelRef.current,
@@ -200,7 +200,7 @@ export function BackgroundProvider({
           signal: abortController.signal,
           toolContext: {
             messageId: resultMessageId,
-            conversationId: `conversations/${BACKGROUND_CONVERSATION_ID}`,
+            conversationId: `conversations/${getBackgroundConversationId()}`,
             sourceLabel: name,
           },
           onApprovalRequired: (request) => requestApprovalRef.current(request),
