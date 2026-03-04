@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { riffService } from './services/riff';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
+import { useVisualViewport } from './hooks/useVisualViewport';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
 import { ApprovalProvider } from './contexts/ApprovalContext';
@@ -79,188 +80,10 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-// Wrapper component to access RiffContext and show approval modal
-const RiffApprovalModal: React.FC = () => {
-  const riffContext = useRiffContext();
-
-  if (riffContext.phase !== 'approving') return null;
-
-  return (
-    <RiffBatchApprovalModal
-      proposedChanges={riffContext.proposedChanges}
-      isProcessing={riffContext.isProcessing}
-      onApply={riffContext.applyChanges}
-      onCancel={riffContext.cancelIntegration}
-    />
-  );
-};
-
-// Wrapper component for main panel that can access RiffContext
-interface MainPanelWithRiffProps {
-  notes: NoteInfo[];
-  selectedModel: string;
-  sonioxApiKey?: string;
-  onNavigateToNote: (filename: string) => void;
-  onNavigateToConversation: (conversationId: string, messageId?: string) => void;
-  conversations: { id: string; title?: string }[];
-  selectedNote: { filename: string; content: string } | null;
-  hasAnySelection: boolean; // true if user selected conversation, trigger, or non-riff note
-  children: React.ReactNode;
-  onBack?: () => void;
-  canGoBack?: boolean;
-  onClose?: () => void;
-}
-
-const MainPanelWithRiff: React.FC<MainPanelWithRiffProps> = ({
-  notes,
-  selectedModel,
-  sonioxApiKey,
-  onNavigateToNote,
-  onNavigateToConversation,
-  conversations,
-  selectedNote,
-  hasAnySelection,
-  children,
-  onBack,
-  canGoBack,
-  onClose,
-}) => {
-  const riffContext = useRiffContext();
-
-  // Check if selected note is a riff/draft (not integrated)
-  const isRiffNote = selectedNote?.filename.startsWith('riffs/') &&
-    !selectedNote.content.includes('integrated: true');
-
-  // Auto-enter riff mode when viewing a draft note
-  useEffect(() => {
-    if (isRiffNote && selectedNote) {
-      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
-        riffContext.enterRiffMode(selectedNote.filename);
-      }
-    }
-  }, [isRiffNote, selectedNote, riffContext.isRiffMode, riffContext.draftFilename]);
-
-  // Auto-exit riff mode when user navigates away
-  useEffect(() => {
-    if (riffContext.isRiffMode && hasAnySelection) {
-      riffContext.exitRiffMode();
-    }
-  }, [hasAnySelection, riffContext]);
-
-  // Show RiffView when viewing a draft OR in fresh riff mode (nothing selected)
-  if (isRiffNote || (riffContext.isRiffMode && !hasAnySelection)) {
-    return (
-      <div className="main-panel">
-        <RiffView
-          notes={notes}
-          model={selectedModel}
-          sonioxApiKey={sonioxApiKey}
-          onNavigateToNote={onNavigateToNote}
-          onNavigateToConversation={onNavigateToConversation}
-          conversations={conversations}
-          onBack={onBack}
-          canGoBack={canGoBack}
-          onClose={onClose}
-        />
-      </div>
-    );
-  }
-
-  return <>{children}</>;
-};
-
-// Wrapper to get onNewRiff handler for Sidebar
-type SidebarWithRiffProps = Omit<React.ComponentProps<typeof Sidebar>, 'onNewRiff'> & {
-  onClearSelection: () => void;
-};
-
-const SidebarWithRiff = forwardRef<SidebarHandle, SidebarWithRiffProps>(
-  function SidebarWithRiff({ onClearSelection, ...props }: SidebarWithRiffProps, ref: React.Ref<SidebarHandle>) {
-    const riffContext = useRiffContext();
-
-    const handleNewRiff = useCallback(async () => {
-      onClearSelection();
-      await riffContext.enterRiffMode();
-    }, [riffContext, onClearSelection]);
-
-    return <Sidebar ref={ref} {...props} onNewRiff={handleNewRiff} />;
-  }
-);
-
-// Effect component to auto-enter riff mode when viewing drafts on mobile
-const MobileRiffModeEffect: React.FC<{
-  isMobile: boolean;
-  isViewingDraft: boolean;
-  selectedNote: { filename: string; content: string } | null;
-}> = ({ isMobile, isViewingDraft, selectedNote }) => {
-  const riffContext = useRiffContext();
-
-  useEffect(() => {
-    if (isMobile && isViewingDraft && selectedNote) {
-      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
-        riffContext.enterRiffMode(selectedNote.filename);
-      }
-    }
-  }, [isMobile, isViewingDraft, selectedNote, riffContext]);
-
-  return null;
-};
-
-// Wrapper to provide riff integration to NoteViewer
-interface NoteViewerWithIntegrateProps {
-  content: string;
-  filename: string;
-  onNavigateToNote: (filename: string) => void;
-  onNavigateToConversation: (conversationId: string, messageId?: string) => void;
-  conversations: { id: string; title?: string }[];
-  notes: NoteInfo[];
-  selectedModel: string;
-  onBack?: () => void;
-  canGoBack?: boolean;
-  onClose?: () => void;
-}
-
-const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
-  content,
-  filename,
-  onNavigateToNote,
-  onNavigateToConversation,
-  conversations,
-  notes,
-  selectedModel,
-  onBack,
-  canGoBack,
-  onClose,
-}) => {
-  const riffContext = useRiffContext();
-
-  const handleIntegrate = useCallback(async () => {
-    if (selectedModel && filename) {
-      // Set config and enter riff mode with this draft, then integrate
-      riffContext.setConfig(selectedModel, notes);
-      await riffContext.enterRiffMode(filename);
-      await riffContext.integrateNow();
-    }
-  }, [riffContext, filename, selectedModel, notes]);
-
-  return (
-    <NoteViewer
-      content={content}
-      filename={filename}
-      onNavigateToNote={onNavigateToNote}
-      onNavigateToConversation={onNavigateToConversation}
-      onIntegrate={handleIntegrate}
-      conversations={conversations}
-      onBack={onBack}
-      canGoBack={canGoBack}
-      onClose={onClose}
-    />
-  );
-};
-
 import { generateMessageId } from './utils/ids';
 
 function AppContent() {
+  useVisualViewport();
   const [config, setConfig] = useState<Config | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
@@ -360,7 +183,14 @@ function AppContent() {
   // Mobile navigation state
   const isMobile = useIsMobile();
   type MobileView = 'list' | 'conversation';
-  const [mobileView, setMobileView] = useState<MobileView>('list');
+  const [mobileView, setMobileView] = useState<MobileView>(() => {
+    // Restore mobile view on reload (mobile Safari discards pages when backgrounded)
+    try {
+      const saved = sessionStorage.getItem('selectedItem');
+      if (saved && JSON.parse(saved)) return 'conversation';
+    } catch { /* ignore */ }
+    return 'list';
+  });
 
   // Check if selected note is a draft (for mobile riff mode)
   const isViewingDraft = selectedNote?.filename.startsWith('riffs/') &&
@@ -372,6 +202,57 @@ function AppContent() {
   const sidebarRef = useRef<SidebarHandle>(null);
   const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = useStreamingContext();
   const { execute: executeWithTools } = useToolExecution();
+  const riffContext = useRiffContext();
+
+  // Check if selected note is a riff/draft on desktop (not integrated)
+  const isRiffNote = selectedNote?.filename.startsWith('riffs/') &&
+    !selectedNote.content.includes('integrated: true');
+
+  // Determine if user has selected a non-riff item (conversation, trigger, or integrated note)
+  const hasNonRiffSelection = !!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('riffs/') || selectedNote.content.includes('integrated: true'))));
+
+  // Auto-enter riff mode when viewing a draft note (desktop)
+  useEffect(() => {
+    if (!isMobile && isRiffNote && selectedNote) {
+      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
+        riffContext.enterRiffMode(selectedNote.filename);
+      }
+    }
+  }, [isMobile, isRiffNote, selectedNote, riffContext.isRiffMode, riffContext.draftFilename]);
+
+  // Auto-exit riff mode when user navigates to a non-riff item (desktop)
+  useEffect(() => {
+    if (!isMobile && riffContext.isRiffMode && hasNonRiffSelection) {
+      riffContext.exitRiffMode();
+    }
+  }, [isMobile, hasNonRiffSelection, riffContext]);
+
+  // Auto-enter riff mode when viewing drafts on mobile
+  useEffect(() => {
+    if (isMobile && isViewingDraft && selectedNote) {
+      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
+        riffContext.enterRiffMode(selectedNote.filename);
+      }
+    }
+  }, [isMobile, isViewingDraft, selectedNote, riffContext]);
+
+  // New riff handler (for sidebar)
+  const handleNewRiff = useCallback(async () => {
+    setSelectedItem(null);
+    setNoteContent(null);
+    await riffContext.enterRiffMode();
+    if (isMobile) setMobileView('conversation');
+  }, [riffContext, isMobile]);
+
+  // Integrate handler (for NoteViewer)
+  const handleIntegrateNote = useCallback(async (filename: string) => {
+    const model = config?.favoriteModels?.[0] || availableModels[0]?.key || '';
+    if (model && filename) {
+      riffContext.setConfig(model, notes);
+      await riffContext.enterRiffMode(filename);
+      await riffContext.integrateNow();
+    }
+  }, [riffContext, config?.favoriteModels, availableModels, notes]);
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
@@ -1347,7 +1228,6 @@ function AppContent() {
       onTriggerUpdated={handleTriggerUpdated}
       vaultPath={vaultPath}
     >
-      <RiffProvider>
       <BackgroundProvider
         initialConversation={backgroundConversation}
         defaultModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
@@ -1361,21 +1241,23 @@ function AppContent() {
             onEdit={() => handleSelectNote('memory.md')}
           />
         )}
-        <RiffApprovalModal />
-        <MobileRiffModeEffect
-          isMobile={isMobile}
-          isViewingDraft={isViewingDraft ?? false}
-          selectedNote={selectedNote}
-        />
+        {riffContext.phase === 'approving' && (
+          <RiffBatchApprovalModal
+            proposedChanges={riffContext.proposedChanges}
+            isProcessing={riffContext.isProcessing}
+            onApply={riffContext.applyChanges}
+            onCancel={riffContext.cancelIntegration}
+          />
+        )}
         <div className="app">
         {isMobile ? (
           // Mobile layout - show one view at a time
           mobileView === 'list' ? (
-            <SidebarWithRiff
+            <Sidebar
               ref={sidebarRef}
               fullScreen
               onMobileBack={() => setMobileView('conversation')}
-              onClearSelection={() => { setSelectedItem(null); setNoteContent(null); }}
+              onNewRiff={handleNewRiff}
               timelineItems={timelineItems}
               activeFilter={timelineFilter}
               onFilterChange={setTimelineFilter}
@@ -1391,7 +1273,6 @@ function AppContent() {
                 handleNewConversation();
                 setMobileView('conversation');
               }}
-
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
@@ -1436,14 +1317,13 @@ function AppContent() {
                 />
               </div>
             ) : selectedNote ? (
-              <NoteViewerWithIntegrate
+              <NoteViewer
                 content={selectedNote.content}
                 filename={selectedNote.filename}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+                onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
                 conversations={conversations}
-                notes={notes}
-                selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
                 onBack={() => setMobileView('list')}
                 canGoBack={true}
               />
@@ -1453,6 +1333,20 @@ function AppContent() {
                 <span>Loading...</span>
               </div>
             )
+          ) : riffContext.isRiffMode && !selectedItem ? (
+            // Mobile: fresh riff mode (no item selected)
+            <div className="main-panel">
+              <RiffView
+                notes={notes}
+                model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+                sonioxApiKey={config?.SONIOX_API_KEY}
+                onNavigateToNote={handleSelectNote}
+                onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+                conversations={conversations}
+                onBack={() => setMobileView('list')}
+                canGoBack={true}
+              />
+            </div>
           ) : (
             // Mobile: conversation view
             <ChatInterface
@@ -1475,9 +1369,9 @@ function AppContent() {
         ) : (
           // Desktop layout - sidebar + main panel
           <>
-            <SidebarWithRiff
+            <Sidebar
               ref={sidebarRef}
-              onClearSelection={() => { setSelectedItem(null); setNoteContent(null); }}
+              onNewRiff={handleNewRiff}
               timelineItems={timelineItems}
               activeFilter={timelineFilter}
               onFilterChange={setTimelineFilter}
@@ -1487,26 +1381,27 @@ function AppContent() {
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
               onNewConversation={handleNewConversation}
-
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
             />
-      <MainPanelWithRiff
-        notes={notes}
-        selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
-        sonioxApiKey={config?.SONIOX_API_KEY}
-        onNavigateToNote={handleSelectNote}
-        onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-        conversations={conversations}
-        selectedNote={selectedNote}
-        hasAnySelection={!!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('riffs/') || selectedNote.content.includes('integrated: true'))))}
-        onBack={goBack}
-        canGoBack={canGoBack}
-        onClose={() => { setSelectedItem(null); setNoteContent(null); }}
-      >
+      {isRiffNote || (riffContext.isRiffMode && !hasNonRiffSelection) ? (
+        <div className="main-panel">
+          <RiffView
+            notes={notes}
+            model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+            sonioxApiKey={config?.SONIOX_API_KEY}
+            onNavigateToNote={handleSelectNote}
+            onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+            conversations={conversations}
+            onBack={goBack}
+            canGoBack={canGoBack}
+            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
+          />
+        </div>
+      ) : (
       <div className="main-panel">
         {selectedTrigger ? (
           <TriggerDetailView
@@ -1519,7 +1414,6 @@ function AppContent() {
               setSelectedItem(null);
             }}
             onRunNow={async () => {
-              // Refresh trigger data after manual run
               const refreshed = await vaultService.loadTrigger(selectedTrigger.id);
               if (refreshed) {
                 setTriggers(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
@@ -1527,19 +1421,17 @@ function AppContent() {
             }}
             onAskAbout={handleAskAboutTrigger}
             onTriggerUpdated={(updated) => {
-              // Update triggers list - selectedTrigger will auto-update since it's derived
               setTriggers(prev => prev.map(t => t.id === updated.id ? updated : t));
             }}
           />
         ) : selectedNote ? (
-          <NoteViewerWithIntegrate
+          <NoteViewer
             content={selectedNote.content}
             filename={selectedNote.filename}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+            onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
             conversations={conversations}
-            notes={notes}
-            selectedModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
             onBack={goBack}
             canGoBack={canGoBack}
             onClose={() => { setSelectedItem(null); setNoteContent(null); }}
@@ -1572,7 +1464,7 @@ function AppContent() {
           />
         )}
       </div>
-      </MainPanelWithRiff>
+      )}
           </>
         )}
       {showSettings && (
@@ -1584,7 +1476,6 @@ function AppContent() {
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
       </BackgroundProvider>
-      </RiffProvider>
     </TriggerProvider>
   );
 }
@@ -1594,10 +1485,12 @@ function App() {
     <ErrorBoundary>
       <StreamingProvider>
         <ApprovalProvider>
-          <ContextMenuProvider>
-            <AppContent />
-            <ContextMenu />
-          </ContextMenuProvider>
+          <RiffProvider>
+            <ContextMenuProvider>
+              <AppContent />
+              <ContextMenu />
+            </ContextMenuProvider>
+          </RiffProvider>
         </ApprovalProvider>
       </StreamingProvider>
     </ErrorBoundary>
