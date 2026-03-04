@@ -7,7 +7,6 @@ interface ObliqueStrategyCardProps {
   interpretation: string;
   onDismiss: () => void;
   onNavigateToNote?: (noteName: string) => void;
-  urlTransform?: (url: string) => string;
 }
 
 export const ObliqueStrategyCard: React.FC<ObliqueStrategyCardProps> = ({
@@ -15,7 +14,6 @@ export const ObliqueStrategyCard: React.FC<ObliqueStrategyCardProps> = ({
   interpretation,
   onDismiss,
   onNavigateToNote,
-  urlTransform,
 }) => {
   return (
     <div className="oblique-strategy-card">
@@ -27,7 +25,6 @@ export const ObliqueStrategyCard: React.FC<ObliqueStrategyCardProps> = ({
         <MarkdownContent
           content={interpretation}
           onNavigateToNote={onNavigateToNote}
-          urlTransform={urlTransform}
         />
       </div>
       <button

@@ -5,15 +5,19 @@ import remarkMath from 'remark-math';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
+import type { ConversationInfo } from '../types';
 import './MarkdownContent.css';
 import 'highlight.js/styles/github.css';
 
 const remarkPlugins = [remarkGfm, remarkMath];
 const rehypePlugins = [rehypeHighlight, rehypeKatex];
 
-interface ConversationInfo {
-  id: string;
-  title?: string;
+// Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
+function defaultUrlTransform(url: string): string {
+  if (url.startsWith('wikilink:') || url.startsWith('provenance:')) {
+    return url;
+  }
+  return url;
 }
 
 interface MarkdownContentProps {
@@ -30,7 +34,7 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
   className = '',
   onNavigateToNote,
   onNavigateToConversation,
-  urlTransform,
+  urlTransform = defaultUrlTransform,
   conversations,
 }) => {
   const processedContent = useMemo(() => processWikiLinks(content), [content]);

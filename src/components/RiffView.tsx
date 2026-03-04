@@ -1,20 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
-import * as yaml from 'js-yaml';
 import { NoteInfo, RiffIntervention } from '../types';
 import { riffService } from '../services/riff';
 import { useRiffContext } from '../contexts/RiffContext';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useDictation } from '../hooks/useDictation';
+import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { MarkdownContent } from './MarkdownContent';
 import { MermaidDiagram } from './MermaidDiagram';
 import { ItemHeader } from './ItemHeader';
 import { InterventionCard } from './InterventionCard';
+import type { ConversationInfo } from '../types';
+import { parseFrontmatter } from '../utils/frontmatter';
 import './RiffView.css';
-
-interface ConversationInfo {
-  id: string;
-  title?: string;
-}
 
 interface RiffViewProps {
   notes: NoteInfo[];
@@ -28,31 +25,9 @@ interface RiffViewProps {
   onClose?: () => void;
 }
 
-// Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
-function urlTransform(url: string): string {
-  if (url.startsWith('wikilink:') || url.startsWith('provenance:')) {
-    return url;
-  }
-  return url;
-}
-
 interface HistoryEntry {
   timestamp: string;
   change: string;
-}
-
-// Parse frontmatter from content using js-yaml
-function parseFrontmatter(content: string): { frontmatter: Record<string, any>; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) {
-    return { frontmatter: {}, body: content };
-  }
-  try {
-    const frontmatter = (yaml.load(match[1]) as Record<string, any>) || {};
-    return { frontmatter, body: match[2] };
-  } catch {
-    return { frontmatter: {}, body: match[2] };
-  }
 }
 
 // Format timestamp as relative time ("2m ago", "1h ago", "yesterday")
@@ -208,6 +183,12 @@ export const RiffView: React.FC<RiffViewProps> = ({
     onBack?.();
   }, [exitRiffMode, onBack]);
 
+  // Handle close (X button) - must also exit riff mode
+  const handleClose = useCallback(() => {
+    exitRiffMode();
+    onClose?.();
+  }, [exitRiffMode, onClose]);
+
   // Handle send
   const handleSend = useCallback(() => {
     if (dictationState !== 'idle') {
@@ -224,18 +205,16 @@ export const RiffView: React.FC<RiffViewProps> = ({
     toggleDictation();
   }, [dictationState, inputText, toggleDictation]);
 
+  useAutoResizeTextarea(textareaRef, inputText);
+
   // Keyboard handler for Enter-to-send
   const handleKeyDown = useChatKeyboard({
     onSubmit: handleSend,
     isStreaming: isUpdating,
   });
 
-  // Auto-resize textarea
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputText(e.target.value);
-    const textarea = e.target;
-    textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
   }, [setInputText]);
 
   // Parse draft frontmatter
@@ -289,7 +268,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
         title={headerTitle}
         onBack={handleBack}
         canGoBack={canGoBack}
-        onClose={onClose}
+        onClose={handleClose}
       >
         {draftFilename && (
           <>
@@ -327,7 +306,6 @@ export const RiffView: React.FC<RiffViewProps> = ({
                           onNavigateToNote={onNavigateToNote}
                           onNavigateToConversation={onNavigateToConversation}
                           conversations={conversations}
-                          urlTransform={urlTransform}
                         />
                       </div>
                       {paragraphInterventions?.map(intervention => (
@@ -349,7 +327,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
                 onNavigateToNote={onNavigateToNote}
                 onNavigateToConversation={onNavigateToConversation}
                 conversations={conversations}
-                urlTransform={urlTransform}
+
               />
             )}
           </div>

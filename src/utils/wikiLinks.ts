@@ -2,6 +2,7 @@ import React from 'react';
 import { Components } from 'react-markdown';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { MermaidDiagram } from '../components/MermaidDiagram';
+import type { ConversationInfo } from '../types';
 
 // Helper to extract conversation ID from a path
 // Format: conversations/YYYY-MM-DD-HHMM-hash-title -> YYYY-MM-DD-HHMM-hash
@@ -55,11 +56,6 @@ export function processWikiLinks(content: string): string {
   });
 
   return result;
-}
-
-interface ConversationInfo {
-  id: string;
-  title?: string;
 }
 
 interface WikiLinkCallbacks {

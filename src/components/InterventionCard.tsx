@@ -9,14 +9,6 @@ interface InterventionCardProps {
   onNavigateToNote?: (noteName: string) => void;
 }
 
-// Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
-function urlTransform(url: string): string {
-  if (url.startsWith('wikilink:') || url.startsWith('provenance:')) {
-    return url;
-  }
-  return url;
-}
-
 export const InterventionCard: React.FC<InterventionCardProps> = ({
   intervention,
   onDismiss,
@@ -30,7 +22,6 @@ export const InterventionCard: React.FC<InterventionCardProps> = ({
         interpretation={intervention.content}
         onDismiss={() => onDismiss(intervention.id)}
         onNavigateToNote={onNavigateToNote}
-        urlTransform={urlTransform}
       />
     );
   }
@@ -83,7 +74,6 @@ export const InterventionCard: React.FC<InterventionCardProps> = ({
         <MarkdownContent
           content={intervention.content}
           onNavigateToNote={onNavigateToNote}
-          urlTransform={urlTransform}
         />
       </div>
     </div>

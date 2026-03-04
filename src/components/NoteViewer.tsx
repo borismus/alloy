@@ -1,45 +1,9 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
+import type { ConversationInfo } from '../types';
+import { parseFrontmatter } from '../utils/frontmatter';
 import './NoteViewer.css';
-
-// Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
-function urlTransform(url: string): string {
-  // Allow our custom protocols
-  if (url.startsWith('wikilink:') || url.startsWith('provenance:')) {
-    return url;
-  }
-  // For standard URLs, return as-is (react-markdown handles validation)
-  return url;
-}
-
-interface ConversationInfo {
-  id: string;
-  title?: string;
-}
-
-// Parse YAML frontmatter from content
-function parseFrontmatter(content: string): { frontmatter: Record<string, any>; body: string } {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) {
-    return { frontmatter: {}, body: content };
-  }
-  const frontmatterStr = match[1];
-  const body = match[2];
-
-  // Simple YAML parsing for key: value pairs
-  const frontmatter: Record<string, any> = {};
-  for (const line of frontmatterStr.split('\n')) {
-    const colonIdx = line.indexOf(':');
-    if (colonIdx > 0) {
-      const key = line.slice(0, colonIdx).trim();
-      const value = line.slice(colonIdx + 1).trim();
-      frontmatter[key] = value === 'true' ? true : value === 'false' ? false : value;
-    }
-  }
-
-  return { frontmatter, body };
-}
 
 interface NoteViewerProps {
   content: string;
@@ -111,7 +75,6 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
           onNavigateToNote={onNavigateToNote}
           onNavigateToConversation={onNavigateToConversation}
           conversations={conversations}
-          urlTransform={urlTransform}
         />
       </div>
     </div>
