@@ -971,12 +971,6 @@ function AppContent() {
         console.error('Error saving conversation (non-fatal):', saveError);
       }
 
-      try {
-        const loadedConversations = await vaultService.loadConversations();
-        setConversations(loadedConversations);
-      } catch (loadError) {
-        console.error('Error loading conversations list (non-fatal):', loadError);
-      }
     } catch (error: any) {
       // If aborted, save any partial content that was streamed
       if (error?.name === 'AbortError' || signal?.aborted) {
