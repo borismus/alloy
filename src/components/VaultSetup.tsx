@@ -7,11 +7,12 @@ import './VaultSetup.css';
 interface VaultSetupProps {
   onVaultSelected: (path: string, provider: ProviderType, credential: string) => void;
   onExistingVault: (path: string) => void;
+  onError?: (message: string) => void;
 }
 
 type Step = 'vault' | 'provider' | 'credential';
 
-export function VaultSetup({ onVaultSelected, onExistingVault }: VaultSetupProps) {
+export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultSetupProps) {
   const [step, setStep] = useState<Step>('vault');
   const [isSelecting, setIsSelecting] = useState(false);
   const [vaultPath, setVaultPath] = useState<string | null>(null);
@@ -37,7 +38,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault }: VaultSetupProps
       }
     } catch (error) {
       console.error('Error selecting vault folder:', error);
-      alert('Error selecting folder. Please try again.');
+      if (onError) onError('Error selecting folder. Please try again.');
     } finally {
       setIsSelecting(false);
     }
@@ -57,7 +58,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault }: VaultSetupProps
       onVaultSelected(vaultPath, selectedProvider, credential.trim());
     } catch (error) {
       console.error('Error completing setup:', error);
-      alert('Error completing setup. Please try again.');
+      if (onError) onError('Error completing setup. Please try again.');
       setIsSubmitting(false);
     }
   };

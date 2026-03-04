@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef } from 'react';
 import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { riffService } from './services/riff';
-import { triggerExecutor } from './services/triggers/executor';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
@@ -16,7 +15,6 @@ import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
-import { TriggerConfigModal, TriggerFormData } from './components/TriggerConfigModal';
 import { TriggerDetailView } from './components/TriggerDetailView';
 import { NoteViewer } from './components/NoteViewer';
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
@@ -30,10 +28,56 @@ import { BackgroundProvider } from './contexts/BackgroundContext';
 import { RiffBatchApprovalModal } from './components/RiffBatchApprovalModal';
 import { RiffView } from './components/RiffView';
 import { BackgroundView } from './components/BackgroundView';
-import { BACKGROUND_CONVERSATION_ID } from './services/background';
+import { isBackgroundConversation } from './services/background';
 import { ContextMenu } from './components/ContextMenu';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import './App.css';
+
+// Error boundary to catch render errors and prevent white screen
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[ErrorBoundary] Uncaught render error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'system-ui' }}>
+          <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Something went wrong</h1>
+          <p style={{ color: '#888', marginBottom: '1rem', fontSize: '0.875rem' }}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: '6px',
+              border: '1px solid #555',
+              background: 'transparent',
+              color: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Wrapper component to access RiffContext and show approval modal
 const RiffApprovalModal: React.FC = () => {
@@ -214,8 +258,7 @@ const NoteViewerWithIntegrate: React.FC<NoteViewerWithIntegrateProps> = ({
   );
 };
 
-// Generate unique message ID for provenance tracking
-const generateMessageId = () => `msg-${Math.random().toString(16).slice(2, 6)}`;
+import { generateMessageId } from './utils/ids';
 
 function AppContent() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -224,8 +267,6 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [showTriggerConfig, setShowTriggerConfig] = useState(false);
-  const [editingTrigger, setEditingTrigger] = useState<Trigger | null>(null);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
@@ -334,6 +375,12 @@ function AppContent() {
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
+    // Route background conversations to separate state
+    if (isBackgroundConversation(id)) {
+      const updated = await vaultService.loadConversation(id);
+      if (updated) setBackgroundConversation(updated);
+      return;
+    }
     const newConv = await vaultService.loadConversation(id);
     if (newConv) {
       setConversations(prev => {
@@ -357,7 +404,7 @@ function AppContent() {
 
   const handleConversationModified = useCallback(async (id: string) => {
     // Route background conversation updates to separate state
-    if (id === BACKGROUND_CONVERSATION_ID) {
+    if (isBackgroundConversation(id)) {
       const updated = await vaultService.loadConversation(id);
       if (updated) setBackgroundConversation(updated);
       return;
@@ -554,7 +601,7 @@ function AppContent() {
 
       // Escape with no modals open: go back to background view
       // Skip if already handled (e.g. streaming stop) or if user is in a text field
-      if (e.key === 'Escape' && !showSettings && !showTriggerConfig && selectedItem && !e.defaultPrevented) {
+      if (e.key === 'Escape' && !showSettings && selectedItem && !e.defaultPrevented) {
         setSelectedItem(null);
         setNoteContent(null);
       }
@@ -562,12 +609,11 @@ function AppContent() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSettings, showTriggerConfig, selectedItem, config]);
+  }, [showSettings, selectedItem, config]);
 
   // Build unified timeline whenever data changes
   useEffect(() => {
-    const items = vaultService.buildTimeline(conversations, notes, triggers);
-    items.then(setTimelineItems);
+    setTimelineItems(vaultService.buildTimeline(conversations, notes, triggers));
   }, [conversations, notes, triggers]);
 
   // Compute selected item ID for sidebar highlighting
@@ -738,7 +784,7 @@ function AppContent() {
   const handleNewConversation = () => {
     const model = getDefaultModel();
     if (!model) {
-      alert('No provider configured. Please add a provider in Settings.');
+      showToast('No provider configured. Please add a provider in Settings.', 'error');
       return;
     }
 
@@ -854,7 +900,7 @@ function AppContent() {
     const modelId = getModelIdFromModel(currentConversation.model);
     const provider = providerRegistry.getProvider(providerType);
     if (!provider || !provider.isInitialized()) {
-      alert(`Provider ${providerType} is not configured.`);
+      showToast(`Provider ${providerType} is not configured.`, 'error');
       return;
     }
 
@@ -903,8 +949,6 @@ function AppContent() {
         }
       }
       await vaultService.saveConversation(updatedConversation);
-      const loadedConversations = await vaultService.loadConversations();
-      setConversations(loadedConversations);
     } catch (saveError) {
       console.error('Error saving conversation on user message (non-fatal):', saveError);
     }
@@ -1073,15 +1117,29 @@ function AppContent() {
         errorMessage = 'Network error. Please check your internet connection.';
       }
 
-      alert(errorMessage);
-
-      // Only revert if user is still viewing this conversation
-      setDraftConversation(prev => prev?.id === currentConversation.id ? currentConversation : prev);
-      if (isFirstMessage) {
-        setConversations((prev) => prev.filter(c => c.id !== currentConversation.id));
-      } else {
-        setConversations(prev => prev.map(c => c.id === currentConversation.id ? currentConversation : c));
+      // Add error log message to conversation and save
+      const logMessage: Message = {
+        id: generateMessageId(),
+        role: 'log',
+        timestamp: new Date().toISOString(),
+        content: `Error: ${error?.message || errorMessage}`,
+      };
+      const errorConversation: Conversation = {
+        ...updatedConversation,
+        messages: [...updatedConversation.messages, logMessage],
+        updated: new Date().toISOString(),
+      };
+      setDraftConversation(prev => prev?.id === errorConversation.id ? errorConversation : prev);
+      setConversations(prev => prev.map(c => c.id === errorConversation.id ? errorConversation : c));
+      try {
+        await vaultService.saveConversation(errorConversation);
+      } catch (saveError) {
+        console.error('Error saving error log (non-fatal):', saveError);
       }
+
+      // Restore prompt to composer and show toast
+      chatInterfaceRef.current?.setInputText(content);
+      showToast(errorMessage, 'error');
     }
   };
 
@@ -1135,7 +1193,7 @@ function AppContent() {
       }
     } catch (error) {
       console.error('Error renaming conversation:', error);
-      alert('Failed to rename conversation. Please try again.');
+      showToast('Failed to rename conversation. Please try again.', 'error');
     }
   };
 
@@ -1163,7 +1221,7 @@ function AppContent() {
       }
     } catch (error) {
       console.error('Error renaming riff:', error);
-      alert('Failed to rename riff. Please try again.');
+      showToast('Failed to rename riff. Please try again.', 'error');
     }
   };
 
@@ -1192,7 +1250,7 @@ function AppContent() {
       }
     } catch (error) {
       console.error('Error deleting conversation:', error);
-      alert('Failed to delete conversation. Please try again.');
+      showToast('Failed to delete conversation. Please try again.', 'error');
     }
   };
 
@@ -1203,25 +1261,26 @@ function AppContent() {
 
   if (!config) {
     return (
-      <VaultSetup
-        onVaultSelected={handleVaultSelected}
-        onExistingVault={loadVault}
-      />
+      <>
+        <VaultSetup
+          onVaultSelected={handleVaultSelected}
+          onExistingVault={loadVault}
+          onError={(msg) => showToast(msg, 'error')}
+        />
+        <ToastContainer messages={toasts} onDismiss={dismissToast} />
+      </>
     );
   }
 
   // Handle deleting a trigger
   const handleDeleteTrigger = async (triggerId: string) => {
-    const vaultPathForDelete = vaultService.getVaultPath();
-    if (!vaultPathForDelete) return;
-
     try {
-      const { remove } = await import('@tauri-apps/plugin-fs');
-      const { join } = await import('@tauri-apps/api/path');
-      const triggerPath = await join(vaultPathForDelete, 'triggers', `${triggerId}.yaml`);
-      await remove(triggerPath);
-
-      // Update state
+      const vaultPathForDelete = vaultService.getVaultPath();
+      if (vaultPathForDelete) {
+        const filePath = await vaultService.getTriggerFilePath(triggerId);
+        if (filePath) markSelfWrite(filePath);
+      }
+      await vaultService.deleteTrigger(triggerId);
       setTriggers(prev => prev.filter(t => t.id !== triggerId));
     } catch (error) {
       console.error('Error deleting trigger:', error);
@@ -1281,93 +1340,6 @@ function AppContent() {
     navigateTo({ type: 'conversation', id: newConversation.id });
   };
 
-  // Handle updating an existing trigger
-  const handleUpdateTrigger = async (triggerId: string, data: TriggerFormData) => {
-    const vaultPathForUpdate = vaultService.getVaultPath();
-    if (!vaultPathForUpdate) return;
-
-    try {
-      // Atomic read-modify-write to avoid race conditions
-      const updated = await vaultService.updateTrigger(triggerId, (fresh) => ({
-        ...fresh,
-        model: data.model,
-        enabled: data.enabled,
-        triggerPrompt: data.triggerPrompt,
-        intervalMinutes: data.intervalMinutes,
-      }));
-
-      if (updated) {
-        const filePath = await vaultService.getTriggerFilePath(triggerId);
-        if (filePath) markSelfWrite(filePath);
-
-        // Update state with the result
-        setTriggers(prev => prev.map(t => t.id === triggerId ? updated : t));
-      }
-    } catch (error) {
-      console.error('Error updating trigger:', error);
-    }
-  };
-
-  // Handle creating a new trigger
-  const handleCreateTrigger = async (data: TriggerFormData) => {
-    const vaultPathForCreate = vaultService.getVaultPath();
-    if (!vaultPathForCreate) return;
-
-    // Generate trigger ID
-    const now = new Date();
-    const date = now.toISOString().split('T')[0];
-    const time = now.toTimeString().slice(0, 5).replace(':', '');
-    const hash = Math.random().toString(16).slice(2, 6);
-
-    // Create a new trigger (flat structure)
-    const newTrigger: Trigger = {
-      id: `${date}-${time}-${hash}`,
-      created: now.toISOString(),
-      updated: now.toISOString(),
-      title: data.title,
-      model: data.model,
-      enabled: data.enabled,
-      triggerPrompt: data.triggerPrompt,
-      intervalMinutes: data.intervalMinutes,
-      messages: [],
-    };
-
-    // Save to vault (triggers/ directory)
-    try {
-      const filePath = `${vaultPathForCreate}/triggers/${newTrigger.id}.yaml`;
-      markSelfWrite(filePath);
-      await vaultService.saveTrigger(newTrigger);
-
-      // Update state
-      setTriggers(prev => [newTrigger, ...prev]);
-      setDraftConversation(null);
-      setNoteContent(null);
-      navigateTo({ type: 'trigger', id: newTrigger.id });
-
-      // Establish baseline in background (non-blocking)
-      if (newTrigger.enabled) {
-        triggerExecutor.executeBaselineCheck(newTrigger).then(async ({ triggerResult: result, usage: baselineUsage }) => {
-          if (result.result === 'triggered') {
-            const baselineTime = new Date().toISOString();
-            const updatedTrigger: Trigger = {
-              ...newTrigger,
-              updated: baselineTime,
-              messages: [
-                { role: 'user', timestamp: baselineTime, content: newTrigger.triggerPrompt },
-                { role: 'assistant', timestamp: baselineTime, content: result.response, model: newTrigger.model, usage: baselineUsage },
-              ],
-              lastChecked: baselineTime,
-              lastTriggered: baselineTime,
-              history: [{ timestamp: baselineTime, result: 'triggered', reasoning: 'Baseline established', usage: baselineUsage }],
-            };
-            await handleTriggerUpdated(updatedTrigger);
-          }
-        }).catch(err => console.warn('Failed to establish trigger baseline:', err));
-      }
-    } catch (error) {
-      console.error('Error creating trigger:', error);
-    }
-  };
 
   return (
     <TriggerProvider
@@ -1419,7 +1391,7 @@ function AppContent() {
                 handleNewConversation();
                 setMobileView('conversation');
               }}
-              onNewTrigger={() => setShowTriggerConfig(true)}
+
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
@@ -1515,7 +1487,7 @@ function AppContent() {
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
               onNewConversation={handleNewConversation}
-              onNewTrigger={() => setShowTriggerConfig(true)}
+
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
@@ -1609,28 +1581,6 @@ function AppContent() {
           vaultPath={vaultPath}
         />
       )}
-      {showTriggerConfig && (
-        <TriggerConfigModal
-          trigger={editingTrigger}
-          availableModels={availableModels}
-          favoriteModels={config?.favoriteModels}
-          onSave={async (data) => {
-            if (editingTrigger) {
-              // Editing existing trigger
-              await handleUpdateTrigger(editingTrigger.id, data);
-            } else {
-              // Creating new trigger
-              await handleCreateTrigger(data);
-            }
-            setEditingTrigger(null);
-            setShowTriggerConfig(false);
-          }}
-          onClose={() => {
-            setShowTriggerConfig(false);
-            setEditingTrigger(null);
-          }}
-        />
-      )}
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
       </BackgroundProvider>
@@ -1641,14 +1591,16 @@ function AppContent() {
 
 function App() {
   return (
-    <StreamingProvider>
-      <ApprovalProvider>
-        <ContextMenuProvider>
-          <AppContent />
-          <ContextMenu />
-        </ContextMenuProvider>
-      </ApprovalProvider>
-    </StreamingProvider>
+    <ErrorBoundary>
+      <StreamingProvider>
+        <ApprovalProvider>
+          <ContextMenuProvider>
+            <AppContent />
+            <ContextMenu />
+          </ContextMenuProvider>
+        </ApprovalProvider>
+      </StreamingProvider>
+    </ErrorBoundary>
   );
 }
 
