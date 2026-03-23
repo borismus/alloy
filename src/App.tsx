@@ -246,7 +246,7 @@ function AppContent() {
 
   // Integrate handler (for NoteViewer)
   const handleIntegrateNote = useCallback(async (filename: string) => {
-    const model = config?.favoriteModels?.[0] || availableModels[0]?.key || '';
+    const model = config?.defaultModel || availableModels[0]?.key || '';
     if (model && filename) {
       riffContext.setConfig(model, notes);
       await riffContext.enterRiffMode(filename);
@@ -579,7 +579,7 @@ function AppContent() {
         // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
         riffService.setVaultPath(path);
-        const bgDefaultModel = loadedConfig.favoriteModels?.[0] || providerRegistry.getAllAvailableModels()[0]?.key || '';
+        const bgDefaultModel = loadedConfig.defaultModel || providerRegistry.getAllAvailableModels()[0]?.key || '';
 
         const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory, bgConv] = await Promise.all([
           vaultService.loadConversations(),
@@ -612,9 +612,9 @@ function AppContent() {
   const handleVaultSelected = async (path: string, provider: ProviderType, credential: string) => {
     // Default models for each provider (using provider/model format)
     const defaultModels: Record<ProviderType, string> = {
-      anthropic: 'anthropic/claude-opus-4-5-20251101',
-      openai: 'openai/gpt-4o',
-      gemini: 'gemini/gemini-2.0-flash',
+      anthropic: 'anthropic/claude-sonnet-4-6',
+      openai: 'openai/gpt-5.4-mini',
+      gemini: 'gemini/gemini-2.5-flash',
       grok: 'grok/grok-4-1-fast',
       ollama: '', // Ollama models are discovered dynamically
     };
@@ -1182,7 +1182,7 @@ function AppContent() {
     const hash = Math.random().toString(16).slice(2, 6);
     const newId = `${date}-${time}-${hash}`;
     const nowISO = now.toISOString();
-    const defaultModel = config?.favoriteModels?.[0] || availableModels[0]?.key || trigger.model;
+    const defaultModel = config?.defaultModel || availableModels[0]?.key || trigger.model;
 
     const newConversation: Conversation = {
       id: newId,
@@ -1224,7 +1224,7 @@ function AppContent() {
     >
       <BackgroundProvider
         initialConversation={backgroundConversation}
-        defaultModel={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+        defaultModel={config?.defaultModel || availableModels[0]?.key || ''}
         memoryContent={memory?.content}
         markSelfWrite={markSelfWrite}
       >
@@ -1301,7 +1301,7 @@ function AppContent() {
               <div className="main-panel">
                 <RiffView
                   notes={notes}
-                  model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+                  model={config?.defaultModel || availableModels[0]?.key || ''}
                   sonioxApiKey={config?.SONIOX_API_KEY}
                   onNavigateToNote={handleSelectNote}
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1332,7 +1332,7 @@ function AppContent() {
             <div className="main-panel">
               <RiffView
                 notes={notes}
-                model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+                model={config?.defaultModel || availableModels[0]?.key || ''}
                 sonioxApiKey={config?.SONIOX_API_KEY}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1385,7 +1385,7 @@ function AppContent() {
         <div className="main-panel">
           <RiffView
             notes={notes}
-            model={config?.favoriteModels?.[0] || availableModels[0]?.key || ''}
+            model={config?.defaultModel || availableModels[0]?.key || ''}
             sonioxApiKey={config?.SONIOX_API_KEY}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
