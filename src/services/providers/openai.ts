@@ -6,11 +6,9 @@ import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from
 import { openaiToolAdapter } from './tool-adapters/openai';
 
 const OPENAI_MODELS: ModelInfo[] = [
-  { key: 'openai/gpt-5.2', name: 'GPT-5.2' },
-  { key: 'openai/gpt-5', name: 'GPT-5' },
-  { key: 'openai/gpt-5-mini', name: 'GPT-5 Mini' },
-  { key: 'openai/o3-pro', name: 'o3 Pro' },
-  { key: 'openai/o3', name: 'o3' },
+  { key: 'openai/gpt-5.4', name: 'GPT-5.4' },
+  { key: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini' },
+  { key: 'openai/gpt-5.4-nano', name: 'GPT-5.4 Nano' },
 ];
 
 export class OpenAIService implements IProviderService {
@@ -48,7 +46,7 @@ export class OpenAIService implements IProviderService {
       ].join('\n');
 
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.4-nano',
         max_tokens: 50,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -134,6 +132,10 @@ export class OpenAIService implements IProviderService {
       tools: openaiTools,
     });
 
+    // Wire abort signal to immediately kill the stream
+    const onAbort = () => stream.controller.abort();
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
     let fullResponse = '';
     const toolUseList: ToolUse[] = [];
     const toolCalls: ToolCall[] = [];
@@ -150,7 +152,6 @@ export class OpenAIService implements IProviderService {
     for await (const chunk of stream) {
       // Check if aborted
       if (options.signal?.aborted) {
-        stream.controller.abort();
         break;
       }
 
@@ -226,6 +227,8 @@ export class OpenAIService implements IProviderService {
         }
       }
     }
+
+    options.signal?.removeEventListener('abort', onAbort);
 
     // Finalize tool calls
     for (const [index, builder] of toolCallBuilders) {
@@ -321,6 +324,10 @@ export class OpenAIService implements IProviderService {
       tools: openaiTools,
     });
 
+    // Wire abort signal to immediately kill the stream
+    const onAbort = () => stream.controller.abort();
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
     let fullResponse = '';
     const toolUseList: ToolUse[] = [];
     const toolCalls: ToolCall[] = [];
@@ -334,7 +341,6 @@ export class OpenAIService implements IProviderService {
 
     for await (const chunk of stream) {
       if (options.signal?.aborted) {
-        stream.controller.abort();
         break;
       }
 
@@ -392,6 +398,8 @@ export class OpenAIService implements IProviderService {
         }
       }
     }
+
+    options.signal?.removeEventListener('abort', onAbort);
 
     // Finalize tool calls
     for (const [index, builder] of toolCallBuilders) {

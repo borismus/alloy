@@ -5,11 +5,9 @@ import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from
 import { geminiToolAdapter } from './tool-adapters/gemini';
 
 const GEMINI_MODELS: ModelInfo[] = [
-  { key: 'gemini/gemini-3-pro-preview', name: 'Gemini 3 Pro' },
-  { key: 'gemini/gemini-3-flash-preview', name: 'Gemini 3 Flash' },
-  { key: 'gemini/gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { key: 'gemini/gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
   { key: 'gemini/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { key: 'gemini/gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
+  { key: 'gemini/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
 ];
 
 // Ensure we have a valid MIME type (Gemini requires full type like 'image/png')
@@ -160,11 +158,18 @@ export class GeminiService implements IProviderService {
     let stopReason: StopReason = 'end_turn';
     // Store function calls with their thought signatures (Gemini 3 requirement)
     const functionCallsWithSignatures: { call: GeminiFunctionCall; signature?: string }[] = [];
+    let lastFinishReason: string | undefined;
+    let blockReason: string | undefined;
 
     for await (const chunk of result.stream) {
       // Check if aborted
       if (options.signal?.aborted) {
         break;
+      }
+
+      // Check for prompt-level blocking
+      if ((chunk as any).promptFeedback?.blockReason) {
+        blockReason = (chunk as any).promptFeedback.blockReason;
       }
 
       const text = chunk.text();
@@ -179,6 +184,7 @@ export class GeminiService implements IProviderService {
         for (const candidate of candidates) {
           // Check finish reason
           if (candidate.finishReason) {
+            lastFinishReason = candidate.finishReason as string;
             if (candidate.finishReason === 'STOP') {
               stopReason = 'end_turn';
             } else if (candidate.finishReason === 'MAX_TOKENS') {
@@ -227,15 +233,34 @@ export class GeminiService implements IProviderService {
       }
     }
 
-    // Capture usage metadata from the completed response
+    // Detect blocked responses that would otherwise return empty content silently
+    if (!options.signal?.aborted && fullResponse === '' && functionCallsWithSignatures.length === 0) {
+      if (blockReason) {
+        throw new Error(`Response blocked by Gemini (${blockReason}). Try rephrasing your message.`);
+      }
+      if (lastFinishReason && lastFinishReason !== 'STOP') {
+        throw new Error(`Response blocked by Gemini (${lastFinishReason}). Try rephrasing your message.`);
+      }
+    }
+
+    // Capture usage metadata from the completed response (with timeout to avoid hanging)
+    // Skip if aborted — no point waiting for metadata
     let inputTokens = 0;
     let outputTokens = 0;
-    try {
-      const response = await result.response;
-      inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
-      outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
-    } catch {
-      // Usage metadata not available
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (!options.signal?.aborted) {
+      try {
+        const timeout = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('timeout')), 5000);
+        });
+        const response = await Promise.race([result.response, timeout]);
+        inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
+        outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+      } catch {
+        // Usage metadata not available (timeout, abort, or API error)
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
 
     return {
@@ -420,10 +445,17 @@ export class GeminiService implements IProviderService {
     let stopReason: StopReason = 'end_turn';
     // Store function calls with their thought signatures (Gemini 3 requirement)
     const functionCallsWithSignatures: { call: GeminiFunctionCall; signature?: string }[] = [];
+    let lastFinishReason: string | undefined;
+    let blockReason: string | undefined;
 
     for await (const chunk of result.stream) {
       if (options.signal?.aborted) {
         break;
+      }
+
+      // Check for prompt-level blocking
+      if ((chunk as any).promptFeedback?.blockReason) {
+        blockReason = (chunk as any).promptFeedback.blockReason;
       }
 
       const text = chunk.text();
@@ -436,6 +468,7 @@ export class GeminiService implements IProviderService {
       if (candidates) {
         for (const candidate of candidates) {
           if (candidate.finishReason) {
+            lastFinishReason = candidate.finishReason as string;
             if (candidate.finishReason === 'STOP') {
               stopReason = 'end_turn';
             } else if (candidate.finishReason === 'MAX_TOKENS') {
@@ -482,15 +515,34 @@ export class GeminiService implements IProviderService {
       }
     }
 
-    // Capture usage metadata from the completed response
+    // Detect blocked responses that would otherwise return empty content silently
+    if (!options.signal?.aborted && fullResponse === '' && functionCallsWithSignatures.length === 0) {
+      if (blockReason) {
+        throw new Error(`Response blocked by Gemini (${blockReason}). Try rephrasing your message.`);
+      }
+      if (lastFinishReason && lastFinishReason !== 'STOP') {
+        throw new Error(`Response blocked by Gemini (${lastFinishReason}). Try rephrasing your message.`);
+      }
+    }
+
+    // Capture usage metadata from the completed response (with timeout to avoid hanging)
+    // Skip if aborted — no point waiting for metadata
     let inputTokens = 0;
     let outputTokens = 0;
-    try {
-      const response = await result.response;
-      inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
-      outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
-    } catch {
-      // Usage metadata not available
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (!options.signal?.aborted) {
+      try {
+        const timeout = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('timeout')), 5000);
+        });
+        const response = await Promise.race([result.response, timeout]);
+        inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
+        outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+      } catch {
+        // Usage metadata not available (timeout, abort, or API error)
+      } finally {
+        clearTimeout(timeoutId);
+      }
     }
 
     return {

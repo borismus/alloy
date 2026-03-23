@@ -26,7 +26,7 @@ export function isBackgroundConversation(id: string): boolean {
 // Fast models for the orchestrator, in preference order
 const FAST_MODEL_CANDIDATES = [
   'anthropic/claude-haiku-4-5-20251001',
-  'anthropic/claude-sonnet-4-5-20250929',
+  'anthropic/claude-sonnet-4-6',
 ];
 
 /**

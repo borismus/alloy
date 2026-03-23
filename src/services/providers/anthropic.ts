@@ -7,8 +7,7 @@ import { anthropicToolAdapter } from './tool-adapters/anthropic';
 
 const ANTHROPIC_MODELS: ModelInfo[] = [
   { key: 'anthropic/claude-opus-4-6', name: 'Opus 4.6' },
-  { key: 'anthropic/claude-opus-4-5-20251101', name: 'Opus 4.5' },
-  { key: 'anthropic/claude-sonnet-4-5-20250929', name: 'Sonnet 4.5' },
+  { key: 'anthropic/claude-sonnet-4-6', name: 'Sonnet 4.6' },
   { key: 'anthropic/claude-haiku-4-5-20251001', name: 'Haiku 4.5' },
 ];
 
@@ -140,6 +139,10 @@ export class AnthropicService implements IProviderService {
           tools: anthropicTools,
         });
 
+        // Wire abort signal to immediately kill the stream
+        const onAbort = () => stream.controller.abort();
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+
         let fullResponse = '';
         const toolUseList: ToolUse[] = [];
         const toolCalls: ToolCall[] = [];
@@ -156,7 +159,6 @@ export class AnthropicService implements IProviderService {
         for await (const chunk of stream) {
           // Check if aborted
           if (options.signal?.aborted) {
-            stream.controller.abort();
             break;
           }
 
@@ -365,6 +367,10 @@ export class AnthropicService implements IProviderService {
           tools: anthropicTools,
         });
 
+        // Wire abort signal to immediately kill the stream
+        const onAbort = () => stream.controller.abort();
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+
         let fullResponse = '';
         const toolUseList: ToolUse[] = [];
         const toolCalls: ToolCall[] = [];
@@ -378,7 +384,6 @@ export class AnthropicService implements IProviderService {
 
         for await (const chunk of stream) {
           if (options.signal?.aborted) {
-            stream.controller.abort();
             break;
           }
 
@@ -431,6 +436,8 @@ export class AnthropicService implements IProviderService {
           }
         }
 
+        options.signal?.removeEventListener('abort', onAbort);
+
         return {
           content: fullResponse,
           toolUse: toolUseList.length > 0 ? toolUseList : undefined,
@@ -441,6 +448,11 @@ export class AnthropicService implements IProviderService {
             : undefined,
         };
       } catch (error: unknown) {
+        // Don't retry if we were aborted
+        if (options.signal?.aborted) {
+          return { content: '', stopReason: 'end_turn' as StopReason };
+        }
+
         lastError = error instanceof Error ? error : new Error(String(error));
 
         // Check if it's an overload error that should be retried

@@ -7,27 +7,21 @@ interface ModelPricing {
 // Dated model IDs (e.g. "claude-opus-4-5-20251101") match their base prefix.
 // Order matters: more specific prefixes before less specific ones.
 const PRICING_TABLE: [string, ModelPricing][] = [
-  // Anthropic (sonnet-4-6 before sonnet-4-5 for prefix ordering)
+  // Anthropic
   ['anthropic/claude-opus-4-6',       { inputPer1M: 5,     outputPer1M: 25 }],
-  ['anthropic/claude-opus-4-5',       { inputPer1M: 5,     outputPer1M: 25 }],
   ['anthropic/claude-sonnet-4-6',     { inputPer1M: 3,     outputPer1M: 15 }],
-  ['anthropic/claude-sonnet-4-5',     { inputPer1M: 3,     outputPer1M: 15 }],
   ['anthropic/claude-haiku-4-5',      { inputPer1M: 1,     outputPer1M: 5 }],
-  // OpenAI (gpt-5-mini before gpt-5 so prefix match works)
-  ['openai/gpt-5.2',                  { inputPer1M: 1.75,  outputPer1M: 14 }],
-  ['openai/gpt-5-mini',               { inputPer1M: 0.25,  outputPer1M: 2 }],
-  ['openai/gpt-5',                    { inputPer1M: 1.25,  outputPer1M: 10 }],
-  ['openai/o3-pro',                   { inputPer1M: 20,    outputPer1M: 80 }],
-  ['openai/o3',                       { inputPer1M: 2,     outputPer1M: 8 }],
-  // Gemini
-  ['gemini/gemini-3-pro',             { inputPer1M: 2,     outputPer1M: 12 }],
-  ['gemini/gemini-3-flash',           { inputPer1M: 0.50,  outputPer1M: 3 }],
-  ['gemini/gemini-2.5-pro',           { inputPer1M: 1.25,  outputPer1M: 10 }],
+  // OpenAI (gpt-5.4-nano before gpt-5.4-mini before gpt-5.4 for prefix ordering)
+  ['openai/gpt-5.4-nano',             { inputPer1M: 0.10,  outputPer1M: 0.40 }],
+  ['openai/gpt-5.4-mini',             { inputPer1M: 0.25,  outputPer1M: 2 }],
+  ['openai/gpt-5.4',                  { inputPer1M: 1.75,  outputPer1M: 14 }],
+  // Gemini (flash-lite before flash for prefix ordering)
+  ['gemini/gemini-3.1-pro',           { inputPer1M: 2,     outputPer1M: 12 }],
+  ['gemini/gemini-2.5-flash-lite',    { inputPer1M: 0.075, outputPer1M: 0.30 }],
   ['gemini/gemini-2.5-flash',         { inputPer1M: 0.30,  outputPer1M: 2.50 }],
-  ['gemini/gemini-2.0-flash-lite',    { inputPer1M: 0.075, outputPer1M: 0.30 }],
-  // Grok (grok-4-1 before grok-4 for prefix ordering)
+  // Grok (grok-4-1 before grok-4.20 for prefix ordering)
   ['grok/grok-4-1',                   { inputPer1M: 0.20,  outputPer1M: 0.50 }],
-  ['grok/grok-4',                     { inputPer1M: 3,     outputPer1M: 15 }],
+  ['grok/grok-4.20',                  { inputPer1M: 2,     outputPer1M: 6 }],
   // Ollama - local, free
   ['ollama/',                         { inputPer1M: 0,     outputPer1M: 0 }],
 ];

@@ -6,7 +6,7 @@ export const createMockConversation = (overrides?: Partial<Conversation>): Conve
   id: 'test-id-123',
   created: '2024-01-10T12:00:00Z',
   updated: '2024-01-10T12:00:00Z',
-  model: 'anthropic/claude-opus-4-5-20251101',
+  model: 'anthropic/claude-sonnet-4-6',
   title: 'Test Conversation',
   messages: [],
   ...overrides,
@@ -14,7 +14,7 @@ export const createMockConversation = (overrides?: Partial<Conversation>): Conve
 
 export const createMockConfig = (overrides?: Partial<Config>): Config => ({
   ANTHROPIC_API_KEY: 'sk-test-key',
-  defaultModel: 'anthropic/claude-opus-4-5-20251101',
+  defaultModel: 'anthropic/claude-sonnet-4-6',
   ...overrides,
 });
 

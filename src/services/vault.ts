@@ -59,7 +59,7 @@ export class VaultService {
     const configPath = await join(path, 'config.yaml');
     if (!(await exists(configPath))) {
       // Create config with commented templates for providers
-      const defaultConfigYaml = `defaultModel: anthropic/claude-opus-4-5-20251101
+      const defaultConfigYaml = `defaultModel: anthropic/claude-sonnet-4-6
 
 # Uncomment and fill in to enable each provider
 # ANTHROPIC_API_KEY: sk-ant-...

@@ -6,8 +6,8 @@ import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from
 import { openaiToolAdapter } from './tool-adapters/openai';
 
 const GROK_MODELS: ModelInfo[] = [
+  { key: 'grok/grok-4.20-0309', name: 'Grok 4.20' },
   { key: 'grok/grok-4-1-fast', name: 'Grok 4.1 Fast' },
-  { key: 'grok/grok-4-0709', name: 'Grok 4' },
 ];
 
 export class GrokService implements IProviderService {
@@ -124,6 +124,10 @@ export class GrokService implements IProviderService {
       tools: openaiTools,
     });
 
+    // Wire abort signal to immediately kill the stream
+    const onAbort = () => stream.controller.abort();
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
     let fullResponse = '';
     const toolUseList: ToolUse[] = [];
     const toolCalls: ToolCall[] = [];
@@ -137,7 +141,6 @@ export class GrokService implements IProviderService {
 
     for await (const chunk of stream) {
       if (options.signal?.aborted) {
-        stream.controller.abort();
         break;
       }
 
@@ -195,6 +198,8 @@ export class GrokService implements IProviderService {
         }
       }
     }
+
+    options.signal?.removeEventListener('abort', onAbort);
 
     for (const [index, builder] of toolCallBuilders) {
       try {
@@ -274,6 +279,10 @@ export class GrokService implements IProviderService {
       tools: openaiTools,
     });
 
+    // Wire abort signal to immediately kill the stream
+    const onAbort = () => stream.controller.abort();
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
     let fullResponse = '';
     const toolUseList: ToolUse[] = [];
     const toolCalls: ToolCall[] = [];
@@ -287,7 +296,6 @@ export class GrokService implements IProviderService {
 
     for await (const chunk of stream) {
       if (options.signal?.aborted) {
-        stream.controller.abort();
         break;
       }
 
@@ -345,6 +353,8 @@ export class GrokService implements IProviderService {
         }
       }
     }
+
+    options.signal?.removeEventListener('abort', onAbort);
 
     for (const [index, builder] of toolCallBuilders) {
       try {
