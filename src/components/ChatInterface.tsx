@@ -769,7 +769,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 )}
                 <AgentResponseView
                   content={streamingContent || ''}
-                  status={isStreaming ? 'streaming' : 'pending'}
+                  status={isStreaming ? 'streaming' : 'complete'}
                   headerContent={assistantName}
                   onNavigateToNote={onNavigateToNote}
                   onNavigateToConversation={onNavigateToConversation}
@@ -779,7 +779,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               <>
                 <AgentResponseView
                   content={streamingContent || ''}
-                  status={isStreaming ? 'streaming' : 'pending'}
+                  status={isStreaming ? 'streaming' : 'complete'}
                   toolUses={streamingToolUse}
                   headerContent={assistantName}
                   onNavigateToNote={onNavigateToNote}

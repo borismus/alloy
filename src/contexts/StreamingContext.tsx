@@ -27,6 +27,8 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     () => new Map()
   );
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => new Set());
+  // Version counter to trigger consumer re-renders on streaming lifecycle transitions
+  const [streamVersion, setStreamVersion] = useState(0);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
 
   // Use refs for reader functions to keep callback identity stable across state changes
@@ -67,6 +69,7 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       next.set(id, { isStreaming: true, streamingContent: '' });
       return next;
     });
+    setStreamVersion(v => v + 1);
 
     return controller;
   }, []);
@@ -111,6 +114,7 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       next.delete(id);
       return next;
     });
+    setStreamVersion(v => v + 1);
   }, []);
 
   const completeStreaming = useCallback((id: string, isCurrentConversation: boolean = true) => {
@@ -133,6 +137,7 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       next.set(id, { ...existing, isStreaming: false });
       return next;
     });
+    setStreamVersion(v => v + 1);
   }, []);
 
   const clearStreamingContent = useCallback((id: string) => {
@@ -273,6 +278,7 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       completeSubagent,
       clearSubagents,
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       getStreamingState,
       getStreamingConversationIds,
@@ -289,6 +295,7 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       addSubagentToolUse,
       completeSubagent,
       clearSubagents,
+      streamVersion, // triggers context consumer re-renders on start/stop/complete
     ]
   );
 
