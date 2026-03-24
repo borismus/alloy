@@ -13,6 +13,8 @@ import chokidar from 'chokidar';
 import fs from 'fs/promises';
 import { existsSync, statSync } from 'fs';
 import path from 'path';
+import { initializeProviders } from './providers.js';
+import { startSession, getSession, getActiveSessions, stopSession, subscribe, type StartSessionParams } from './streaming.js';
 
 const app = express();
 
@@ -51,7 +53,8 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     return res.status(500).json({ error: 'Server not configured for remote access (no auth token)' });
   }
 
-  const token = req.headers.authorization?.replace('Bearer ', '');
+  // Check Authorization header or query param (EventSource doesn't support headers)
+  const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token as string;
   if (token !== AUTH_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -308,6 +311,69 @@ app.post('/api/path/join', (req: Request, res: Response) => {
   res.json({ path: path.join(...segments) });
 });
 
+// --- Streaming endpoints ---
+
+// Start a server-buffered streaming session
+app.post('/api/stream/start', (req: Request, res: Response) => {
+  const { sessionId, conversationId, assistantMessageId, model, messages, systemPrompt, isFirstMessage, userMessageContent } = req.body;
+
+  if (!sessionId || !conversationId || !model || !messages) {
+    return res.status(400).json({ error: 'Missing required fields: sessionId, conversationId, model, messages' });
+  }
+
+  try {
+    const session = startSession({
+      sessionId,
+      conversationId,
+      assistantMessageId: assistantMessageId || `msg-${Date.now()}`,
+      model,
+      messages,
+      systemPrompt,
+      isFirstMessage: isFirstMessage ?? false,
+      userMessageContent: userMessageContent || '',
+      vaultPath: VAULT_PATH,
+    });
+
+    res.json({ sessionId: session.id, status: session.status });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// Subscribe to streaming events via SSE
+app.get('/api/stream/events/:id', (req: Request, res: Response) => {
+  const session = getSession(req.params.id);
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  res.flushHeaders();
+
+  subscribe(session, res);
+});
+
+// List active streaming sessions (for reconnection after page reload)
+app.get('/api/stream/active', (_req: Request, res: Response) => {
+  res.json(getActiveSessions());
+});
+
+// Stop/abort a streaming session
+app.post('/api/stream/stop/:id', (req: Request, res: Response) => {
+  const session = stopSession(req.params.id);
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  res.json({
+    status: 'stopped',
+    partialContent: session.fullContent,
+  });
+});
+
 // Serve hashed assets with immutable caching (Vite includes content hash in filenames)
 app.use('/assets', express.static(path.join(process.cwd(), 'dist-web', 'assets'), {
   maxAge: '1y',
@@ -386,13 +452,21 @@ wss.on('connection', (ws: WebSocket) => {
   });
 });
 
-// Start server
-server.listen(PORT, () => {
-  console.log(`[Server] Running on http://localhost:${PORT}`);
-  console.log(`[Server] Watching vault at: ${VAULT_PATH}`);
-  if (AUTH_TOKEN) {
-    console.log('[Server] Remote access enabled (auth token configured)');
-  } else {
-    console.log('[Server] Local access only (no auth token)');
-  }
+// Initialize providers and start server
+initializeProviders(VAULT_PATH).then(() => {
+  server.listen(PORT, () => {
+    console.log(`[Server] Running on http://localhost:${PORT}`);
+    console.log(`[Server] Watching vault at: ${VAULT_PATH}`);
+    if (AUTH_TOKEN) {
+      console.log('[Server] Remote access enabled (auth token configured)');
+    } else {
+      console.log('[Server] Local access only (no auth token)');
+    }
+  });
+}).catch(err => {
+  console.error('[Server] Failed to initialize providers:', err);
+  // Start server anyway — providers can be re-initialized later
+  server.listen(PORT, () => {
+    console.log(`[Server] Running on http://localhost:${PORT} (without providers)`);
+  });
 });
