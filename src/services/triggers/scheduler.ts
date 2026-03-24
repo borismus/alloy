@@ -4,6 +4,7 @@ import { triggerExecutor } from './executor';
 export interface TriggerSchedulerCallbacks {
   getTriggers: () => Trigger[];
   reloadTrigger: (id: string) => Promise<Trigger | null>;
+  claimTrigger: (id: string) => Promise<void>;
   onTriggerFired: (trigger: Trigger, result: TriggerResult, usage?: Usage) => Promise<void>;
   onTriggerSkipped: (trigger: Trigger, result: TriggerResult, usage?: Usage) => void;
   onTriggerChecking: (triggerId: string) => void;
@@ -106,6 +107,10 @@ export class TriggerScheduler {
     this.callbacks?.onTriggerChecking(trigger.id);
 
     try {
+      // Claim this trigger by writing lastChecked before execution
+      // so other instances see it's in progress and skip it
+      await this.callbacks?.claimTrigger(trigger.id);
+
       // Executor now takes the full trigger object
       const { triggerResult: result, usage } = await triggerExecutor.executeTrigger(trigger);
 
