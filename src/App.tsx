@@ -23,6 +23,7 @@ import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { readTextFile, exists } from '@tauri-apps/plugin-fs';
 import { isServerMode } from './mocks';
+import { executeViaServer, reconnectToActiveSessions } from './services/server-streaming';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RiffProvider, useRiffContext } from './contexts/RiffContext';
 import { BackgroundProvider } from './contexts/BackgroundContext';
@@ -200,7 +201,7 @@ function AppContent() {
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
-  const { stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = useStreamingContext();
+  const { startStreaming, updateStreamingContent, completeStreaming, stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = useStreamingContext();
   const { execute: executeWithTools } = useToolExecution();
   const riffContext = useRiffContext();
 
@@ -595,6 +596,16 @@ function AppContent() {
         setNotes(loadedNotes);
         setMemory(loadedMemory);
         setBackgroundConversation(bgConv);
+
+        // In server mode, reconnect to any in-flight streaming sessions
+        if (isServerMode()) {
+          reconnectToActiveSessions({
+            startStreaming,
+            updateStreamingContent,
+            completeStreaming,
+            stopStreaming,
+          }).catch(e => console.error('Failed to reconnect to active streams:', e));
+        }
       } else {
         localStorage.removeItem('vaultPath');
       }
@@ -780,7 +791,8 @@ function AppContent() {
     const providerType = getProviderFromModel(currentConversation.model);
     const modelId = getModelIdFromModel(currentConversation.model);
     const provider = providerRegistry.getProvider(providerType);
-    if (!provider || !provider.isInitialized()) {
+    // In server mode, the server has its own provider setup — don't require client-side init
+    if (!isServerMode() && (!provider || !provider.isInitialized())) {
       showToast(`Provider ${providerType} is not configured.`, 'error');
       return;
     }
@@ -873,102 +885,158 @@ function AppContent() {
         title: currentConversation.title,
       }, memory?.content);
 
-      const imageLoader = async (relativePath: string) => {
-        return await vaultService.loadImageAsBase64(relativePath);
-      };
-
-      // Execute with tool loop support
       const convId = currentConversation.id;
-      const result = await executeWithTools(provider, updatedMessages, modelId, {
-        maxIterations: 10,
-        toolContext: {
-          messageId: assistantMessageId,
-          conversationId: `conversations/${convId}`,
-        },
-        onChunk: onChunk ? (chunk: string) => {
-          accumulatedContent += chunk;
-          onChunk(chunk);
-        } : undefined,
-        onToolUse: (toolUse) => addToolUse(convId, toolUse),
-        signal,
-        imageLoader,
-        systemPrompt,
-        // Sub-agent streaming callbacks
-        onSubagentStart: (agents) => startSubagents(convId, agents),
-        onSubagentChunk: (agentId, chunk) => updateSubagentContent(convId, agentId, chunk),
-        onSubagentToolUse: (agentId, toolUse) => addSubagentToolUse(convId, agentId, toolUse),
-        onSubagentComplete: (agentId, _content, error) => completeSubagent(convId, agentId, error),
-      });
 
-      // Provider returned normally after abort — save partial content
-      if (signal?.aborted && accumulatedContent.trim()) {
-        await savePartialConversation(accumulatedContent);
-        return;
-      }
+      if (isServerMode()) {
+        // Server-buffered streaming: server owns the stream, client reconnects via SSE
+        const serverResult = await executeViaServer(
+          convId,
+          assistantMessageId,
+          currentConversation.model,
+          updatedMessages,
+          systemPrompt,
+          isFirstMessage,
+          content,
+          {
+            onChunk: onChunk ? (chunk: string) => {
+              accumulatedContent += chunk;
+              onChunk(chunk);
+            } : undefined,
+            onTitle: (title: string) => {
+              // Server generated a title — update local state
+              const conv: Conversation = {
+                ...updatedConversation,
+                title,
+              };
+              setDraftConversation(prev => prev?.id === conv.id ? conv : prev);
+              setConversations(prev => prev.map(c => c.id === conv.id ? conv : c));
+            },
+            signal,
+          },
+        );
 
-      // Build usage with cost estimate
-      let usage: import('./types').Usage | undefined;
-      if (result.usage) {
-        const cost = estimateCost(currentConversation.model, result.usage.inputTokens, result.usage.outputTokens);
-        usage = {
-          inputTokens: result.usage.inputTokens,
-          outputTokens: result.usage.outputTokens,
-          ...(cost !== undefined && { cost }),
-          ...(result.usage.responseId && { responseId: result.usage.responseId }),
+        // Server wrote to vault — the file watcher will pick it up.
+        // But also update local state immediately for responsiveness.
+        const assistantMessage: Message = {
+          id: assistantMessageId,
+          role: 'assistant',
+          timestamp: new Date().toISOString(),
+          content: serverResult.content,
+          usage: serverResult.usage,
         };
-      }
 
-      const assistantMessage: Message = {
-        id: assistantMessageId,
-        role: 'assistant',
-        timestamp: new Date().toISOString(),
-        content: result.finalContent,
-        toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
-        skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
-        subagentResponses: result.subagentResponses.length > 0 ? result.subagentResponses : undefined,
-        usage,
-      };
+        const finalConversation: Conversation = {
+          ...updatedConversation,
+          title: serverResult.title || updatedConversation.title,
+          messages: [...updatedMessages, assistantMessage],
+          updated: new Date().toISOString(),
+        };
 
-      let finalConversation: Conversation = {
-        ...updatedConversation,
-        messages: [...updatedMessages, assistantMessage],
-      };
+        setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
+        setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
 
-      // Generate better title using LLM for first message
-      if (isFirstMessage) {
+      } else {
+        // Client-side streaming: Tauri mode
+        if (!provider || !provider.isInitialized()) {
+          showToast(`Provider ${providerType} is not configured.`, 'error');
+          return;
+        }
+
+        const imageLoader = async (relativePath: string) => {
+          return await vaultService.loadImageAsBase64(relativePath);
+        };
+
+        const result = await executeWithTools(provider, updatedMessages, modelId, {
+          maxIterations: 10,
+          toolContext: {
+            messageId: assistantMessageId,
+            conversationId: `conversations/${convId}`,
+          },
+          onChunk: onChunk ? (chunk: string) => {
+            accumulatedContent += chunk;
+            onChunk(chunk);
+          } : undefined,
+          onToolUse: (toolUse) => addToolUse(convId, toolUse),
+          signal,
+          imageLoader,
+          systemPrompt,
+          // Sub-agent streaming callbacks
+          onSubagentStart: (agents) => startSubagents(convId, agents),
+          onSubagentChunk: (agentId, chunk) => updateSubagentContent(convId, agentId, chunk),
+          onSubagentToolUse: (agentId, toolUse) => addSubagentToolUse(convId, agentId, toolUse),
+          onSubagentComplete: (agentId, _content, error) => completeSubagent(convId, agentId, error),
+        });
+
+        // Provider returned normally after abort — save partial content
+        if (signal?.aborted && accumulatedContent.trim()) {
+          await savePartialConversation(accumulatedContent);
+          return;
+        }
+
+        // Build usage with cost estimate
+        let usage: import('./types').Usage | undefined;
+        if (result.usage) {
+          const cost = estimateCost(currentConversation.model, result.usage.inputTokens, result.usage.outputTokens);
+          usage = {
+            inputTokens: result.usage.inputTokens,
+            outputTokens: result.usage.outputTokens,
+            ...(cost !== undefined && { cost }),
+            ...(result.usage.responseId && { responseId: result.usage.responseId }),
+          };
+        }
+
+        const assistantMessage: Message = {
+          id: assistantMessageId,
+          role: 'assistant',
+          timestamp: new Date().toISOString(),
+          content: result.finalContent,
+          toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
+          skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
+          subagentResponses: result.subagentResponses.length > 0 ? result.subagentResponses : undefined,
+          usage,
+        };
+
+        let finalConversation: Conversation = {
+          ...updatedConversation,
+          messages: [...updatedMessages, assistantMessage],
+        };
+
+        // Generate better title using LLM for first message
+        if (isFirstMessage) {
+          try {
+            const betterTitle = await provider.generateTitle(content, result.finalContent);
+            if (betterTitle && betterTitle !== finalConversation.title) {
+              finalConversation = {
+                ...finalConversation,
+                title: betterTitle,
+              };
+            }
+          } catch (titleError) {
+            console.error('Failed to generate title (non-fatal):', titleError);
+          }
+        }
+
+        // Only update if user is still viewing this conversation
+        setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
+        setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
+
         try {
-          const betterTitle = await provider.generateTitle(content, result.finalContent);
-          if (betterTitle && betterTitle !== finalConversation.title) {
-            finalConversation = {
-              ...finalConversation,
-              title: betterTitle,
-            };
+          // Mark as self-write to avoid watcher triggering on our own save
+          const vaultPathForFinal = vaultService.getVaultPath();
+          const filename = vaultService.generateFilename(finalConversation.id, finalConversation.title);
+          if (vaultPathForFinal) {
+            const filePath = `${vaultPathForFinal}/conversations/${filename}`;
+            markSelfWrite(filePath);
+            // Also mark old file path if it exists (title change causes old file deletion)
+            const oldFilePath = await vaultService.getConversationFilePath(finalConversation.id);
+            if (oldFilePath) {
+              markSelfWrite(oldFilePath);
+            }
           }
-        } catch (titleError) {
-          console.error('Failed to generate title (non-fatal):', titleError);
+          await vaultService.saveConversation(finalConversation);
+        } catch (saveError) {
+          console.error('Error saving conversation (non-fatal):', saveError);
         }
-      }
-
-      // Only update if user is still viewing this conversation
-      setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
-      setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
-
-      try {
-        // Mark as self-write to avoid watcher triggering on our own save
-        const vaultPathForFinal = vaultService.getVaultPath();
-        const filename = vaultService.generateFilename(finalConversation.id, finalConversation.title);
-        if (vaultPathForFinal) {
-          const filePath = `${vaultPathForFinal}/conversations/${filename}`;
-          markSelfWrite(filePath);
-          // Also mark old file path if it exists (title change causes old file deletion)
-          const oldFilePath = await vaultService.getConversationFilePath(finalConversation.id);
-          if (oldFilePath) {
-            markSelfWrite(oldFilePath);
-          }
-        }
-        await vaultService.saveConversation(finalConversation);
-      } catch (saveError) {
-        console.error('Error saving conversation (non-fatal):', saveError);
       }
 
     } catch (error: any) {
