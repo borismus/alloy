@@ -63,6 +63,24 @@
   flex-shrink: 0;
 }
 
+.item-header .btn-background {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-primary, #333);
+  flex-shrink: 0;
+}
+
+.item-header .btn-background:hover {
+  background: var(--bg-hover, #e0e0e0);
+}
+
 .item-header .btn-close {
   display: flex;
   align-items: center;

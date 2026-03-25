@@ -10,6 +10,7 @@ import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useGlobalEscape } from '../hooks/useGlobalEscape';
+import { ItemHeader } from './ItemHeader';
 import { useTextareaProps } from '../utils/textareaProps';
 import './BackgroundView.css';
 
@@ -18,6 +19,8 @@ interface BackgroundViewProps {
   onNavigateToConversation: (conversationId: string, messageId?: string) => void;
   scrollToMessageId?: string | null;
   onScrollComplete?: () => void;
+  onBack?: () => void;
+  canGoBack?: boolean;
 }
 
 export const BackgroundView: React.FC<BackgroundViewProps> = ({
@@ -25,6 +28,8 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
   onNavigateToConversation,
   scrollToMessageId,
   onScrollComplete,
+  onBack,
+  canGoBack = false,
 }) => {
   const {
     conversation,
@@ -32,7 +37,6 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
     isOrchestratorBusy,
     queueLength,
     cancelTask,
-    clearHistory,
   } = useBackgroundContext();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -74,28 +78,31 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
 
   return (
     <div className="background-view">
-      <div className="background-header">
-        <span className="background-header-label">Background</span>
-        {orchestratorModel && (
-          <>
-            <span className="model-separator">·</span>
-            <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(orchestratorModel)]}</span>
-            <span className="model-separator">·</span>
-            <span className="model-name">{getModelIdFromModel(orchestratorModel)}</span>
-          </>
-        )}
-        {totalCost !== undefined && (
-          <>
-            <span className="model-separator">·</span>
-            <span className="model-cost">${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}</span>
-          </>
-        )}
-        {hasContent && (
-          <button className="background-clear-btn" onClick={clearHistory} title="Clear history">
-            Clear
-          </button>
-        )}
-      </div>
+      {onBack ? (
+        <ItemHeader
+          title="Background"
+          onBack={onBack}
+          canGoBack={canGoBack}
+        />
+      ) : (
+        <div className="background-header">
+          <span className="background-header-label">Background</span>
+          {orchestratorModel && (
+            <>
+              <span className="model-separator">·</span>
+              <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(orchestratorModel)]}</span>
+              <span className="model-separator">·</span>
+              <span className="model-name">{getModelIdFromModel(orchestratorModel)}</span>
+            </>
+          )}
+          {totalCost !== undefined && (
+            <>
+              <span className="model-separator">·</span>
+              <span className="model-cost">${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}</span>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="background-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         {!hasContent ? (

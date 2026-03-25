@@ -281,6 +281,7 @@ interface ChatInterfaceProps {
   onBack?: () => void;
   canGoBack?: boolean;
   onClose?: () => void;  // X button to return to background view
+  onBackground?: () => void;  // Navigate to background mode
 }
 
 export interface ChatInterfaceHandle {
@@ -322,6 +323,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onBack,
   canGoBack = false,
   onClose,
+  onBackground,
 }, ref) => {
   // On mobile, use mobile-specific back if provided, otherwise use onBack prop
   const handleBack = onMobileBack || onBack;
@@ -677,6 +679,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             title="New Conversation"
             onBack={handleBack}
             canGoBack={showBackButton}
+            onBackground={onBackground}
           />
           <div className="messages-container" ref={messagesContainerRef}>
             <div className="welcome-message">
@@ -714,6 +717,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         onBack={handleBack}
         canGoBack={showBackButton}
         onClose={onClose}
+        onBackground={onBackground}
       />
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {showFind && (

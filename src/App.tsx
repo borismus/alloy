@@ -183,7 +183,7 @@ function AppContent() {
 
   // Mobile navigation state
   const isMobile = useIsMobile();
-  type MobileView = 'list' | 'conversation';
+  type MobileView = 'list' | 'conversation' | 'background';
   const [mobileView, setMobileView] = useState<MobileView>(() => {
     // Restore mobile view on reload (mobile Safari discards pages when backgrounded)
     try {
@@ -1340,6 +1340,9 @@ function AppContent() {
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
+              onSelectBackground={() => {
+                setMobileView('background');
+              }}
             />
           ) : selectedItem?.type === 'trigger' && selectedTrigger ? (
             // Mobile: viewing a trigger
@@ -1409,6 +1412,16 @@ function AppContent() {
                 canGoBack={true}
               />
             </div>
+          ) : mobileView === 'background' ? (
+            // Mobile: background mode
+            <BackgroundView
+              onNavigateToNote={handleSelectNote}
+              onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+              scrollToMessageId={pendingScrollToMessageId}
+              onScrollComplete={() => setPendingScrollToMessageId(null)}
+              onBack={() => setMobileView('list')}
+              canGoBack={true}
+            />
           ) : (
             // Mobile: conversation view
             <ChatInterface
@@ -1426,6 +1439,7 @@ function AppContent() {
               scrollToMessageId={pendingScrollToMessageId}
               onScrollComplete={() => setPendingScrollToMessageId(null)}
               onMobileBack={() => setMobileView('list')}
+              onBackground={() => { setMobileView('background'); }}
             />
           )
         ) : (

@@ -501,6 +501,25 @@
   font-weight: 600;
   color: #333;
   margin: 0;
+  flex: 1;
+}
+
+.btn-background-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+  flex-shrink: 0;
+}
+
+.btn-background-nav:active {
+  background: var(--bg-hover, #e0e0e0);
 }
 
 .mobile-back-button {
