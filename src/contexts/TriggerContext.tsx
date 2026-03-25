@@ -68,6 +68,14 @@ export function TriggerProvider({
         return await vaultService.loadTrigger(id);
       },
 
+      claimTrigger: async (id: string) => {
+        // Write lastChecked before execution so other instances skip this trigger
+        await vaultService.updateTrigger(id, (fresh) => ({
+          ...fresh,
+          lastChecked: new Date().toISOString(),
+        }));
+      },
+
       onTriggerFired: async (triggerDoc, result, usage?: Usage) => {
         // Re-fetch fresh trigger to avoid race conditions
         const freshTrigger = getFreshTrigger(triggerDoc.id);
