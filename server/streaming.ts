@@ -45,6 +45,10 @@ function scheduleCleanup(sessionId: string) {
 function sendSSE(res: Response, event: string, data: unknown) {
   try {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // Flush compression buffer — without this, SSE events get stuck
+    if (typeof (res as any).flush === 'function') {
+      (res as any).flush();
+    }
   } catch {
     // Client disconnected
   }
