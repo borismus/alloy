@@ -30,11 +30,19 @@ const FAST_MODEL_CANDIDATES = [
 ];
 
 /**
- * Resolve the fastest available model for the orchestrator.
- * Falls back to first available model if no fast model is configured.
+ * Resolve the model for the orchestrator.
+ * Uses config's defaultModel if set, otherwise falls back to fast candidates.
  */
 export function getOrchestratorModel(): string | null {
   const available = new Set(providerRegistry.getAllAvailableModels().map(m => m.key));
+
+  // Prefer the user's configured default model
+  const defaultProvider = providerRegistry.getDefaultProvider();
+  const defaultModel = providerRegistry.getDefaultModel();
+  if (defaultProvider && defaultModel) {
+    const defaultKey = `${defaultProvider}/${defaultModel}`;
+    if (available.has(defaultKey)) return defaultKey;
+  }
 
   for (const candidate of FAST_MODEL_CANDIDATES) {
     if (available.has(candidate)) return candidate;
