@@ -639,6 +639,21 @@
   font-weight: 600;
 }
 
+.message.user .message-content table {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.message.user .message-content th,
+.message.user .message-content td {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #333;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.message.user .message-content th {
+  background: rgba(255, 255, 255, 0.95);
+}
+
 .message-content a,
 .response-summary-content a {
   color: #667eea;
