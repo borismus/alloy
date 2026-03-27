@@ -16,6 +16,27 @@ interface UseDictationReturn {
   cancelDictation: () => void;
 }
 
+// Build text from tokens, inserting "Speaker {id}: " on new lines when the speaker changes.
+// First speaker gets no label; labels only appear once a second speaker is detected.
+function tokensToText(
+  tokens: Array<{ text: string; speaker?: string }>,
+  speakerRef: { current: string | null },
+  hasTextBefore: boolean
+): string {
+  let text = '';
+  for (const token of tokens) {
+    if (token.speaker && token.speaker !== speakerRef.current) {
+      if (speakerRef.current !== null) {
+        const prefix = (hasTextBefore || text) ? '\n' : '';
+        text += `${prefix}Speaker ${token.speaker}: `;
+      }
+      speakerRef.current = token.speaker;
+    }
+    text += token.text;
+  }
+  return text;
+}
+
 function mapState(state: RecorderState): DictationState {
   switch (state) {
     case 'Init':
@@ -47,6 +68,8 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
   // of subsequent onPartialResult responses.
   const accFinalTextRef = useRef('');
   const accFinalEndMsRef = useRef(-1);
+  // Track current speaker for diarization — insert line breaks on speaker changes
+  const accSpeakerRef = useRef<string | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -68,6 +91,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     // Reset accumulators for new session
     accFinalTextRef.current = '';
     accFinalEndMsRef.current = -1;
+    accSpeakerRef.current = null;
 
     const client = new SonioxClient({
       apiKey,
@@ -85,7 +109,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
           const newTokens = contentTokens.filter(t =>
             (t.start_ms ?? 0) > accFinalEndMsRef.current
           );
-          const fullText = accFinalTextRef.current + newTokens.map(t => t.text).join('');
+          const fullText = accFinalTextRef.current + tokensToText(newTokens, accSpeakerRef, !!accFinalTextRef.current);
           console.log('[Dictation] <end>, fullText:', JSON.stringify(fullText));
           onTranscriptRef.current(fullText);
           onEndpointRef.current(fullText);
@@ -103,12 +127,14 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
             (t.start_ms ?? 0) > accFinalEndMsRef.current
           );
           if (newFinalTokens.length > 0) {
-            accFinalTextRef.current += newFinalTokens.map(t => t.text).join('');
+            accFinalTextRef.current += tokensToText(newFinalTokens, accSpeakerRef, !!accFinalTextRef.current);
             const last = newFinalTokens[newFinalTokens.length - 1];
             accFinalEndMsRef.current = last.end_ms ?? last.start_ms ?? accFinalEndMsRef.current;
           }
 
-          const displayText = accFinalTextRef.current + nonFinalTokens.map(t => t.text).join('');
+          // Use a temporary speaker copy so non-final tokens don't permanently advance speaker state
+          const tempSpeaker = { current: accSpeakerRef.current };
+          const displayText = accFinalTextRef.current + tokensToText(nonFinalTokens, tempSpeaker, !!accFinalTextRef.current);
           if (displayText) {
             onTranscriptRef.current(displayText);
           }
@@ -132,6 +158,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       model: 'stt-rt-preview',
       languageHints: ['en'],
       enableEndpointDetection: true,
+      enableSpeakerDiarization: true,
     });
   }, [apiKey]);
 
