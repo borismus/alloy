@@ -1,5 +1,6 @@
 export * from './types';
 export * from './anthropic';
+export * from './openai-compatible';
 export * from './openai';
 export * from './ollama';
 export * from './gemini';

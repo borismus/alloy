@@ -262,14 +262,12 @@ export async function executeWithTools(
 
   // Tool execution loop - keep going while model wants to use tools
   let iteration = 0;
-  const providerWithTools = provider as any;
-
   while (
     iteration < maxIterations &&
     result.stopReason === 'tool_use' &&
     result.toolCalls &&
     result.toolCalls.length > 0 &&
-    providerWithTools.sendMessageWithToolResults
+    provider.sendMessageWithToolResults
   ) {
     iteration++;
 
@@ -372,7 +370,7 @@ export async function executeWithTools(
     onChunk?.(' ');
 
     // Send tool results back to the provider with full history
-    result = await providerWithTools.sendMessageWithToolResults(
+    result = await provider.sendMessageWithToolResults(
       prepared.messages,
       toolHistory,
       chatOptions

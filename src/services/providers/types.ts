@@ -36,6 +36,12 @@ export interface IProviderService {
 
   sendMessage(messages: Message[], options: ChatOptions): Promise<ChatResult>;
 
+  sendMessageWithToolResults?(
+    messages: Message[],
+    toolHistory: ToolRound[],
+    options: ChatOptions
+  ): Promise<ChatResult>;
+
   generateTitle(userMessage: string, assistantResponse: string): Promise<string>;
 
   getAvailableModels(): ModelInfo[];
