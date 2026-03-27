@@ -15,7 +15,7 @@ export interface ChatOptions {
   onChunk?: (text: string) => void;
   onToolUse?: (toolUse: ToolUse) => void;  // Called when tool use is detected
   signal?: AbortSignal;
-  imageLoader?: (relativePath: string) => Promise<string>;  // Load image as base64
+  imageLoader?: (relativePath: string) => Promise<{ data: string; mimeType: string }>;  // Load image as base64 (with compression if needed)
 }
 
 export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';

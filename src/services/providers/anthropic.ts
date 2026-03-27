@@ -82,13 +82,13 @@ export class AnthropicService implements IProviderService {
             // Add images first (Anthropic prefers images before text)
             for (const attachment of msg.attachments || []) {
               if (attachment.type === 'image' && options.imageLoader) {
-                const base64 = await options.imageLoader(attachment.path);
+                const { data, mimeType } = await options.imageLoader(attachment.path);
                 content.push({
                   type: 'image',
                   source: {
                     type: 'base64',
-                    media_type: attachment.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                    data: base64,
+                    media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                    data,
                   },
                 });
               }

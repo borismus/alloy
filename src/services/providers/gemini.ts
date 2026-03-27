@@ -90,11 +90,11 @@ export class GeminiService implements IProviderService {
         // Add images first
         for (const attachment of msg.attachments || []) {
           if (attachment.type === 'image' && options.imageLoader) {
-            const base64 = await options.imageLoader(attachment.path);
+            const { data, mimeType } = await options.imageLoader(attachment.path);
             parts.push({
               inlineData: {
-                mimeType: normalizeImageMimeType(attachment.mimeType, attachment.path),
-                data: base64,
+                mimeType: normalizeImageMimeType(mimeType, attachment.path),
+                data,
               },
             });
           }
@@ -301,11 +301,11 @@ export class GeminiService implements IProviderService {
         // Add images first
         for (const attachment of msg.attachments || []) {
           if (attachment.type === 'image' && options.imageLoader) {
-            const base64 = await options.imageLoader(attachment.path);
+            const { data, mimeType } = await options.imageLoader(attachment.path);
             parts.push({
               inlineData: {
-                mimeType: normalizeImageMimeType(attachment.mimeType, attachment.path),
-                data: base64,
+                mimeType: normalizeImageMimeType(mimeType, attachment.path),
+                data,
               },
             });
           }

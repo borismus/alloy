@@ -86,11 +86,11 @@ export class GrokService implements IProviderService {
 
         for (const attachment of msg.attachments || []) {
           if (attachment.type === 'image' && options.imageLoader) {
-            const base64 = await options.imageLoader(attachment.path);
+            const { data, mimeType } = await options.imageLoader(attachment.path);
             content.push({
               type: 'image_url',
               image_url: {
-                url: `data:${attachment.mimeType};base64,${base64}`,
+                url: `data:${mimeType};base64,${data}`,
               },
             });
           }
