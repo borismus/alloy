@@ -39,8 +39,8 @@ export class TriggerScheduler {
     this.callbacks = callbacks;
     this.isRunning = true;
 
-    // Don't run initial check - wait for the first interval to avoid
-    // firing triggers on app reload/refresh
+    // Run immediately to catch up on any triggers missed while app was closed
+    this.runScheduledChecks();
     const intervalId = window.setInterval(() => {
       this.runScheduledChecks();
     }, this.checkIntervalMs);
