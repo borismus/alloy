@@ -21,6 +21,9 @@ function toGeminiSchema(jsonType: string, description: string): Schema {
 }
 
 export class GeminiToolAdapter implements ToolAdapter {
+  // Map from generated tool call ID to function name (populated by parseToolCalls)
+  private idToName: Map<string, string> = new Map();
+
   toProviderFormat(tools: ToolDefinition[]): FunctionDeclaration[] {
     return tools.map((tool) => {
       // Convert properties to Gemini format
@@ -45,12 +48,16 @@ export class GeminiToolAdapter implements ToolAdapter {
   parseToolCalls(functionCalls: GeminiFunctionCall[] | undefined): ToolCall[] {
     if (!functionCalls) return [];
 
-    return functionCalls.map((call, index) => ({
+    return functionCalls.map((call, index) => {
       // Gemini doesn't provide IDs, so we generate one
-      id: `gemini-call-${Date.now()}-${index}`,
-      name: call.name,
-      input: (call.args || {}) as Record<string, unknown>,
-    }));
+      const id = `gemini-call-${Date.now()}-${index}`;
+      this.idToName.set(id, call.name);
+      return {
+        id,
+        name: call.name,
+        input: (call.args || {}) as Record<string, unknown>,
+      };
+    });
   }
 
   formatToolResults(
@@ -58,8 +65,7 @@ export class GeminiToolAdapter implements ToolAdapter {
   ): { functionResponse: { name: string; response: { content: string } } }[] {
     return results.map((result) => ({
       functionResponse: {
-        // Extract tool name from the ID we created (or use a placeholder)
-        name: result.tool_use_id.split('-')[0] || 'tool',
+        name: this.idToName.get(result.tool_use_id) || 'tool',
         response: {
           content: result.content,
         },

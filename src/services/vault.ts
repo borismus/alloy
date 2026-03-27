@@ -4,6 +4,19 @@ import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
 import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger, TimelineItem } from '../types';
 
+/**
+ * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/trigger filename.
+ * Input: "2025-01-14-1430-a1b2-my-topic.yaml" → "2025-01-14-1430-a1b2"
+ */
+export function extractCoreId(filenameOrId: string): string {
+  const name = filenameOrId.replace(/\.yaml$/, '');
+  const parts = name.split('-');
+  if (parts.length >= 5) {
+    return parts.slice(0, 5).join('-');
+  }
+  return name;
+}
+
 export class VaultService {
   private vaultPath: string | null = null;
 
@@ -534,18 +547,8 @@ export class VaultService {
       .slice(0, 50); // Max 50 chars
   }
 
-  // Extract the core ID (date-time-hash) from a filename or full ID
-  // Input: "2025-01-14-1430-a1b2-my-topic.yaml" or "2025-01-14-1430-a1b2-my-topic" or "2025-01-14-1430-a1b2"
-  // Output: "2025-01-14-1430-a1b2"
   extractCoreId(filenameOrId: string): string {
-    // Remove .yaml extension if present
-    const name = filenameOrId.replace(/\.yaml$/, '');
-    // Split by dash and take first 5 parts: YYYY-MM-DD-HHMM-hash
-    const parts = name.split('-');
-    if (parts.length >= 5) {
-      return parts.slice(0, 5).join('-');
-    }
-    return name; // Return as-is if doesn't match expected format
+    return extractCoreId(filenameOrId);
   }
 
   // Generate filename with optional slug

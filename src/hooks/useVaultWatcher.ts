@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { watch, WatchEvent, WatchEventKind, exists } from '@tauri-apps/plugin-fs';
+import { extractCoreId } from '../services/vault';
 
 export interface VaultWatcherCallbacks {
   onConversationAdded: (id: string) => void;
@@ -87,15 +88,7 @@ export function useVaultWatcher(
   const extractConversationId = useCallback((filePath: string): string | null => {
     const filename = filePath.split('/').pop() || '';
     if (!filename.endsWith('.yaml')) return null;
-    // Extract core ID (YYYY-MM-DD-HHMM-hash) from filename
-    // Input: "2025-01-14-1430-a1b2-my-topic.yaml"
-    // Output: "2025-01-14-1430-a1b2"
-    const name = filename.replace(/\.yaml$/, '');
-    const parts = name.split('-');
-    if (parts.length >= 5) {
-      return parts.slice(0, 5).join('-');
-    }
-    return name; // Return as-is if doesn't match expected format
+    return extractCoreId(filename);
   }, []);
 
   // Same ID extraction logic works for triggers (same filename format)
