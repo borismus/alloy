@@ -5,6 +5,7 @@ import { useRiffContext } from '../contexts/RiffContext';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useDictation } from '../hooks/useDictation';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
+import { useTextareaProps } from '../utils/textareaProps';
 import { MarkdownContent } from './MarkdownContent';
 import { MermaidDiagram } from './MermaidDiagram';
 import { ItemHeader } from './ItemHeader';
@@ -206,6 +207,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
   }, [dictationState, inputText, toggleDictation]);
 
   useAutoResizeTextarea(textareaRef, inputText);
+  const textareaProps = useTextareaProps();
 
   // Keyboard handler for Enter-to-send
   const handleKeyDown = useChatKeyboard({
@@ -365,46 +367,50 @@ export const RiffView: React.FC<RiffViewProps> = ({
       )}
 
       {/* Input area - always visible */}
-      <div className="riff-input-area">
-        <textarea
-          ref={textareaRef}
-          value={inputText}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder={isRecording ? 'Listening...' : draftFilename ? 'Type to add to the document...' : 'Start typing to create a draft...'}
-          disabled={isProcessing || isRecording}
-          rows={1}
-        />
-        {sonioxApiKey && (
+      <form className="input-form" onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+        <div className="input-row">
+          <textarea
+            ref={textareaRef}
+            value={inputText}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder={isRecording ? 'Listening...' : draftFilename ? 'Type to add to the document...' : 'Start typing to create a draft...'}
+            disabled={isProcessing || isRecording}
+            rows={1}
+            {...textareaProps}
+          />
+          {sonioxApiKey && (
+            <button
+              type="button"
+              className={`riff-mic-button ${isRecording ? 'recording' : ''}`}
+              onClick={handleToggleDictation}
+              disabled={isProcessing || isDictationBusy}
+              title={isRecording ? 'Stop dictation' : 'Start dictation'}
+            >
+              {isRecording ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="1" width="6" height="13" rx="3" />
+                  <path d="M5 10a7 7 0 0 0 14 0" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                </svg>
+              )}
+            </button>
+          )}
           <button
-            className={`riff-mic-button ${isRecording ? 'recording' : ''}`}
-            onClick={handleToggleDictation}
-            disabled={isProcessing || isDictationBusy}
-            title={isRecording ? 'Stop dictation' : 'Start dictation'}
+            type="submit"
+            className="send-button"
+            disabled={!inputText.trim() || isProcessing}
+            title="Send (Enter)"
           >
-            {isRecording ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="1" width="6" height="13" rx="3" />
-                <path d="M5 10a7 7 0 0 0 14 0" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-              </svg>
-            )}
+            {isUpdating ? '...' : '\u2191'}
           </button>
-        )}
-        <button
-          className="riff-send-button"
-          onClick={handleSend}
-          disabled={!inputText.trim() || isProcessing}
-          title="Send (Enter)"
-        >
-          {isUpdating ? '...' : '\u2191'}
-        </button>
-      </div>
+        </div>
+      </form>
       {dictationError && (
         <div className="riff-dictation-error">{dictationError}</div>
       )}
