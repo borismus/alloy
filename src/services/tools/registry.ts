@@ -48,7 +48,9 @@ export class ToolRegistry {
 
       // Inject context into input for tools that need it
       // write_file always requires approval unless explicitly bypassed (after user approval)
-      const requireApprovalForWrite = toolCall.name === 'write_file' && context?.requireWriteApproval !== false;
+      const writePath = String(toolCall.input?.path || '').replace(/\\/g, '/').replace(/^\.\//, '');
+      const isNotePath = writePath.startsWith('notes/') || writePath === 'memory.md';
+      const requireApprovalForWrite = toolCall.name === 'write_file' && context?.requireWriteApproval !== false && !isNotePath;
       const inputWithContext = {
         ...toolCall.input,
         ...(context?.messageId && { _messageId: context.messageId }),

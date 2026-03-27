@@ -29,7 +29,7 @@ export interface ToolExecutionOptions {
   onToolUse?: (toolUse: ToolUse) => void;
   onApprovalRequired?: (request: ApprovalRequest) => Promise<boolean>;  // Returns true if approved
   signal?: AbortSignal;
-  imageLoader?: (relativePath: string) => Promise<string>;
+  imageLoader?: (relativePath: string) => Promise<{ data: string; mimeType: string }>;
   tools?: ToolDefinition[];  // Override default tools
   systemPrompt?: string;
   toolContext?: ToolContext;  // Context passed to tool executors (e.g., messageId for provenance)
