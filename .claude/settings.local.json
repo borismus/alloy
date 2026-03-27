@@ -1,4 +1,5 @@
 {
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
       "Bash(rustc:*)",
@@ -28,7 +29,14 @@
       "Bash(npx tauri icon:*)",
       "mcp__playwright__browser_evaluate",
       "mcp__playwright__browser_run_code",
-      "mcp__playwright__browser_wait_for"
+      "mcp__playwright__browser_wait_for",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(npx vitest:*)",
+      "WebFetch",
+      "WebSearch",
+      "Bash(wc:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
