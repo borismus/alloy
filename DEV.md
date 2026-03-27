@@ -18,23 +18,33 @@ npm run tauri dev
 ```
 alloy/
 ├── src/                      # React frontend
-│   ├── components/          # UI components
-│   │   ├── VaultSetup.tsx   # First-run vault selection
-│   │   ├── Sidebar.tsx      # Conversation list & search
-│   │   └── ChatInterface.tsx # Main chat UI
-│   ├── services/            # Business logic
-│   │   ├── vault.ts         # File system operations
-│   │   └── claude.ts        # Anthropic API client
-│   ├── types/               # TypeScript types
-│   └── App.tsx              # Main app component
+│   ├── components/           # UI components
+│   │   ├── ChatInterface.tsx # Main chat UI
+│   │   ├── RiffView.tsx      # Draft note editing
+│   │   ├── Sidebar.tsx       # Conversation list & search
+│   │   └── Settings.tsx      # Settings panel
+│   ├── services/             # Business logic
+│   │   ├── vault.ts          # File system operations
+│   │   ├── riff.ts           # Draft integration logic
+│   │   ├── background.ts     # Background orchestrator
+│   │   ├── providers/        # AI provider implementations
+│   │   ├── skills/           # Skill loading and execution
+│   │   ├── tools/            # Built-in tool implementations
+│   │   ├── triggers/         # Trigger scheduling and execution
+│   │   └── context/          # Context window estimation
+│   ├── contexts/             # React contexts
+│   ├── hooks/                # Custom hooks
+│   ├── types/                # TypeScript types
+│   ├── mocks/                # Tauri API mocks for web mode
+│   └── App.tsx               # Main app component
 │
-├── src-tauri/               # Rust backend
+├── src-tauri/                # Rust backend
 │   ├── src/
-│   │   └── lib.rs          # Tauri app setup
-│   ├── Cargo.toml          # Rust dependencies
-│   └── tauri.conf.json     # Tauri configuration
+│   │   └── lib.rs            # Tauri app setup
+│   ├── Cargo.toml            # Rust dependencies
+│   └── tauri.conf.json       # Tauri configuration
 │
-└── package.json             # Node dependencies
+└── package.json              # Node dependencies
 
 ```
 
@@ -42,8 +52,8 @@ alloy/
 
 - **Frontend**: React 19 + TypeScript + Vite
 - **Backend**: Tauri 2 (Rust)
-- **AI**: Anthropic SDK (Claude)
-- **Storage**: YAML files (js-yaml)
+- **AI**: Anthropic, OpenAI, Google Gemini, xAI (Grok), Ollama
+- **Storage**: YAML/Markdown files (js-yaml)
 - **Styling**: Plain CSS
 
 ## Development Flow
@@ -52,26 +62,35 @@ alloy/
 2. **Rust changes**: Requires rebuild (Tauri watches and rebuilds)
 3. **Config changes**: May require restart
 
+## Dual Runtime Modes
+
+The app runs in two modes:
+
+- **Tauri mode** (`npm run tauri dev`): Native desktop app. Uses `@tauri-apps/plugin-http` for external requests.
+- **Server mode** (`npm run dev:web`): Web browser mode, no Rust required. Tauri plugins are swapped for HTTP-based mocks via Vite aliases.
+
+When adding features that use Tauri APIs or make HTTP requests, ensure they work in both modes.
+
 ## API Integration
 
-The app uses the Anthropic SDK in "dangerously allow browser" mode since we're in a Tauri webview (not a real browser). API keys are:
+The app supports multiple AI providers. API keys are:
 - Stored in `config.yaml` in the user's vault
-- Never sent to any server except Anthropic
+- Never sent to any server except the respective provider
 - Loaded at startup if vault exists
 
 ## File Formats
 
 ### Conversation (YAML)
 ```yaml
-id: 2025-01-10-1234567890
-created: 2025-01-10T12:00:00Z
-model: claude-sonnet-4-20250514
+id: 2025-06-15-1750012200-bike-kickstand
+created: 2025-06-15T11:30:00Z
+model: anthropic/claude-opus-4-6
 messages:
   - role: user
-    timestamp: 2025-01-10T12:00:00Z
+    timestamp: 2025-06-15T11:30:00Z
     content: Hello!
   - role: assistant
-    timestamp: 2025-01-10T12:00:05Z
+    timestamp: 2025-06-15T11:30:05Z
     content: Hi there!
 ```
 
@@ -79,7 +98,8 @@ messages:
 ```yaml
 vaultPath: /Users/you/alloy-vault
 anthropicApiKey: sk-ant-...
-defaultModel: claude-sonnet-4-20250514
+openaiApiKey: sk-...
+defaultModel: anthropic/claude-sonnet-4-20250514
 ```
 
 ### Memory (Markdown)
@@ -114,39 +134,18 @@ Check terminal where you ran `npm run tauri dev`
 ### File Operations
 All vault operations can be inspected by looking at the files in your vault folder
 
-## MVP 0.1 Checklist
-
-- [x] Vault folder picker
-- [x] Basic chat interface
-- [x] Claude API integration
-- [x] Streaming responses
-- [x] YAML conversation persistence
-- [x] Conversation list
-- [x] Basic search
-- [x] Memory.md injection
-
-## Next Steps (v0.2)
-
-- [ ] Multi-provider support
-- [ ] Model comparison UI
-- [ ] Better error handling
-- [ ] Settings panel
-- [ ] Keyboard shortcuts
-- [ ] Conversation export
-- [ ] Delete conversations
-
 ## Tips
 
 - **Fast iteration**: Keep `npm run tauri dev` running
 - **Test persistence**: Check your vault folder to verify files
-- **API key**: Get one from https://console.anthropic.com/
+- **Web mode**: Use `npm run dev:web` for faster frontend iteration without Rust
 - **Search**: Works across all message content in all conversations
 - **Memory**: Edit `memory.md` to customize AI context
 
 ## Common Issues
 
 **Build fails**: Make sure Rust is installed and in PATH
-**API errors**: Check your API key in `config.yaml`
+**API errors**: Check your API keys in `config.yaml` or the Settings panel
 **Files not saving**: Verify vault folder permissions
 **Search not working**: Check that conversations have loaded
 

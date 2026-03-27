@@ -4,7 +4,7 @@
 
 1. **Node.js** (v18 or later)
 2. **Rust** (latest stable version)
-3. **Anthropic API Key** - Get one from https://console.anthropic.com/
+3. At least one API key (Anthropic, OpenAI, Google Gemini, or xAI), or **Ollama** running locally
 
 ## Installation
 
@@ -36,14 +36,17 @@ This will:
 
 When you first launch Alloy:
 
-1. **Select Vault Folder**: Choose a folder where your conversations will be stored
-2. **Enter API Key**: Provide your Anthropic API key when prompted
+1. **Select Vault Folder**: Choose a folder where your data will be stored
+2. **Add API Keys**: Open Settings and add keys for the providers you want to use
 
 Your vault will be initialized with:
-- `conversations/` - All your conversation files (YAML format)
-- `topics/` - For future standing queries feature
-- `memory.md` - Your personal context/preferences
-- `config.yaml` - App configuration
+- `conversations/` — Chat history (YAML)
+- `notes/` — AI-managed notes (Markdown)
+- `triggers/` — Scheduled prompts (YAML)
+- `skills/` — Custom skills (Markdown)
+- `riffs/` — Draft notes (Markdown)
+- `memory.md` — Persistent context injected into system prompt
+- `config.yaml` — API keys and settings
 
 ## Usage
 
@@ -82,46 +85,11 @@ Or restart your terminal after installing Rust.
 
 ### API Key Issues
 
-Your API key is stored in `[vault-path]/config.yaml`. You can:
-- Edit it directly in the file
-- Update it through the app's settings (coming soon)
+Your API keys are stored in `[vault-path]/config.yaml`. You can also update them through the Settings panel in the app.
 
 ### Conversations Not Loading
 
-Check that your vault folder has the correct structure:
-```
-vault/
-├── conversations/
-├── topics/
-├── memory.md
-└── config.yaml
-```
-
-## File Structure
-
-All your data lives in plain text files:
-
-- **Conversations**: `conversations/YYYY-MM-DD-timestamp.yaml`
-- **Memory**: `memory.md` (Markdown)
-- **Config**: `config.yaml` (YAML)
-
-You can edit these files with any text editor, back them up, sync them—they're yours!
-
-## MVP 0.1 Features
-
-- ✅ Vault folder selection
-- ✅ Chat with Claude (Sonnet 4)
-- ✅ Conversations saved as YAML
-- ✅ Basic search
-- ✅ Memory.md context injection
-
-## Coming Soon (v0.2+)
-
-- Multi-provider support (GPT, Gemini, Ollama)
-- Side-by-side model comparison
-- Topics/standing queries
-- Privacy boundaries
-- And more!
+Check that your vault folder exists and has the correct structure (see "First Run" above).
 
 ---
 

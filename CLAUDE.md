@@ -5,7 +5,7 @@
 **Alloy** is a multi-model AI chat application built with Tauri 2 + React.
 
 Key features:
-- **Multi-provider**: Anthropic (Claude), OpenAI, Google Gemini, Ollama
+- **Multi-provider**: Anthropic (Claude), OpenAI, Google Gemini, xAI (Grok), Ollama
 - **Council mode**: Query multiple models, chairman synthesizes responses
 - **Comparison mode**: See responses side-by-side
 - **Triggers**: Scheduled background prompts (monitors)
@@ -30,14 +30,17 @@ src/
 ├── App.tsx                 # Main app - state management, routing
 ├── components/             # React components
 │   ├── ChatInterface.tsx   # Standard chat
-│   ├── RiffView.tsx      # Draft note editing
+│   ├── RiffView.tsx        # Draft note editing
 │   ├── Sidebar.tsx         # Timeline + navigation
 ├── services/
 │   ├── vault.ts            # File I/O, conversation/note CRUD
-│   ├── riff.ts           # Draft integration logic
+│   ├── riff.ts             # Draft integration logic
+│   ├── background.ts       # Background orchestrator
 │   ├── providers/          # AI provider implementations
 │   ├── skills/             # Skill loading and execution
-│   └── tools/              # Built-in tool implementations
+│   ├── tools/              # Built-in tool implementations
+│   ├── triggers/           # Trigger scheduling and execution
+│   └── context/            # Context window estimation and management
 ├── contexts/               # React contexts
 ├── hooks/                  # Custom hooks
 ├── types/                  # TypeScript types
@@ -103,25 +106,6 @@ vault-folder/
 ├── skills/               # Custom skills (Markdown)
 └── riffs/              # Draft notes (Markdown)
 ```
-
-## Allowed Tools
-
-This project allows Claude Code to use web search for research and documentation lookups.
-
-allowedTools:
-  - WebSearch
-  - WebFetch
-  - Bash(ls *)
-  - Bash(grep *)
-  - Bash(find *)
-  - Bash(cat *)
-  - Bash(head *)
-  - Bash(tail *)
-  - Bash(wc *)
-  - Bash(file *)
-  - Bash(pwd)
-  - Bash(which *)
-  - Bash(echo *)
 
 ## Git Workflow
 
