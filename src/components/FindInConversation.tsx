@@ -96,16 +96,9 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
   }, []);
 
   const scrollToRange = (range: Range) => {
-    const rect = range.getBoundingClientRect();
-    const container = containerRef.current;
-    if (!container) return;
-
-    const containerRect = container.getBoundingClientRect();
-    // Check if the match is outside the visible area
-    if (rect.top < containerRect.top || rect.bottom > containerRect.bottom) {
-      // Scroll so the match is roughly centered
-      const scrollTop = container.scrollTop + rect.top - containerRect.top - containerRect.height / 2;
-      container.scrollTo({ top: scrollTop, behavior: 'smooth' });
+    const element = range.startContainer.parentElement;
+    if (element) {
+      element.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
   };
 

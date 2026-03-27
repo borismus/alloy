@@ -9,7 +9,6 @@ import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useGlobalEscape } from '../hooks/useGlobalEscape';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
-import { FindInConversation, FindInConversationHandle } from './FindInConversation';
 import { AgentResponseView } from './AgentResponseView';
 import { SubagentResponsesView } from './SubagentResponsesView';
 import { ItemHeader } from './ItemHeader';
@@ -286,7 +285,6 @@ interface ChatInterfaceProps {
 
 export interface ChatInterfaceHandle {
   focusInput: () => void;
-  openFind: () => void;
   setInputText: (text: string) => void;
 }
 
@@ -330,12 +328,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const showBackButton = onMobileBack ? true : canGoBack;
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
-  const [showFind, setShowFind] = useState(false);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<ChatInputFormHandle>(null);
-  const findRef = useRef<FindInConversationHandle>(null);
   const currentConversationIdRef = useRef<string | null>(conversation?.id ?? null);
 
   // Keep ref in sync with current conversation
@@ -463,14 +459,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     focusInput: () => {
       chatInputRef.current?.focus();
     },
-    openFind: () => {
-      if (showFind) {
-        // Already open, just focus the input
-        findRef.current?.focus();
-      } else {
-        setShowFind(true);
-      }
-    },
     setInputText: (text: string) => {
       chatInputRef.current?.setText(text);
     },
@@ -492,11 +480,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       }
     }
   }, [conversation?.id, scrollToMessageId]);
-
-  // Close find dialog when conversation changes
-  useEffect(() => {
-    setShowFind(false);
-  }, [conversation?.id]);
 
   // Scroll to specific message when scrollToMessageId is set (from provenance links)
   useScrollToMessage({
@@ -720,13 +703,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         onBackground={onBackground}
       />
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
-        {showFind && (
-          <FindInConversation
-            ref={findRef}
-            containerRef={messagesContainerRef}
-            onClose={() => setShowFind(false)}
-          />
-        )}
         {conversation.messages.length === 0 && !showStreamingMessage && (
           <div className="welcome-message">
             <h2>Start a conversation</h2>

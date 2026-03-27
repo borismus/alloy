@@ -99,6 +99,7 @@ body {
   height: 100vh;
   height: var(--app-height, 100dvh);
   overflow: hidden;
+  position: relative;
 }
 
 .no-note-selected {

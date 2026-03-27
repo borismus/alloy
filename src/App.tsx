@@ -3,6 +3,7 @@ import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { riffService } from './services/riff';
+import { compressImageToFit, mimeTypeFromPath } from './services/imageUtils';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useVisualViewport } from './hooks/useVisualViewport';
@@ -18,6 +19,7 @@ import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import { TriggerDetailView } from './components/TriggerDetailView';
 import { NoteViewer } from './components/NoteViewer';
+import { FindInConversation, FindInConversationHandle } from './components/FindInConversation';
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
 import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
@@ -201,6 +203,9 @@ function AppContent() {
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
   const sidebarRef = useRef<SidebarHandle>(null);
+  const mainPanelRef = useRef<HTMLDivElement>(null);
+  const findRef = useRef<FindInConversationHandle>(null);
+  const [showFind, setShowFind] = useState(false);
   const { startStreaming, updateStreamingContent, completeStreaming, stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = useStreamingContext();
   const { execute: executeWithTools } = useToolExecution();
   const riffContext = useRiffContext();
@@ -470,10 +475,14 @@ function AppContent() {
         return;
       }
 
-      // Cmd+F: Find in current conversation
+      // Cmd+F: Find in current view
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        chatInterfaceRef.current?.openFind();
+        if (showFind) {
+          findRef.current?.focus();
+        } else {
+          setShowFind(true);
+        }
       }
 
       if (e.key === 'Escape' && showSettings) {
@@ -491,7 +500,12 @@ function AppContent() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSettings, selectedItem, config]);
+  }, [showSettings, showFind, selectedItem, config]);
+
+  // Close find when switching views
+  useEffect(() => {
+    setShowFind(false);
+  }, [selectedItem?.id]);
 
   // Build unified timeline whenever data changes
   useEffect(() => {
@@ -943,7 +957,9 @@ function AppContent() {
         }
 
         const imageLoader = async (relativePath: string) => {
-          return await vaultService.loadImageAsBase64(relativePath);
+          const data = await vaultService.loadImageAsBase64(relativePath);
+          const mimeType = mimeTypeFromPath(relativePath);
+          return await compressImageToFit(data, mimeType);
         };
 
         const result = await executeWithTools(provider, updatedMessages, modelId, {
@@ -1344,32 +1360,40 @@ function AppContent() {
                 setMobileView('background');
               }}
             />
-          ) : selectedItem?.type === 'trigger' && selectedTrigger ? (
-            // Mobile: viewing a trigger
-            <TriggerDetailView
-              trigger={selectedTrigger}
-              onBack={() => setMobileView('list')}
-              canGoBack={true}
-              onDelete={async () => {
-                await handleDeleteTrigger(selectedTrigger.id);
-                setSelectedItem(null);
-                setMobileView('list');
-              }}
-              onRunNow={async () => {
-                const refreshed = await vaultService.loadTrigger(selectedTrigger.id);
-                if (refreshed) {
-                  setTriggers(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
-                }
-              }}
-              onAskAbout={handleAskAboutTrigger}
-              onTriggerUpdated={(updated) => {
-                setTriggers(prev => prev.map(t => t.id === updated.id ? updated : t));
-              }}
-            />
-          ) : selectedItem?.type === 'note' ? (
-            // Mobile: viewing a note or draft
-            isViewingDraft ? (
-              <div className="main-panel">
+          ) : (
+          <div className="main-panel" ref={mainPanelRef}>
+            {showFind && (
+              <FindInConversation
+                ref={findRef}
+                containerRef={mainPanelRef}
+                onClose={() => setShowFind(false)}
+              />
+            )}
+            {selectedItem?.type === 'trigger' && selectedTrigger ? (
+              // Mobile: viewing a trigger
+              <TriggerDetailView
+                trigger={selectedTrigger}
+                onBack={() => setMobileView('list')}
+                canGoBack={true}
+                onDelete={async () => {
+                  await handleDeleteTrigger(selectedTrigger.id);
+                  setSelectedItem(null);
+                  setMobileView('list');
+                }}
+                onRunNow={async () => {
+                  const refreshed = await vaultService.loadTrigger(selectedTrigger.id);
+                  if (refreshed) {
+                    setTriggers(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
+                  }
+                }}
+                onAskAbout={handleAskAboutTrigger}
+                onTriggerUpdated={(updated) => {
+                  setTriggers(prev => prev.map(t => t.id === updated.id ? updated : t));
+                }}
+              />
+            ) : selectedItem?.type === 'note' ? (
+              // Mobile: viewing a note or draft
+              isViewingDraft ? (
                 <RiffView
                   notes={notes}
                   model={config?.defaultModel || availableModels[0]?.key || ''}
@@ -1380,27 +1404,25 @@ function AppContent() {
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
                 />
-              </div>
-            ) : selectedNote ? (
-              <NoteViewer
-                content={selectedNote.content}
-                filename={selectedNote.filename}
-                onNavigateToNote={handleSelectNote}
-                onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-                onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
-                conversations={conversations}
-                onBack={() => setMobileView('list')}
-                canGoBack={true}
-              />
-            ) : (
-              // Loading state while note content loads
-              <div className="main-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span>Loading...</span>
-              </div>
-            )
-          ) : riffContext.isRiffMode && !selectedItem ? (
-            // Mobile: fresh riff mode (no item selected)
-            <div className="main-panel">
+              ) : selectedNote ? (
+                <NoteViewer
+                  content={selectedNote.content}
+                  filename={selectedNote.filename}
+                  onNavigateToNote={handleSelectNote}
+                  onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+                  onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
+                  conversations={conversations}
+                  onBack={() => setMobileView('list')}
+                  canGoBack={true}
+                />
+              ) : (
+                // Loading state while note content loads
+                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <span>Loading...</span>
+                </div>
+              )
+            ) : riffContext.isRiffMode && !selectedItem ? (
+              // Mobile: fresh riff mode (no item selected)
               <RiffView
                 notes={notes}
                 model={config?.defaultModel || availableModels[0]?.key || ''}
@@ -1411,36 +1433,37 @@ function AppContent() {
                 onBack={() => setMobileView('list')}
                 canGoBack={true}
               />
-            </div>
-          ) : mobileView === 'background' ? (
-            // Mobile: background mode
-            <BackgroundView
-              onNavigateToNote={handleSelectNote}
-              onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-              scrollToMessageId={pendingScrollToMessageId}
-              onScrollComplete={() => setPendingScrollToMessageId(null)}
-              onBack={() => setMobileView('list')}
-              canGoBack={true}
-            />
-          ) : (
-            // Mobile: conversation view
-            <ChatInterface
-              ref={chatInterfaceRef}
-              conversation={currentConversation}
-              onSendMessage={handleSendMessage}
-              onSaveImage={handleSaveImage}
-              loadImageAsBase64={handleLoadImageAsBase64}
-              hasProvider={providerRegistry.hasAnyProvider()}
-              onModelChange={handleModelChange}
-              availableModels={availableModels}
-              favoriteModels={config?.favoriteModels}
-              onNavigateToNote={handleSelectNote}
-              onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-              scrollToMessageId={pendingScrollToMessageId}
-              onScrollComplete={() => setPendingScrollToMessageId(null)}
-              onMobileBack={() => setMobileView('list')}
-              onBackground={() => { setMobileView('background'); }}
-            />
+            ) : mobileView === 'background' ? (
+              // Mobile: background mode
+              <BackgroundView
+                onNavigateToNote={handleSelectNote}
+                onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+                scrollToMessageId={pendingScrollToMessageId}
+                onScrollComplete={() => setPendingScrollToMessageId(null)}
+                onBack={() => setMobileView('list')}
+                canGoBack={true}
+              />
+            ) : (
+              // Mobile: conversation view
+              <ChatInterface
+                ref={chatInterfaceRef}
+                conversation={currentConversation}
+                onSendMessage={handleSendMessage}
+                onSaveImage={handleSaveImage}
+                loadImageAsBase64={handleLoadImageAsBase64}
+                hasProvider={providerRegistry.hasAnyProvider()}
+                onModelChange={handleModelChange}
+                availableModels={availableModels}
+                favoriteModels={config?.favoriteModels}
+                onNavigateToNote={handleSelectNote}
+                onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
+                scrollToMessageId={pendingScrollToMessageId}
+                onScrollComplete={() => setPendingScrollToMessageId(null)}
+                onMobileBack={() => setMobileView('list')}
+                onBackground={() => { setMobileView('background'); }}
+              />
+            )}
+          </div>
           )
         ) : (
           // Desktop layout - sidebar + main panel
@@ -1463,8 +1486,15 @@ function AppContent() {
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
             />
-      {isRiffNote || (riffContext.isRiffMode && !hasNonRiffSelection) ? (
-        <div className="main-panel">
+      <div className="main-panel" ref={mainPanelRef}>
+        {showFind && (
+          <FindInConversation
+            ref={findRef}
+            containerRef={mainPanelRef}
+            onClose={() => setShowFind(false)}
+          />
+        )}
+        {isRiffNote || (riffContext.isRiffMode && !hasNonRiffSelection) ? (
           <RiffView
             notes={notes}
             model={config?.defaultModel || availableModels[0]?.key || ''}
@@ -1476,10 +1506,7 @@ function AppContent() {
             canGoBack={canGoBack}
             onClose={() => { setSelectedItem(null); setNoteContent(null); }}
           />
-        </div>
-      ) : (
-      <div className="main-panel">
-        {selectedTrigger ? (
+        ) : selectedTrigger ? (
           <TriggerDetailView
             trigger={selectedTrigger}
             onBack={goBack}
@@ -1540,7 +1567,6 @@ function AppContent() {
           />
         )}
       </div>
-      )}
           </>
         )}
       {showSettings && (
