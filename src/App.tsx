@@ -3,16 +3,14 @@ import { vaultService } from './services/vault';
 import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { riffService } from './services/riff';
-import { compressImageToFit, mimeTypeFromPath } from './services/imageUtils';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useVisualViewport } from './hooks/useVisualViewport';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
 import { ApprovalProvider } from './contexts/ApprovalContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, formatModelId, getProviderFromModel, getModelIdFromModel, NoteInfo, TimelineFilter, TimelineItem, Trigger, SelectedItem } from './types';
-import { useToolExecution } from './hooks/useToolExecution';
-import { estimateCost } from './services/pricing';
+import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, formatModelId, NoteInfo, TimelineFilter, TimelineItem, Trigger, SelectedItem } from './types';
+import { useSendMessage } from './hooks/useSendMessage';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { Sidebar, SidebarHandle } from './components/Sidebar';
@@ -25,7 +23,7 @@ import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { readTextFile, exists } from '@tauri-apps/plugin-fs';
 import { isServerMode } from './mocks';
-import { executeViaServer, reconnectToActiveSessions } from './services/server-streaming';
+import { reconnectToActiveSessions } from './services/server-streaming';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RiffProvider, useRiffContext } from './contexts/RiffContext';
 import { BackgroundProvider } from './contexts/BackgroundContext';
@@ -83,7 +81,6 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-import { generateMessageId } from './utils/ids';
 
 function AppContent() {
   useVisualViewport();
@@ -207,7 +204,6 @@ function AppContent() {
   const findRef = useRef<FindInConversationHandle>(null);
   const [showFind, setShowFind] = useState(false);
   const { startStreaming, updateStreamingContent, completeStreaming, stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = useStreamingContext();
-  const { execute: executeWithTools } = useToolExecution();
   const riffContext = useRiffContext();
 
   // Check if selected note is a riff/draft on desktop (not integrated)
@@ -432,6 +428,13 @@ function AppContent() {
       onTriggerModified: handleTriggerModified,
     }
   );
+
+  // Extracted hook: handles message sending, streaming, saving, error recovery
+  const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64 } = useSendMessage({
+    config, memory, markSelfWrite, showToast, chatInterfaceRef,
+    setDraftConversation, setConversations,
+    addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent,
+  });
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -781,326 +784,12 @@ function AppContent() {
     }
   };
 
-  const generateFallbackTitle = (firstMessage: string): string => {
-    const truncated = firstMessage.slice(0, 50);
-    const lastSpace = truncated.lastIndexOf(' ');
-    return lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated;
-  };
-
-  const handleSaveImage = async (conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> => {
-    return await vaultService.saveImage(conversationId, imageData, mimeType);
-  };
-
-  const handleLoadImageAsBase64 = async (relativePath: string): Promise<{ base64: string; mimeType: string }> => {
-    const base64 = await vaultService.loadImageAsBase64(relativePath);
-    // Extract mimeType from path extension
-    const ext = relativePath.split('.').pop()?.toLowerCase() || 'png';
-    const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-    return { base64, mimeType };
-  };
-
-  const handleSendMessage = async (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<void> => {
-    if (!currentConversation || !config) return;
-
-    const providerType = getProviderFromModel(currentConversation.model);
-    const modelId = getModelIdFromModel(currentConversation.model);
-    const provider = providerRegistry.getProvider(providerType);
-    // In server mode, the server has its own provider setup — don't require client-side init
-    if (!isServerMode() && (!provider || !provider.isInitialized())) {
-      showToast(`Provider ${providerType} is not configured.`, 'error');
-      return;
-    }
-
-    const userMessage: Message = {
-      id: generateMessageId(),
-      role: 'user',
-      timestamp: new Date().toISOString(),
-      content,
-      attachments: attachments.length > 0 ? attachments : undefined,
-    };
-
-    const updatedMessages = [...currentConversation.messages, userMessage];
-
-    const isFirstMessage = currentConversation.messages.filter(m => m.role !== 'log').length === 0;
-    const title = isFirstMessage ? generateFallbackTitle(content) : currentConversation.title;
-
-    // ID stays stable - no regeneration needed
-    const updatedConversation: Conversation = {
-      ...currentConversation,
-      title,
-      messages: updatedMessages,
-      updated: new Date().toISOString(),
-    };
-
-    // Update draft or conversation in list
-    setDraftConversation(prev => prev?.id === updatedConversation.id ? updatedConversation : prev);
-
-    if (isFirstMessage) {
-      setConversations((prev) => [updatedConversation, ...prev]);
-    } else {
-      setConversations(prev => prev.map(c => c.id === updatedConversation.id ? updatedConversation : c));
-    }
-
-    // Save immediately when user sends a message (so it pops to top of list)
-    try {
-      // Use the actual filename that will be generated (includes slug if title exists)
-      const vaultPathForSave = vaultService.getVaultPath();
-      const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
-      if (vaultPathForSave) {
-        const filePath = `${vaultPathForSave}/conversations/${filename}`;
-        markSelfWrite(filePath);
-        // Also mark old file path if it exists (title change causes old file deletion)
-        const oldFilePath = await vaultService.getConversationFilePath(updatedConversation.id);
-        if (oldFilePath) {
-          markSelfWrite(oldFilePath);
-        }
-      }
-      await vaultService.saveConversation(updatedConversation);
-    } catch (saveError) {
-      console.error('Error saving conversation on user message (non-fatal):', saveError);
-    }
-
-    // Track accumulated content locally so we can save partial results on cancel
-    let accumulatedContent = '';
-    const assistantMessageId = generateMessageId();
-
-    // Helper to save partial/complete conversation
-    const savePartialConversation = async (content: string) => {
-      const assistantMessage: Message = {
-        id: assistantMessageId,
-        role: 'assistant',
-        timestamp: new Date().toISOString(),
-        content,
-      };
-      const finalConv: Conversation = {
-        ...updatedConversation,
-        messages: [...updatedMessages, assistantMessage],
-        updated: new Date().toISOString(),
-      };
-      setDraftConversation(prev => prev?.id === finalConv.id ? finalConv : prev);
-      setConversations(prev => prev.map(c => c.id === finalConv.id ? finalConv : c));
-      try {
-        const vaultPathForSave = vaultService.getVaultPath();
-        const filename = vaultService.generateFilename(finalConv.id, finalConv.title);
-        if (vaultPathForSave) {
-          const filePath = `${vaultPathForSave}/conversations/${filename}`;
-          markSelfWrite(filePath);
-        }
-        await vaultService.saveConversation(finalConv);
-      } catch (saveError) {
-        console.error('Error saving partial conversation (non-fatal):', saveError);
-      }
-    };
-
-    try {
-      // Build system prompt with skill descriptions, conversation context, and memory
-      const systemPrompt = skillRegistry.buildSystemPrompt({
-        id: currentConversation.id,
-        title: currentConversation.title,
-      }, memory?.content);
-
-      const convId = currentConversation.id;
-
-      if (isServerMode()) {
-        // Server-buffered streaming: server owns the stream, client reconnects via SSE
-        const serverResult = await executeViaServer(
-          convId,
-          assistantMessageId,
-          currentConversation.model,
-          updatedMessages,
-          systemPrompt,
-          isFirstMessage,
-          content,
-          {
-            onChunk: onChunk ? (chunk: string) => {
-              accumulatedContent += chunk;
-              onChunk(chunk);
-            } : undefined,
-            onTitle: (title: string) => {
-              // Server generated a title — update local state
-              const conv: Conversation = {
-                ...updatedConversation,
-                title,
-              };
-              setDraftConversation(prev => prev?.id === conv.id ? conv : prev);
-              setConversations(prev => prev.map(c => c.id === conv.id ? conv : c));
-            },
-            signal,
-          },
-        );
-
-        // Server wrote to vault — the file watcher will pick it up.
-        // But also update local state immediately for responsiveness.
-        const assistantMessage: Message = {
-          id: assistantMessageId,
-          role: 'assistant',
-          timestamp: new Date().toISOString(),
-          content: serverResult.content,
-          usage: serverResult.usage,
-        };
-
-        const finalConversation: Conversation = {
-          ...updatedConversation,
-          title: serverResult.title || updatedConversation.title,
-          messages: [...updatedMessages, assistantMessage],
-          updated: new Date().toISOString(),
-        };
-
-        setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
-        setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
-
-      } else {
-        // Client-side streaming: Tauri mode
-        if (!provider || !provider.isInitialized()) {
-          showToast(`Provider ${providerType} is not configured.`, 'error');
-          return;
-        }
-
-        const imageLoader = async (relativePath: string) => {
-          const data = await vaultService.loadImageAsBase64(relativePath);
-          const mimeType = mimeTypeFromPath(relativePath);
-          return await compressImageToFit(data, mimeType);
-        };
-
-        const result = await executeWithTools(provider, updatedMessages, modelId, {
-          maxIterations: 10,
-          toolContext: {
-            messageId: assistantMessageId,
-            conversationId: `conversations/${convId}`,
-          },
-          onChunk: onChunk ? (chunk: string) => {
-            accumulatedContent += chunk;
-            onChunk(chunk);
-          } : undefined,
-          onToolUse: (toolUse) => addToolUse(convId, toolUse),
-          signal,
-          imageLoader,
-          systemPrompt,
-          // Sub-agent streaming callbacks
-          onSubagentStart: (agents) => startSubagents(convId, agents),
-          onSubagentChunk: (agentId, chunk) => updateSubagentContent(convId, agentId, chunk),
-          onSubagentToolUse: (agentId, toolUse) => addSubagentToolUse(convId, agentId, toolUse),
-          onSubagentComplete: (agentId, _content, error) => completeSubagent(convId, agentId, error),
-        });
-
-        // Provider returned normally after abort — save partial content
-        if (signal?.aborted && accumulatedContent.trim()) {
-          await savePartialConversation(accumulatedContent);
-          return;
-        }
-
-        // Build usage with cost estimate
-        let usage: import('./types').Usage | undefined;
-        if (result.usage) {
-          const cost = estimateCost(currentConversation.model, result.usage.inputTokens, result.usage.outputTokens);
-          usage = {
-            inputTokens: result.usage.inputTokens,
-            outputTokens: result.usage.outputTokens,
-            ...(cost !== undefined && { cost }),
-            ...(result.usage.responseId && { responseId: result.usage.responseId }),
-          };
-        }
-
-        const assistantMessage: Message = {
-          id: assistantMessageId,
-          role: 'assistant',
-          timestamp: new Date().toISOString(),
-          content: result.finalContent,
-          toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
-          skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
-          subagentResponses: result.subagentResponses.length > 0 ? result.subagentResponses : undefined,
-          usage,
-        };
-
-        let finalConversation: Conversation = {
-          ...updatedConversation,
-          messages: [...updatedMessages, assistantMessage],
-        };
-
-        // Generate better title using LLM for first message
-        if (isFirstMessage) {
-          try {
-            const betterTitle = await provider.generateTitle(content, result.finalContent);
-            if (betterTitle && betterTitle !== finalConversation.title) {
-              finalConversation = {
-                ...finalConversation,
-                title: betterTitle,
-              };
-            }
-          } catch (titleError) {
-            console.error('Failed to generate title (non-fatal):', titleError);
-          }
-        }
-
-        // Only update if user is still viewing this conversation
-        setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
-        setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
-
-        try {
-          // Mark as self-write to avoid watcher triggering on our own save
-          const vaultPathForFinal = vaultService.getVaultPath();
-          const filename = vaultService.generateFilename(finalConversation.id, finalConversation.title);
-          if (vaultPathForFinal) {
-            const filePath = `${vaultPathForFinal}/conversations/${filename}`;
-            markSelfWrite(filePath);
-            // Also mark old file path if it exists (title change causes old file deletion)
-            const oldFilePath = await vaultService.getConversationFilePath(finalConversation.id);
-            if (oldFilePath) {
-              markSelfWrite(oldFilePath);
-            }
-          }
-          await vaultService.saveConversation(finalConversation);
-        } catch (saveError) {
-          console.error('Error saving conversation (non-fatal):', saveError);
-        }
-      }
-
-    } catch (error: any) {
-      // If aborted, save any partial content that was streamed
-      if (error?.name === 'AbortError' || signal?.aborted) {
-        if (accumulatedContent.trim()) {
-          await savePartialConversation(accumulatedContent);
-        }
-        return;
-      }
-
-      console.error('Error sending message:', error);
-
-      let errorMessage = 'Error sending message. Please check your configuration and try again.';
-
-      if (error?.message?.includes('API key') || error?.message?.includes('401')) {
-        errorMessage = 'Invalid API key. Please check your configuration.';
-      } else if (error?.message?.includes('rate limit') || error?.message?.includes('429')) {
-        errorMessage = 'Rate limit exceeded. Please wait a moment and try again.';
-      } else if (error?.message?.includes('network') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {
-        errorMessage = 'Network error. Please check your internet connection.';
-      }
-
-      // Add error log message to conversation and save
-      const logMessage: Message = {
-        id: generateMessageId(),
-        role: 'log',
-        timestamp: new Date().toISOString(),
-        content: `Error: ${error?.message || errorMessage}`,
-      };
-      const errorConversation: Conversation = {
-        ...updatedConversation,
-        messages: [...updatedConversation.messages, logMessage],
-        updated: new Date().toISOString(),
-      };
-      setDraftConversation(prev => prev?.id === errorConversation.id ? errorConversation : prev);
-      setConversations(prev => prev.map(c => c.id === errorConversation.id ? errorConversation : c));
-      try {
-        await vaultService.saveConversation(errorConversation);
-      } catch (saveError) {
-        console.error('Error saving error log (non-fatal):', saveError);
-      }
-
-      // Restore prompt to composer and show toast
-      chatInterfaceRef.current?.setInputText(content);
-      showToast(errorMessage, 'error');
-    }
-  };
+  // handleSendMessage wrapper: ChatInterface calls with (content, attachments, onChunk, signal)
+  // but useSendMessage needs currentConversation as first arg
+  const handleSendMessageForChat = useCallback(async (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal): Promise<void> => {
+    if (!currentConversation) return;
+    await handleSendMessage(currentConversation, content, attachments, onChunk, signal);
+  }, [currentConversation, handleSendMessage]);
 
   const handleSelectConversation = async (id: string, _addToHistory = true, messageId?: string) => {
     // Store messageId for scrolling after conversation loads
@@ -1448,7 +1137,7 @@ function AppContent() {
               <ChatInterface
                 ref={chatInterfaceRef}
                 conversation={currentConversation}
-                onSendMessage={handleSendMessage}
+                onSendMessage={handleSendMessageForChat}
                 onSaveImage={handleSaveImage}
                 loadImageAsBase64={handleLoadImageAsBase64}
                 hasProvider={providerRegistry.hasAnyProvider()}
@@ -1543,7 +1232,7 @@ function AppContent() {
           <ChatInterface
             ref={chatInterfaceRef}
             conversation={currentConversation}
-            onSendMessage={handleSendMessage}
+            onSendMessage={handleSendMessageForChat}
             onSaveImage={handleSaveImage}
             loadImageAsBase64={handleLoadImageAsBase64}
             hasProvider={providerRegistry.hasAnyProvider()}
