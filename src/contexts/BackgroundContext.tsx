@@ -138,9 +138,16 @@ export function BackgroundProvider({
       return conv;
     }
 
+    // Cap message history to prevent unbounded growth
+    const MAX_BACKGROUND_MESSAGES = 500;
+    let messages = [...current.messages, message];
+    if (messages.length > MAX_BACKGROUND_MESSAGES) {
+      messages = messages.slice(-MAX_BACKGROUND_MESSAGES);
+    }
+
     const updated: Conversation = {
       ...current,
-      messages: [...current.messages, message],
+      messages,
       updated: new Date().toISOString(),
     };
     setConversation(updated);
