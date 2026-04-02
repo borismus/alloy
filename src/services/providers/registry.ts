@@ -92,6 +92,11 @@ export class ProviderRegistry {
     return this.getEnabledProviders().length > 0;
   }
 
+  getContextWindow(modelKey: string): number | undefined {
+    const allModels = this.getAllAvailableModels();
+    return allModels.find(m => m.key === modelKey)?.contextWindow;
+  }
+
   // Parse "provider/model-id" format, returns [provider, modelId] or null
   private parseDefaultModel(): [ProviderType, string] | null {
     if (!this.configDefaultModel) return null;

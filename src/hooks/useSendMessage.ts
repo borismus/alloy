@@ -4,6 +4,7 @@ import { providerRegistry } from '../services/providers';
 import { skillRegistry } from '../services/skills';
 import { compressImageToFit, mimeTypeFromPath } from '../services/imageUtils';
 import { estimateCost } from '../services/pricing';
+import { shouldCompact, compactConversation } from '../services/context';
 import { isServerMode } from '../mocks';
 import { executeViaServer } from '../services/server-streaming';
 import { generateMessageId } from '../utils/ids';
@@ -191,8 +192,36 @@ export function useSendMessage(deps: UseSendMessageDeps) {
           return await compressImageToFit(data, mimeType);
         };
 
-        const result = await executeWithTools(provider, updatedMessages, modelId, {
+        // Check if LLM-based context compaction is needed
+        let messagesToSend = updatedMessages;
+        const contextWindow = providerRegistry.getContextWindow(currentConversation.model);
+        if (contextWindow) {
+          // Use ~50% of context window as the message budget threshold
+          const messageBudget = Math.floor(contextWindow * 0.5);
+          if (shouldCompact(messagesToSend, messageBudget)) {
+            try {
+              const compactionResult = await compactConversation(messagesToSend, modelId, provider);
+              if (compactionResult.compactedCount > 0) {
+                messagesToSend = compactionResult.messages;
+                // Update conversation state with compacted messages
+                const compactedConv: Conversation = {
+                  ...updatedConversation,
+                  messages: messagesToSend,
+                  updated: new Date().toISOString(),
+                };
+                setDraftConversation(prev => prev?.id === compactedConv.id ? compactedConv : prev);
+                setConversations(prev => prev.map(c => c.id === compactedConv.id ? compactedConv : c));
+                await vaultService.saveConversation(compactedConv);
+              }
+            } catch (e) {
+              console.error('Context compaction failed (non-fatal):', e);
+            }
+          }
+        }
+
+        const result = await executeWithTools(provider, messagesToSend, modelId, {
           maxIterations: 10,
+          contextWindow: providerRegistry.getContextWindow(currentConversation.model),
           toolContext: {
             messageId: assistantMessageId,
             conversationId: `conversations/${convId}`,

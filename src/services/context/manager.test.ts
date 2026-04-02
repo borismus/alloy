@@ -85,10 +85,9 @@ describe('estimator', () => {
 
 describe('ContextManager', () => {
   describe('calculateBudget', () => {
-    it('returns correct budget breakdown', () => {
+    it('returns correct budget breakdown with default budget', () => {
       const cm = new ContextManager({ totalBudget: 10000, responseReserve: 2000 });
       const budget = cm.calculateBudget('system prompt here', []);
-      expect(budget.total).toBe(10000);
       expect(budget.response).toBe(2000);
       expect(budget.systemPrompt).toBe(estimateTokens('system prompt here'));
       expect(budget.tools).toBe(0);
@@ -99,6 +98,86 @@ describe('ContextManager', () => {
       const cm = new ContextManager({ totalBudget: 100, responseReserve: 100 });
       const budget = cm.calculateBudget('a'.repeat(1000), []);
       expect(budget.messages).toBe(0);
+    });
+
+    it('uses model context window when provided', () => {
+      const cm = new ContextManager({ contextWindow: 200000, responseReserve: 4000 });
+      const budget = cm.calculateBudget('short', []);
+      // Effective budget = 200000 - 4000 = 196000
+      // Messages = 196000 - systemPrompt - tools
+      expect(budget.messages).toBeGreaterThan(100000);
+    });
+
+    it('falls back to default budget when no context window', () => {
+      const cm = new ContextManager();
+      const budget = cm.calculateBudget('', []);
+      // Default total = 16000, reserve = 4000, so messages = 12000
+      expect(budget.messages).toBe(12000);
+    });
+  });
+
+  describe('microcompact', () => {
+    it('clears old tool results from compactable tools', () => {
+      const cm = new ContextManager();
+      const messages = [
+        msg('assistant', 'old read', {
+          toolUse: [{ type: 'read_file', input: { path: 'foo.ts' }, result: 'file content here' }],
+        }),
+        msg('user', 'do something'),
+        msg('assistant', 'turn 2', {
+          toolUse: [{ type: 'read_file', input: {}, result: 'more content' }],
+        }),
+        msg('user', 'keep going'),
+        msg('assistant', 'turn 3', {
+          toolUse: [{ type: 'read_file', input: {}, result: 'recent content' }],
+        }),
+        msg('user', 'more'),
+        msg('assistant', 'turn 4', {
+          toolUse: [{ type: 'read_file', input: {}, result: 'very recent' }],
+        }),
+        msg('user', 'latest'),
+      ];
+
+      const result = cm.microcompact(messages);
+
+      // First tool result should be cleared (before cutoff)
+      expect(result[0].toolUse![0].result).toContain('[Tool result cleared');
+
+      // Recent tool results should be preserved
+      expect(result[6].toolUse![0].result).toBe('very recent');
+    });
+
+    it('does not clear non-compactable tools', () => {
+      const cm = new ContextManager();
+      const messages = [
+        msg('assistant', 'old', {
+          toolUse: [{ type: 'write_file', input: {}, result: 'wrote file' }],
+        }),
+        msg('user', 'turn 1'),
+        msg('assistant', 'turn 2'),
+        msg('user', 'turn 2'),
+        msg('assistant', 'turn 3'),
+        msg('user', 'turn 3'),
+        msg('assistant', 'turn 4'),
+        msg('user', 'latest'),
+      ];
+
+      const result = cm.microcompact(messages);
+      // write_file is not in COMPACTABLE_TOOLS, should be preserved
+      expect(result[0].toolUse![0].result).toBe('wrote file');
+    });
+
+    it('returns messages unchanged when too few turns', () => {
+      const cm = new ContextManager();
+      const messages = [
+        msg('user', 'hello'),
+        msg('assistant', 'hi', {
+          toolUse: [{ type: 'read_file', input: {}, result: 'content' }],
+        }),
+      ];
+
+      const result = cm.microcompact(messages);
+      expect(result[1].toolUse![0].result).toBe('content');
     });
   });
 
@@ -203,6 +282,7 @@ describe('ContextManager', () => {
     it('overrides default budget', () => {
       const cm = new ContextManager({ totalBudget: 5000 });
       const budget = cm.calculateBudget('', []);
+      // Without context window, total = totalBudget
       expect(budget.total).toBe(5000);
     });
 

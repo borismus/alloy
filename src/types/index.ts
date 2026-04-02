@@ -104,6 +104,7 @@ export interface Message {
 export interface ModelInfo {
   key: string;   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   name: string;  // Human-readable display name (e.g., "Sonnet 4.5")
+  contextWindow?: number; // Max input tokens (e.g., 200000 for Claude, 1000000 for Gemini)
 }
 
 // Single trigger attempt record
@@ -161,8 +162,8 @@ export interface Conversation {
 }
 
 export interface Config {
-  defaultModel: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-opus-4-5-20251101")
-  // Favorite models shown at top of selectors (e.g., "anthropic/claude-opus-4-5-20251101")
+  defaultModel: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-opus-4-6")
+  // Favorite models shown at top of selectors (e.g., "anthropic/claude-opus-4-6")
   favoriteModels?: string[];
   // Provider API keys - presence indicates provider is enabled
   ANTHROPIC_API_KEY?: string;

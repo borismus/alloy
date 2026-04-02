@@ -33,6 +33,7 @@ export interface ToolExecutionOptions {
   tools?: ToolDefinition[];  // Override default tools
   systemPrompt?: string;
   toolContext?: ToolContext;  // Context passed to tool executors (e.g., messageId for provenance)
+  contextWindow?: number;    // Model's context window size for budget calculation
   // Sub-agent streaming callbacks
   onSubagentStart?: (agents: { id: string; name: string; model: string; prompt: string }[]) => void;
   onSubagentChunk?: (agentId: string, chunk: string) => void;
@@ -244,7 +245,7 @@ export async function executeWithTools(
   };
 
   // Apply context management - build from newest to oldest to fit budget
-  const contextManager = new ContextManager();
+  const contextManager = new ContextManager({ contextWindow: options.contextWindow });
   const budget = contextManager.calculateBudget(systemPrompt || '', tools);
   const prepared = contextManager.prepareContext(messages, budget);
 
