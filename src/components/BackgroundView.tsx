@@ -187,33 +187,32 @@ const BackgroundInputForm = React.memo(() => {
   }, []);
 
   return (
-    <div className="background-input">
-      <div className="background-input-row">
-        <span className="background-prompt-char">&gt;</span>
+    <div className="input-form">
+      <div className="input-row">
         <textarea
           ref={textareaRef}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a command..."
+          placeholder="Send a message..."
           rows={1}
           {...textareaProps}
         />
         {hasRunningTasks ? (
           <button
-            className="background-send-btn background-stop-btn"
+            className="send-button stop-button"
             onClick={cancelAllTasks}
             title="Stop all tasks"
           >
-            &#9632;
+            ■
           </button>
         ) : (
           <button
-            className="background-send-btn"
+            className="send-button"
             onClick={handleSubmit}
             disabled={!inputValue.trim()}
           >
-            Send
+            ↑
           </button>
         )}
       </div>

@@ -41,6 +41,7 @@ src/
 │   ├── tools/              # Built-in tool implementations
 │   ├── triggers/           # Trigger scheduling and execution
 │   └── context/            # Context window estimation and management
+├── utils/                  # Shared utilities (IDs, frontmatter, wiki links, etc.)
 ├── contexts/               # React contexts
 ├── hooks/                  # Custom hooks
 ├── types/                  # TypeScript types
@@ -87,7 +88,7 @@ npm run build           # Build for production
 ### Provider Pattern
 - All providers implement the interface in `services/providers/types.ts`
 - Registry manages initialization and model discovery
-- Models use `provider/model` format (e.g., `anthropic/claude-opus-4-5-20251101`)
+- Models use `provider/model` format (e.g., `anthropic/claude-opus-4-6`)
 
 ### Component Structure
 - Components receive data + callbacks as props
