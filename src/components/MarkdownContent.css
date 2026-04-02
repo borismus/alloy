@@ -6,6 +6,10 @@
   min-width: 0;
 }
 
+.markdown-content img {
+  max-width: 100%;
+}
+
 .markdown-content p {
   margin: 0 0 1rem 0;
 }

@@ -9,7 +9,8 @@ import type { ConversationInfo } from '../types';
 import './MarkdownContent.css';
 import 'highlight.js/styles/github.css';
 
-const remarkPlugins = [remarkGfm, remarkMath];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const remarkPlugins: any[] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
 const rehypePlugins = [rehypeHighlight, rehypeKatex];
 
 // Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
