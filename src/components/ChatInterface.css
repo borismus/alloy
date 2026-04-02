@@ -146,6 +146,7 @@
   border-radius: 12px;
   line-height: 1.6;
   word-wrap: break-word;
+  overflow: hidden;
 }
 
 .message.user .message-content {
