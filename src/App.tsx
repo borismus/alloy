@@ -6,10 +6,13 @@ import { riffService } from './services/riff';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useVisualViewport } from './hooks/useVisualViewport';
+import { useToasts } from './hooks/useToasts';
+import { useNavigation } from './hooks/useNavigation';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { TriggerProvider } from './contexts/TriggerContext';
 import { ApprovalProvider } from './contexts/ApprovalContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, formatModelId, NoteInfo, TimelineFilter, TimelineItem, Trigger, SelectedItem } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, formatModelId, NoteInfo, TimelineFilter, TimelineItem, Trigger } from './types';
 import { useSendMessage } from './hooks/useSendMessage';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
@@ -32,7 +35,7 @@ import { RiffView } from './components/RiffView';
 import { BackgroundView } from './components/BackgroundView';
 import { isBackgroundConversation } from './services/background';
 import { ContextMenu } from './components/ContextMenu';
-import { ToastContainer, ToastMessage } from './components/Toast';
+import { ToastContainer } from './components/Toast';
 import './App.css';
 
 // Error boundary to catch render errors and prevent white screen
@@ -94,60 +97,9 @@ function AppContent() {
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
 
-  // Selected item and navigation history
-  const [selectedItem, setSelectedItemRaw] = useState<SelectedItem>(() => {
-    try {
-      const saved = sessionStorage.getItem('selectedItem');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
-  const setSelectedItem = useCallback((item: SelectedItem) => {
-    setSelectedItemRaw(item);
-    try {
-      if (item) sessionStorage.setItem('selectedItem', JSON.stringify(item));
-      else sessionStorage.removeItem('selectedItem');
-    } catch { /* ignore */ }
-  }, []);
-  const [previousItem, setPreviousItem] = useState<SelectedItem>(null);
-
-  // Navigate to a new item, saving current as previous (for back button)
-  const navigateTo = useCallback((item: SelectedItem) => {
-    if (selectedItem) {
-      setPreviousItem(selectedItem);
-    }
-    setSelectedItem(item);
-  }, [selectedItem]);
-
-  // Go back to previous item
-  const goBack = useCallback(async () => {
-    if (!previousItem) return;
-
-    // If going back to a note, we need to load its content
-    if (previousItem.type === 'note') {
-      const filename = previousItem.id;
-      const vaultPathStr = vaultService.getVaultPath();
-      const notesPath = vaultService.getNotesPath();
-      if (vaultPathStr && notesPath) {
-        const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
-          ? `${vaultPathStr}/${filename}`
-          : `${notesPath}/${filename}`;
-        try {
-          const content = await readTextFile(notePath);
-          setNoteContent(content);
-        } catch (error) {
-          console.error('[App] Failed to load note on back:', error);
-        }
-      }
-    } else {
-      setNoteContent(null);
-    }
-
-    setSelectedItem(previousItem);
-    setPreviousItem(null);
-    setDraftConversation(null);
-  }, [previousItem]);
-
-  const canGoBack = previousItem !== null;
+  // Navigation state (selectedItem, back/forward, sessionStorage persistence)
+  const { selectedItem, setSelectedItem, navigateTo, goBack: goBackRaw, canGoBack } = useNavigation();
+  const goBack = useCallback(() => goBackRaw(setNoteContent, () => setDraftConversation(null)), [goBackRaw]);
 
   // Cached note content (loaded on demand when note is selected)
   const [noteContent, setNoteContent] = useState<string | null>(null);
@@ -158,16 +110,7 @@ function AppContent() {
   // Background conversation (persistent, always-available command interface)
   const [backgroundConversation, setBackgroundConversation] = useState<Conversation | null>(null);
   // Toast notifications
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const showToast = useCallback((message: string, type: ToastMessage['type'] = 'info') => {
-    const id = `toast-${Date.now()}`;
-    setToasts(prev => [...prev, { id, message, type }]);
-  }, []);
-
-  const dismissToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
+  const { toasts, showToast, dismissToast } = useToasts();
 
   // Derive selected items from lists based on selectedItem
   const currentConversation = selectedItem?.type === 'conversation'
@@ -458,58 +401,6 @@ function AppContent() {
     initializeApp();
   }, []);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-        e.preventDefault();
-        handleNewConversation();
-      }
-
-      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
-        e.preventDefault();
-        setShowSettings(true);
-      }
-
-      // Cmd+Shift+F: Focus sidebar search (search all conversations)
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        sidebarRef.current?.focusSearch();
-        return;
-      }
-
-      // Cmd+F: Find in current view
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        if (showFind) {
-          findRef.current?.focus();
-        } else {
-          setShowFind(true);
-        }
-      }
-
-      if (e.key === 'Escape' && showSettings) {
-        setShowSettings(false);
-        return;
-      }
-
-      // Escape with no modals open: go back to background view
-      // Skip if already handled (e.g. streaming stop) or if user is in a text field
-      if (e.key === 'Escape' && !showSettings && selectedItem && !e.defaultPrevented) {
-        setSelectedItem(null);
-        setNoteContent(null);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSettings, showFind, selectedItem, config]);
-
-  // Close find when switching views
-  useEffect(() => {
-    setShowFind(false);
-  }, [selectedItem?.id]);
-
   // Build unified timeline whenever data changes
   useEffect(() => {
     setTimelineItems(vaultService.buildTimeline(conversations, notes, triggers));
@@ -718,6 +609,15 @@ function AppContent() {
       chatInterfaceRef.current?.focusInput();
     }, 0);
   };
+
+  // Keyboard shortcuts (Cmd+N, Cmd+,, Cmd+F, Escape)
+  useKeyboardShortcuts({
+    showSettings, showFind, selectedItem,
+    onNewConversation: handleNewConversation,
+    setShowSettings, setShowFind,
+    setSelectedItem, setNoteContent,
+    sidebarRef, findRef,
+  });
 
   // Auto-create a new conversation when entering mobile conversation view without any selection
   useEffect(() => {
