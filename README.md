@@ -93,8 +93,8 @@ using `append_to_note`. Before answering, check `memory.md` for context.
 
 The `web_search` tool requires one of:
 
-- **[SearXNG](https://docs.searxng.org/)** (free, self-hosted) — Run a local instance via Docker with JSON format enabled. Set `searxng_url` in your vault's `config.yaml`.
-- **[Serper](https://serper.dev/)** (paid API) — Sign up for a key and add it as `serper_api_key` in your vault's `config.yaml`.
+- **[SearXNG](https://docs.searxng.org/)** (free, self-hosted) — Run a local instance via Docker with JSON format enabled. Set `SEARXNG_URL` in your vault's `config.yaml` (see [SEARCH.md](SEARCH.md)).
+- **[Serper](https://serper.dev/)** (paid API) — Sign up for a key and add it as `SERPER_API_KEY` in your vault's `config.yaml`.
 
 ## Supported Providers
 
