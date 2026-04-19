@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import remarkBreaks from 'remark-breaks';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
@@ -10,7 +11,7 @@ import './MarkdownContent.css';
 import 'highlight.js/styles/github.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const remarkPlugins: any[] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+const remarkPlugins: any[] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkBreaks];
 const rehypePlugins = [rehypeHighlight, rehypeKatex];
 
 // Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
