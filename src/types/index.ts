@@ -77,6 +77,12 @@ export interface SubagentStreamingState {
   toolUse?: ToolUse[];
 }
 
+export interface QueuedMessage {
+  id: string;
+  content: string;
+  pendingImages: Array<{ data: Uint8Array; mimeType: string; preview: string }>;
+}
+
 export interface Message {
   // Unique identifier for provenance tracking (e.g., 'msg-a1b2')
   id?: string;

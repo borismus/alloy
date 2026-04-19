@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useStreamingContext } from '../contexts/StreamingContext';
-import { ToolUse } from '../types';
+import { ToolUse, QueuedMessage } from '../types';
 
 export function useConversationStreaming(conversationId: string | null) {
   const ctx = useStreamingContext();
@@ -50,6 +50,23 @@ export function useConversationStreaming(conversationId: string | null) {
     [conversationId, ctx]
   );
 
+  const queue = conversationId ? ctx.getQueue(conversationId) : [];
+
+  const enqueue = useCallback((msg: QueuedMessage) => {
+    if (!conversationId) return;
+    ctx.enqueueMessage(conversationId, msg);
+  }, [conversationId, ctx]);
+
+  const dequeue = useCallback((): QueuedMessage | null => {
+    if (!conversationId) return null;
+    return ctx.dequeueMessage(conversationId);
+  }, [conversationId, ctx]);
+
+  const removeQueued = useCallback((messageId: string) => {
+    if (!conversationId) return;
+    ctx.removeFromQueue(conversationId, messageId);
+  }, [conversationId, ctx]);
+
   return {
     isStreaming,
     streamingContent,
@@ -63,5 +80,9 @@ export function useConversationStreaming(conversationId: string | null) {
     addToolUse,
     complete,
     clear,
+    queue,
+    enqueue,
+    dequeue,
+    removeQueued,
   };
 }

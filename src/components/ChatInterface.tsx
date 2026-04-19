@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import { Conversation, Message, ModelInfo, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
+import { generateMessageId } from '../utils/ids';
 import { PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
@@ -173,7 +174,7 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
   };
 
   const doSubmit = useCallback(() => {
-    if ((!input.trim() && pendingImages.length === 0) || isStreaming) return;
+    if (!input.trim() && pendingImages.length === 0) return;
 
     const message = input.trim();
     const images = [...pendingImages];
@@ -226,7 +227,6 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
           type="button"
           className="attach-button"
           onClick={handleAttachClick}
-          disabled={isStreaming}
           aria-label="Attach image"
         >
           +
@@ -238,23 +238,32 @@ const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormPr
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="Send a message..."
-          disabled={isStreaming}
           rows={1}
           {...textareaProps}
         />
         <ModelSelector
           value={model}
           onChange={onModelChange}
-          disabled={isStreaming}
+          disabled={false}
           models={availableModels}
           favoriteModels={favoriteModels}
         />
-        {isStreaming ? (
-          <button type="button" onClick={onStop} className="send-button stop-button">
+        {isStreaming && !input.trim() && pendingImages.length === 0 ? (
+          <button
+            type="button"
+            onClick={onStop}
+            className="send-button stop-button"
+            aria-label="Stop generating"
+          >
             ■
           </button>
         ) : (
-          <button type="submit" disabled={!input.trim() && pendingImages.length === 0} className="send-button">
+          <button
+            type="submit"
+            disabled={!input.trim() && pendingImages.length === 0}
+            className="send-button"
+            aria-label={isStreaming ? 'Queue message' : 'Send message'}
+          >
             ↑
           </button>
         )}
@@ -348,6 +357,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     updateContent,
     complete: completeStreaming,
     clear: clearStreaming,
+    queue,
+    enqueue,
+    dequeue,
+    removeQueued,
   } = useConversationStreaming(conversation?.id ?? null);
 
   const { setShouldAutoScroll, handleScroll } = useAutoScroll({
@@ -564,7 +577,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   };
 
-  const handleFormSubmit = useCallback(async (message: string, pendingImages: PendingImage[]) => {
+  const processAndSend = useCallback(async (message: string, pendingImages: PendingImage[]) => {
     if (!conversation) return;
 
     // Capture the conversation ID at submission time - user may navigate away during streaming
@@ -603,6 +616,29 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       throw error;
     }
   }, [conversation, onSaveImage, onSendMessage, startStreaming, updateContent, completeStreaming]);
+
+  const handleFormSubmit = useCallback(async (message: string, pendingImages: PendingImage[]) => {
+    if (!conversation) return;
+
+    if (isStreaming) {
+      enqueue({
+        id: generateMessageId(),
+        content: message,
+        pendingImages,
+      });
+      return;
+    }
+
+    processAndSend(message, pendingImages);
+  }, [conversation, isStreaming, enqueue, processAndSend]);
+
+  // Process queued messages when streaming completes
+  useEffect(() => {
+    if (isStreaming || queue.length === 0) return;
+    const next = dequeue();
+    if (!next) return;
+    processAndSend(next.content, next.pendingImages);
+  }, [isStreaming, queue.length, dequeue, processAndSend]);
 
   // Global Escape key handler for stopping streaming
   useGlobalEscape(handleStop, isStreaming);
@@ -779,6 +815,32 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
         <div ref={messagesEndRef} />
       </div>
+
+      {queue.length > 0 && (
+        <div className="queued-messages">
+          {queue.map((qm) => (
+            <div key={qm.id} className="queued-message">
+              <div className="queued-message-content">
+                {qm.pendingImages.length > 0 && (
+                  <span className="queued-images-badge">
+                    {qm.pendingImages.length} image{qm.pendingImages.length > 1 ? 's' : ''}
+                  </span>
+                )}
+                <span className="queued-message-text">
+                  {qm.content.length > 100 ? qm.content.slice(0, 100) + '…' : qm.content}
+                </span>
+              </div>
+              <button
+                className="queued-message-remove"
+                onClick={() => removeQueued(qm.id)}
+                aria-label="Remove queued message"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <ChatInputForm
         ref={chatInputRef}
