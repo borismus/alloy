@@ -5,16 +5,14 @@ import { PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useMessageQueue } from '../hooks/useMessageQueue';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
-import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
-import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useGlobalEscape } from '../hooks/useGlobalEscape';
-import { useTextareaProps } from '../utils/textareaProps';
-import { ModelSelector } from './ModelSelector';
 import { AgentResponseView } from './AgentResponseView';
 import { SubagentResponsesView } from './SubagentResponsesView';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
+import { ChatInputForm, ChatInputFormHandle, PendingImage } from './ChatInputForm';
+import { QueuedMessagesList } from './QueuedMessagesList';
 import './ChatInterface.css';
 
 interface UserMessageProps {
@@ -53,225 +51,6 @@ const LogMessage = React.memo(({ message }: { message: Message }) => (
     <div className="log-content">{message.content}</div>
   </div>
 ));
-
-export interface PendingImage {
-  data: Uint8Array;
-  mimeType: string;
-  preview: string;
-}
-
-interface ChatInputFormProps {
-  onSubmit: (message: string, pendingImages: PendingImage[]) => Promise<void>;
-  onStop: () => void;
-  isStreaming: boolean;
-  model: string;
-  onModelChange: (modelKey: string) => void;
-  availableModels: ModelInfo[];
-  favoriteModels?: string[];
-}
-
-export interface ChatInputFormHandle {
-  focus: () => void;
-  addImages: (images: PendingImage[]) => void;
-  setText: (text: string) => void;
-}
-
-// Separate component for input form to isolate re-renders during typing
-const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormProps>(({
-  onSubmit,
-  onStop,
-  isStreaming,
-  model,
-  onModelChange,
-  availableModels,
-  favoriteModels,
-}, ref) => {
-  const [input, setInput] = useState('');
-  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaProps = useTextareaProps();
-
-  useImperativeHandle(ref, () => ({
-    focus: () => textareaRef.current?.focus(),
-    addImages: (images: PendingImage[]) => setPendingImages(prev => [...prev, ...images]),
-    setText: (text: string) => setInput(text),
-  }));
-
-  useAutoResizeTextarea(textareaRef, input);
-
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    // Valid image MIME types
-    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
-
-    for (const item of Array.from(items)) {
-      // Ensure we have a valid, complete MIME type
-      if (!validImageTypes.includes(item.type)) continue;
-
-      e.preventDefault();
-      const blob = item.getAsFile();
-      if (!blob) continue;
-
-      const arrayBuffer = await blob.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      const preview = URL.createObjectURL(blob);
-
-      setPendingImages(prev => [...prev, { data, mimeType: item.type, preview }]);
-    }
-  };
-
-  const handleRemoveImage = (index: number) => {
-    setPendingImages(prev => {
-      const removed = prev[index];
-      if (removed) {
-        URL.revokeObjectURL(removed.preview);
-      }
-      return prev.filter((_, i) => i !== index);
-    });
-  };
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Valid image MIME types
-    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
-    // Fallback: check extension if MIME type is missing/incorrect
-    const imageExtensions = /\.(png|jpe?g|webp)$/i;
-
-    for (const file of Array.from(files)) {
-      // Check MIME type first
-      let mimeType = file.type;
-      const isValidMime = validImageTypes.includes(mimeType);
-      const hasImageExtension = imageExtensions.test(file.name);
-
-      // Skip if neither MIME type nor extension indicates an image
-      if (!isValidMime && !hasImageExtension) continue;
-
-      // If MIME type is missing/invalid but extension is valid, infer MIME type
-      if (!isValidMime && hasImageExtension) {
-        const ext = file.name.split('.').pop()?.toLowerCase();
-        if (ext === 'png') mimeType = 'image/png';
-        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'webp') mimeType = 'image/webp';
-        else continue; // Unknown extension
-      }
-
-      const arrayBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      const preview = URL.createObjectURL(file);
-      setPendingImages(prev => [...prev, { data, mimeType, preview }]);
-    }
-
-    // Reset input so same file can be selected again
-    e.target.value = '';
-  };
-
-  const handleAttachClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const doSubmit = useCallback(() => {
-    if (!input.trim() && pendingImages.length === 0) return;
-
-    const message = input.trim();
-    const images = [...pendingImages];
-
-    setInput('');
-    setPendingImages([]);
-
-    onSubmit(message, images);
-  }, [input, pendingImages, isStreaming, onSubmit]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    doSubmit();
-  };
-
-  const handleKeyDown = useChatKeyboard({
-    onSubmit: doSubmit,
-    onStop,
-    isStreaming,
-  });
-
-  return (
-    <form onSubmit={handleSubmit} className="input-form">
-      {pendingImages.length > 0 && (
-        <div className="pending-images">
-          {pendingImages.map((img, idx) => (
-            <div key={idx} className="pending-image">
-              <img src={img.preview} alt={`Pending ${idx + 1}`} />
-              <button
-                type="button"
-                className="remove-image"
-                onClick={() => handleRemoveImage(idx)}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="input-row">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
-          multiple
-          onChange={handleFileSelect}
-          style={{ display: 'none' }}
-        />
-        <button
-          type="button"
-          className="attach-button"
-          onClick={handleAttachClick}
-          aria-label="Attach image"
-        >
-          +
-        </button>
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder="Send a message..."
-          rows={1}
-          {...textareaProps}
-        />
-        <ModelSelector
-          value={model}
-          onChange={onModelChange}
-          disabled={false}
-          models={availableModels}
-          favoriteModels={favoriteModels}
-        />
-        {isStreaming && !input.trim() && pendingImages.length === 0 ? (
-          <button
-            type="button"
-            onClick={onStop}
-            className="send-button stop-button"
-            aria-label="Stop generating"
-          >
-            ■
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim() && pendingImages.length === 0}
-            className="send-button"
-            aria-label={isStreaming ? 'Queue message' : 'Send message'}
-          >
-            ↑
-          </button>
-        )}
-      </div>
-    </form>
-  );
-}));
 
 interface ChatInterfaceProps {
   conversation: Conversation | null;
@@ -815,31 +594,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         <div ref={messagesEndRef} />
       </div>
 
-      {queue.length > 0 && (
-        <div className="queued-messages">
-          {queue.map((qm) => (
-            <div key={qm.id} className="queued-message">
-              <div className="queued-message-content">
-                {qm.pendingImages.length > 0 && (
-                  <span className="queued-images-badge">
-                    {qm.pendingImages.length} image{qm.pendingImages.length > 1 ? 's' : ''}
-                  </span>
-                )}
-                <span className="queued-message-text">
-                  {qm.content.length > 100 ? qm.content.slice(0, 100) + '…' : qm.content}
-                </span>
-              </div>
-              <button
-                className="queued-message-remove"
-                onClick={() => removeQueued(qm.id)}
-                aria-label="Remove queued message"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <QueuedMessagesList queue={queue} onRemove={removeQueued} />
 
       <ChatInputForm
         ref={chatInputRef}
