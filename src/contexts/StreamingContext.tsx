@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useMemo } from 'react';
-import type { ConversationStreamingState, SubagentStreamingState, ToolUse, QueuedMessage } from '../types';
+import type { ConversationStreamingState, SubagentStreamingState, ToolUse } from '../types';
 
 interface StreamingContextValue {
   getStreamingState: (id: string) => ConversationStreamingState | null;
@@ -12,11 +12,6 @@ interface StreamingContextValue {
   completeStreaming: (id: string, isCurrentConversation?: boolean) => void;
   clearStreamingContent: (id: string) => void;
   markAsRead: (id: string) => void;
-  // Message queue
-  getQueue: (id: string) => QueuedMessage[];
-  enqueueMessage: (id: string, msg: QueuedMessage) => void;
-  dequeueMessage: (id: string) => QueuedMessage | null;
-  removeFromQueue: (id: string, messageId: string) => void;
   // Sub-agent streaming
   startSubagents: (id: string, agents: { id: string; name: string; model: string; prompt: string }[]) => void;
   updateSubagentContent: (id: string, agentId: string, chunk: string) => void;
@@ -35,7 +30,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
   // Version counter to trigger consumer re-renders on streaming lifecycle transitions
   const [streamVersion, setStreamVersion] = useState(0);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const messageQueuesRef = useRef<Map<string, QueuedMessage[]>>(new Map());
 
   // Use refs for reader functions to keep callback identity stable across state changes
   const streamingStatesRef = useRef(streamingStates);
@@ -163,47 +157,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // --- Message queue methods ---
-
-  const getQueue = useCallback((id: string): QueuedMessage[] => {
-    return messageQueuesRef.current.get(id) ?? [];
-  }, []);
-
-  const enqueueMessage = useCallback((id: string, msg: QueuedMessage) => {
-    const queue = messageQueuesRef.current.get(id) ?? [];
-    messageQueuesRef.current.set(id, [...queue, msg]);
-    setStreamVersion(v => v + 1);
-  }, []);
-
-  const dequeueMessage = useCallback((id: string): QueuedMessage | null => {
-    const queue = messageQueuesRef.current.get(id);
-    if (!queue || queue.length === 0) return null;
-    const [first, ...rest] = queue;
-    if (rest.length === 0) {
-      messageQueuesRef.current.delete(id);
-    } else {
-      messageQueuesRef.current.set(id, rest);
-    }
-    setStreamVersion(v => v + 1);
-    return first;
-  }, []);
-
-  const removeFromQueue = useCallback((id: string, messageId: string) => {
-    const queue = messageQueuesRef.current.get(id);
-    if (!queue) return;
-    const removed = queue.find(m => m.id === messageId);
-    if (removed) {
-      removed.pendingImages.forEach(img => URL.revokeObjectURL(img.preview));
-    }
-    const filtered = queue.filter(m => m.id !== messageId);
-    if (filtered.length === 0) {
-      messageQueuesRef.current.delete(id);
-    } else {
-      messageQueuesRef.current.set(id, filtered);
-    }
-    setStreamVersion(v => v + 1);
-  }, []);
-
   // --- Sub-agent streaming methods ---
 
   const startSubagents = useCallback((id: string, agents: { id: string; name: string; model: string; prompt: string }[]) => {
@@ -319,10 +272,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       completeStreaming,
       clearStreamingContent,
       markAsRead,
-      getQueue,
-      enqueueMessage,
-      dequeueMessage,
-      removeFromQueue,
       startSubagents,
       updateSubagentContent,
       addSubagentToolUse,
@@ -341,10 +290,6 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       completeStreaming,
       clearStreamingContent,
       markAsRead,
-      getQueue,
-      enqueueMessage,
-      dequeueMessage,
-      removeFromQueue,
       startSubagents,
       updateSubagentContent,
       addSubagentToolUse,

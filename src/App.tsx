@@ -10,6 +10,7 @@ import { useToasts } from './hooks/useToasts';
 import { useNavigation } from './hooks/useNavigation';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
+import { MessageQueueProvider } from './contexts/MessageQueueContext';
 import { TriggerProvider } from './contexts/TriggerContext';
 import { ApprovalProvider } from './contexts/ApprovalContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, formatModelId, NoteInfo, TimelineFilter, TimelineItem, Trigger } from './types';
@@ -1175,14 +1176,16 @@ function App() {
   return (
     <ErrorBoundary>
       <StreamingProvider>
-        <ApprovalProvider>
-          <RiffProvider>
-            <ContextMenuProvider>
-              <AppContent />
-              <ContextMenu />
-            </ContextMenuProvider>
-          </RiffProvider>
-        </ApprovalProvider>
+        <MessageQueueProvider>
+          <ApprovalProvider>
+            <RiffProvider>
+              <ContextMenuProvider>
+                <AppContent />
+                <ContextMenu />
+              </ContextMenuProvider>
+            </RiffProvider>
+          </ApprovalProvider>
+        </MessageQueueProvider>
       </StreamingProvider>
     </ErrorBoundary>
   );

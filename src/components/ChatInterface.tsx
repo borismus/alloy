@@ -3,6 +3,7 @@ import { Conversation, Message, ModelInfo, Attachment, getProviderFromModel, get
 import { generateMessageId } from '../utils/ids';
 import { PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
+import { useMessageQueue } from '../hooks/useMessageQueue';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
@@ -357,11 +358,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     updateContent,
     complete: completeStreaming,
     clear: clearStreaming,
-    queue,
-    enqueue,
-    dequeue,
-    removeQueued,
   } = useConversationStreaming(conversation?.id ?? null);
+
+  const { queue, enqueue, dequeue, removeQueued } = useMessageQueue(conversation?.id ?? null);
 
   const { setShouldAutoScroll, handleScroll } = useAutoScroll({
     endRef: messagesEndRef,
