@@ -1,6 +1,6 @@
 [package]
 name = "Alloy"
-version = "0.2.21"
+version = "0.2.22"
 description = "Own your AI conversations"
 authors = ["Boris Smus"]
 edition = "2021"
