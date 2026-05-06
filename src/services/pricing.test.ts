@@ -73,6 +73,41 @@ describe('estimateCost', () => {
     });
   });
 
+  describe('prompt caching (Anthropic)', () => {
+    it('bills cache_read tokens at 10% of input rate', () => {
+      // Sonnet input is $3/M, so 1M cache reads = $0.30
+      const cost = estimateCost('anthropic/claude-sonnet-4-6', 0, 0, 1_000_000, 0);
+      expect(cost).toBeCloseTo(0.30);
+    });
+
+    it('bills cache_creation tokens at 125% of input rate', () => {
+      // Sonnet input is $3/M, so 1M cache writes = $3.75
+      const cost = estimateCost('anthropic/claude-sonnet-4-6', 0, 0, 0, 1_000_000);
+      expect(cost).toBeCloseTo(3.75);
+    });
+
+    it('combines uncached, cached-read, cached-write, and output costs', () => {
+      // Opus: $5/M input, $25/M output
+      // 100K uncached input + 50K cache write + 200K cache read + 10K output
+      // = 100K*5 + 50K*5*1.25 + 200K*5*0.1 + 10K*25  (per 1M)
+      // = 0.5 + 0.3125 + 0.1 + 0.25 = 1.1625
+      const cost = estimateCost(
+        'anthropic/claude-opus-4-6',
+        100_000,
+        10_000,
+        200_000,
+        50_000,
+      );
+      expect(cost).toBeCloseTo(1.1625);
+    });
+
+    it('treats omitted cache args as zero', () => {
+      const a = estimateCost('anthropic/claude-sonnet-4-6', 1000, 500);
+      const b = estimateCost('anthropic/claude-sonnet-4-6', 1000, 500, 0, 0);
+      expect(a).toBe(b);
+    });
+  });
+
   describe('edge cases', () => {
     it('returns undefined for unknown model', () => {
       expect(estimateCost('unknown/model-x', 1000, 1000)).toBeUndefined();

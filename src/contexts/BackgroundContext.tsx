@@ -253,10 +253,18 @@ export function BackgroundProvider({
         // Build usage with cost estimate
         let taskUsage: Usage | undefined;
         if (result.usage) {
-          const cost = estimateCost(modelKey, result.usage.inputTokens, result.usage.outputTokens);
+          const cost = estimateCost(
+            modelKey,
+            result.usage.inputTokens,
+            result.usage.outputTokens,
+            result.usage.cachedInputTokens,
+            result.usage.cacheCreationInputTokens,
+          );
           taskUsage = {
             inputTokens: result.usage.inputTokens,
             outputTokens: result.usage.outputTokens,
+            ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
+            ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
             ...(cost !== undefined && { cost }),
             ...(result.usage.responseId && { responseId: result.usage.responseId }),
           };
@@ -389,10 +397,18 @@ export function BackgroundProvider({
         // Build usage with cost estimate for orchestrator
         let orchUsage: Usage | undefined;
         if (result.usage) {
-          const cost = estimateCost(orchestratorModelKey, result.usage.inputTokens, result.usage.outputTokens);
+          const cost = estimateCost(
+            orchestratorModelKey,
+            result.usage.inputTokens,
+            result.usage.outputTokens,
+            result.usage.cachedInputTokens,
+            result.usage.cacheCreationInputTokens,
+          );
           orchUsage = {
             inputTokens: result.usage.inputTokens,
             outputTokens: result.usage.outputTokens,
+            ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
+            ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
             ...(cost !== undefined && { cost }),
             ...(result.usage.responseId && { responseId: result.usage.responseId }),
           };

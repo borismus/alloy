@@ -49,8 +49,10 @@ export interface SkillUse {
 
 // Token usage and cost tracking for an API response
 export interface Usage {
-  inputTokens: number;
+  inputTokens: number;              // Uncached input tokens (billed at full rate)
   outputTokens: number;
+  cachedInputTokens?: number;       // Tokens read from prompt cache (billed at ~10% rate, Anthropic)
+  cacheCreationInputTokens?: number; // Tokens written to prompt cache (billed at ~125% rate, Anthropic)
   cost?: number;        // Estimated USD (omitted for free/unknown models)
   responseId?: string;  // Provider response ID for billing cross-reference
 }
@@ -165,12 +167,17 @@ export interface Conversation {
   title?: string;
   memory_version?: number;
   messages: Message[];
+  // ISO timestamp of the most recent compaction (auto or manual). Omitted if never compacted.
+  lastCompactedAt?: string;
 }
 
 export interface Config {
   defaultModel: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-opus-4-6")
   // Favorite models shown at top of selectors (e.g., "anthropic/claude-opus-4-6")
   favoriteModels?: string[];
+  // User-defined models, additive to the bundled defaults.
+  // Entries whose key collides with a bundled model are ignored.
+  models?: ModelInfo[];
   // Provider API keys - presence indicates provider is enabled
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;

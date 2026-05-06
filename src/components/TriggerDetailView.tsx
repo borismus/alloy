@@ -26,7 +26,7 @@ function formatUsage(usage: Usage): string {
   if (usage.cost !== undefined) {
     parts.push(`$${formatCost(usage.cost)}`);
   }
-  parts.push(`${((usage.inputTokens + usage.outputTokens) / 1000).toFixed(1)}k tok`);
+  parts.push(`${((usage.inputTokens + (usage.cachedInputTokens ?? 0) + (usage.cacheCreationInputTokens ?? 0) + usage.outputTokens) / 1000).toFixed(1)}k tok`);
   return parts.join(' · ');
 }
 

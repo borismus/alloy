@@ -35,17 +35,31 @@ function findPricing(model: string): ModelPricing | undefined {
   return undefined;
 }
 
+// Anthropic ephemeral cache rates relative to base input price.
+// Cache reads are billed at 10%, cache writes at 125% (5-min TTL).
+const CACHE_READ_MULTIPLIER = 0.1;
+const CACHE_WRITE_MULTIPLIER = 1.25;
+
 /**
  * Estimate cost in USD for a given model and token counts.
+ * Cached input tokens (Anthropic prompt caching) are billed at discounted rates.
  * Returns undefined for free models (Ollama) and unrecognized model strings.
  */
 export function estimateCost(
   model: string,
   inputTokens: number,
   outputTokens: number,
+  cachedInputTokens: number = 0,
+  cacheCreationInputTokens: number = 0,
 ): number | undefined {
   const pricing = findPricing(model);
   if (!pricing) return undefined;
   if (pricing.inputPer1M === 0 && pricing.outputPer1M === 0) return undefined;
-  return (inputTokens * pricing.inputPer1M + outputTokens * pricing.outputPer1M) / 1_000_000;
+
+  const inputCost =
+    inputTokens * pricing.inputPer1M
+    + cachedInputTokens * pricing.inputPer1M * CACHE_READ_MULTIPLIER
+    + cacheCreationInputTokens * pricing.inputPer1M * CACHE_WRITE_MULTIPLIER;
+
+  return (inputCost + outputTokens * pricing.outputPer1M) / 1_000_000;
 }

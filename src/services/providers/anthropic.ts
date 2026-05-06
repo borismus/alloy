@@ -11,6 +11,57 @@ const ANTHROPIC_MODELS: ModelInfo[] = [
   { key: 'anthropic/claude-haiku-4-5-20251001', name: 'Haiku 4.5', contextWindow: 200000 },
 ];
 
+const CACHE_CONTROL = { type: 'ephemeral' as const };
+
+/**
+ * Convert string content to a single-block array so we can attach cache_control.
+ * Anthropic accepts either string or block-array content; we always normalize.
+ */
+function toBlockArray(
+  content: Anthropic.MessageParam['content'],
+): Anthropic.ContentBlockParam[] {
+  if (typeof content === 'string') {
+    return content ? [{ type: 'text', text: content }] : [];
+  }
+  return [...content];
+}
+
+/**
+ * Mark the last block of the second-to-last user message with cache_control.
+ * On follow-up turns this caches everything except the most recent user input.
+ * Returns a new messages array; does not mutate input.
+ */
+function applyMessageCacheBreakpoint(
+  messages: Anthropic.MessageParam[],
+): Anthropic.MessageParam[] {
+  const userIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].role === 'user') userIndices.push(i);
+  }
+  if (userIndices.length < 2) return messages;
+
+  const targetIdx = userIndices[userIndices.length - 2];
+  const target = messages[targetIdx];
+  const blocks = toBlockArray(target.content);
+  if (blocks.length === 0) return messages;
+
+  const last = blocks[blocks.length - 1];
+  blocks[blocks.length - 1] = { ...last, cache_control: CACHE_CONTROL } as Anthropic.ContentBlockParam;
+
+  const next = [...messages];
+  next[targetIdx] = { ...target, content: blocks };
+  return next;
+}
+
+/**
+ * Build a cached system prompt block. When non-empty, anchors a breakpoint at
+ * the end of system + tools so they're cached for the conversation lifetime.
+ */
+function buildCachedSystem(prompt: string | undefined): Anthropic.TextBlockParam[] | undefined {
+  if (!prompt) return undefined;
+  return [{ type: 'text', text: prompt, cache_control: CACHE_CONTROL }];
+}
+
 export class AnthropicService implements IProviderService {
   readonly providerType = 'anthropic' as const;
   private client: Anthropic | null = null;
@@ -82,6 +133,8 @@ export class AnthropicService implements IProviderService {
     let responseId: string | undefined;
     let inputTokens = 0;
     let outputTokens = 0;
+    let cachedInputTokens = 0;
+    let cacheCreationInputTokens = 0;
 
     for await (const chunk of stream) {
       if (options.signal?.aborted) {
@@ -91,7 +144,10 @@ export class AnthropicService implements IProviderService {
       if (chunk.type === 'message_start') {
         const messageStart = chunk as Anthropic.MessageStartEvent;
         responseId = messageStart.message.id;
-        inputTokens = messageStart.message.usage?.input_tokens ?? 0;
+        const u = messageStart.message.usage;
+        inputTokens = u?.input_tokens ?? 0;
+        cachedInputTokens = u?.cache_read_input_tokens ?? 0;
+        cacheCreationInputTokens = u?.cache_creation_input_tokens ?? 0;
       }
 
       if (chunk.type === 'message_delta') {
@@ -144,8 +200,14 @@ export class AnthropicService implements IProviderService {
       toolUse: toolUseList.length > 0 ? toolUseList : undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason,
-      usage: (inputTokens > 0 || outputTokens > 0)
-        ? { inputTokens, outputTokens, responseId }
+      usage: (inputTokens > 0 || outputTokens > 0 || cachedInputTokens > 0 || cacheCreationInputTokens > 0)
+        ? {
+            inputTokens,
+            outputTokens,
+            ...(cachedInputTokens > 0 && { cachedInputTokens }),
+            ...(cacheCreationInputTokens > 0 && { cacheCreationInputTokens }),
+            responseId,
+          }
         : undefined,
     };
   }
@@ -248,13 +310,16 @@ export class AnthropicService implements IProviderService {
       ? anthropicToolAdapter.toProviderFormat(options.tools)
       : undefined;
 
+    const cachedMessages = applyMessageCacheBreakpoint(filteredMessages);
+    const cachedSystem = buildCachedSystem(options.systemPrompt);
+
     const client = this.client;
     return this.withRetry(
       () => client.messages.create({
         model: options.model,
         max_tokens: 8192,
-        messages: filteredMessages,
-        system: options.systemPrompt,
+        messages: cachedMessages,
+        system: cachedSystem,
         stream: true,
         tools: anthropicTools,
       }),
@@ -316,13 +381,16 @@ export class AnthropicService implements IProviderService {
       ? anthropicToolAdapter.toProviderFormat(options.tools)
       : undefined;
 
+    const cachedMessages = applyMessageCacheBreakpoint(anthropicMessages);
+    const cachedSystem = buildCachedSystem(options.systemPrompt);
+
     const client = this.client;
     return this.withRetry(
       () => client.messages.create({
         model: options.model,
         max_tokens: 8192,
-        messages: anthropicMessages,
-        system: options.systemPrompt,
+        messages: cachedMessages,
+        system: cachedSystem,
         stream: true,
         tools: anthropicTools,
       }),

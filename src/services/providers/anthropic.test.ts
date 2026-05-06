@@ -126,7 +126,7 @@ describe('AnthropicService', () => {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 8192,
         messages: [{ role: 'user', content: 'Hello' }],
-        system: undefined,
+        system: undefined, // No system prompt → no cached system block
         stream: true,
         tools: undefined,
       });
@@ -155,9 +155,12 @@ describe('AnthropicService', () => {
         systemPrompt,
       });
 
+      // System prompt is wrapped in a cache-marked text block
       expect(mockClient.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          system: systemPrompt,
+          system: [
+            { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+          ],
         })
       );
     });
@@ -255,10 +258,16 @@ describe('AnthropicService', () => {
 
       await service.sendMessage(messages, { model: 'claude-sonnet-4-20250514' });
 
+      // Second-to-last user message ('Hello') gets a cache breakpoint on its last block
       expect(mockClient.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           messages: [
-            { role: 'user', content: 'Hello' },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Hello', cache_control: { type: 'ephemeral' } },
+              ],
+            },
             { role: 'assistant', content: 'Hi there' },
             { role: 'user', content: 'How are you?' },
           ],
@@ -310,10 +319,16 @@ describe('AnthropicService', () => {
 
       await service.sendMessage(messages, { model: 'claude-sonnet-4-20250514' });
 
+      // Second-to-last user message ('First message') gets a cache breakpoint
       expect(mockClient.messages.create).toHaveBeenCalledWith(
         expect.objectContaining({
           messages: [
-            { role: 'user', content: 'First message' },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'First message', cache_control: { type: 'ephemeral' } },
+              ],
+            },
             { role: 'assistant', content: 'Response' },
             { role: 'user', content: 'Second message' },
           ],
@@ -380,6 +395,103 @@ describe('AnthropicService', () => {
 
       expect(result.content).toBe('First ');
       expect(mockAbort).toHaveBeenCalled();
+    });
+  });
+
+  describe('prompt caching', () => {
+    beforeEach(() => {
+      service.initialize('test-api-key');
+    });
+
+    function streamYielding(text: string, usage?: Record<string, number>) {
+      return {
+        controller: { abort: vi.fn() },
+        [Symbol.asyncIterator]: async function* () {
+          if (usage) {
+            yield {
+              type: 'message_start',
+              message: { id: 'msg_1', usage },
+            };
+          }
+          yield {
+            type: 'content_block_delta',
+            delta: { type: 'text_delta', text },
+          };
+        },
+      };
+    }
+
+    it('does not add a message cache breakpoint when there is only one user message', async () => {
+      mockClient.messages.create.mockResolvedValue(streamYielding('hi'));
+
+      await service.sendMessage(
+        [{ role: 'user', content: 'Hello', timestamp: '2024-01-01T10:00:00Z' }],
+        { model: 'claude-sonnet-4-6' },
+      );
+
+      const call = mockClient.messages.create.mock.calls[0][0];
+      // Single user message stays as plain string
+      expect(call.messages).toEqual([{ role: 'user', content: 'Hello' }]);
+    });
+
+    it('adds a cache breakpoint to the second-to-last user message in a multi-turn conversation', async () => {
+      mockClient.messages.create.mockResolvedValue(streamYielding('ok'));
+
+      await service.sendMessage(
+        [
+          { role: 'user', content: 'turn 1 user', timestamp: 't1' },
+          { role: 'assistant', content: 'turn 1 reply', timestamp: 't2' },
+          { role: 'user', content: 'turn 2 user', timestamp: 't3' },
+          { role: 'assistant', content: 'turn 2 reply', timestamp: 't4' },
+          { role: 'user', content: 'turn 3 user', timestamp: 't5' },
+        ],
+        { model: 'claude-sonnet-4-6' },
+      );
+
+      const call = mockClient.messages.create.mock.calls[0][0];
+      // 'turn 2 user' is the second-to-last user message → gets the cache marker
+      expect(call.messages[2]).toEqual({
+        role: 'user',
+        content: [
+          { type: 'text', text: 'turn 2 user', cache_control: { type: 'ephemeral' } },
+        ],
+      });
+      // The most recent user message stays uncached so the next turn extends the cache
+      expect(call.messages[4]).toEqual({ role: 'user', content: 'turn 3 user' });
+    });
+
+    it('caches the system prompt when provided', async () => {
+      mockClient.messages.create.mockResolvedValue(streamYielding('ok'));
+
+      await service.sendMessage(
+        [{ role: 'user', content: 'hi', timestamp: 't1' }],
+        { model: 'claude-sonnet-4-6', systemPrompt: 'You are Alloy.' },
+      );
+
+      const call = mockClient.messages.create.mock.calls[0][0];
+      expect(call.system).toEqual([
+        { type: 'text', text: 'You are Alloy.', cache_control: { type: 'ephemeral' } },
+      ]);
+    });
+
+    it('captures cache_read and cache_creation tokens from the streaming response', async () => {
+      mockClient.messages.create.mockResolvedValue(
+        streamYielding('ok', {
+          input_tokens: 100,
+          output_tokens: 20,
+          cache_read_input_tokens: 4000,
+          cache_creation_input_tokens: 50,
+        }),
+      );
+
+      const result = await service.sendMessage(
+        [{ role: 'user', content: 'hi', timestamp: 't1' }],
+        { model: 'claude-sonnet-4-6' },
+      );
+
+      expect(result.usage?.inputTokens).toBe(100);
+      expect(result.usage?.cachedInputTokens).toBe(4000);
+      expect(result.usage?.cacheCreationInputTokens).toBe(50);
     });
   });
 

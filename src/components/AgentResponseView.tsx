@@ -115,7 +115,7 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
                   <span>${usage.cost < 0.01 ? usage.cost.toFixed(4) : usage.cost.toFixed(2)}</span>
                 )}
                 {' '}
-                <span>{((usage.inputTokens + usage.outputTokens) / 1000).toFixed(1)}k tok</span>
+                <span>{((usage.inputTokens + (usage.cachedInputTokens ?? 0) + (usage.cacheCreationInputTokens ?? 0) + usage.outputTokens) / 1000).toFixed(1)}k tok</span>
               </div>
             )}
             <button className={`copy-response-button ${copied ? 'copied' : ''}`} onClick={handleCopy} title="Copy markdown">

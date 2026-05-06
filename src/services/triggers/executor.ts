@@ -147,10 +147,18 @@ export class TriggerExecutor {
 
     let usage: Usage | undefined;
     if (result.usage) {
-      const cost = estimateCost(modelString, result.usage.inputTokens, result.usage.outputTokens);
+      const cost = estimateCost(
+        modelString,
+        result.usage.inputTokens,
+        result.usage.outputTokens,
+        result.usage.cachedInputTokens,
+        result.usage.cacheCreationInputTokens,
+      );
       usage = {
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
+        ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
+        ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
         ...(cost !== undefined && { cost }),
         ...(result.usage.responseId && { responseId: result.usage.responseId }),
       };
@@ -213,10 +221,18 @@ export class TriggerExecutor {
 
     let usage: Usage | undefined;
     if (result.usage) {
-      const cost = estimateCost(modelString, result.usage.inputTokens, result.usage.outputTokens);
+      const cost = estimateCost(
+        modelString,
+        result.usage.inputTokens,
+        result.usage.outputTokens,
+        result.usage.cachedInputTokens,
+        result.usage.cacheCreationInputTokens,
+      );
       usage = {
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
+        ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
+        ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
         ...(cost !== undefined && { cost }),
         ...(result.usage.responseId && { responseId: result.usage.responseId }),
       };

@@ -47,7 +47,13 @@ export interface ToolExecutionResult {
   skillUses: SkillUse[];
   iterations: number;
   subagentResponses: SubagentResponse[];
-  usage?: { inputTokens: number; outputTokens: number; responseId?: string };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    responseId?: string;
+  };
 }
 
 /**
@@ -147,10 +153,18 @@ async function executeSubagentTool(
       // Build usage with cost estimate for this sub-agent
       let subUsage: Usage | undefined;
       if (subResult.usage) {
-        const cost = estimateCost(agent.model, subResult.usage.inputTokens, subResult.usage.outputTokens);
+        const cost = estimateCost(
+          agent.model,
+          subResult.usage.inputTokens,
+          subResult.usage.outputTokens,
+          subResult.usage.cachedInputTokens,
+          subResult.usage.cacheCreationInputTokens,
+        );
         subUsage = {
           inputTokens: subResult.usage.inputTokens,
           outputTokens: subResult.usage.outputTokens,
+          ...(subResult.usage.cachedInputTokens && { cachedInputTokens: subResult.usage.cachedInputTokens }),
+          ...(subResult.usage.cacheCreationInputTokens && { cacheCreationInputTokens: subResult.usage.cacheCreationInputTokens }),
           ...(cost !== undefined && { cost }),
           ...(subResult.usage.responseId && { responseId: subResult.usage.responseId }),
         };
@@ -230,6 +244,8 @@ export async function executeWithTools(
   // Accumulate usage across all iterations
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let totalCachedInputTokens = 0;
+  let totalCacheCreationInputTokens = 0;
   let firstResponseId: string | undefined;
 
   const chatOptions: ChatOptions = {
@@ -254,6 +270,8 @@ export async function executeWithTools(
   if (result.usage) {
     totalInputTokens += result.usage.inputTokens;
     totalOutputTokens += result.usage.outputTokens;
+    totalCachedInputTokens += result.usage.cachedInputTokens ?? 0;
+    totalCacheCreationInputTokens += result.usage.cacheCreationInputTokens ?? 0;
     firstResponseId = result.usage.responseId;
   }
   let finalContent = result.content;
@@ -379,6 +397,8 @@ export async function executeWithTools(
     if (result.usage) {
       totalInputTokens += result.usage.inputTokens;
       totalOutputTokens += result.usage.outputTokens;
+      totalCachedInputTokens += result.usage.cachedInputTokens ?? 0;
+      totalCacheCreationInputTokens += result.usage.cacheCreationInputTokens ?? 0;
       if (!firstResponseId) firstResponseId = result.usage.responseId;
     }
 
@@ -397,8 +417,14 @@ export async function executeWithTools(
     skillUses,
     iterations: iteration,
     subagentResponses: allSubagentResponses,
-    usage: (totalInputTokens > 0 || totalOutputTokens > 0)
-      ? { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, responseId: firstResponseId }
+    usage: (totalInputTokens > 0 || totalOutputTokens > 0 || totalCachedInputTokens > 0 || totalCacheCreationInputTokens > 0)
+      ? {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          ...(totalCachedInputTokens > 0 && { cachedInputTokens: totalCachedInputTokens }),
+          ...(totalCacheCreationInputTokens > 0 && { cacheCreationInputTokens: totalCacheCreationInputTokens }),
+          responseId: firstResponseId,
+        }
       : undefined,
   };
 }
