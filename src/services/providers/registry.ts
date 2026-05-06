@@ -9,6 +9,7 @@ import { GrokService } from './grok';
 export class ProviderRegistry {
   private providers: Map<ProviderType, IProviderService> = new Map();
   private configDefaultModel: string | null = null;
+  private extraModels: ModelInfo[] = [];
 
   constructor() {
     // Register all provider services
@@ -22,6 +23,7 @@ export class ProviderRegistry {
   async initializeFromConfig(config: Config): Promise<void> {
     // Store the default model from config (format: "provider/model-id")
     this.configDefaultModel = config.defaultModel || null;
+    this.extraModels = config.models ?? [];
     // Initialize Anthropic if key is present
     if (config.ANTHROPIC_API_KEY) {
       const anthropic = this.providers.get('anthropic');
@@ -72,18 +74,37 @@ export class ProviderRegistry {
     return this.getEnabledProviders().map((p) => p.providerType);
   }
 
+  // User-defined models from config, filtered to providers that are enabled
+  // and deduped against bundled keys (bundled wins on collision).
+  private getExtraModelsForEnabledProviders(): ModelInfo[] {
+    const enabledTypes = new Set(this.getEnabledProviderTypes());
+    const bundledKeys = new Set(
+      this.getEnabledProviders().flatMap(p => p.getAvailableModels().map(m => m.key))
+    );
+    return this.extraModels.filter(m => {
+      if (bundledKeys.has(m.key)) return false;
+      return enabledTypes.has(getProviderFromModel(m.key));
+    });
+  }
+
   getAllAvailableModels(): ModelInfo[] {
     const models: ModelInfo[] = [];
     for (const provider of this.getEnabledProviders()) {
       models.push(...provider.getAvailableModels());
     }
+    models.push(...this.getExtraModelsForEnabledProviders());
     return models;
   }
 
   getModelsGroupedByProvider(): Map<ProviderType, ModelInfo[]> {
     const grouped = new Map<ProviderType, ModelInfo[]>();
     for (const provider of this.getEnabledProviders()) {
-      grouped.set(provider.providerType, provider.getAvailableModels());
+      grouped.set(provider.providerType, [...provider.getAvailableModels()]);
+    }
+    for (const m of this.getExtraModelsForEnabledProviders()) {
+      const provider = getProviderFromModel(m.key);
+      const bucket = grouped.get(provider);
+      if (bucket) bucket.push(m);
     }
     return grouped;
   }

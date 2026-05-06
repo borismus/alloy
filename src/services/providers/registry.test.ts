@@ -266,6 +266,92 @@ describe('ProviderRegistry', () => {
     });
   });
 
+  describe('user-defined models from config', () => {
+    it('appends config models to getAllAvailableModels for enabled providers', async () => {
+      mockAnthropic.isInitialized.mockReturnValue(true);
+      mockAnthropic.getAvailableModels.mockReturnValue([
+        { key: 'anthropic/claude-sonnet-4-6', name: 'Sonnet' },
+      ]);
+
+      await registry.initializeFromConfig({
+        ANTHROPIC_API_KEY: 'key',
+        defaultModel: 'anthropic/claude-sonnet-4-6',
+        models: [{ key: 'anthropic/claude-opus-5', name: 'Claude Opus 5', contextWindow: 250000 }],
+      });
+
+      const models = registry.getAllAvailableModels();
+      expect(models).toHaveLength(2);
+      expect(models.map(m => m.key)).toContain('anthropic/claude-opus-5');
+    });
+
+    it('omits config models whose provider is not enabled', async () => {
+      mockAnthropic.isInitialized.mockReturnValue(true);
+      mockAnthropic.getAvailableModels.mockReturnValue([
+        { key: 'anthropic/claude-sonnet-4-6', name: 'Sonnet' },
+      ]);
+      // openai NOT initialized
+
+      await registry.initializeFromConfig({
+        ANTHROPIC_API_KEY: 'key',
+        defaultModel: 'anthropic/claude-sonnet-4-6',
+        models: [{ key: 'openai/gpt-6', name: 'GPT-6' }],
+      });
+
+      const models = registry.getAllAvailableModels();
+      expect(models.map(m => m.key)).not.toContain('openai/gpt-6');
+    });
+
+    it('drops config models whose key collides with a bundled key', async () => {
+      mockAnthropic.isInitialized.mockReturnValue(true);
+      mockAnthropic.getAvailableModels.mockReturnValue([
+        { key: 'anthropic/claude-sonnet-4-6', name: 'Bundled Sonnet', contextWindow: 200000 },
+      ]);
+
+      await registry.initializeFromConfig({
+        ANTHROPIC_API_KEY: 'key',
+        defaultModel: 'anthropic/claude-sonnet-4-6',
+        models: [{ key: 'anthropic/claude-sonnet-4-6', name: 'User Override', contextWindow: 999 }],
+      });
+
+      const models = registry.getAllAvailableModels();
+      expect(models).toHaveLength(1);
+      expect(models[0].name).toBe('Bundled Sonnet');
+      expect(models[0].contextWindow).toBe(200000);
+    });
+
+    it('places config models in their providers bucket via getModelsGroupedByProvider', async () => {
+      mockAnthropic.isInitialized.mockReturnValue(true);
+      mockAnthropic.getAvailableModels.mockReturnValue([
+        { key: 'anthropic/claude-sonnet-4-6', name: 'Sonnet' },
+      ]);
+
+      await registry.initializeFromConfig({
+        ANTHROPIC_API_KEY: 'key',
+        defaultModel: 'anthropic/claude-sonnet-4-6',
+        models: [{ key: 'anthropic/claude-opus-5', name: 'Opus 5' }],
+      });
+
+      const grouped = registry.getModelsGroupedByProvider();
+      expect(grouped.get('anthropic')?.map(m => m.key)).toEqual([
+        'anthropic/claude-sonnet-4-6',
+        'anthropic/claude-opus-5',
+      ]);
+    });
+
+    it('exposes contextWindow of config models via getContextWindow', async () => {
+      mockAnthropic.isInitialized.mockReturnValue(true);
+      mockAnthropic.getAvailableModels.mockReturnValue([]);
+
+      await registry.initializeFromConfig({
+        ANTHROPIC_API_KEY: 'key',
+        defaultModel: 'anthropic/claude-opus-5',
+        models: [{ key: 'anthropic/claude-opus-5', name: 'Opus 5', contextWindow: 250000 }],
+      });
+
+      expect(registry.getContextWindow('anthropic/claude-opus-5')).toBe(250000);
+    });
+  });
+
   describe('discoverOllamaModels', () => {
     it('calls discoverModels when ollama is initialized', async () => {
       mockOllama.isInitialized.mockReturnValue(true);
