@@ -10,6 +10,7 @@ import { useGlobalEscape } from '../hooks/useGlobalEscape';
 import { AgentResponseView } from './AgentResponseView';
 import { SubagentResponsesView } from './SubagentResponsesView';
 import { ItemHeader } from './ItemHeader';
+import { ContextUsageChip } from './ContextUsageChip';
 import { MarkdownContent } from './MarkdownContent';
 import { ChatInputForm, ChatInputFormHandle, PendingImage } from './ChatInputForm';
 import { QueuedMessagesList } from './QueuedMessagesList';
@@ -57,6 +58,7 @@ interface ChatInterfaceProps {
   onSendMessage: (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal) => Promise<void>;
   onSaveImage: (conversationId: string, imageData: Uint8Array, mimeType: string) => Promise<Attachment>;
   loadImageAsBase64: (relativePath: string) => Promise<{ base64: string; mimeType: string }>;
+  onCompactNow?: () => void | Promise<void>;
   hasProvider: boolean;
   onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
   availableModels: ModelInfo[];
@@ -98,6 +100,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onSendMessage,
   onSaveImage,
   loadImageAsBase64,
+  onCompactNow,
   hasProvider,
   onModelChange,
   availableModels,
@@ -515,7 +518,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         canGoBack={showBackButton}
         onClose={onClose}
         onBackground={onBackground}
-      />
+      >
+        {conversation && conversation.messages.length > 0 && (
+          <ContextUsageChip conversation={conversation} onCompactNow={onCompactNow} />
+        )}
+      </ItemHeader>
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
         {conversation.messages.length === 0 && !showStreamingMessage && (
           <div className="welcome-message">

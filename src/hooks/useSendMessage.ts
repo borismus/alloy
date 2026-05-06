@@ -207,11 +207,13 @@ export function useSendMessage(deps: UseSendMessageDeps) {
                 const compactedConv: Conversation = {
                   ...updatedConversation,
                   messages: messagesToSend,
+                  lastCompactedAt: new Date().toISOString(),
                   updated: new Date().toISOString(),
                 };
                 setDraftConversation(prev => prev?.id === compactedConv.id ? compactedConv : prev);
                 setConversations(prev => prev.map(c => c.id === compactedConv.id ? compactedConv : c));
                 await vaultService.saveConversation(compactedConv);
+                showToast(`Compacted ${compactionResult.compactedCount} earlier messages`, 'info');
               }
             } catch (e) {
               console.error('Context compaction failed (non-fatal):', e);
@@ -247,10 +249,18 @@ export function useSendMessage(deps: UseSendMessageDeps) {
 
         let usage: Usage | undefined;
         if (result.usage) {
-          const cost = estimateCost(currentConversation.model, result.usage.inputTokens, result.usage.outputTokens);
+          const cost = estimateCost(
+            currentConversation.model,
+            result.usage.inputTokens,
+            result.usage.outputTokens,
+            result.usage.cachedInputTokens,
+            result.usage.cacheCreationInputTokens,
+          );
           usage = {
             inputTokens: result.usage.inputTokens,
             outputTokens: result.usage.outputTokens,
+            ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
+            ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
             ...(cost !== undefined && { cost }),
             ...(result.usage.responseId && { responseId: result.usage.responseId }),
           };
@@ -344,6 +354,43 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     }
   }, [executeWithTools]);
 
+  const handleCompactNow = useCallback(async (currentConversation: Conversation): Promise<void> => {
+    const { showToast, setDraftConversation, setConversations } = depsRef.current;
+    if (isServerMode()) {
+      showToast('Manual compaction is not yet supported in server mode', 'warning');
+      return;
+    }
+
+    const providerType = getProviderFromModel(currentConversation.model);
+    const modelId = getModelIdFromModel(currentConversation.model);
+    const provider = providerRegistry.getProvider(providerType);
+    if (!provider || !provider.isInitialized()) {
+      showToast(`Provider ${providerType} is not configured.`, 'error');
+      return;
+    }
+
+    try {
+      const result = await compactConversation(currentConversation.messages, modelId, provider);
+      if (result.compactedCount === 0) {
+        showToast('Nothing to compact yet', 'info');
+        return;
+      }
+      const compacted: Conversation = {
+        ...currentConversation,
+        messages: result.messages,
+        lastCompactedAt: new Date().toISOString(),
+        updated: new Date().toISOString(),
+      };
+      setDraftConversation(prev => prev?.id === compacted.id ? compacted : prev);
+      setConversations(prev => prev.map(c => c.id === compacted.id ? compacted : c));
+      await vaultService.saveConversation(compacted);
+      showToast(`Compacted ${result.compactedCount} earlier messages`, 'info');
+    } catch (e) {
+      console.error('Manual compaction failed:', e);
+      showToast('Compaction failed. See console for details.', 'error');
+    }
+  }, []);
+
   const handleSaveImage = useCallback(async (conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> => {
     return await vaultService.saveImage(conversationId, imageData, mimeType);
   }, []);
@@ -355,5 +402,5 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     return { base64, mimeType };
   }, []);
 
-  return { handleSendMessage, handleSaveImage, handleLoadImageAsBase64 };
+  return { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow };
 }

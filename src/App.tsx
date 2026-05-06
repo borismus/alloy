@@ -374,7 +374,7 @@ function AppContent() {
   );
 
   // Extracted hook: handles message sending, streaming, saving, error recovery
-  const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64 } = useSendMessage({
+  const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow } = useSendMessage({
     config, memory, markSelfWrite, showToast, chatInterfaceRef,
     setDraftConversation, setConversations,
     addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent,
@@ -1041,6 +1041,7 @@ function AppContent() {
                 onSendMessage={handleSendMessageForChat}
                 onSaveImage={handleSaveImage}
                 loadImageAsBase64={handleLoadImageAsBase64}
+                onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
                 hasProvider={providerRegistry.hasAnyProvider()}
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
@@ -1136,6 +1137,7 @@ function AppContent() {
             onSendMessage={handleSendMessageForChat}
             onSaveImage={handleSaveImage}
             loadImageAsBase64={handleLoadImageAsBase64}
+            onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
             hasProvider={providerRegistry.hasAnyProvider()}
             onModelChange={handleModelChange}
             availableModels={availableModels}

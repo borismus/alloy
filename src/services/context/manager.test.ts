@@ -167,6 +167,64 @@ describe('ContextManager', () => {
       expect(result[0].toolUse![0].result).toBe('wrote file');
     });
 
+    it('clears tool results from older turns but keeps the most recent assistant turn intact', () => {
+      const cm = new ContextManager();
+      const messages = [
+        msg('assistant', 'older', {
+          toolUse: [{ type: 'read_file', input: {}, result: 'old read' }],
+        }),
+        msg('user', 'next'),
+        msg('assistant', 'recent', {
+          toolUse: [{ type: 'read_file', input: {}, result: 'recent read' }],
+        }),
+        msg('user', 'latest'),
+      ];
+
+      const result = cm.microcompact(messages);
+
+      expect(result[0].toolUse![0].result).toContain('[Tool result cleared');
+      expect(result[2].toolUse![0].result).toBe('recent read');
+    });
+
+    it('compacts http_get, list_directory, search_directory, and append_to_note results', () => {
+      const cm = new ContextManager();
+      const messages = [
+        msg('assistant', 'old', {
+          toolUse: [
+            { type: 'http_get', input: {}, result: 'fetched body' },
+            { type: 'list_directory', input: {}, result: 'a\nb\nc' },
+            { type: 'search_directory', input: {}, result: 'matches' },
+            { type: 'append_to_note', input: {}, result: 'appended' },
+          ],
+        }),
+        msg('user', 'next'),
+        msg('assistant', 'recent'),
+        msg('user', 'latest'),
+      ];
+
+      const result = cm.microcompact(messages);
+      const tools = result[0].toolUse!;
+      expect(tools[0].result).toContain('[Tool result cleared');
+      expect(tools[1].result).toContain('[Tool result cleared');
+      expect(tools[2].result).toContain('[Tool result cleared');
+      expect(tools[3].result).toContain('[Tool result cleared');
+    });
+
+    it('does not compact write_file results', () => {
+      const cm = new ContextManager();
+      const messages = [
+        msg('assistant', 'old', {
+          toolUse: [{ type: 'write_file', input: {}, result: 'wrote: foo.md' }],
+        }),
+        msg('user', 'next'),
+        msg('assistant', 'recent'),
+        msg('user', 'latest'),
+      ];
+
+      const result = cm.microcompact(messages);
+      expect(result[0].toolUse![0].result).toBe('wrote: foo.md');
+    });
+
     it('returns messages unchanged when too few turns', () => {
       const cm = new ContextManager();
       const messages = [

@@ -7,11 +7,18 @@ const DEFAULT_TOTAL_BUDGET = 16000;
 const DEFAULT_RESPONSE_RESERVE = 4000;
 const DEFAULT_TOOL_RESULT_MAX_TOKENS = 500;
 
-// Microcompaction: tool results older than this many assistant turns get cleared
-const MICROCOMPACT_KEEP_TURNS = 3;
-// Tools whose results are safe to clear after a few turns
+// Microcompaction: tool results older than this many assistant turns get cleared.
+// 1 = aggressive — only the most recent assistant turn keeps full read results.
+const MICROCOMPACT_KEEP_TURNS = 1;
+// Tools whose results are safe to clear after a few turns. These are read-or-report
+// tools where the model can re-call cheaply if it needs the data again.
+// write_file is intentionally excluded: its result is a diff the model often
+// references on the next turn.
 const COMPACTABLE_TOOLS = new Set([
-  'read_file', 'search_files', 'list_files', 'web_search', 'web_fetch',
+  'read_file', 'list_directory', 'search_directory',
+  'web_search', 'web_fetch',
+  'http_get', 'http_post',
+  'append_to_note',
 ]);
 
 export interface ContextBudget {
