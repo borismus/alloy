@@ -2,6 +2,7 @@ import { fetch } from '@tauri-apps/plugin-http';
 import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolDefinition, ToolCall } from '../../types/tools';
 import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
+import { readWithTimeout } from './streamTimeout';
 
 // Build tool instructions for system prompt injection
 function buildToolInstructions(tools: ToolDefinition[]): string {
@@ -211,7 +212,7 @@ export class OllamaService implements IProviderService {
           break;
         }
 
-        const { done, value } = await reader.read();
+        const { done, value } = await readWithTimeout(reader);
         if (done) break;
 
         const lines = decoder.decode(value).split('\n');
@@ -370,7 +371,7 @@ export class OllamaService implements IProviderService {
           break;
         }
 
-        const { done, value } = await reader.read();
+        const { done, value } = await readWithTimeout(reader);
         if (done) break;
 
         const lines = decoder.decode(value).split('\n');

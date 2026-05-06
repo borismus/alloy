@@ -4,6 +4,7 @@ import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
 import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
 import { anthropicToolAdapter } from './tool-adapters/anthropic';
+import { withStreamTimeout } from './streamTimeout';
 
 const ANTHROPIC_MODELS: ModelInfo[] = [
   { key: 'anthropic/claude-opus-4-6', name: 'Opus 4.6', contextWindow: 200000 },
@@ -136,7 +137,7 @@ export class AnthropicService implements IProviderService {
     let cachedInputTokens = 0;
     let cacheCreationInputTokens = 0;
 
-    for await (const chunk of stream) {
+    for await (const chunk of withStreamTimeout(stream, { abort: stream.controller })) {
       if (options.signal?.aborted) {
         break;
       }

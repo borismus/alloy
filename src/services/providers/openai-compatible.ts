@@ -4,6 +4,7 @@ import { Message, ModelInfo, ProviderType, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
 import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
 import { openaiToolAdapter } from './tool-adapters/openai';
+import { withStreamTimeout } from './streamTimeout';
 
 /**
  * Configuration that distinguishes OpenAI-compatible providers.
@@ -211,7 +212,7 @@ export class OpenAICompatibleService implements IProviderService {
     let inputTokens = 0;
     let outputTokens = 0;
 
-    for await (const chunk of stream) {
+    for await (const chunk of withStreamTimeout(stream, { abort: stream.controller })) {
       if (options.signal?.aborted) {
         break;
       }

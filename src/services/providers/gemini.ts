@@ -3,6 +3,7 @@ import { Message, ModelInfo, ToolUse } from '../../types';
 import { ToolCall } from '../../types/tools';
 import { IProviderService, ChatOptions, ChatResult, StopReason, ToolRound } from './types';
 import { geminiToolAdapter } from './tool-adapters/gemini';
+import { withStreamTimeout } from './streamTimeout';
 
 const GEMINI_MODELS: ModelInfo[] = [
   { key: 'gemini/gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', contextWindow: 1000000 },
@@ -141,7 +142,7 @@ export class GeminiService implements IProviderService {
     let lastFinishReason: string | undefined;
     let blockReason: string | undefined;
 
-    for await (const chunk of result.stream) {
+    for await (const chunk of withStreamTimeout(result.stream)) {
       if (options.signal?.aborted) {
         break;
       }
