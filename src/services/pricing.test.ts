@@ -3,7 +3,13 @@ import { estimateCost } from './pricing';
 
 describe('estimateCost', () => {
   describe('Anthropic models', () => {
-    it('calculates cost for Claude Opus', () => {
+    it('calculates cost for Claude Opus 4.7', () => {
+      // $5/M input, $25/M output
+      const cost = estimateCost('anthropic/claude-opus-4-7', 1_000_000, 1_000_000);
+      expect(cost).toBe(30); // 5 + 25
+    });
+
+    it('calculates cost for Claude Opus 4.6', () => {
       // $5/M input, $25/M output
       const cost = estimateCost('anthropic/claude-opus-4-6', 1_000_000, 1_000_000);
       expect(cost).toBe(30); // 5 + 25
@@ -24,37 +30,47 @@ describe('estimateCost', () => {
 
   describe('prefix matching', () => {
     it('matches dated model IDs via prefix', () => {
-      // 'anthropic/claude-opus-4-6-20251101' starts with 'anthropic/claude-opus-4-6'
-      const cost = estimateCost('anthropic/claude-opus-4-6-20260101', 1_000_000, 0);
+      // 'anthropic/claude-opus-4-7-20260101' starts with 'anthropic/claude-opus-4-7'
+      const cost = estimateCost('anthropic/claude-opus-4-7-20260101', 1_000_000, 0);
       expect(cost).toBe(5);
     });
 
     it('matches gpt-5.4-nano before gpt-5.4', () => {
       const nanoCost = estimateCost('openai/gpt-5.4-nano', 1_000_000, 1_000_000);
-      expect(nanoCost).toBeCloseTo(0.50); // 0.10 + 0.40
+      expect(nanoCost).toBeCloseTo(1.45); // 0.20 + 1.25
 
       const baseCost = estimateCost('openai/gpt-5.4', 1_000_000, 1_000_000);
-      expect(baseCost).toBeCloseTo(15.75); // 1.75 + 14
+      expect(baseCost).toBeCloseTo(17.50); // 2.50 + 15
     });
 
     it('matches gpt-5.4-mini before gpt-5.4', () => {
       const miniCost = estimateCost('openai/gpt-5.4-mini', 1_000_000, 1_000_000);
-      expect(miniCost).toBeCloseTo(2.25); // 0.25 + 2
+      expect(miniCost).toBeCloseTo(5.25); // 0.75 + 4.50
+    });
+
+    it('calculates cost for gpt-5.5', () => {
+      const cost = estimateCost('openai/gpt-5.5', 1_000_000, 1_000_000);
+      expect(cost).toBeCloseTo(35); // 5 + 30
     });
 
     it('matches gemini flash-lite before flash', () => {
-      const liteCost = estimateCost('gemini/gemini-2.5-flash-lite', 1_000_000, 1_000_000);
+      const liteCost = estimateCost('gemini/gemini-3.1-flash-lite', 1_000_000, 1_000_000);
       expect(liteCost).toBeCloseTo(0.375); // 0.075 + 0.30
 
-      const flashCost = estimateCost('gemini/gemini-2.5-flash', 1_000_000, 1_000_000);
-      expect(flashCost).toBeCloseTo(2.80); // 0.30 + 2.50
+      const flashCost = estimateCost('gemini/gemini-3.5-flash', 1_000_000, 1_000_000);
+      expect(flashCost).toBeCloseTo(10.50); // 1.50 + 9.00
+    });
+
+    it('calculates cost for gemini-2.5-pro', () => {
+      const cost = estimateCost('gemini/gemini-2.5-pro', 1_000_000, 1_000_000);
+      expect(cost).toBeCloseTo(11.25); // 1.25 + 10
     });
   });
 
   describe('Grok models', () => {
-    it('calculates cost for grok-4-1', () => {
-      const cost = estimateCost('grok/grok-4-1', 1_000_000, 1_000_000);
-      expect(cost).toBeCloseTo(0.70); // 0.20 + 0.50
+    it('calculates cost for grok-4.3', () => {
+      const cost = estimateCost('grok/grok-4.3', 1_000_000, 1_000_000);
+      expect(cost).toBeCloseTo(3.75); // 1.25 + 2.50
     });
 
     it('calculates cost for grok-4.20', () => {
@@ -92,7 +108,7 @@ describe('estimateCost', () => {
       // = 100K*5 + 50K*5*1.25 + 200K*5*0.1 + 10K*25  (per 1M)
       // = 0.5 + 0.3125 + 0.1 + 0.25 = 1.1625
       const cost = estimateCost(
-        'anthropic/claude-opus-4-6',
+        'anthropic/claude-opus-4-7',
         100_000,
         10_000,
         200_000,
@@ -119,12 +135,12 @@ describe('estimateCost', () => {
     });
 
     it('handles input-only cost', () => {
-      const cost = estimateCost('anthropic/claude-opus-4-6', 1_000_000, 0);
+      const cost = estimateCost('anthropic/claude-opus-4-7', 1_000_000, 0);
       expect(cost).toBe(5);
     });
 
     it('handles output-only cost', () => {
-      const cost = estimateCost('anthropic/claude-opus-4-6', 0, 1_000_000);
+      const cost = estimateCost('anthropic/claude-opus-4-7', 0, 1_000_000);
       expect(cost).toBe(25);
     });
   });

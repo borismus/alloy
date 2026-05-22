@@ -7,8 +7,9 @@ import { anthropicToolAdapter } from './tool-adapters/anthropic';
 import { withStreamTimeout } from './streamTimeout';
 
 const ANTHROPIC_MODELS: ModelInfo[] = [
-  { key: 'anthropic/claude-opus-4-6', name: 'Opus 4.6', contextWindow: 200000 },
-  { key: 'anthropic/claude-sonnet-4-6', name: 'Sonnet 4.6', contextWindow: 200000 },
+  { key: 'anthropic/claude-opus-4-7', name: 'Opus 4.7', contextWindow: 1000000 },
+  { key: 'anthropic/claude-opus-4-6', name: 'Opus 4.6', contextWindow: 1000000 },
+  { key: 'anthropic/claude-sonnet-4-6', name: 'Sonnet 4.6', contextWindow: 1000000 },
   { key: 'anthropic/claude-haiku-4-5-20251001', name: 'Haiku 4.5', contextWindow: 200000 },
 ];
 

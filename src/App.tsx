@@ -534,8 +534,8 @@ function AppContent() {
     const defaultModels: Record<ProviderType, string> = {
       anthropic: 'anthropic/claude-sonnet-4-6',
       openai: 'openai/gpt-5.4-mini',
-      gemini: 'gemini/gemini-2.5-flash',
-      grok: 'grok/grok-4-1-fast',
+      gemini: 'gemini/gemini-3.5-flash',
+      grok: 'grok/grok-4.3',
       ollama: '', // Ollama models are discovered dynamically
     };
 

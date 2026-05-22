@@ -74,7 +74,7 @@ describe('AnthropicService', () => {
       const models = service.getAvailableModels();
       const modelKeys = models.map((m) => m.key);
 
-      expect(modelKeys).toContain('anthropic/claude-opus-4-6');
+      expect(modelKeys).toContain('anthropic/claude-opus-4-7');
       expect(modelKeys).toContain('anthropic/claude-sonnet-4-6');
     });
   });
