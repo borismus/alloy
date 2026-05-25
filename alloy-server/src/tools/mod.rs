@@ -57,7 +57,6 @@ impl ToolRegistry {
         let result = match call.name.as_str() {
             "web_search" => websearch::execute(self, &call.input).await,
             "http_get" => http::execute_get(self, &call.input).await,
-            "http_post" => http::execute_post(self, &call.input).await,
             "read_file" => files::execute_read(self, &call.input).await,
             "write_file" => files::execute_write(self, &call.input).await,
             "list_directory" => files::execute_list_directory(self, &call.input).await,

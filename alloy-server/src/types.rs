@@ -106,16 +106,6 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
             &["url"],
         ),
         def(
-            "http_post",
-            "Send POST request to a URL.",
-            &[
-                ("url", "string", "URL to post to"),
-                ("body", "string", "Request body (JSON string)"),
-                ("headers", "string", "Optional headers as JSON object"),
-            ],
-            &["url", "body"],
-        ),
-        def(
             "use_skill",
             "Load and use a skill. Call this tool when you want to use one of the available skills. The skill instructions will be returned and you should follow them to complete the task.",
             &[("name", "string", "Name of the skill to use")],
