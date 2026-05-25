@@ -5,6 +5,15 @@ import * as fs from '@tauri-apps/plugin-fs';
 import * as yaml from 'js-yaml';
 import { createMockConversation, createMockConfig, createMockFileSystemEntry } from '../test/mocks';
 
+// Force Tauri-mode behavior for these tests (absolute paths everywhere).
+// In Phase 2 server mode, vaultService now uses '/' as the API base — but
+// these tests assert Tauri-style absolute path joining as it was originally
+// designed. Server-mode behavior is covered end-to-end via the live SPA.
+vi.mock('../mocks', async () => {
+  const actual = await vi.importActual<typeof import('../mocks')>('../mocks');
+  return { ...actual, isServerMode: () => false, isTauri: () => true };
+});
+
 describe('VaultService', () => {
   let vaultService: VaultService;
 

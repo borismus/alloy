@@ -22,7 +22,7 @@ pub mod vault_writer;
 use std::sync::Arc;
 
 use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
 use crate::providers::ProviderRegistry;
@@ -45,10 +45,11 @@ pub struct AppState {
 }
 
 pub fn build_router(state: AppState) -> Router {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // `very_permissive` mirrors the request origin (rather than `*`) and
+    // permits credentials, methods, and headers freely. This matters in
+    // WKWebView (Tauri's webview on macOS) which is stricter than Chrome
+    // about how CORS preflight responses are shaped.
+    let cors = CorsLayer::very_permissive();
 
     Router::new()
         .merge(routes::fs::router())
@@ -56,9 +57,12 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::watch::router())
         .merge(routes::stream::router())
         .merge(routes::models::router())
-        // Static SPA assets — listed LAST so /api/* and /api/watch route
-        // before the catch-all /{*path} handler in static_files.
-        .merge(routes::static_files::router())
+        .merge(routes::proxy::router())
+        // SPA static assets are a FALLBACK — they only run for paths with
+        // no declared route. Using a fallback instead of a /{*path}
+        // catch-all means OPTIONS preflight on /api/* paths doesn't end up
+        // returning 405 (which would block the actual POST in WKWebView).
+        .fallback(routes::static_files::fallback)
         .layer(axum::middleware::from_fn(auth::ip_allowlist))
         .layer(cors)
         .with_state(state)

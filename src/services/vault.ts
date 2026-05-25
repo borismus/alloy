@@ -2,6 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile, stat } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
+import { isServerMode } from '../mocks';
 import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger, TimelineItem } from '../types';
 
 /**
@@ -18,7 +19,15 @@ export function extractCoreId(filenameOrId: string): string {
 }
 
 export class VaultService {
+  // Path used as the base for HTTP/IPC API calls. In server mode this is
+  // always '/' because the server already owns the vault root; in pre-Phase-2
+  // Tauri it was the absolute filesystem path.
   private vaultPath: string | null = null;
+  // Absolute filesystem path to the vault. Used for OS-level operations
+  // (reveal in Finder, opening config.yaml in an editor) and for telling
+  // the embedded server which directory to bind to. Returned by
+  // getVaultPath() so existing call sites display/operate on the real path.
+  private absoluteVaultPath: string | null = null;
 
   async selectVaultFolder(): Promise<string | null> {
     const selected = await open({
@@ -28,7 +37,7 @@ export class VaultService {
     });
 
     if (selected && typeof selected === 'string') {
-      this.vaultPath = selected;
+      this.setVaultPath(selected);
       await this.initializeVault(selected);
       return selected;
     }
@@ -505,11 +514,19 @@ export class VaultService {
   }
 
   setVaultPath(path: string): void {
-    this.vaultPath = path;
+    // Always remember the absolute path for OS ops and display.
+    this.absoluteVaultPath = path;
+    // In server mode (web app or Tauri Phase 2 with embedded server), API
+    // calls go through HTTP /api/fs/* which resolves relative to the
+    // server-owned vault root. So path-joining for those calls must use
+    // '/' as the base, not the absolute filesystem path.
+    this.vaultPath = isServerMode() ? '/' : path;
   }
 
   getVaultPath(): string | null {
-    return this.vaultPath;
+    // External callers (reveal in finder, openPath on config.yaml, display
+    // in Settings) want the absolute filesystem path.
+    return this.absoluteVaultPath ?? this.vaultPath;
   }
 
   async ensureRiffsDirectory(): Promise<string | null> {
@@ -676,12 +693,15 @@ export class VaultService {
   async getConfigFilePath(): Promise<string | null> {
     if (!this.vaultPath) return null;
 
-    const configPath = await join(this.vaultPath, 'config.yaml');
-    if (await exists(configPath)) {
-      return configPath;
+    // Use the API-relative path to check existence (works in both modes),
+    // but return the absolute filesystem path so callers (e.g. openPath)
+    // can hand it to the OS.
+    const apiPath = await join(this.vaultPath, 'config.yaml');
+    if (!(await exists(apiPath))) return null;
+    if (this.absoluteVaultPath) {
+      return await join(this.absoluteVaultPath, 'config.yaml');
     }
-
-    return null;
+    return apiPath;
   }
 
   // Note handling methods
