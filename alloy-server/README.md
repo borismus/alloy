@@ -1,42 +1,57 @@
 # alloy-server
 
 Rust backend for [Alloy](https://github.com/borismus/alloy). Implements the
-HTTP+SSE+WebSocket surface the SPA needs in server mode, with model calls and
-tool execution running server-side.
+HTTP+SSE+WebSocket surface the SPA needs, with model calls and tool execution
+running server-side.
 
-Phase 1 ships this as a standalone CLI; Phase 2 will embed it in the Tauri
-desktop shell.
+Used in two modes:
+- **Standalone CLI** (`alloy-serve --vault ... --port ...`) — for headless
+  deployments and the existing web-only `npm run dev:web` workflow.
+- **Embedded in Tauri** (Phase 2, `src/embed.rs`) — the Tauri desktop shell
+  spawns axum in-process via `tokio::spawn`. The SPA inside the webview talks
+  to it over `/api/*` on a random loopback port. Optionally exposes a public
+  listener on a configurable port so phones on the LAN/Tailnet can hit the
+  same vault from a browser.
 
 ## Why this exists
 
 In server mode the SPA delegates everything model-related to a backend over
 HTTP+SSE. The original Node server (`server/`) supports streaming but never
-implemented tool execution, so `web_search`, `read_file`, `http_get` etc.
-all silently no-op on mobile. This Rust port adds full tool support and
-becomes the long-term server.
+implemented tool execution, so `web_search`, `read_file`, etc. silently
+no-op on mobile. This Rust port adds full tool support and is the long-term
+server for both desktop (embedded in Tauri) and mobile (LAN-shared).
 
-The two backends coexist during the transition — neither modifies the
-other's files. Point the SPA at whichever is running via `VITE_API_URL`.
+The Node `server/` and the Tauri client-side TS providers/tools still exist
+during the transition — Phase 3 deletes them.
 
 ## Build & run
 
 Requires Rust 1.90+ and a vault directory with a `config.yaml`.
 
+### Embedded in Tauri (default)
+
+```bash
+npm run tauri dev
+```
+
+Tauri spawns axum on a random loopback port; the SPA inside the webview
+talks to it. To share with phones, open Settings → Network → "Share on
+network" and visit the displayed URL from your phone.
+
+### Standalone CLI
+
 ```bash
 cd alloy-server
 cargo run --release -- --vault ~/Documents/Alloy --port 3001
-```
-
-Then point the SPA at it:
-
-```bash
 VITE_API_URL=http://localhost:3001 npm run dev:web
 # open http://localhost:1420
 ```
 
-For mobile (over Tailscale), once `npm run build:web` is added to bundle
-static assets here, the same binary will also serve the SPA on a single
-origin. (Not yet — for now use Vite dev server.)
+### Embedded mode + bundled SPA (mobile self-hosted)
+
+When `shareOnNetwork: true`, the embedded server also serves the SPA's
+static assets from the same origin via `rust-embed`. Mobile devices load
+the full app from `http://<your-host>:<sharePort>/`.
 
 ## Configuration
 
@@ -63,6 +78,10 @@ OLLAMA_BASE_URL: http://localhost:11434
 
 # For tools
 SERPER_API_KEY: ...     # web_search
+
+# Phase 2: expose the embedded server to other devices on the network.
+shareOnNetwork: false   # default off
+sharePort: 3001         # only used when shareOnNetwork is true
 ```
 
 Old per-provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) are
@@ -73,10 +92,11 @@ OpenRouter (or any other configured OpenAI-compat provider).
 
 ```
 src/
-├── main.rs              CLI entry (clap), spawns axum
+├── main.rs              CLI entry (clap), spawns axum (standalone mode)
 ├── lib.rs               build_router, AppState
+├── embed.rs             Phase 2: bootstrap_for_tauri, set_vault, set_share
 ├── cli.rs               Args parser
-├── config.rs            config.yaml loader + provider derivation
+├── config.rs            config.yaml loader + share write helper
 ├── auth.rs              IP allowlist middleware (loopback + Tailscale)
 ├── error.rs             AppError → JSON 4xx/5xx
 ├── vault.rs             Path resolver with traversal safety
@@ -93,11 +113,12 @@ src/
     ├── path.rs          /api/path/join
     ├── stream.rs        /api/stream/* SSE
     ├── models.rs        /api/models (live OpenRouter + Ollama)
-    └── watch.rs         /api/watch WebSocket file events
+    ├── watch.rs         /api/watch WebSocket file events
+    └── static_files.rs  Embedded SPA assets via rust-embed (Phase 2)
 tools/
     ├── mod.rs           Dispatch
     ├── websearch.rs     Serper client
-    ├── http.rs          http_get / http_post
+    ├── http.rs          http_get
     ├── files.rs         read/write/list/append with safe-path allowlist
     ├── search.rs        search_directory (substring, no regex)
     ├── skills.rs        use_skill
@@ -125,7 +146,7 @@ Node server's behavior.
 | Tool | Status | Notes |
 |---|---|---|
 | `web_search` | ✓ | Serper. Reads `SERPER_API_KEY` from config |
-| `http_get` / `http_post` | ✓ | 30s timeout, 2MB body cap |
+| `http_get` | ✓ | 30s timeout, 2MB body cap |
 | `read_file` | ✓ | notes/, skills/, conversations/, triggers/, root files |
 | `list_directory` | ✓ | Same allowlist |
 | `write_file` | ✓ | Only `notes/*` and `memory.md` in server mode (other paths require approval; hard-error here) |
@@ -134,9 +155,10 @@ Node server's behavior.
 | `use_skill` | ✓ | Loaded once from `vault/skills/*/SKILL.md` at startup |
 | `spawn_subagent` | ✓ | 1-3 in parallel. No nesting. Sub-agents get read-only tool set |
 
-`get_secret` is intentionally not implemented — it existed only to bridge
-secrets into `http_post`, and the one secret in practice (`SERPER_API_KEY`)
-is now handled inside `web_search` directly.
+`http_post` and `get_secret` are intentionally not implemented. They
+existed primarily so the model could authenticate calls to Serper for web
+search — now handled inside the dedicated `web_search` tool which reads
+`SERPER_API_KEY` directly.
 
 ## Provider model resolution
 
@@ -187,10 +209,10 @@ recency parsing, file permission checks, search snippet truncation, slug
 generation, Anthropic model detection, `cache_control` placement, and the
 OpenRouter "Vendor: " prefix stripping.
 
-## Out of scope (Phase 2+)
+## Out of scope (Phase 3+)
 
-- Embed in Tauri shell as in-process server, drop sidecar lifecycle
-- Real auth (QR pairing, token UX)
-- Per-skill markdown frontmatter validation
-- Approval flow over SSE for writes outside the safe-path allowlist
-- Background trigger execution (cron-like scheduler)
+- **Phase 3**: delete the Node `server/`, client-side TS providers/tools/mocks,
+  Tauri JS plugins for FS/HTTP, and the `isServerMode()` branching.
+- Real auth (QR pairing, bearer token UX) for remote-internet deployments.
+- Approval flow over SSE for writes outside the safe-path allowlist.
+- Background trigger execution (cron-like scheduler running when UI is closed).

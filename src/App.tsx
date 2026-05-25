@@ -26,8 +26,9 @@ import { FindInConversation, FindInConversationHandle } from './components/FindI
 import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { readTextFile, exists } from '@tauri-apps/plugin-fs';
-import { isServerMode } from './mocks';
+import { isServerMode, isTauri } from './mocks';
 import { reconnectToActiveSessions } from './services/server-streaming';
+import { loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RiffProvider, useRiffContext } from './contexts/RiffContext';
 import { BackgroundProvider } from './contexts/BackgroundContext';
@@ -384,10 +385,24 @@ function AppContent() {
     const initializeApp = async () => {
       try {
         const savedVaultPath = localStorage.getItem('vaultPath');
+
+        // Phase 2: inside Tauri, ask the embedded server for its URL and
+        // bind it to the saved vault path BEFORE any HTTP calls happen.
+        // First launch: server has no URL yet; once the user picks a vault
+        // via the setup screen, setEmbeddedVaultPath bootstraps the server.
+        if (isTauri()) {
+          if (savedVaultPath) {
+            await setEmbeddedVaultPath(savedVaultPath);
+          } else {
+            await loadEmbeddedServerUrl();
+          }
+        }
+
         if (savedVaultPath) {
           await loadVault(savedVaultPath);
-        } else if (isServerMode()) {
-          // Server mode: auto-load vault (server's VAULT_PATH is the root)
+        } else if (isServerMode() && !isTauri()) {
+          // Standalone server mode (browser hitting alloy-serve): server has
+          // its own VAULT_PATH from --vault flag; just load it.
           await loadVault('/');
         } else {
           setIsLoading(false);
@@ -468,6 +483,14 @@ function AppContent() {
 
   const loadVault = async (path: string) => {
     try {
+      // Phase 2: in Tauri, the embedded server needs to know the vault
+      // path before any /api/fs/* calls happen. setEmbeddedVaultPath spins
+      // up (or rebinds) the axum listener and updates the API base URL.
+      // No-op outside Tauri (standalone alloy-serve already knows its vault).
+      if (isTauri()) {
+        await setEmbeddedVaultPath(path);
+      }
+
       vaultService.setVaultPath(path);
       // Ensure vault structure exists (creates missing dirs/skills)
       await vaultService.initializeVault(path);
@@ -492,7 +515,9 @@ function AppContent() {
         if (isServerMode()) {
           (async () => {
             try {
-              const apiBase = (import.meta as { env: { VITE_API_URL?: string } }).env.VITE_API_URL || '';
+              const apiBase = (typeof window !== 'undefined' && (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__)
+                || (import.meta as { env: { VITE_API_URL?: string } }).env.VITE_API_URL
+                || '';
               const res = await fetch(`${apiBase}/api/models`);
               if (res.ok) {
                 const models = await res.json();

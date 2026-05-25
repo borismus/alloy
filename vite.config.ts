@@ -4,6 +4,9 @@ import path from "path";
 /// <reference types="vitest" />
 
 const host = process.env.TAURI_DEV_HOST;
+// Phase 2: Tauri builds set SERVER_MODE=true via tauri.conf.json's
+// before*Command, so the SPA goes through the HTTP mocks (just like the
+// standalone web build) and hits the embedded alloy-server over HTTP.
 const isServerMode = process.env.SERVER_MODE === 'true';
 
 // https://vite.dev/config/
@@ -20,7 +23,10 @@ export default defineConfig(async () => ({
     'import.meta.env.VITE_SERVER_MODE': JSON.stringify('true'),
   } : {},
 
-  // In server mode, swap Tauri modules for HTTP-based mocks
+  // In server mode, swap Tauri modules for HTTP-based mocks. The mocks for
+  // native-OS plugins (dialog, opener) are runtime-aware: inside Tauri they
+  // forward to the real plugin via direct `invoke`; in a pure browser they
+  // do the best-effort fallback (window.open, VITE_VAULT_PATH, etc.).
   resolve: isServerMode ? {
     alias: {
       '@tauri-apps/plugin-fs': path.resolve(__dirname, 'src/mocks/tauri-fs-http.ts'),

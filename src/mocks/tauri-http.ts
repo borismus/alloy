@@ -5,7 +5,14 @@
  * to avoid CORS restrictions and localhost inaccessibility on mobile.
  */
 
-const getApiBase = () => import.meta.env.VITE_API_URL || '';
+// Prefer the embedded server URL injected by tauri-bootstrap when running
+// inside Tauri; fall back to VITE_API_URL or same-origin.
+const getApiBase = (): string => {
+  if (typeof window !== 'undefined' && (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__) {
+    return (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__!;
+  }
+  return import.meta.env.VITE_API_URL || '';
+};
 const getAuthToken = () => import.meta.env.VITE_AUTH_TOKEN || '';
 
 function serializeHeaders(headers: HeadersInit | undefined): Record<string, string> {

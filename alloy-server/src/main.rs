@@ -35,12 +35,7 @@ async fn main() -> anyhow::Result<()> {
             "no config.yaml at {} — running with no providers",
             config_path.display()
         );
-        Config {
-            default_model: None,
-            providers: vec![],
-            serper_api_key: None,
-            soniox_api_key: None,
-        }
+        Config::default()
     };
     let config = Arc::new(config);
 

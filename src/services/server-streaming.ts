@@ -8,7 +8,15 @@
 
 import type { Message, ToolUse } from '../types';
 
-const getApiBase = () => import.meta.env.VITE_API_URL || '';
+// API configuration. Inside Tauri the embedded server's URL is injected at
+// boot by `src/services/tauri-bootstrap.ts`; in standalone browser mode we
+// fall back to VITE_API_URL or same-origin.
+const getApiBase = (): string => {
+  if (typeof window !== 'undefined' && (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__) {
+    return (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__!;
+  }
+  return import.meta.env.VITE_API_URL || '';
+};
 const getAuthToken = () => import.meta.env.VITE_AUTH_TOKEN || '';
 
 function generateSessionId(): string {

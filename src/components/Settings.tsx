@@ -1,8 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { vaultService } from '../services/vault';
+import { isTauri } from '../mocks';
 import { CheckResult } from './UpdateChecker';
 import './Settings.css';
+
+interface ShareStatus {
+  enabled: boolean;
+  port: number;
+  url: string | null;
+  vault_configured: boolean;
+}
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const mod = await import('@tauri-apps/api/core');
+  return mod.invoke<T>(cmd, args);
+}
 
 interface SettingsProps {
   onClose: () => void;
@@ -39,6 +52,34 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
   const handleResetVault = () => {
     localStorage.clear();
     window.location.reload();
+  };
+
+  // Network sharing (Tauri only). Lets the user expose the embedded server
+  // to other devices on the LAN/Tailnet so phones can hit the same vault.
+  const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    tauriInvoke<ShareStatus>('get_share_status')
+      .then(setShareStatus)
+      .catch((e) => console.warn('[Settings] get_share_status failed:', e));
+  }, []);
+
+  const handleToggleShare = async () => {
+    if (!shareStatus || shareBusy) return;
+    setShareBusy(true);
+    try {
+      const next = await tauriInvoke<ShareStatus>('set_share_on_network', {
+        enabled: !shareStatus.enabled,
+      });
+      setShareStatus(next);
+    } catch (e) {
+      console.error('[Settings] set_share_on_network failed:', e);
+      alert(`Failed to toggle share: ${e}`);
+    } finally {
+      setShareBusy(false);
+    }
   };
 
   const handleEditConfig = async () => {
@@ -97,6 +138,40 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
               Edit config.yaml
             </button>
           </div>
+
+          {isTauri() && shareStatus && (
+            <div className="settings-section">
+              <h3>Network</h3>
+              <p className="settings-description">
+                Allow other devices on your network to access this Alloy session
+                via a browser. Use over Tailscale or LAN only.
+              </p>
+              <div className="settings-button-group">
+                <button
+                  onClick={handleToggleShare}
+                  className="settings-button"
+                  disabled={shareBusy || !shareStatus.vault_configured}
+                  title={!shareStatus.vault_configured ? 'Pick a vault first' : undefined}
+                >
+                  {shareBusy
+                    ? '…'
+                    : shareStatus.enabled
+                      ? `Stop sharing (port ${shareStatus.port})`
+                      : `Share on network (port ${shareStatus.port})`}
+                </button>
+              </div>
+              {shareStatus.enabled && shareStatus.url && (
+                <p className="vault-path" style={{ marginTop: '8px' }}>
+                  Open on your phone: <code>{shareStatus.url}</code>
+                </p>
+              )}
+              {!shareStatus.vault_configured && (
+                <p className="settings-description" style={{ marginTop: '4px', fontSize: '12px' }}>
+                  Pick a vault first to enable network sharing.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="settings-section">
             <h3>Updates</h3>

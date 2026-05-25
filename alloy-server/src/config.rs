@@ -35,6 +35,11 @@ pub struct RawConfig {
     pub serper_api_key: Option<String>,
     #[serde(rename = "SONIOX_API_KEY", default)]
     pub soniox_api_key: Option<String>,
+
+    #[serde(rename = "shareOnNetwork", default)]
+    pub share_on_network: Option<bool>,
+    #[serde(rename = "sharePort", default)]
+    pub share_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -58,6 +63,24 @@ pub struct Config {
     pub providers: Vec<ProviderConfig>,
     pub serper_api_key: Option<String>,
     pub soniox_api_key: Option<String>,
+    /// If true, also bind a public listener on `share_port` so other
+    /// devices on the local network (or Tailnet) can reach the SPA.
+    pub share_on_network: bool,
+    /// Port for the public listener when `share_on_network` is true.
+    pub share_port: u16,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            default_model: None,
+            providers: Vec::new(),
+            serper_api_key: None,
+            soniox_api_key: None,
+            share_on_network: false,
+            share_port: 3001,
+        }
+    }
 }
 
 impl Config {
@@ -136,6 +159,38 @@ impl Config {
             providers,
             serper_api_key: raw.serper_api_key,
             soniox_api_key: raw.soniox_api_key,
+            share_on_network: raw.share_on_network.unwrap_or(false),
+            share_port: raw.share_port.unwrap_or(3001),
         }
     }
+}
+
+/// Persist a change to `shareOnNetwork` back into the user's `config.yaml`.
+/// Re-reads the file as raw YAML (preserving comments and key order is not
+/// guaranteed by serde_yaml; this is a pragmatic "good enough" rewrite), sets
+/// the toggle, writes it back atomically.
+///
+/// If the file doesn't exist, creates a minimal one.
+pub fn write_share_on_network(config_path: &Path, enabled: bool) -> anyhow::Result<()> {
+    use serde_yaml::Value;
+
+    let mut value: Value = if config_path.exists() {
+        let text = std::fs::read_to_string(config_path)?;
+        if text.trim().is_empty() {
+            Value::Mapping(Default::default())
+        } else {
+            serde_yaml::from_str(&text)?
+        }
+    } else {
+        Value::Mapping(Default::default())
+    };
+
+    let Value::Mapping(ref mut map) = value else {
+        anyhow::bail!("config.yaml is not a YAML mapping");
+    };
+    map.insert(Value::String("shareOnNetwork".into()), Value::Bool(enabled));
+
+    let serialized = serde_yaml::to_string(&value)?;
+    std::fs::write(config_path, serialized)?;
+    Ok(())
 }

@@ -7,6 +7,7 @@
 pub mod auth;
 pub mod cli;
 pub mod config;
+pub mod embed;
 pub mod error;
 pub mod providers;
 pub mod routes;
@@ -55,6 +56,9 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::watch::router())
         .merge(routes::stream::router())
         .merge(routes::models::router())
+        // Static SPA assets — listed LAST so /api/* and /api/watch route
+        // before the catch-all /{*path} handler in static_files.
+        .merge(routes::static_files::router())
         .layer(axum::middleware::from_fn(auth::ip_allowlist))
         .layer(cors)
         .with_state(state)
