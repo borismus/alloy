@@ -36,7 +36,10 @@
       "Bash(npx vitest:*)",
       "WebFetch",
       "WebSearch",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(xargs -I {} basename {})",
+      "mcp__playwright__browser_console_messages",
+      "Bash(rustup --version)"
     ]
   },
   "enableAllProjectMcpServers": true,
