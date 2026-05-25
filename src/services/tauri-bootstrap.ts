@@ -13,7 +13,7 @@
  * is a no-op — `getEmbeddedApiBase()` falls back to `VITE_API_URL`.
  */
 
-import { isTauri } from '../mocks';
+import { isTauri } from './api';
 
 declare global {
   interface Window {

@@ -4,9 +4,9 @@
   "version": "0.2.24",
   "identifier": "com.alloy.app",
   "build": {
-    "beforeDevCommand": "SERVER_MODE=true npm run dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "SERVER_MODE=true npm run build",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist-web"
   },
   "app": {

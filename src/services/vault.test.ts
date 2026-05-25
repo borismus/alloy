@@ -5,15 +5,6 @@ import * as fs from '@tauri-apps/plugin-fs';
 import * as yaml from 'js-yaml';
 import { createMockConversation, createMockConfig, createMockFileSystemEntry } from '../test/mocks';
 
-// Force Tauri-mode behavior for these tests (absolute paths everywhere).
-// In Phase 2 server mode, vaultService now uses '/' as the API base — but
-// these tests assert Tauri-style absolute path joining as it was originally
-// designed. Server-mode behavior is covered end-to-end via the live SPA.
-vi.mock('../mocks', async () => {
-  const actual = await vi.importActual<typeof import('../mocks')>('../mocks');
-  return { ...actual, isServerMode: () => false, isTauri: () => true };
-});
-
 describe('VaultService', () => {
   let vaultService: VaultService;
 
@@ -128,7 +119,7 @@ describe('VaultService', () => {
       const result = await vaultService.loadConfig();
 
       expect(result).toEqual(mockConfig);
-      expect(fs.readTextFile).toHaveBeenCalledWith('/test/vault/config.yaml');
+      expect(fs.readTextFile).toHaveBeenCalledWith('//config.yaml');
     });
 
     it('should return null if config file does not exist', async () => {
@@ -158,7 +149,7 @@ describe('VaultService', () => {
       await vaultService.saveConfig(mockConfig);
 
       expect(fs.writeTextFile).toHaveBeenCalledWith(
-        '/test/vault/config.yaml',
+        '//config.yaml',
         yaml.dump(mockConfig)
       );
     });
@@ -279,7 +270,7 @@ describe('VaultService', () => {
       const result = await vaultService.loadConversation('conv-123');
 
       expect(result).toEqual(mockConversation);
-      expect(fs.readTextFile).toHaveBeenCalledWith('/test/vault/conversations/conv-123.yaml');
+      expect(fs.readTextFile).toHaveBeenCalledWith('//conversations/conv-123.yaml');
     });
 
     it('should return null if conversation file does not exist', async () => {
@@ -316,7 +307,7 @@ describe('VaultService', () => {
 
       const result = await vaultService.getConversationFilePath('conv-123');
 
-      expect(result).toBe('/test/vault/conversations/conv-123.yaml');
+      expect(result).toBe('//conversations/conv-123.yaml');
     });
 
     it('should return null if conversation does not exist', async () => {

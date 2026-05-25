@@ -4,7 +4,7 @@
  * In server/browser mode, shows a React-based context menu.
  */
 
-import { getGlobalShowMenu, ContextMenuItem } from '../contexts/ContextMenuContext';
+import { getGlobalShowMenu, ContextMenuItem } from '../../contexts/ContextMenuContext';
 import { isServerMode } from './index';
 
 interface MenuItemOptions {

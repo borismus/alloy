@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { vaultService } from '../services/vault';
-import { isTauri } from '../mocks';
+import { isTauri } from '../services/api';
 import { CheckResult } from './UpdateChecker';
 import './Settings.css';
 

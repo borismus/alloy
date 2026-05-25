@@ -24,7 +24,7 @@ import { FindInConversation, FindInConversationHandle } from './components/FindI
 import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { readTextFile, exists } from '@tauri-apps/plugin-fs';
-import { isServerMode, isTauri } from './mocks';
+import { isTauri } from './services/api';
 import { reconnectToActiveSessions } from './services/server-streaming';
 import { loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
@@ -398,9 +398,9 @@ function AppContent() {
 
         if (savedVaultPath) {
           await loadVault(savedVaultPath);
-        } else if (isServerMode() && !isTauri()) {
-          // Standalone server mode (browser hitting alloy-serve): server has
-          // its own VAULT_PATH from --vault flag; just load it.
+        } else if (!isTauri()) {
+          // Browser hitting alloy-serve: server has its own VAULT_PATH from
+          // --vault flag; just load it.
           await loadVault('/');
         } else {
           setIsLoading(false);
@@ -535,15 +535,13 @@ function AppContent() {
         setMemory(loadedMemory);
         setBackgroundConversation(bgConv);
 
-        // In server mode, reconnect to any in-flight streaming sessions
-        if (isServerMode()) {
-          reconnectToActiveSessions({
-            startStreaming,
-            updateStreamingContent,
-            completeStreaming,
-            stopStreaming,
-          }).catch(e => console.error('Failed to reconnect to active streams:', e));
-        }
+        // Reconnect to any in-flight streaming sessions.
+        reconnectToActiveSessions({
+          startStreaming,
+          updateStreamingContent,
+          completeStreaming,
+          stopStreaming,
+        }).catch(e => console.error('Failed to reconnect to active streams:', e));
       } else {
         localStorage.removeItem('vaultPath');
       }

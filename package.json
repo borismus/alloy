@@ -25,10 +25,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:web": "SERVER_MODE=true vite",
     "build": "tsc && vite build",
-    "build:web": "SERVER_MODE=true vite build",
-    "build:web:watch": "SERVER_MODE=true vite build --watch",
+    "build:watch": "vite build --watch",
     "preview": "vite preview",
     "server": "npm run build:web && node --import tsx server/index.ts",
     "server:dev": "tailscale serve --bg 1420 && tailscale serve --bg --https 3001 3001 && tailscale serve status && concurrently -n server,vite -c blue,green \"node --import tsx --watch server/index.ts\" \"SERVER_MODE=true vite --host\"",

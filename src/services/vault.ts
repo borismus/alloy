@@ -2,7 +2,6 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile, stat } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { isServerMode } from '../mocks';
 import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger, TimelineItem } from '../types';
 
 /**
@@ -516,11 +515,9 @@ export class VaultService {
   setVaultPath(path: string): void {
     // Always remember the absolute path for OS ops and display.
     this.absoluteVaultPath = path;
-    // In server mode (web app or Tauri Phase 2 with embedded server), API
-    // calls go through HTTP /api/fs/* which resolves relative to the
-    // server-owned vault root. So path-joining for those calls must use
-    // '/' as the base, not the absolute filesystem path.
-    this.vaultPath = isServerMode() ? '/' : path;
+    // API calls go through HTTP /api/fs/* which resolves relative to the
+    // server-owned vault root, so path-joining uses '/' as the base.
+    this.vaultPath = '/';
   }
 
   getVaultPath(): string | null {
@@ -808,35 +805,15 @@ export class VaultService {
     );
     notes.push(...noteResults);
 
-    // Load riff notes from riffs/ directory
+    // Load riff notes from riffs/ directory — batch-read all headers in one HTTP request.
     const riffsPath = await join(this.vaultPath, 'riffs');
     if (await exists(riffsPath)) {
-      const { isServerMode } = await import('../mocks');
-
-      if (isServerMode()) {
-        // Server mode: batch-read all riff headers in one HTTP request
-        const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
-        const headers: Record<string, { content: string; mtime: number }> = await readDirHeaders(riffsPath, '.md', 300);
-        for (const [name, { content, mtime }] of Object.entries(headers)) {
-          const lastModified = mtime;
-          const riffInfo = this.parseRiffFrontmatter(name, content, lastModified);
-          notes.push(riffInfo);
-        }
-      } else {
-        // Tauri mode: individual file reads (fast native IPC)
-        const riffEntries = await readDir(riffsPath);
-        for (const entry of riffEntries) {
-          if (entry.name?.endsWith('.md')) {
-            const filePath = await join(riffsPath, entry.name);
-            const [fileStat, content] = await Promise.all([
-              stat(filePath),
-              readTextFile(filePath),
-            ]);
-            const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
-            const riffInfo = this.parseRiffFrontmatter(entry.name, content, lastModified);
-            notes.push(riffInfo);
-          }
-        }
+      const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
+      const headers: Record<string, { content: string; mtime: number }> = await readDirHeaders(riffsPath, '.md', 300);
+      for (const [name, { content, mtime }] of Object.entries(headers)) {
+        const lastModified = mtime;
+        const riffInfo = this.parseRiffFrontmatter(name, content, lastModified);
+        notes.push(riffInfo);
       }
     }
 
