@@ -6,7 +6,7 @@
  * can disconnect (tab backgrounded) and reconnect without losing data.
  */
 
-import type { Message } from '../types';
+import type { Message, ToolUse } from '../types';
 
 const getApiBase = () => import.meta.env.VITE_API_URL || '';
 const getAuthToken = () => import.meta.env.VITE_AUTH_TOKEN || '';
@@ -27,11 +27,13 @@ export interface ServerStreamResult {
   usage?: { inputTokens: number; outputTokens: number; cost?: number; responseId?: string };
   stopReason?: string;
   title?: string; // Generated title for first messages
+  toolUse?: ToolUse[]; // Tool uses observed during this turn (M4+ server-side tools)
 }
 
 export interface ServerStreamOptions {
   onChunk?: (text: string) => void;
   onTitle?: (title: string) => void;
+  onToolUse?: (toolUse: ToolUse) => void;
   signal?: AbortSignal;
 }
 
@@ -92,6 +94,13 @@ export async function executeViaServer(
     let eventSource: EventSource | null = null;
     let settled = false;
 
+    // Track tool uses by tool_use_id so a later `tool_result` SSE event can
+    // mutate the matching ToolUse entry's `result`/`isError` fields in
+    // place — matches the in-place mutation pattern the client-side
+    // executeWithTools uses.
+    const toolUsesById = new Map<string, ToolUse>();
+    const allToolUses: ToolUse[] = [];
+
     function settle(fn: () => void) {
       if (settled) return;
       settled = true;
@@ -138,6 +147,32 @@ export async function executeViaServer(
         options.onTitle?.(data.title);
       });
 
+      // Server-side tool execution events (M4+). The pill rendering in
+      // ToolUseIndicator already knows how to handle ToolUse objects with
+      // type/input/result/isError — we just need to keep that array fresh.
+      eventSource.addEventListener('tool_use', (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        const toolUse: ToolUse = {
+          type: data.name,
+          input: data.input,
+        };
+        if (data.id) toolUsesById.set(data.id, toolUse);
+        allToolUses.push(toolUse);
+        options.onToolUse?.(toolUse);
+      });
+
+      eventSource.addEventListener('tool_result', (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        const entry = toolUsesById.get(data.tool_use_id);
+        if (entry) {
+          // Truncate to match client-side executor display behavior.
+          entry.result = typeof data.content === 'string'
+            ? data.content.slice(0, 500)
+            : '';
+          if (data.is_error) entry.isError = true;
+        }
+      });
+
       eventSource.addEventListener('complete', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
         settle(() => resolve({
@@ -145,6 +180,7 @@ export async function executeViaServer(
           usage: data.usage,
           stopReason: data.stopReason,
           title: result?.title,
+          toolUse: allToolUses.length > 0 ? allToolUses : undefined,
         }));
       });
 

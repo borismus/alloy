@@ -138,6 +138,10 @@ export function useSendMessage(deps: UseSendMessageDeps) {
       const convId = currentConversation.id;
 
       if (isServerMode()) {
+        // Server-side tool execution (M4+) fires tool_use/tool_result SSE
+        // events that the SPA renders the same way it renders Tauri-mode
+        // tool calls — via addToolUse on the streaming context.
+        const { addToolUse } = depsRef.current;
         const serverResult = await executeViaServer(
           convId,
           assistantMessageId,
@@ -156,6 +160,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
               setDraftConversation(prev => prev?.id === conv.id ? conv : prev);
               setConversations(prev => prev.map(c => c.id === conv.id ? conv : c));
             },
+            onToolUse: (toolUse) => addToolUse(convId, toolUse),
             signal,
           },
         );
@@ -166,6 +171,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
           timestamp: new Date().toISOString(),
           content: serverResult.content,
           usage: serverResult.usage,
+          toolUse: serverResult.toolUse,
         };
 
         const finalConversation: Conversation = {

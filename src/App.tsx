@@ -486,6 +486,25 @@ function AppContent() {
           setAvailableModels(providerRegistry.getAllAvailableModels());
         });
 
+        // In server mode, pull the live model list from the Rust server so
+        // the picker reflects OpenRouter's current catalog (rather than the
+        // stale bundled list).
+        if (isServerMode()) {
+          (async () => {
+            try {
+              const apiBase = (import.meta as { env: { VITE_API_URL?: string } }).env.VITE_API_URL || '';
+              const res = await fetch(`${apiBase}/api/models`);
+              if (res.ok) {
+                const models = await res.json();
+                providerRegistry.setExtraModels(models);
+                setAvailableModels(providerRegistry.getAllAvailableModels());
+              }
+            } catch (e) {
+              console.warn('[App] /api/models fetch failed (non-fatal):', e);
+            }
+          })();
+        }
+
         // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
         riffService.setVaultPath(path);
@@ -536,6 +555,7 @@ function AppContent() {
       openai: 'openai/gpt-5.4-mini',
       gemini: 'gemini/gemini-3.5-flash',
       grok: 'grok/grok-4.3',
+      openrouter: 'openrouter/anthropic/claude-sonnet-4.5',
       ollama: '', // Ollama models are discovered dynamically
     };
 
@@ -545,6 +565,7 @@ function AppContent() {
       openai: { key: 'OPENAI_API_KEY', placeholder: 'sk-...' },
       gemini: { key: 'GEMINI_API_KEY', placeholder: '...' },
       grok: { key: 'XAI_API_KEY', placeholder: 'xai-...' },
+      openrouter: { key: 'OPENROUTER_API_KEY', placeholder: 'sk-or-v1-...' },
       ollama: { key: 'OLLAMA_BASE_URL', placeholder: 'http://localhost:11434' },
     };
 

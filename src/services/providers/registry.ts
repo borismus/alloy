@@ -5,6 +5,7 @@ import { OpenAIService } from './openai';
 import { OllamaService } from './ollama';
 import { GeminiService } from './gemini';
 import { GrokService } from './grok';
+import { OpenRouterService } from './openrouter';
 
 export class ProviderRegistry {
   private providers: Map<ProviderType, IProviderService> = new Map();
@@ -18,6 +19,7 @@ export class ProviderRegistry {
     this.providers.set('ollama', new OllamaService());
     this.providers.set('gemini', new GeminiService());
     this.providers.set('grok', new GrokService());
+    this.providers.set('openrouter', new OpenRouterService());
   }
 
   async initializeFromConfig(config: Config): Promise<void> {
@@ -53,6 +55,12 @@ export class ProviderRegistry {
       const grok = this.providers.get('grok');
       grok?.initialize(config.XAI_API_KEY);
     }
+
+    // Initialize OpenRouter if key is present
+    if (config.OPENROUTER_API_KEY) {
+      const openrouter = this.providers.get('openrouter');
+      openrouter?.initialize(config.OPENROUTER_API_KEY);
+    }
   }
 
   async discoverOllamaModels(): Promise<void> {
@@ -60,6 +68,16 @@ export class ProviderRegistry {
     if (ollama?.isInitialized()) {
       await ollama.discoverModels();
     }
+  }
+
+  /**
+   * Replace the runtime model list with one fetched from the server's
+   * /api/models endpoint (server mode). Server-supplied models are merged
+   * with bundled ones via the existing extraModels dedup (bundled wins on
+   * key collision).
+   */
+  setExtraModels(models: ModelInfo[]): void {
+    this.extraModels = models;
   }
 
   getProvider(type: ProviderType): IProviderService | undefined {
