@@ -43,6 +43,12 @@ export interface ServerStreamOptions {
   onTitle?: (title: string) => void;
   onToolUse?: (toolUse: ToolUse) => void;
   signal?: AbortSignal;
+  /**
+   * When true, the server runs the model + tool loop but does NOT append
+   * the assistant message to any conversation YAML. Used by programmatic
+   * callers (triggers) whose results live elsewhere.
+   */
+  skipPersist?: boolean;
 }
 
 /**
@@ -87,6 +93,7 @@ export async function executeViaServer(
       systemPrompt,
       isFirstMessage,
       userMessageContent,
+      skipPersist: options.skipPersist ?? false,
     }),
   });
 

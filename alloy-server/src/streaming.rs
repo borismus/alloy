@@ -170,6 +170,12 @@ pub struct StartParams {
     pub is_first_message: bool,
     #[serde(rename = "userMessageContent", default)]
     pub user_message_content: String,
+    /// Skip appending the assistant message to a conversation YAML.
+    /// Used by triggers (whose results live in `triggers/*.yaml`, not
+    /// `conversations/*.yaml`) and other programmatic callers that
+    /// don't have a conversation file at all.
+    #[serde(rename = "skipPersist", default)]
+    pub skip_persist: bool,
 }
 
 /// Start a new streaming session. Returns the registered session immediately;
@@ -308,19 +314,25 @@ async fn run_stream(
                 }
             }
 
-            let write = AssistantWrite {
-                conversation_id: params.conversation_id.clone(),
-                assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
-                content: stream_result.content.clone(),
-                usage: stream_result.usage.clone(),
-            };
-            if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
-                tracing::warn!("failed to append assistant message: {}", e);
+            if !params.skip_persist {
+                let write = AssistantWrite {
+                    conversation_id: params.conversation_id.clone(),
+                    assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
+                    content: stream_result.content.clone(),
+                    usage: stream_result.usage.clone(),
+                };
+                if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
+                    tracing::warn!("failed to append assistant message: {}", e);
+                }
             }
 
-            // Title generation for first messages.
+            // Title generation for first messages — skip when not persisting
+            // (programmatic callers don't have a conversation file to rename).
             let mut maybe_title = None;
-            if params.is_first_message && !stream_result.content.trim().is_empty() {
+            if !params.skip_persist
+                && params.is_first_message
+                && !stream_result.content.trim().is_empty()
+            {
                 let title_model = pick_title_model(&params.model);
                 let title = provider
                     .generate_title(
@@ -356,17 +368,20 @@ async fn run_stream(
             let msg = e.to_string();
             mark_error(&session, msg.clone());
 
-            // Persist any partial content so it's not lost.
-            let partial = session.inner.lock().unwrap().full_content.clone();
-            if !partial.trim().is_empty() {
-                let write = AssistantWrite {
-                    conversation_id: params.conversation_id.clone(),
-                    assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
-                    content: partial,
-                    usage: None,
-                };
-                if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
-                    tracing::warn!("failed to persist partial content: {}", e);
+            // Persist any partial content so it's not lost — only if we'd
+            // normally persist this session at all.
+            if !params.skip_persist {
+                let partial = session.inner.lock().unwrap().full_content.clone();
+                if !partial.trim().is_empty() {
+                    let write = AssistantWrite {
+                        conversation_id: params.conversation_id.clone(),
+                        assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
+                        content: partial,
+                        usage: None,
+                    };
+                    if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
+                        tracing::warn!("failed to persist partial content: {}", e);
+                    }
                 }
             }
         }

@@ -1,36 +1,17 @@
-import { Message, ProviderType, Trigger, TriggerResult, Usage } from '../../types';
-import { providerRegistry } from '../providers/registry';
-import { executeWithTools, buildSystemPromptWithSkills } from '../tools/executor';
-import { truncateToTokenBudget } from '../context';
-import { estimateCost } from '../pricing';
+import { Message, Trigger, TriggerResult, Usage } from '../../types';
+import { executeViaServer } from '../server-streaming';
+import { generateMessageId } from '../../utils/ids';
 
 export interface TriggerExecutionResult {
   triggerResult: TriggerResult;
   usage?: Usage;
 }
 
-// Max tokens for trigger context (baseline + prompt). Keeps costs low and focus high.
-const MAX_TRIGGER_CONTEXT_TOKENS = 4000;
-
-// Reserve tokens for system prompt, tool results buffer, and trigger prompt
-const RESERVED_TOKENS = 1500;
-
-// Max tokens available for baseline content
-const MAX_BASELINE_TOKENS = MAX_TRIGGER_CONTEXT_TOKENS - RESERVED_TOKENS;
-
-/**
- * Parse a "provider/model" string into its components.
- * Throws if the format is invalid.
- */
-function parseModelString(modelString: string): { provider: ProviderType; model: string } {
-  const slashIndex = modelString.indexOf('/');
-  if (slashIndex === -1) {
-    throw new Error(`Invalid model format: "${modelString}". Expected "provider/model-id".`);
-  }
-  const provider = modelString.slice(0, slashIndex) as ProviderType;
-  const model = modelString.slice(slashIndex + 1);
-  return { provider, model };
-}
+// Max characters of baseline content we'll feed back into the trigger
+// prompt. Same intent as the old token-budget cap (~3500 chars ≈ 875
+// tokens), just calculated by character count since we no longer have a
+// client-side tokenizer.
+const MAX_BASELINE_CHARS = 14_000;
 
 function buildBaselineSystemPrompt(): string {
   const now = new Date();
@@ -96,6 +77,33 @@ End with a JSON block explaining why:
 You MUST end with the JSON block. Any text before it will be shown to the user if triggered.`;
 }
 
+/**
+ * Run the model with full tool support via the embedded alloy-server.
+ * `skipPersist` means the server won't try to append to a conversation
+ * YAML — triggers live in `triggers/*.yaml`, not `conversations/*.yaml`.
+ */
+async function runViaServer(
+  trigger: Trigger,
+  messages: Message[],
+  systemPrompt: string,
+): Promise<{ content: string; usage?: Usage }> {
+  const modelString = trigger.model || 'openrouter/anthropic/claude-haiku-4.5';
+  // The conversationId is the trigger id; the skipPersist flag tells the
+  // server not to look for a conversation file. executeViaServer
+  // internally generates a fresh sessionId per call.
+  const result = await executeViaServer(
+    trigger.id,
+    generateMessageId(),
+    modelString,
+    messages,
+    systemPrompt,
+    false,
+    trigger.triggerPrompt,
+    { skipPersist: true },
+  );
+  return { content: result.content, usage: result.usage };
+}
+
 export class TriggerExecutor {
   /**
    * Extract the baseline from conversation history.
@@ -109,8 +117,6 @@ export class TriggerExecutor {
       return undefined;
     }
 
-    // Find the assistant message from when the trigger last fired
-    // The message timestamp should match lastTriggered
     const lastTriggeredTime = trigger.lastTriggered;
     const baselineMessage = conversationMessages.find(
       m => m.role === 'assistant' && m.timestamp === lastTriggeredTime
@@ -125,72 +131,34 @@ export class TriggerExecutor {
    * The response becomes the baseline for future comparisons.
    */
   async executeBaselineCheck(trigger: Trigger): Promise<TriggerExecutionResult> {
-    const modelString = trigger.model || 'anthropic/claude-haiku-4-5-20251001';
-    const { provider: providerType, model: modelId } = parseModelString(modelString);
-    const provider = providerRegistry.getProvider(providerType);
-    if (!provider || !provider.isInitialized()) {
-      throw new Error(`Provider ${providerType} is not available`);
-    }
-
     const messages: Message[] = [{
       role: 'user',
       timestamp: new Date().toISOString(),
       content: trigger.triggerPrompt,
     }];
 
-    const systemPrompt = buildSystemPromptWithSkills(buildBaselineSystemPrompt());
-
-    const result = await executeWithTools(provider, messages, modelId, {
-      maxIterations: 10,
-      systemPrompt,
-    });
-
-    let usage: Usage | undefined;
-    if (result.usage) {
-      const cost = estimateCost(
-        modelString,
-        result.usage.inputTokens,
-        result.usage.outputTokens,
-        result.usage.cachedInputTokens,
-        result.usage.cacheCreationInputTokens,
-      );
-      usage = {
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens,
-        ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
-        ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
-        ...(cost !== undefined && { cost }),
-        ...(result.usage.responseId && { responseId: result.usage.responseId }),
-      };
-    }
-
-    return { triggerResult: this.parseResponse(result.finalContent), usage };
+    const { content, usage } = await runViaServer(
+      trigger,
+      messages,
+      buildBaselineSystemPrompt(),
+    );
+    return { triggerResult: this.parseResponse(content), usage };
   }
 
   /**
    * Execute the trigger: evaluate condition and produce response.
    * Baseline is inferred from conversation history based on lastTriggered.
    */
-  async executeTrigger(
-    trigger: Trigger
-  ): Promise<TriggerExecutionResult> {
-    // Use trigger's model, falling back to Haiku 4.5 if missing
-    const modelString = trigger.model || 'anthropic/claude-haiku-4-5-20251001';
-    const { provider: providerType, model: modelId } = parseModelString(modelString);
-    const provider = providerRegistry.getProvider(providerType);
-    if (!provider || !provider.isInitialized()) {
-      throw new Error(`Provider ${providerType} is not available`);
-    }
-
-    // Extract baseline from trigger's messages
+  async executeTrigger(trigger: Trigger): Promise<TriggerExecutionResult> {
     const conversationMessages = trigger.messages.filter(m => m.role !== 'log');
     const baseline = this.extractBaseline(trigger, conversationMessages);
 
     const messages: Message[] = [];
 
-    // Add baseline context if it exists (truncated to stay within token budget)
     if (baseline) {
-      const truncatedBaseline = truncateToTokenBudget(baseline, MAX_BASELINE_TOKENS);
+      const truncatedBaseline = baseline.length > MAX_BASELINE_CHARS
+        ? baseline.slice(0, MAX_BASELINE_CHARS) + '\n…[truncated]'
+        : baseline;
       messages.push({
         role: 'user',
         timestamp: new Date().toISOString(),
@@ -203,42 +171,18 @@ export class TriggerExecutor {
       });
     }
 
-    // Add the trigger prompt
     messages.push({
       role: 'user',
       timestamp: new Date().toISOString(),
       content: trigger.triggerPrompt,
     });
 
-    // Build system prompt with skills included
-    const systemPrompt = buildSystemPromptWithSkills(buildTriggerSystemPrompt());
-
-    // Execute with tool support
-    const result = await executeWithTools(provider, messages, modelId, {
-      maxIterations: 10,
-      systemPrompt,
-    });
-
-    let usage: Usage | undefined;
-    if (result.usage) {
-      const cost = estimateCost(
-        modelString,
-        result.usage.inputTokens,
-        result.usage.outputTokens,
-        result.usage.cachedInputTokens,
-        result.usage.cacheCreationInputTokens,
-      );
-      usage = {
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens,
-        ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
-        ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
-        ...(cost !== undefined && { cost }),
-        ...(result.usage.responseId && { responseId: result.usage.responseId }),
-      };
-    }
-
-    return { triggerResult: this.parseResponse(result.finalContent), usage };
+    const { content, usage } = await runViaServer(
+      trigger,
+      messages,
+      buildTriggerSystemPrompt(),
+    );
+    return { triggerResult: this.parseResponse(content), usage };
   }
 
   /**
@@ -246,7 +190,6 @@ export class TriggerExecutor {
    */
   private parseResponse(content: string): TriggerResult {
     try {
-      // Extract JSON from the end of the response
       const codeBlockMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```\s*$/);
       const jsonStr = codeBlockMatch?.[1] || content.match(/\{[^{}]*"triggered"[^{}]*\}\s*$/)?.[0];
 
@@ -269,7 +212,6 @@ export class TriggerExecutor {
       }
 
       if (parsed.triggered) {
-        // Extract content before the JSON block (the actual response)
         const responseContent = content.replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```\s*$/, '').trim()
           || content.replace(/\{[^{}]*"triggered"[^{}]*\}\s*$/, '').trim();
 
