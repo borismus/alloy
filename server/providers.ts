@@ -407,6 +407,82 @@ function createGrokClient(apiKey: string): ProviderClient {
   };
 }
 
+// --- OpenRouter - uses OpenAI-compatible API at openrouter.ai ---
+
+function createOpenRouterClient(apiKey: string): ProviderClient {
+  const client = new OpenAI({
+    apiKey,
+    baseURL: 'https://openrouter.ai/api/v1',
+    defaultHeaders: {
+      'HTTP-Referer': 'https://github.com/borismus/alloy',
+      'X-Title': 'Alloy',
+    },
+  });
+
+  const openaiClient = createOpenAIClient(apiKey);
+
+  return {
+    async stream(options) {
+      const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+      if (options.systemPrompt) {
+        openaiMessages.push({ role: 'system', content: options.systemPrompt });
+      }
+      for (const msg of options.messages) {
+        if (msg.role === 'log') continue;
+        openaiMessages.push({ role: msg.role as 'user' | 'assistant', content: msg.content });
+      }
+
+      const stream = await client.chat.completions.create({
+        model: options.model,
+        messages: openaiMessages,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+
+      const onAbort = () => stream.controller.abort();
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+
+      let fullResponse = '';
+      let responseId: string | undefined;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let stopReason = 'end_turn';
+
+      for await (const chunk of stream) {
+        if (options.signal?.aborted) break;
+        if (chunk.id && !responseId) responseId = chunk.id;
+        if (chunk.usage) {
+          inputTokens = chunk.usage.prompt_tokens ?? 0;
+          outputTokens = chunk.usage.completion_tokens ?? 0;
+        }
+        const choice = chunk.choices[0];
+        if (!choice) continue;
+        if (choice.finish_reason === 'stop') stopReason = 'end_turn';
+        else if (choice.finish_reason === 'length') stopReason = 'max_tokens';
+        const content = choice.delta?.content;
+        if (content) {
+          fullResponse += content;
+          options.onChunk(content);
+        }
+      }
+
+      options.signal?.removeEventListener('abort', onAbort);
+
+      return {
+        content: fullResponse,
+        usage: (inputTokens > 0 || outputTokens > 0)
+          ? { inputTokens, outputTokens, responseId }
+          : undefined,
+        stopReason,
+      };
+    },
+
+    async generateTitle(userMessage, assistantResponse) {
+      return openaiClient.generateTitle(userMessage, assistantResponse);
+    },
+  };
+}
+
 // --- Provider Registry ---
 
 const providers = new Map<string, ProviderClient>();
@@ -417,6 +493,7 @@ interface Config {
   OPENAI_API_KEY?: string;
   GEMINI_API_KEY?: string;
   XAI_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
   OLLAMA_BASE_URL?: string;
 }
 
@@ -447,6 +524,10 @@ export async function initializeProviders(vaultPath: string): Promise<void> {
   if (config.XAI_API_KEY) {
     providers.set('grok', createGrokClient(config.XAI_API_KEY));
     console.log('[Providers] Grok initialized');
+  }
+  if (config.OPENROUTER_API_KEY) {
+    providers.set('openrouter', createOpenRouterClient(config.OPENROUTER_API_KEY));
+    console.log('[Providers] OpenRouter initialized');
   }
 }
 

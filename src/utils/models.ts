@@ -6,5 +6,6 @@ export const PROVIDER_NAMES: Record<ProviderType, string> = {
   ollama: 'Ollama',
   gemini: 'Gemini',
   grok: 'Grok',
+  openrouter: 'OpenRouter',
 };
 

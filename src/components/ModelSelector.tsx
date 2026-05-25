@@ -16,6 +16,7 @@ const PROVIDER_NAMES: Record<ProviderType, string> = {
   ollama: 'Ollama',
   gemini: 'Gemini',
   grok: 'Grok',
+  openrouter: 'OpenRouter',
 };
 
 export function ModelSelector({ value, onChange, disabled, models, favoriteModels = [] }: ModelSelectorProps) {
@@ -45,7 +46,7 @@ export function ModelSelector({ value, onChange, disabled, models, favoriteModel
       return acc;
     }, {} as Record<ProviderType, ModelInfo[]>);
 
-  const providerOrder: ProviderType[] = ['anthropic', 'openai', 'gemini', 'grok', 'ollama'];
+  const providerOrder: ProviderType[] = ['anthropic', 'openai', 'gemini', 'grok', 'openrouter', 'ollama'];
   const sortedProviders = providerOrder.filter(p => groupedModels[p]?.length > 0);
 
   useEffect(() => {

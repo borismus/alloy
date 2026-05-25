@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // vi.hoisted ensures these exist before vi.mock factories run
-const { mockAnthropic, mockOpenAI, mockOllama, mockGemini, mockGrok } = vi.hoisted(() => {
+const { mockAnthropic, mockOpenAI, mockOllama, mockGemini, mockGrok, mockOpenRouter } = vi.hoisted(() => {
   const createMockProvider = (type: string) => ({
     providerType: type,
     initialize: vi.fn(),
@@ -17,6 +17,7 @@ const { mockAnthropic, mockOpenAI, mockOllama, mockGemini, mockGrok } = vi.hoist
     mockOllama: { ...createMockProvider('ollama'), discoverModels: vi.fn() },
     mockGemini: createMockProvider('gemini'),
     mockGrok: createMockProvider('grok'),
+    mockOpenRouter: createMockProvider('openrouter'),
   };
 });
 
@@ -35,6 +36,9 @@ vi.mock('./gemini', () => ({
 vi.mock('./grok', () => ({
   GrokService: function() { return mockGrok; },
 }));
+vi.mock('./openrouter', () => ({
+  OpenRouterService: function() { return mockOpenRouter; },
+}));
 
 import { ProviderRegistry } from './registry';
 import type { Config } from '../../types';
@@ -50,7 +54,7 @@ describe('ProviderRegistry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset initialization state
-    for (const mock of [mockAnthropic, mockOpenAI, mockOllama, mockGemini, mockGrok]) {
+    for (const mock of [mockAnthropic, mockOpenAI, mockOllama, mockGemini, mockGrok, mockOpenRouter]) {
       mock.isInitialized.mockReturnValue(false);
       mock.getAvailableModels.mockReturnValue([]);
     }
@@ -58,12 +62,13 @@ describe('ProviderRegistry', () => {
   });
 
   describe('constructor', () => {
-    it('registers all 5 providers', () => {
+    it('registers all 6 providers', () => {
       expect(registry.getProvider('anthropic')).toBe(mockAnthropic);
       expect(registry.getProvider('openai')).toBe(mockOpenAI);
       expect(registry.getProvider('ollama')).toBe(mockOllama);
       expect(registry.getProvider('gemini')).toBe(mockGemini);
       expect(registry.getProvider('grok')).toBe(mockGrok);
+      expect(registry.getProvider('openrouter')).toBe(mockOpenRouter);
     });
   });
 
@@ -86,6 +91,7 @@ describe('ProviderRegistry', () => {
       expect(mockGemini.initialize).not.toHaveBeenCalled();
       expect(mockGrok.initialize).not.toHaveBeenCalled();
       expect(mockOllama.initialize).not.toHaveBeenCalled();
+      expect(mockOpenRouter.initialize).not.toHaveBeenCalled();
     });
 
     it('initializes Gemini with GEMINI_API_KEY', async () => {
@@ -98,6 +104,11 @@ describe('ProviderRegistry', () => {
       expect(mockGrok.initialize).toHaveBeenCalledWith('xai-key');
     });
 
+    it('initializes OpenRouter with OPENROUTER_API_KEY', async () => {
+      await registry.initializeFromConfig(config({ OPENROUTER_API_KEY: 'sk-or-v1-key' }));
+      expect(mockOpenRouter.initialize).toHaveBeenCalledWith('sk-or-v1-key');
+    });
+
     it('initializes Ollama with OLLAMA_BASE_URL', async () => {
       await registry.initializeFromConfig(config({ OLLAMA_BASE_URL: 'http://localhost:11434' }));
       expect(mockOllama.initialize).toHaveBeenCalledWith('http://localhost:11434');
@@ -105,7 +116,7 @@ describe('ProviderRegistry', () => {
 
     it('does not initialize any provider when config is empty', async () => {
       await registry.initializeFromConfig(config());
-      for (const mock of [mockAnthropic, mockOpenAI, mockOllama, mockGemini, mockGrok]) {
+      for (const mock of [mockAnthropic, mockOpenAI, mockOllama, mockGemini, mockGrok, mockOpenRouter]) {
         expect(mock.initialize).not.toHaveBeenCalled();
       }
     });

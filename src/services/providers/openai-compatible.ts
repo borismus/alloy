@@ -16,6 +16,7 @@ export interface OpenAICompatibleConfig {
   titleModel: string;
   errorPrefix: string;       // e.g., "OpenAI" or "Grok"
   baseURL?: string;          // undefined = OpenAI default
+  defaultHeaders?: Record<string, string>;
 }
 
 /**
@@ -36,6 +37,7 @@ export class OpenAICompatibleService implements IProviderService {
     this.client = new OpenAI({
       apiKey,
       ...(this.config.baseURL && { baseURL: this.config.baseURL }),
+      ...(this.config.defaultHeaders && { defaultHeaders: this.config.defaultHeaders }),
       dangerouslyAllowBrowser: true,
       fetch,
     });

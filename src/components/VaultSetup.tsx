@@ -27,7 +27,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
       if (path) {
         // Check if config already has a provider configured
         const config = await vaultService.loadConfig();
-        if (config && (config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.OLLAMA_BASE_URL || config.GEMINI_API_KEY || config.XAI_API_KEY)) {
+        if (config && (config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.OLLAMA_BASE_URL || config.GEMINI_API_KEY || config.XAI_API_KEY || config.OPENROUTER_API_KEY)) {
           // Vault already has a provider - skip wizard
           onExistingVault(path);
           return;
@@ -73,6 +73,8 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
         return 'AIza...';
       case 'grok':
         return 'xai-...';
+      case 'openrouter':
+        return 'sk-or-v1-...';
       case 'ollama':
         return 'http://localhost:11434';
       default:
@@ -90,10 +92,23 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
         return 'Google Gemini API Key';
       case 'grok':
         return 'xAI API Key';
+      case 'openrouter':
+        return 'OpenRouter API Key';
       case 'ollama':
         return 'Ollama Base URL';
       default:
         return 'Credential';
+    }
+  };
+
+  const getProviderDisplayName = (provider: ProviderType): string => {
+    switch (provider) {
+      case 'anthropic': return 'Anthropic';
+      case 'openai': return 'OpenAI';
+      case 'gemini': return 'Google Gemini';
+      case 'grok': return 'xAI (Grok)';
+      case 'openrouter': return 'OpenRouter';
+      case 'ollama': return 'Ollama';
     }
   };
 
@@ -178,6 +193,16 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
 
               <button
                 className="provider-card"
+                onClick={() => handleProviderSelect('openrouter')}
+              >
+                <div className="provider-name">OpenRouter</div>
+                <div className="provider-description">
+                  One key for Claude, GPT, Gemini, Llama, and more
+                </div>
+              </button>
+
+              <button
+                className="provider-card"
                 onClick={() => handleProviderSelect('ollama')}
               >
                 <div className="provider-name">Ollama</div>
@@ -195,7 +220,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
 
         {step === 'credential' && selectedProvider && (
           <>
-            <h1>Configure {selectedProvider === 'anthropic' ? 'Anthropic' : selectedProvider === 'openai' ? 'OpenAI' : selectedProvider === 'grok' ? 'xAI (Grok)' : selectedProvider === 'gemini' ? 'Google Gemini' : 'Ollama'}</h1>
+            <h1>Configure {getProviderDisplayName(selectedProvider)}</h1>
             <p>Enter your {selectedProvider === 'ollama' ? 'Ollama server URL' : 'API key'}</p>
 
             <div className="credential-form">
@@ -233,6 +258,11 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
                   {selectedProvider === 'grok' && (
                     <a href="#" onClick={(e) => { e.preventDefault(); openUrl('https://console.x.ai/'); }}>
                       Get your API key from xAI Console
+                    </a>
+                  )}
+                  {selectedProvider === 'openrouter' && (
+                    <a href="#" onClick={(e) => { e.preventDefault(); openUrl('https://openrouter.ai/keys'); }}>
+                      Get your API key from OpenRouter
                     </a>
                   )}
                 </div>
