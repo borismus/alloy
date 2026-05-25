@@ -57,7 +57,6 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::watch::router())
         .merge(routes::stream::router())
         .merge(routes::models::router())
-        .merge(routes::proxy::router())
         // SPA static assets are a FALLBACK — they only run for paths with
         // no declared route. Using a fallback instead of a /{*path}
         // catch-all means OPTIONS preflight on /api/* paths doesn't end up
