@@ -18,7 +18,6 @@ export default defineConfig(async () => ({
       '@tauri-apps/plugin-fs': path.resolve(__dirname, 'src/services/api/tauri-fs-http.ts'),
       '@tauri-apps/plugin-dialog': path.resolve(__dirname, 'src/services/api/tauri-dialog.ts'),
       '@tauri-apps/plugin-opener': path.resolve(__dirname, 'src/services/api/tauri-opener.ts'),
-      '@tauri-apps/plugin-http': path.resolve(__dirname, 'src/services/api/tauri-http.ts'),
       '@tauri-apps/plugin-updater': path.resolve(__dirname, 'src/services/api/tauri-updater.ts'),
       '@tauri-apps/plugin-process': path.resolve(__dirname, 'src/services/api/tauri-process.ts'),
       '@tauri-apps/api/path': path.resolve(__dirname, 'src/services/api/tauri-path.ts'),

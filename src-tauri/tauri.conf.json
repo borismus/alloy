@@ -47,7 +47,6 @@
             "fs:allow-remove",
             "fs:allow-watch",
             "fs:allow-stat",
-            "shell:allow-execute",
             "opener:allow-open-path",
             "opener:allow-open-url",
             "opener:allow-reveal-item-in-dir",
@@ -118,18 +117,6 @@
             {
               "identifier": "opener:allow-open-url",
               "allow": [{"url": "https://**"}, {"url": "http://**"}]
-            }
-          ]
-        },
-        {
-          "identifier": "http-scope",
-          "description": "HTTP access for external requests",
-          "windows": ["main"],
-          "permissions": [
-            "http:default",
-            {
-              "identifier": "http:allow-fetch",
-              "allow": [{"url": "https://**"}, {"url": "http://**"}, {"url": "https://*:*/**"}, {"url": "http://*:*/**"}]
             }
           ]
         }
