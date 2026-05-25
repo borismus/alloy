@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
-import { providerRegistry } from './services/providers';
 import { skillRegistry } from './services/skills';
 import { riffService } from './services/riff';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
@@ -12,8 +11,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { MessageQueueProvider } from './contexts/MessageQueueContext';
 import { TriggerProvider } from './contexts/TriggerContext';
-import { ApprovalProvider } from './contexts/ApprovalContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, formatModelId, NoteInfo, TimelineFilter, TimelineItem, Trigger } from './types';
+import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, NoteInfo, TimelineFilter, TimelineItem, Trigger } from './types';
 import { useSendMessage } from './hooks/useSendMessage';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
@@ -500,40 +498,27 @@ function AppContent() {
         setConfig(loadedConfig);
         localStorage.setItem('vaultPath', path);
 
-        // Initialize providers from config
-        await providerRegistry.initializeFromConfig(loadedConfig);
-        setAvailableModels(providerRegistry.getAllAvailableModels());
-
-        // Discover Ollama models in background (don't block vault loading)
-        providerRegistry.discoverOllamaModels().then(() => {
-          setAvailableModels(providerRegistry.getAllAvailableModels());
-        });
-
-        // In server mode, pull the live model list from the Rust server so
-        // the picker reflects OpenRouter's current catalog (rather than the
-        // stale bundled list).
-        if (isServerMode()) {
-          (async () => {
-            try {
-              const apiBase = (typeof window !== 'undefined' && (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__)
-                || (import.meta as { env: { VITE_API_URL?: string } }).env.VITE_API_URL
-                || '';
-              const res = await fetch(`${apiBase}/api/models`);
-              if (res.ok) {
-                const models = await res.json();
-                providerRegistry.setExtraModels(models);
-                setAvailableModels(providerRegistry.getAllAvailableModels());
-              }
-            } catch (e) {
-              console.warn('[App] /api/models fetch failed (non-fatal):', e);
-            }
-          })();
+        // Pull the live model list from the embedded alloy-server. This is
+        // the only source of truth for available models in the all-server
+        // architecture; the SPA no longer bundles per-provider lists.
+        let loadedModels: ModelInfo[] = [];
+        try {
+          const apiBase = (typeof window !== 'undefined' && (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__)
+            || (import.meta as { env: { VITE_API_URL?: string } }).env.VITE_API_URL
+            || '';
+          const res = await fetch(`${apiBase}/api/models`);
+          if (res.ok) {
+            loadedModels = await res.json();
+          }
+        } catch (e) {
+          console.warn('[App] /api/models fetch failed (non-fatal):', e);
         }
+        setAvailableModels(loadedModels);
 
         // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
         riffService.setVaultPath(path);
-        const bgDefaultModel = loadedConfig.defaultModel || providerRegistry.getAllAvailableModels()[0]?.key || '';
+        const bgDefaultModel = loadedConfig.defaultModel || loadedModels[0]?.key || '';
 
         const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory, bgConv] = await Promise.all([
           vaultService.loadConversations(),
@@ -618,14 +603,8 @@ function AppContent() {
       return favorites[Math.floor(Math.random() * favorites.length)];
     }
 
-    // Fall back to default provider/model
-    const defaultProvider = providerRegistry.getDefaultProvider();
-    const defaultModel = providerRegistry.getDefaultModel();
-
-    if (!defaultProvider || !defaultModel) {
-      return null;
-    }
-    return formatModelId(defaultProvider, defaultModel);
+    // Fall back to config's defaultModel, then the first available model.
+    return config?.defaultModel || availableModels[0]?.key || null;
   };
 
   const handleNewConversation = () => {
@@ -1088,7 +1067,7 @@ function AppContent() {
                 onSaveImage={handleSaveImage}
                 loadImageAsBase64={handleLoadImageAsBase64}
                 onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
-                hasProvider={providerRegistry.hasAnyProvider()}
+                hasProvider={availableModels.length > 0}
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
                 favoriteModels={config?.favoriteModels}
@@ -1184,7 +1163,7 @@ function AppContent() {
             onSaveImage={handleSaveImage}
             loadImageAsBase64={handleLoadImageAsBase64}
             onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
-            hasProvider={providerRegistry.hasAnyProvider()}
+            hasProvider={availableModels.length > 0}
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
@@ -1225,14 +1204,12 @@ function App() {
     <ErrorBoundary>
       <StreamingProvider>
         <MessageQueueProvider>
-          <ApprovalProvider>
-            <RiffProvider>
-              <ContextMenuProvider>
-                <AppContent />
-                <ContextMenu />
-              </ContextMenuProvider>
-            </RiffProvider>
-          </ApprovalProvider>
+          <RiffProvider>
+            <ContextMenuProvider>
+              <AppContent />
+              <ContextMenu />
+            </ContextMenuProvider>
+          </RiffProvider>
         </MessageQueueProvider>
       </StreamingProvider>
     </ErrorBoundary>

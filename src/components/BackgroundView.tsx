@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { Message, getProviderFromModel, getModelIdFromModel } from '../types';
 import { PROVIDER_NAMES } from '../utils/models';
-import { getOrchestratorModel } from '../services/background';
 import { AgentResponseView } from './AgentResponseView';
 import { MarkdownContent } from './MarkdownContent';
 import { useBackgroundContext, BackgroundTask } from '../contexts/BackgroundContext';
@@ -73,7 +72,9 @@ export const BackgroundView: React.FC<BackgroundViewProps> = ({
   // Find active (running) tasks for streaming display
   const runningTasks = tasks.filter(t => t.status === 'running');
 
-  const orchestratorModel = getOrchestratorModel();
+  // Pull the display model from the current background conversation;
+  // there's no separate "orchestrator model" concept anymore.
+  const orchestratorModel = conversation?.model ?? null;
   const hasContent = messages.length > 0 || runningTasks.length > 0;
 
   return (

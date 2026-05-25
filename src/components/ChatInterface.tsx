@@ -520,7 +520,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         onBackground={onBackground}
       >
         {conversation && conversation.messages.length > 0 && (
-          <ContextUsageChip conversation={conversation} onCompactNow={onCompactNow} />
+          <ContextUsageChip conversation={conversation} availableModels={availableModels} onCompactNow={onCompactNow} />
         )}
       </ItemHeader>
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>

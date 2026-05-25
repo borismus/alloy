@@ -1,8 +1,8 @@
 import { readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Message, NoteInfo, ProposedChange, RiffArtifactType, RiffMessage, RiffIntervention, RiffInterventionType, getProviderFromModel, getModelIdFromModel } from '../types';
-import { providerRegistry } from './providers';
+import { Message, NoteInfo, ProposedChange, RiffArtifactType, RiffMessage, RiffIntervention, RiffInterventionType } from '../types';
+import { executeChatOnce } from './server-streaming';
 import { obliqueStrategies } from './oblique-strategies';
 
 const MAX_MESSAGES = 50;
@@ -310,12 +310,6 @@ Existing notes in vault: ${notesList}`;
   // Detect the best artifact type for the given input text
   async detectArtifactType(text: string, model: string): Promise<RiffArtifactType> {
     try {
-      const providerType = getProviderFromModel(model);
-      const modelId = getModelIdFromModel(model);
-      const provider = providerRegistry.getProvider(providerType);
-
-      if (!provider || !provider.isInitialized()) return 'note';
-
       const systemPrompt = `Classify the user's input into one of these artifact types. Respond with ONLY the type name, nothing else.
 
 Types:
@@ -332,14 +326,8 @@ Default to "note" unless the input clearly matches another type.`;
         { role: 'user', timestamp: new Date().toISOString(), content: text }
       ];
 
-      let response = '';
-      await provider.sendMessage(messages, {
-        model: modelId,
-        onChunk: (chunk: string) => { response += chunk; },
-        systemPrompt,
-      });
-
-      const trimmed = response.trim().toLowerCase();
+      const { content } = await executeChatOnce(model, messages, systemPrompt);
+      const trimmed = content.trim().toLowerCase();
       if (trimmed === 'mermaid') return 'mermaid';
       if (trimmed === 'table') return 'table';
       if (trimmed === 'summary') return 'summary';
@@ -361,14 +349,6 @@ Default to "note" unless the input clearly matches another type.`;
     artifactType: RiffArtifactType = 'note'
   ): Promise<{ changeDescription: string }> {
     if (!this.vaultPath) throw new Error('Vault path not set');
-
-    const providerType = getProviderFromModel(model);
-    const modelId = getModelIdFromModel(model);
-    const provider = providerRegistry.getProvider(providerType);
-
-    if (!provider || !provider.isInitialized()) {
-      throw new Error(`Provider ${providerType} not initialized`);
-    }
 
     const fullPath = await join(this.vaultPath, riffNotePath);
 
@@ -408,16 +388,8 @@ Default to "note" unless the input clearly matches another type.`;
       { role: 'user', timestamp: new Date().toISOString(), content: `Update the ${artifactType === 'mermaid' ? 'diagram' : artifactType === 'table' ? 'table' : 'note'} based on the latest message.` }
     ];
 
-    // Stream the response
-    let response = '';
-    await provider.sendMessage(messages, {
-      model: modelId,
-      onChunk: (chunk: string) => {
-        response += chunk;
-      },
-      signal,
-      systemPrompt,
-    });
+    const { content: responseRaw } = await executeChatOnce(model, messages, systemPrompt, { signal });
+    let response = responseRaw;
 
     // Extract <changes> tag from response (if present) and strip it from content
     let changeDescription = '';
@@ -494,12 +466,6 @@ Default to "note" unless the input clearly matches another type.`;
     if (!this.vaultPath) return [];
 
     try {
-      const providerType = getProviderFromModel(model);
-      const modelId = getModelIdFromModel(model);
-      const provider = providerRegistry.getProvider(providerType);
-
-      if (!provider || !provider.isInitialized()) return [];
-
       const fullPath = await join(this.vaultPath, riffNotePath);
       if (!(await exists(fullPath))) return [];
 
@@ -614,13 +580,7 @@ Return ONLY the JSON array, no other text.`;
         { role: 'user', timestamp: new Date().toISOString(), content: 'Review the document.' }
       ];
 
-      let response = '';
-      await provider.sendMessage(messages, {
-        model: modelId,
-        onChunk: (chunk: string) => { response += chunk; },
-        signal,
-        systemPrompt,
-      });
+      const { content: response } = await executeChatOnce(model, messages, systemPrompt, { signal });
 
       // Parse JSON response
       const jsonMatch = response.match(/\[[\s\S]*\]/);
@@ -697,14 +657,6 @@ Return ONLY the JSON array, no other text.`;
   ): Promise<ProposedChange[]> {
     if (!this.vaultPath) throw new Error('Vault path not set');
 
-    const providerType = getProviderFromModel(model);
-    const modelId = getModelIdFromModel(model);
-    const provider = providerRegistry.getProvider(providerType);
-
-    if (!provider || !provider.isInitialized()) {
-      throw new Error(`Provider ${providerType} not initialized`);
-    }
-
     // Read riff note content
     const fullPath = await join(this.vaultPath, riffNotePath);
     const riffContent = await readTextFile(fullPath);
@@ -761,14 +713,7 @@ Return ONLY the JSON array, no other text.`;
       }
     ];
 
-    let response = '';
-    await provider.sendMessage(messages, {
-      model: modelId,
-      onChunk: (chunk: string) => {
-        response += chunk;
-      },
-      systemPrompt,
-    });
+    const { content: response } = await executeChatOnce(model, messages, systemPrompt);
 
     // Parse JSON response
     try {

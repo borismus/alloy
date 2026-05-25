@@ -1,15 +1,9 @@
 import { useCallback, useRef } from 'react';
 import { vaultService } from '../services/vault';
-import { providerRegistry } from '../services/providers';
 import { skillRegistry } from '../services/skills';
-import { compressImageToFit, mimeTypeFromPath } from '../services/imageUtils';
-import { estimateCost } from '../services/pricing';
-import { shouldCompact, compactConversation } from '../services/context';
-import { isServerMode } from '../mocks';
 import { executeViaServer } from '../services/server-streaming';
 import { generateMessageId } from '../utils/ids';
-import { useToolExecution } from './useToolExecution';
-import { Conversation, Config, Message, Attachment, Usage, ToolUse, getProviderFromModel, getModelIdFromModel } from '../types';
+import { Conversation, Config, Message, Attachment, ToolUse } from '../types';
 import { ChatInterfaceHandle } from '../components/ChatInterface';
 
 interface UseSendMessageDeps {
@@ -20,8 +14,10 @@ interface UseSendMessageDeps {
   chatInterfaceRef: React.RefObject<ChatInterfaceHandle | null>;
   setDraftConversation: React.Dispatch<React.SetStateAction<Conversation | null>>;
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
-  // Streaming callbacks
   addToolUse: (convId: string, toolUse: ToolUse) => void;
+  // Sub-agent callbacks kept on the deps surface for backward compat with App.tsx;
+  // server-side spawn_subagent doesn't currently fan out per-agent updates,
+  // so these are no-ops at runtime.
   startSubagents: (convId: string, agents: { id: string; name: string; model: string; prompt: string }[]) => void;
   updateSubagentContent: (convId: string, agentId: string, chunk: string) => void;
   addSubagentToolUse: (convId: string, agentId: string, toolUse: ToolUse) => void;
@@ -35,7 +31,6 @@ function generateFallbackTitle(firstMessage: string): string {
 }
 
 export function useSendMessage(deps: UseSendMessageDeps) {
-  const { execute: executeWithTools } = useToolExecution();
   const depsRef = useRef(deps);
   depsRef.current = deps;
 
@@ -46,17 +41,8 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     onChunk?: (text: string) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
-    const { config, memory, markSelfWrite, showToast, chatInterfaceRef, setDraftConversation, setConversations } = depsRef.current;
+    const { config, memory, markSelfWrite, showToast, chatInterfaceRef, setDraftConversation, setConversations, addToolUse } = depsRef.current;
     if (!config) return;
-
-    const providerType = getProviderFromModel(currentConversation.model);
-    const modelId = getModelIdFromModel(currentConversation.model);
-    const provider = providerRegistry.getProvider(providerType);
-
-    if (!isServerMode() && (!provider || !provider.isInitialized())) {
-      showToast(`Provider ${providerType} is not configured.`, 'error');
-      return;
-    }
 
     const userMessage: Message = {
       id: generateMessageId(),
@@ -77,7 +63,6 @@ export function useSendMessage(deps: UseSendMessageDeps) {
       updated: new Date().toISOString(),
     };
 
-    // Update state immediately
     setDraftConversation(prev => prev?.id === updatedConversation.id ? updatedConversation : prev);
     if (isFirstMessage) {
       setConversations(prev => [updatedConversation, ...prev]);
@@ -85,7 +70,8 @@ export function useSendMessage(deps: UseSendMessageDeps) {
       setConversations(prev => prev.map(c => c.id === updatedConversation.id ? updatedConversation : c));
     }
 
-    // Save user message immediately
+    // Save the user message immediately so the conversation file exists
+    // before the embedded server tries to append the assistant reply.
     try {
       const vaultPathForSave = vaultService.getVaultPath();
       const filename = vaultService.generateFilename(updatedConversation.id, updatedConversation.title);
@@ -137,186 +123,47 @@ export function useSendMessage(deps: UseSendMessageDeps) {
 
       const convId = currentConversation.id;
 
-      if (isServerMode()) {
-        // Server-side tool execution (M4+) fires tool_use/tool_result SSE
-        // events that the SPA renders the same way it renders Tauri-mode
-        // tool calls — via addToolUse on the streaming context.
-        const { addToolUse } = depsRef.current;
-        const serverResult = await executeViaServer(
-          convId,
-          assistantMessageId,
-          currentConversation.model,
-          updatedMessages,
-          systemPrompt,
-          isFirstMessage,
-          content,
-          {
-            onChunk: onChunk ? (chunk: string) => {
-              accumulatedContent += chunk;
-              onChunk(chunk);
-            } : undefined,
-            onTitle: (newTitle: string) => {
-              const conv = { ...updatedConversation, title: newTitle };
-              setDraftConversation(prev => prev?.id === conv.id ? conv : prev);
-              setConversations(prev => prev.map(c => c.id === conv.id ? conv : c));
-            },
-            onToolUse: (toolUse) => addToolUse(convId, toolUse),
-            signal,
-          },
-        );
-
-        const assistantMessage: Message = {
-          id: assistantMessageId,
-          role: 'assistant',
-          timestamp: new Date().toISOString(),
-          content: serverResult.content,
-          usage: serverResult.usage,
-          toolUse: serverResult.toolUse,
-        };
-
-        const finalConversation: Conversation = {
-          ...updatedConversation,
-          title: serverResult.title || updatedConversation.title,
-          messages: [...updatedMessages, assistantMessage],
-          updated: new Date().toISOString(),
-        };
-
-        setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
-        setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
-
-      } else {
-        if (!provider || !provider.isInitialized()) {
-          showToast(`Provider ${providerType} is not configured.`, 'error');
-          return;
-        }
-
-        const { addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = depsRef.current;
-
-        const imageLoader = async (relativePath: string) => {
-          const data = await vaultService.loadImageAsBase64(relativePath);
-          const mimeType = mimeTypeFromPath(relativePath);
-          return await compressImageToFit(data, mimeType);
-        };
-
-        // Check if LLM-based context compaction is needed
-        let messagesToSend = updatedMessages;
-        const contextWindow = providerRegistry.getContextWindow(currentConversation.model);
-        if (contextWindow) {
-          // Use ~50% of context window as the message budget threshold
-          const messageBudget = Math.floor(contextWindow * 0.5);
-          if (shouldCompact(messagesToSend, messageBudget)) {
-            try {
-              const compactionResult = await compactConversation(messagesToSend, modelId, provider);
-              if (compactionResult.compactedCount > 0) {
-                messagesToSend = compactionResult.messages;
-                // Update conversation state with compacted messages
-                const compactedConv: Conversation = {
-                  ...updatedConversation,
-                  messages: messagesToSend,
-                  lastCompactedAt: new Date().toISOString(),
-                  updated: new Date().toISOString(),
-                };
-                setDraftConversation(prev => prev?.id === compactedConv.id ? compactedConv : prev);
-                setConversations(prev => prev.map(c => c.id === compactedConv.id ? compactedConv : c));
-                await vaultService.saveConversation(compactedConv);
-                showToast(`Compacted ${compactionResult.compactedCount} earlier messages`, 'info');
-              }
-            } catch (e) {
-              console.error('Context compaction failed (non-fatal):', e);
-            }
-          }
-        }
-
-        const result = await executeWithTools(provider, messagesToSend, modelId, {
-          maxIterations: 10,
-          contextWindow: providerRegistry.getContextWindow(currentConversation.model),
-          toolContext: {
-            messageId: assistantMessageId,
-            conversationId: `conversations/${convId}`,
-          },
+      const serverResult = await executeViaServer(
+        convId,
+        assistantMessageId,
+        currentConversation.model,
+        updatedMessages,
+        systemPrompt,
+        isFirstMessage,
+        content,
+        {
           onChunk: onChunk ? (chunk: string) => {
             accumulatedContent += chunk;
             onChunk(chunk);
           } : undefined,
+          onTitle: (newTitle: string) => {
+            const conv = { ...updatedConversation, title: newTitle };
+            setDraftConversation(prev => prev?.id === conv.id ? conv : prev);
+            setConversations(prev => prev.map(c => c.id === conv.id ? conv : c));
+          },
           onToolUse: (toolUse) => addToolUse(convId, toolUse),
           signal,
-          imageLoader,
-          systemPrompt,
-          onSubagentStart: (agents) => startSubagents(convId, agents),
-          onSubagentChunk: (agentId, chunk) => updateSubagentContent(convId, agentId, chunk),
-          onSubagentToolUse: (agentId, toolUse) => addSubagentToolUse(convId, agentId, toolUse),
-          onSubagentComplete: (agentId, _content, error) => completeSubagent(convId, agentId, error),
-        });
+        },
+      );
 
-        if (signal?.aborted && accumulatedContent.trim()) {
-          await savePartialConversation(accumulatedContent);
-          return;
-        }
+      const assistantMessage: Message = {
+        id: assistantMessageId,
+        role: 'assistant',
+        timestamp: new Date().toISOString(),
+        content: serverResult.content,
+        usage: serverResult.usage,
+        toolUse: serverResult.toolUse,
+      };
 
-        let usage: Usage | undefined;
-        if (result.usage) {
-          const cost = estimateCost(
-            currentConversation.model,
-            result.usage.inputTokens,
-            result.usage.outputTokens,
-            result.usage.cachedInputTokens,
-            result.usage.cacheCreationInputTokens,
-          );
-          usage = {
-            inputTokens: result.usage.inputTokens,
-            outputTokens: result.usage.outputTokens,
-            ...(result.usage.cachedInputTokens && { cachedInputTokens: result.usage.cachedInputTokens }),
-            ...(result.usage.cacheCreationInputTokens && { cacheCreationInputTokens: result.usage.cacheCreationInputTokens }),
-            ...(cost !== undefined && { cost }),
-            ...(result.usage.responseId && { responseId: result.usage.responseId }),
-          };
-        }
+      const finalConversation: Conversation = {
+        ...updatedConversation,
+        title: serverResult.title || updatedConversation.title,
+        messages: [...updatedMessages, assistantMessage],
+        updated: new Date().toISOString(),
+      };
 
-        const assistantMessage: Message = {
-          id: assistantMessageId,
-          role: 'assistant',
-          timestamp: new Date().toISOString(),
-          content: result.finalContent,
-          toolUse: result.allToolUses.length > 0 ? result.allToolUses : undefined,
-          skillUse: result.skillUses.length > 0 ? result.skillUses : undefined,
-          subagentResponses: result.subagentResponses.length > 0 ? result.subagentResponses : undefined,
-          usage,
-        };
-
-        let finalConversation: Conversation = {
-          ...updatedConversation,
-          messages: [...updatedMessages, assistantMessage],
-        };
-
-        if (isFirstMessage) {
-          try {
-            const betterTitle = await provider.generateTitle(content, result.finalContent);
-            if (betterTitle && betterTitle !== finalConversation.title) {
-              finalConversation = { ...finalConversation, title: betterTitle };
-            }
-          } catch (titleError) {
-            console.error('Failed to generate title (non-fatal):', titleError);
-          }
-        }
-
-        setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
-        setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
-
-        try {
-          const vaultPathForFinal = vaultService.getVaultPath();
-          const filename = vaultService.generateFilename(finalConversation.id, finalConversation.title);
-          if (vaultPathForFinal) {
-            const filePath = `${vaultPathForFinal}/conversations/${filename}`;
-            markSelfWrite(filePath);
-            const oldFilePath = await vaultService.getConversationFilePath(finalConversation.id);
-            if (oldFilePath) markSelfWrite(oldFilePath);
-          }
-          await vaultService.saveConversation(finalConversation);
-        } catch (saveError) {
-          console.error('Error saving conversation (non-fatal):', saveError);
-        }
-      }
-
+      setDraftConversation(prev => prev?.id === finalConversation.id ? finalConversation : prev);
+      setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
     } catch (error: any) {
       if (error?.name === 'AbortError' || signal?.aborted) {
         if (accumulatedContent.trim()) {
@@ -358,43 +205,6 @@ export function useSendMessage(deps: UseSendMessageDeps) {
       chatInterfaceRef.current?.setInputText(content);
       showToast(errorMessage, 'error');
     }
-  }, [executeWithTools]);
-
-  const handleCompactNow = useCallback(async (currentConversation: Conversation): Promise<void> => {
-    const { showToast, setDraftConversation, setConversations } = depsRef.current;
-    if (isServerMode()) {
-      showToast('Manual compaction is not yet supported in server mode', 'warning');
-      return;
-    }
-
-    const providerType = getProviderFromModel(currentConversation.model);
-    const modelId = getModelIdFromModel(currentConversation.model);
-    const provider = providerRegistry.getProvider(providerType);
-    if (!provider || !provider.isInitialized()) {
-      showToast(`Provider ${providerType} is not configured.`, 'error');
-      return;
-    }
-
-    try {
-      const result = await compactConversation(currentConversation.messages, modelId, provider);
-      if (result.compactedCount === 0) {
-        showToast('Nothing to compact yet', 'info');
-        return;
-      }
-      const compacted: Conversation = {
-        ...currentConversation,
-        messages: result.messages,
-        lastCompactedAt: new Date().toISOString(),
-        updated: new Date().toISOString(),
-      };
-      setDraftConversation(prev => prev?.id === compacted.id ? compacted : prev);
-      setConversations(prev => prev.map(c => c.id === compacted.id ? compacted : c));
-      await vaultService.saveConversation(compacted);
-      showToast(`Compacted ${result.compactedCount} earlier messages`, 'info');
-    } catch (e) {
-      console.error('Manual compaction failed:', e);
-      showToast('Compaction failed. See console for details.', 'error');
-    }
   }, []);
 
   const handleSaveImage = useCallback(async (conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> => {
@@ -406,6 +216,11 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     const ext = relativePath.split('.').pop()?.toLowerCase() || 'png';
     const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
     return { base64, mimeType };
+  }, []);
+
+  // Manual compaction needs a server endpoint; not implemented yet.
+  const handleCompactNow = useCallback(async (_currentConversation: Conversation): Promise<void> => {
+    depsRef.current.showToast('Manual compaction is not yet supported with the embedded server', 'warning');
   }, []);
 
   return { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow };

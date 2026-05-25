@@ -253,6 +253,36 @@ export async function executeViaServer(
   });
 }
 
+/**
+ * Convenience wrapper for "send a model call and get back the text" — no
+ * conversation persistence, no UI streaming required from the caller.
+ * Used by riff (drafts) and triggers. Internally still uses the streaming
+ * endpoint so the server runs its tool loop and prompt-caching machinery.
+ */
+export async function executeChatOnce(
+  model: string,
+  messages: Message[],
+  systemPrompt: string | undefined,
+  options: { onChunk?: (text: string) => void; signal?: AbortSignal } = {},
+): Promise<{ content: string; usage?: ServerStreamResult['usage'] }> {
+  const synthId = `oneshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const result = await executeViaServer(
+    synthId,
+    `msg-${Date.now()}`,
+    model,
+    messages,
+    systemPrompt,
+    false,
+    messages[messages.length - 1]?.content ?? '',
+    {
+      onChunk: options.onChunk,
+      signal: options.signal,
+      skipPersist: true,
+    },
+  );
+  return { content: result.content, usage: result.usage };
+}
+
 // --- Reconnection on page reload ---
 
 interface ActiveSession {
