@@ -37,6 +37,7 @@ vault/
 # Test artifacts
 playwright-report/
 test-results/
+.playwright-mcp/
 
 # Session recordings
 .specstory/
