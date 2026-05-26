@@ -247,38 +247,6 @@ function AppContent() {
     setDraftConversation(prev => prev?.id === id ? updated : prev);
   }, []);
 
-  // Handler for trigger updates (called by TriggerContext)
-  // Uses atomic update to avoid overwriting concurrent edits
-  const handleTriggerUpdated = useCallback(async (updatedTrigger: Trigger) => {
-    try {
-      // Atomic read-modify-write: load fresh from disk, merge trigger updates, save
-      const merged = await vaultService.updateTrigger(updatedTrigger.id, (fresh) => ({
-        ...fresh,
-        // Apply the updated timestamp if messages were added
-        updated: updatedTrigger.updated,
-        // Use messages from the update (trigger appends new messages)
-        messages: updatedTrigger.messages,
-        // Apply scheduler's runtime fields (flat structure now)
-        lastChecked: updatedTrigger.lastChecked,
-        lastTriggered: updatedTrigger.lastTriggered,
-        history: updatedTrigger.history,
-      }));
-
-      if (merged) {
-        // Update state with the merged result
-        setTriggers(prev =>
-          prev.map(t => t.id === merged.id ? merged : t)
-            .sort((a, b) => new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime())
-        );
-      }
-    } catch (error) {
-      console.error('Error saving trigger update:', error);
-    }
-  }, []);
-
-  // Getter for triggers (used by TriggerProvider)
-  const getTriggers = useCallback(() => triggers, [triggers]);
-
   // Use ref to avoid circular dependency with loadVault
   const loadVaultRef = useRef<((path: string) => Promise<void>) | null>(null);
 
@@ -515,10 +483,33 @@ function AppContent() {
         }
         setAvailableModels(loadedModels);
 
+        // Warn loudly when defaultModel can't be honored. Without this the SPA
+        // silently substitutes availableModels[0] in `getDefaultModel` and the
+        // first background-mode message on a fresh device 400s upstream with
+        // an opaque error.
+        if (
+          loadedConfig.defaultModel &&
+          loadedModels.length > 0 &&
+          !loadedModels.some(m => m.key === loadedConfig.defaultModel)
+        ) {
+          showToast(
+            `defaultModel "${loadedConfig.defaultModel}" isn't available — edit config.yaml or pick another model.`,
+            'error',
+          );
+        }
+
         // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
         riffService.setVaultPath(path);
-        const bgDefaultModel = loadedConfig.defaultModel || loadedModels[0]?.key || '';
+        // If the configured defaultModel isn't available (stale config, provider
+        // switched, etc.), fall back to the live catalog so new background
+        // conversations get a working model instead of a broken one.
+        const configuredDefault =
+          loadedConfig.defaultModel &&
+          loadedModels.some(m => m.key === loadedConfig.defaultModel)
+            ? loadedConfig.defaultModel
+            : '';
+        const bgDefaultModel = configuredDefault || loadedModels[0]?.key || '';
 
         const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory, bgConv] = await Promise.all([
           vaultService.loadConversations(),
@@ -592,17 +583,21 @@ function AppContent() {
     await loadVault(path);
   };
 
-  // Helper to get a default model for new conversations
+  // Helper to get a default model for new conversations. Only returns a key
+  // that actually exists in availableModels, so the picker always shows a
+  // selected model rather than falling back to "Select Model".
   const getDefaultModel = (): string | null => {
-    const favorites = config?.favoriteModels;
+    const validKeys = new Set(availableModels.map(m => m.key));
+    const isValid = (key: string | undefined | null): key is string =>
+      !!key && validKeys.has(key);
 
-    if (favorites && favorites.length > 0) {
-      // Pick a random favorite
-      return favorites[Math.floor(Math.random() * favorites.length)];
+    const liveFavorites = (config?.favoriteModels ?? []).filter(isValid);
+    if (liveFavorites.length > 0) {
+      return liveFavorites[Math.floor(Math.random() * liveFavorites.length)];
     }
 
-    // Fall back to config's defaultModel, then the first available model.
-    return config?.defaultModel || availableModels[0]?.key || null;
+    if (isValid(config?.defaultModel)) return config!.defaultModel;
+    return availableModels[0]?.key ?? null;
   };
 
   const handleNewConversation = () => {
@@ -879,7 +874,7 @@ function AppContent() {
     const hash = Math.random().toString(16).slice(2, 6);
     const newId = `${date}-${time}-${hash}`;
     const nowISO = now.toISOString();
-    const defaultModel = config?.defaultModel || availableModels[0]?.key || trigger.model;
+    const defaultModel = getDefaultModel() || trigger.model;
 
     const newConversation: Conversation = {
       id: newId,
@@ -914,11 +909,7 @@ function AppContent() {
 
 
   return (
-    <TriggerProvider
-      getTriggers={getTriggers}
-      onTriggerUpdated={handleTriggerUpdated}
-      vaultPath={vaultPath}
-    >
+    <TriggerProvider triggers={triggers}>
       <BackgroundProvider
         initialConversation={backgroundConversation}
         defaultModel={config?.defaultModel || availableModels[0]?.key || ''}

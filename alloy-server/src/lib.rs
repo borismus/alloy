@@ -15,6 +15,7 @@ pub mod skill_registry;
 pub mod streaming;
 pub mod tool_loop;
 pub mod tools;
+pub mod triggers;
 pub mod types;
 pub mod vault;
 pub mod vault_writer;
@@ -30,6 +31,7 @@ use crate::routes::models::ModelCache;
 use crate::routes::watch::WatcherChannel;
 use crate::streaming::SessionRegistry;
 use crate::tools::ToolRegistry;
+use crate::triggers::scheduler::SchedulerHandle;
 use crate::vault::Vault;
 
 /// Shared application state available to every handler.
@@ -42,6 +44,9 @@ pub struct AppState {
     pub tools: Arc<ToolRegistry>,
     pub config: Arc<Config>,
     pub model_cache: Arc<ModelCache>,
+    /// Holds the scheduler's "currently running" set so the `/run` route
+    /// and the background tick don't double-fire the same trigger.
+    pub triggers: Arc<SchedulerHandle>,
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -57,6 +62,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::watch::router())
         .merge(routes::stream::router())
         .merge(routes::models::router())
+        .merge(routes::triggers::router())
         // SPA static assets are a FALLBACK — they only run for paths with
         // no declared route. Using a fallback instead of a /{*path}
         // catch-all means OPTIONS preflight on /api/* paths doesn't end up

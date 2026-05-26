@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { Message, TriggerAttempt, Trigger, Usage } from '../types';
-import { triggerScheduler } from '../services/triggers/scheduler';
-import { vaultService } from '../services/vault';
+import { Trigger } from '../types';
 
 interface FiredTrigger {
   conversationId: string;
@@ -11,11 +9,13 @@ interface FiredTrigger {
 }
 
 interface TriggerContextValue {
-  isSchedulerRunning: boolean;
+  /** Trigger ids currently being executed via Run Now. The background
+   *  scheduler also fires triggers, but that happens in alloy-server and
+   *  isn't surfaced here — the UI only spins for in-flight POST /run calls. */
   activeChecks: string[];
-  firedTriggers: FiredTrigger[]; // Triggers that fired and need attention
-  startScheduler: () => void;
-  stopScheduler: () => void;
+  firedTriggers: FiredTrigger[];
+  markRunning: (triggerId: string) => void;
+  markDone: (triggerId: string) => void;
   dismissFiredTrigger: (conversationId: string) => void;
 }
 
@@ -23,214 +23,64 @@ const TriggerContext = createContext<TriggerContextValue | null>(null);
 
 interface TriggerProviderProps {
   children: React.ReactNode;
-  getTriggers: () => Trigger[];
-  onTriggerUpdated: (trigger: Trigger) => void;
-  vaultPath: string | null;
+  triggers: Trigger[];
 }
 
-export function TriggerProvider({
-  children,
-  getTriggers,
-  onTriggerUpdated,
-  vaultPath,
-}: TriggerProviderProps) {
-  const [isSchedulerRunning, setIsSchedulerRunning] = useState(false);
+export function TriggerProvider({ children, triggers }: TriggerProviderProps) {
   const [activeChecks, setActiveChecks] = useState<string[]>([]);
   const [firedTriggers, setFiredTriggers] = useState<FiredTrigger[]>([]);
 
-  // Use ref to always have latest triggers
-  const getTriggersRef = useRef(getTriggers);
-  getTriggersRef.current = getTriggers;
+  // Detect "this trigger just fired" by comparing the previous lastTriggered
+  // to the current one. The server writes the YAML, the file watcher feeds
+  // App.tsx, which re-renders us with new props — that's how we notice.
+  const prevLastTriggeredRef = useRef<Map<string, string | undefined>>(new Map());
 
-  const onTriggerUpdatedRef = useRef(onTriggerUpdated);
-  onTriggerUpdatedRef.current = onTriggerUpdated;
+  useEffect(() => {
+    const prev = prevLastTriggeredRef.current;
+    const next = new Map<string, string | undefined>();
+    const fires: FiredTrigger[] = [];
 
-  const MAX_HISTORY_ENTRIES = 50;
+    for (const t of triggers) {
+      next.set(t.id, t.lastTriggered);
+      const prevTs = prev.get(t.id);
+      // Skip on the very first render (prev is empty) so loading the vault
+      // doesn't show notifications for every historical fire.
+      if (prev.size === 0) continue;
+      if (t.lastTriggered && t.lastTriggered !== prevTs) {
+        const last = t.messages?.filter(m => m.role === 'assistant').slice(-1)[0];
+        fires.push({
+          conversationId: t.id,
+          conversationTitle: t.title,
+          firedAt: t.lastTriggered,
+          reasoning: (last?.content || '').slice(0, 200),
+        });
+      }
+    }
 
-  // Helper to get fresh trigger data to avoid race conditions
-  const getFreshTrigger = (triggerId: string): Trigger | undefined => {
-    return getTriggersRef.current().find(t => t.id === triggerId);
-  };
+    prevLastTriggeredRef.current = next;
+    if (fires.length > 0) {
+      setFiredTriggers(curr => [...fires, ...curr]);
+    }
+  }, [triggers]);
 
-  const addHistoryEntry = (trigger: Trigger, attempt: TriggerAttempt): TriggerAttempt[] => {
-    const existing = trigger.history || [];
-    return [attempt, ...existing].slice(0, MAX_HISTORY_ENTRIES);
-  };
+  const markRunning = useCallback((id: string) => {
+    setActiveChecks(curr => (curr.includes(id) ? curr : [...curr, id]));
+  }, []);
 
-  const startScheduler = useCallback(() => {
-    if (isSchedulerRunning) return;
-
-    triggerScheduler.start({
-      getTriggers: () => getTriggersRef.current(),
-
-      reloadTrigger: async (id: string) => {
-        // Load fresh from disk for multi-instance coordination
-        return await vaultService.loadTrigger(id);
-      },
-
-      claimTrigger: async (id: string) => {
-        // Write lastChecked before execution so other instances skip this trigger
-        await vaultService.updateTrigger(id, (fresh) => ({
-          ...fresh,
-          lastChecked: new Date().toISOString(),
-        }));
-      },
-
-      onTriggerFired: async (triggerDoc, result, usage?: Usage) => {
-        // Re-fetch fresh trigger to avoid race conditions
-        const freshTrigger = getFreshTrigger(triggerDoc.id);
-        if (!freshTrigger) return;
-
-        const now = new Date().toISOString();
-
-        // Create history entry for this trigger firing
-        const historyEntry: TriggerAttempt = {
-          timestamp: now,
-          result: 'triggered',
-          reasoning: result.response.slice(0, 200), // Brief summary for history
-          usage,
-        };
-
-        // Create the 2-message block: trigger prompt + response
-        const triggerPromptMsg: Message = {
-          role: 'user',
-          timestamp: now,
-          content: freshTrigger.triggerPrompt,
-        };
-
-        const triggerResponseMsg: Message = {
-          role: 'assistant',
-          timestamp: now,
-          content: result.response,
-          model: freshTrigger.model,
-          usage,
-        };
-
-        // Update trigger with new messages, timestamps, and history (flat structure)
-        const updatedTrigger: Trigger = {
-          ...freshTrigger,
-          updated: now,
-          messages: [
-            ...freshTrigger.messages,
-            triggerPromptMsg,
-            triggerResponseMsg,
-          ],
-          lastChecked: now,
-          lastTriggered: now,
-          history: addHistoryEntry(freshTrigger, historyEntry),
-        };
-
-        await onTriggerUpdatedRef.current(updatedTrigger);
-
-        // Add to fired triggers list for UI notification
-        setFiredTriggers((prev) => [
-          {
-            conversationId: triggerDoc.id,
-            conversationTitle: triggerDoc.title,
-            firedAt: now,
-            reasoning: result.response.slice(0, 200),
-          },
-          ...prev,
-        ]);
-      },
-
-      onTriggerSkipped: async (triggerDoc, result, usage?: Usage) => {
-        // Re-fetch fresh trigger to avoid race conditions
-        const freshTrigger = getFreshTrigger(triggerDoc.id);
-        if (!freshTrigger) return;
-
-        const now = new Date().toISOString();
-
-        const historyEntry: TriggerAttempt = {
-          timestamp: now,
-          result: 'skipped',
-          reasoning: result.response,
-          usage,
-        };
-
-        // Update trigger (flat structure) - preserve original updated timestamp
-        const updatedTrigger: Trigger = {
-          ...freshTrigger,
-          updated: freshTrigger.updated,
-          lastChecked: now,
-          history: addHistoryEntry(freshTrigger, historyEntry),
-        };
-        await onTriggerUpdatedRef.current(updatedTrigger);
-      },
-
-      onTriggerChecking: (triggerId) => {
-        setActiveChecks((prev) => [...prev, triggerId]);
-      },
-
-      onTriggerCheckComplete: (triggerId) => {
-        setActiveChecks((prev) => prev.filter((id) => id !== triggerId));
-      },
-
-      onError: async (triggerDoc, error) => {
-        console.error('Trigger check error:', error);
-
-        // Re-fetch fresh trigger to avoid race conditions
-        const freshTrigger = getFreshTrigger(triggerDoc.id);
-        if (!freshTrigger) return;
-
-        const now = new Date().toISOString();
-
-        const historyEntry: TriggerAttempt = {
-          timestamp: now,
-          result: 'error',
-          reasoning: '',
-          error: error.message,
-        };
-
-        // Update trigger (flat structure)
-        const updatedTrigger: Trigger = {
-          ...freshTrigger,
-          updated: freshTrigger.updated,
-          lastChecked: now,
-          history: addHistoryEntry(freshTrigger, historyEntry),
-        };
-        await onTriggerUpdatedRef.current(updatedTrigger);
-      },
-    });
-
-    setIsSchedulerRunning(true);
-  }, [isSchedulerRunning]);
-
-  const stopScheduler = useCallback(() => {
-    triggerScheduler.stop();
-    setIsSchedulerRunning(false);
-    setActiveChecks([]);
+  const markDone = useCallback((id: string) => {
+    setActiveChecks(curr => curr.filter(x => x !== id));
   }, []);
 
   const dismissFiredTrigger = useCallback((conversationId: string) => {
-    setFiredTriggers((prev) =>
-      prev.filter((t) => t.conversationId !== conversationId)
-    );
+    setFiredTriggers(curr => curr.filter(t => t.conversationId !== conversationId));
   }, []);
 
-  // Auto-start scheduler when vault is available
-  useEffect(() => {
-    if (vaultPath && !isSchedulerRunning) {
-      startScheduler();
-    }
-    return () => {
-      if (isSchedulerRunning) {
-        stopScheduler();
-      }
-    };
-  }, [vaultPath]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const value: TriggerContextValue = {
-    isSchedulerRunning,
-    activeChecks,
-    firedTriggers,
-    startScheduler,
-    stopScheduler,
-    dismissFiredTrigger,
-  };
-
   return (
-    <TriggerContext.Provider value={value}>{children}</TriggerContext.Provider>
+    <TriggerContext.Provider
+      value={{ activeChecks, firedTriggers, markRunning, markDone, dismissFiredTrigger }}
+    >
+      {children}
+    </TriggerContext.Provider>
   );
 }
 

@@ -247,9 +247,8 @@ async fn run_stream(
     cancel: watch::Receiver<bool>,
 ) {
     let (provider, upstream_model) = match providers.resolve(&params.model) {
-        Some(r) => r,
-        None => {
-            let msg = format!("No provider configured for model: {}", params.model);
+        Ok(r) => r,
+        Err(msg) => {
             mark_error(&session, msg);
             return;
         }
@@ -428,6 +427,91 @@ impl ToolEventSink for SessionToolSink {
             .session
             .tx
             .send(SessionEvent::ToolResult(result.clone()));
+    }
+}
+
+/// Final outcome of a streaming session — used by callers (like the
+/// trigger executor) that need to await completion synchronously rather
+/// than fan events out over SSE.
+#[derive(Debug, Clone)]
+pub struct SessionOutcome {
+    pub content: String,
+    pub usage: Option<Usage>,
+    pub stop_reason: String,
+}
+
+/// Run a streaming session and await its terminal event. Used by
+/// programmatic callers (triggers, internal tasks) that want the final
+/// result rather than an SSE stream.
+pub async fn run_to_completion(
+    registry: &SessionRegistry,
+    providers: ProviderRegistry,
+    vault: Arc<Vault>,
+    tools: Arc<ToolRegistry>,
+    model_cache: Arc<ModelCache>,
+    params: StartParams,
+) -> anyhow::Result<SessionOutcome> {
+    let session = start_session(registry, providers, vault, tools, model_cache, params)?;
+    let mut rx = session.subscribe();
+
+    // Cover the race where the background task already finished between
+    // `start_session` returning and us subscribing.
+    {
+        let inner = session.inner.lock().unwrap();
+        match inner.status {
+            SessionStatus::Complete => {
+                if let Some(r) = inner.final_result.clone() {
+                    return Ok(SessionOutcome {
+                        content: r.content,
+                        usage: r.usage,
+                        stop_reason: r.stop_reason,
+                    });
+                }
+            }
+            SessionStatus::Error => {
+                anyhow::bail!(
+                    "session error: {}",
+                    inner.error_message.clone().unwrap_or_default()
+                );
+            }
+            SessionStatus::Streaming => {}
+        }
+    }
+
+    loop {
+        match rx.recv().await {
+            Ok(SessionEvent::Complete {
+                content,
+                usage,
+                stop_reason,
+            }) => {
+                return Ok(SessionOutcome {
+                    content,
+                    usage,
+                    stop_reason,
+                });
+            }
+            Ok(SessionEvent::Error(msg)) => anyhow::bail!("session error: {}", msg),
+            // Ignore chunks, tool events, title.
+            Ok(_) => continue,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => {
+                // No more events incoming — fall back to whatever the
+                // session state holds.
+                let inner = session.inner.lock().unwrap();
+                if let Some(r) = inner.final_result.clone() {
+                    return Ok(SessionOutcome {
+                        content: r.content,
+                        usage: r.usage,
+                        stop_reason: r.stop_reason,
+                    });
+                }
+                if let Some(err) = inner.error_message.clone() {
+                    anyhow::bail!("session error: {}", err);
+                }
+                anyhow::bail!("session channel closed without a final event");
+            }
+        }
     }
 }
 

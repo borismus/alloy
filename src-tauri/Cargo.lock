@@ -67,6 +67,7 @@ dependencies = [
  "eventsource-stream",
  "futures-util",
  "notify",
+ "regex",
  "reqwest",
  "rust-embed",
  "serde",

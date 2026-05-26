@@ -174,6 +174,14 @@ pub trait Provider: Send + Sync {
 
 pub type ProviderArc = Arc<dyn Provider>;
 
+/// Provider-id prefixes the SPA emits in model keys. Kept in sync with
+/// `ProviderType` in [src/types/index.ts](src/types/index.ts). Used by
+/// `resolve()` to distinguish "user wrote a bad model id with a real
+/// provider prefix" (→ fail loudly) from "user wrote a bare/vendor model
+/// id" (→ fall through to the default provider).
+const KNOWN_PROVIDER_IDS: &[&str] =
+    &["anthropic", "openai", "ollama", "gemini", "grok", "openrouter"];
+
 /// Registry mapping provider id ("openrouter", "ollama") to its client.
 #[derive(Clone)]
 pub struct ProviderRegistry {
@@ -203,19 +211,49 @@ impl ProviderRegistry {
     /// "openrouter/anthropic/claude-sonnet-4-6"), pick the provider and
     /// return the upstream model id.
     ///
-    /// Resolution: if the first segment matches a known provider id, use it
-    /// and pass the remainder upstream. Otherwise, route to the default
-    /// provider with the full string verbatim (backward compat for configs
-    /// that still use unprefixed model ids).
-    pub fn resolve<'a>(&'a self, model: &'a str) -> Option<(ProviderArc, &'a str)> {
+    /// Rules:
+    /// - Prefix matches a *registered* provider id → use it, strip the prefix.
+    /// - Prefix is a *known* alloy provider name (e.g. "anthropic", "openai")
+    ///   that isn't registered → return Err with a config-pointing message.
+    ///   This catches the common bug of a stale `defaultModel` pointing at a
+    ///   provider that was never set up (which used to silently route to the
+    ///   default and 400 upstream).
+    /// - No slash, or prefix that doesn't look like an alloy provider id →
+    ///   route to the default provider verbatim. Preserves backward compat
+    ///   for unprefixed model ids and for vendor/model pairs like
+    ///   `google/gemini-2.5-flash` that OpenRouter accepts directly.
+    pub fn resolve<'a>(&'a self, model: &'a str) -> Result<(ProviderArc, &'a str), String> {
         if let Some((first, rest)) = model.split_once('/') {
             if let Some(p) = self.by_id.get(first) {
-                return Some((p.clone(), rest));
+                return Ok((p.clone(), rest));
+            }
+            if KNOWN_PROVIDER_IDS.contains(&first) {
+                let mut configured: Vec<&str> =
+                    self.by_id.keys().map(String::as_str).collect();
+                configured.sort();
+                let configured = if configured.is_empty() {
+                    "none".to_string()
+                } else {
+                    configured.join(", ")
+                };
+                return Err(format!(
+                    "Model '{}' wants the '{}' provider, but only [{}] are configured. \
+                     Update `defaultModel` in config.yaml (or pick a different model) \
+                     so the prefix matches a configured provider.",
+                    model, first, configured
+                ));
             }
         }
-        let default = self.default_id.as_ref()?;
-        let p = self.by_id.get(default)?.clone();
-        Some((p, model))
+        let default = self
+            .default_id
+            .as_ref()
+            .ok_or_else(|| "No providers configured. Set OPENROUTER_API_KEY in config.yaml.".to_string())?;
+        let p = self
+            .by_id
+            .get(default)
+            .cloned()
+            .ok_or_else(|| format!("internal: default provider '{}' missing", default))?;
+        Ok((p, model))
     }
 
     pub fn default_provider(&self) -> Option<(String, ProviderArc)> {
@@ -273,4 +311,59 @@ pub(crate) fn chat_messages_to_openai(messages: &[ChatMessage]) -> Vec<Value> {
             }),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn openrouter_only() -> ProviderRegistry {
+        ProviderRegistry::from_configs(&[ProviderConfig {
+            id: "openrouter".into(),
+            kind: ProviderKind::OpenaiCompatible,
+            base_url: Some("https://openrouter.ai/api/v1".into()),
+            api_key: "test".into(),
+        }])
+    }
+
+    #[test]
+    fn resolve_strips_prefix_for_registered_provider() {
+        let r = openrouter_only();
+        let (_, upstream) = r.resolve("openrouter/anthropic/claude-sonnet-4.5").unwrap();
+        assert_eq!(upstream, "anthropic/claude-sonnet-4.5");
+    }
+
+    #[test]
+    fn resolve_fails_loudly_when_prefix_names_unregistered_provider() {
+        let r = openrouter_only();
+        let err = match r.resolve("anthropic/claude-sonnet-4-6") {
+            Ok(_) => panic!("expected error"),
+            Err(e) => e,
+        };
+        assert!(err.contains("'anthropic'"), "error should name the wanted provider: {err}");
+        assert!(err.contains("openrouter"), "error should list configured providers: {err}");
+        assert!(err.contains("config.yaml"), "error should point at config.yaml: {err}");
+    }
+
+    #[test]
+    fn resolve_falls_through_for_vendor_prefix_or_bare_id() {
+        let r = openrouter_only();
+        // OpenRouter accepts `google/gemini-2.5-flash` directly; not an alloy
+        // provider id, so we route to default verbatim.
+        let (_, upstream) = r.resolve("google/gemini-2.5-flash").unwrap();
+        assert_eq!(upstream, "google/gemini-2.5-flash");
+        // Bare id with no slash: legacy unprefixed configs.
+        let (_, upstream) = r.resolve("claude-sonnet").unwrap();
+        assert_eq!(upstream, "claude-sonnet");
+    }
+
+    #[test]
+    fn resolve_errors_when_no_providers_configured() {
+        let r = ProviderRegistry::from_configs(&[]);
+        let err = match r.resolve("google/gemini-2.5-flash") {
+            Ok(_) => panic!("expected error"),
+            Err(e) => e,
+        };
+        assert!(err.contains("No providers configured"), "{err}");
+    }
 }

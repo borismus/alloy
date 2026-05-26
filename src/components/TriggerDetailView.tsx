@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Trigger, Usage } from '../types';
 import { vaultService } from '../services/vault';
 import { useTriggerContext } from '../contexts/TriggerContext';
+import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import './TriggerDetailView.css';
@@ -50,7 +51,7 @@ export function TriggerDetailView({
   canGoBack = false,
   onClose,
 }: TriggerDetailViewProps) {
-  const { activeChecks } = useTriggerContext();
+  const { activeChecks, markRunning, markDone } = useTriggerContext();
   const [isRunning, setIsRunning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
@@ -94,13 +95,22 @@ export function TriggerDetailView({
 
   const handleRunNow = async () => {
     setIsRunning(true);
+    markRunning(trigger.id);
     try {
-      const { triggerScheduler } = await import('../services/triggers/scheduler');
-      await triggerScheduler.manualCheck(trigger as any);
+      const res = await fetch(`${getApiBase()}/api/triggers/${trigger.id}/run`, {
+        method: 'POST',
+        headers: getAuthHeadersForApi(),
+      });
+      if (!res.ok) {
+        console.error(`Trigger run failed: HTTP ${res.status}`);
+      }
+      // The server has written the YAML; the file watcher will deliver the
+      // update to App.tsx and re-render this view with new history.
       onRunNow();
     } catch (error) {
       console.error('Failed to run trigger:', error);
     } finally {
+      markDone(trigger.id);
       setIsRunning(false);
     }
   };

@@ -3,7 +3,9 @@ use std::{net::SocketAddr, sync::Arc};
 use alloy_server::{
     AppState, build_router, cli::Args, config::Config, providers::ProviderRegistry,
     routes::models::ModelCache, routes::watch::spawn_watcher, skill_registry::SkillRegistry,
-    streaming::SessionRegistry, tools::ToolRegistry, vault::Vault,
+    streaming::SessionRegistry, tools::ToolRegistry,
+    triggers::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
+    vault::Vault,
 };
 use clap::Parser;
 
@@ -40,6 +42,15 @@ async fn main() -> anyhow::Result<()> {
     let config = Arc::new(config);
 
     let providers = ProviderRegistry::from_configs(&config.providers);
+
+    // Surface a stale `defaultModel` at startup so the operator sees it before
+    // the first stream attempt fails. We only warn — the SPA can still pick a
+    // different model from /api/models.
+    if let Some(model) = &config.default_model {
+        if let Err(msg) = providers.resolve(model) {
+            tracing::warn!("defaultModel won't resolve: {}", msg);
+        }
+    }
     let watcher = spawn_watcher(vault.clone())?;
     let sessions = SessionRegistry::new();
 
@@ -54,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let model_cache = Arc::new(ModelCache::new());
+    let triggers = Arc::new(SchedulerHandle::new());
 
     let state = AppState {
         vault,
@@ -63,7 +75,12 @@ async fn main() -> anyhow::Result<()> {
         tools,
         config,
         model_cache,
+        triggers: triggers.clone(),
     };
+
+    // Background trigger scheduler: fires regardless of client presence.
+    spawn_scheduler(state.clone(), triggers.inflight.clone());
+
     let app = build_router(state);
 
     let bind: SocketAddr = format!("{}:{}", args.host, args.port)

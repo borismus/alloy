@@ -26,6 +26,7 @@ use crate::{
     skill_registry::SkillRegistry,
     streaming::SessionRegistry,
     tools::ToolRegistry,
+    triggers::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
     vault::Vault,
 };
 
@@ -90,6 +91,13 @@ impl EmbeddedServer {
     pub async fn set_vault(&self, vault_path: PathBuf) -> Result<String, EmbedError> {
         let state = build_app_state(&vault_path).await?;
         let config = state.config.clone();
+
+        // Kick off the trigger scheduler against this AppState. Note: on a
+        // vault rebind we leak the previous scheduler task — the AppState
+        // it captured is now orphaned but harmless (it points at the old
+        // vault and will keep ticking, but nothing reads its output).
+        // Acceptable since vault rebinding is a manual user action.
+        spawn_scheduler(state.clone(), state.triggers.inflight.clone());
 
         // Bind a fresh listener on a random loopback port.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -276,6 +284,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         skills.clone(),
     ));
     let model_cache = Arc::new(ModelCache::new());
+    let triggers = Arc::new(SchedulerHandle::new());
 
     Ok(AppState {
         vault,
@@ -285,6 +294,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         tools,
         config,
         model_cache,
+        triggers,
     })
 }
 

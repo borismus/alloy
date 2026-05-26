@@ -113,10 +113,8 @@ async fn run_one_agent(
     name: String,
 ) -> Result<(String, String, String), (String, String, String)> {
     let (provider, upstream_model) = match parent_registry.providers.resolve(&model) {
-        Some(r) => r,
-        None => {
-            return Err((name, model.clone(), format!("Provider not configured for {}", model)));
-        }
+        Ok(r) => r,
+        Err(msg) => return Err((name, model.clone(), msg)),
     };
     let upstream_model = upstream_model.to_string();
 
