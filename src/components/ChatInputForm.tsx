@@ -19,6 +19,7 @@ interface ChatInputFormProps {
   onModelChange: (modelKey: string) => void;
   availableModels: ModelInfo[];
   favoriteModels?: string[];
+  onToggleFavorite?: (modelKey: string) => void;
 }
 
 export interface ChatInputFormHandle {
@@ -35,6 +36,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   onModelChange,
   availableModels,
   favoriteModels,
+  onToggleFavorite,
 }, ref) => {
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -190,6 +192,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           disabled={false}
           models={availableModels}
           favoriteModels={favoriteModels}
+          onToggleFavorite={onToggleFavorite}
         />
         {isStreaming && !input.trim() && pendingImages.length === 0 ? (
           <button

@@ -18,7 +18,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .model-selector-button:hover:not(.disabled) {
@@ -28,6 +28,12 @@
 .model-selector-button:focus {
   outline: none;
   border-color: #667eea;
+}
+
+.model-selector-button:focus-visible {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
 .model-selector-button.disabled {
@@ -51,14 +57,16 @@
 .model-selector-dropdown {
   position: absolute;
   left: 0;
-  min-width: 100%;
-  max-height: 320px;
-  overflow-y: auto;
+  min-width: 280px;
+  max-width: min(420px, 90vw);
+  max-height: 420px;
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
 }
 
 .model-selector-dropdown.below {
@@ -69,12 +77,93 @@
   bottom: calc(100% + 4px);
 }
 
+/* Search input pinned to the top so it stays visible while the list scrolls. */
+.model-selector-search {
+  position: relative;
+  padding: 8px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+
+.model-selector-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 32px 0 12px;
+  border: 1px solid #d0d4d9;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  background: white;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.model-selector-search input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.model-selector-search input::placeholder {
+  color: #9ca3af;
+}
+
+.model-selector-clear {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  border-radius: 4px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.model-selector-clear:hover {
+  background: #e9ecef;
+  color: #4b5563;
+}
+
+.model-selector-section-header {
+  padding: 8px 14px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.model-selector-list {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  padding-bottom: 4px;
+}
+
+.model-selector-empty {
+  padding: 16px 14px 20px;
+  color: #6b7280;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* Row: star | name | check. Touch-friendly 44px target on the row itself. */
 .model-option {
   width: 100%;
-  padding: 0.75rem 1rem;
-  border: none;
+  min-height: 44px;
+  padding: 0 12px;
   background: white;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
   font-weight: 400;
   color: #333;
@@ -82,54 +171,61 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  transition: background-color 0.15s;
+  gap: 8px;
+  transition: background-color 0.1s;
+  box-sizing: border-box;
 }
 
-.model-option:hover {
-  background: #f8f9fa;
+.model-option:hover,
+.model-option.active {
+  background: #f3f5f9;
 }
 
 .model-option.selected {
-  background: #f0f2ff;
-  color: #667eea;
+  color: #4956d6;
   font-weight: 500;
 }
 
-.model-option svg {
+.model-option-name {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-option-check {
   flex-shrink: 0;
   color: #667eea;
 }
 
-/* Model groups */
-.model-group {
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.model-group:last-child {
-  border-bottom: none;
-}
-
-.model-group-header {
-  padding: 0.5rem 1rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #999;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: #fafafa;
+/* Star button — separate hit target from the row body. */
+.model-option-star {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #c8cdd4;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 0.1s, color 0.1s;
 }
 
-.provider-badge {
-  font-size: 0.65rem;
-  font-weight: 500;
-  color: #667eea;
-  background: #f0f2ff;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  text-transform: lowercase;
-  letter-spacing: 0;
+.model-option-star:hover {
+  background: #eaecf1;
+  color: #4956d6;
+}
+
+.model-option-star.is-favorite {
+  color: #f59e0b;
+}
+
+.model-option-star.is-favorite:hover {
+  color: #d97706;
 }

@@ -5,6 +5,69 @@ import * as yaml from 'js-yaml';
 import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger, TimelineItem } from '../types';
 
 /**
+ * Render the `favoriteModels:` YAML block used by updateFavoriteModels. Kept
+ * out of the class so it's pure and unit-testable. Always emits a trailing
+ * newline so it composes cleanly with surrounding lines.
+ */
+function renderFavoritesBlock(keys: string[]): string {
+  if (keys.length === 0) {
+    return 'favoriteModels: []\n';
+  }
+  const lines = keys.map(k => `  - ${k}`).join('\n');
+  return `favoriteModels:\n${lines}\n`;
+}
+
+/**
+ * Replace the existing `favoriteModels:` block in raw YAML text with `block`
+ * (which already includes its `favoriteModels:` header + items + trailing
+ * newline). Walks line by line — regex alternation across YAML's inline-vs-
+ * block-list-vs-indented-or-not styles is too fragile, and a previous
+ * regex-only attempt orphaned items written with non-indented `- ...` lines.
+ *
+ * "End of block" = next line that looks like another top-level key
+ * (`/^[A-Za-z_][\w-]*:/`) or EOF.
+ */
+export function spliceFavoritesBlock(existing: string, block: string): string {
+  if (existing.trim().length === 0) return block;
+
+  const lines = existing.split('\n');
+  let startIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^favoriteModels:/.test(lines[i])) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  if (startIdx === -1) {
+    // Prepend at the top — favorites live alongside defaultModel.
+    return block + existing;
+  }
+
+  // Find the end of the block: only consume subsequent lines that look like
+  // list items (indented or not). Comment-only and blank lines belong to the
+  // surrounding context — stop at the first such line. This protects inline
+  // comments the user has placed between favoriteModels and the next key.
+  let endIdx = startIdx + 1;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*-/.test(line)) {
+      endIdx = i + 1;
+      continue;
+    }
+    // Anything else (key, comment, blank) ends the block.
+    break;
+  }
+
+  // Splice. `block` ends with \n; drop it if the next surviving line already
+  // starts cleanly.
+  const before = lines.slice(0, startIdx).join('\n');
+  const after = lines.slice(endIdx).join('\n');
+  const beforePart = before.length > 0 ? before + '\n' : '';
+  return beforePart + block + after;
+}
+
+/**
  * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/trigger filename.
  * Input: "2025-01-14-1430-a1b2-my-topic.yaml" → "2025-01-14-1430-a1b2"
  */
@@ -134,6 +197,26 @@ export class VaultService {
 
     const configPath = await join(this.vaultPath, 'config.yaml');
     await writeTextFile(configPath, yaml.dump(config));
+  }
+
+  /**
+   * Update only the `favoriteModels:` array in config.yaml, preserving every
+   * other line (comments, provider templates, formatting). saveConfig() above
+   * does a full yaml.dump that would obliterate the user's hand-written
+   * comments — not OK for a frequently-toggled UI affordance like the star
+   * button in the model picker.
+   */
+  async updateFavoriteModels(keys: string[]): Promise<void> {
+    if (!this.vaultPath) return;
+
+    const configPath = await join(this.vaultPath, 'config.yaml');
+    let existing = '';
+    if (await exists(configPath)) {
+      existing = await readTextFile(configPath);
+    }
+
+    const next = spliceFavoritesBlock(existing, renderFavoritesBlock(keys));
+    await writeTextFile(configPath, next);
   }
 
   /**

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { VaultService } from './vault';
+import { VaultService, spliceFavoritesBlock } from './vault';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import * as fs from '@tauri-apps/plugin-fs';
 import * as yaml from 'js-yaml';
@@ -421,5 +421,67 @@ describe('VaultService', () => {
       // ID should stay the same
       expect(result?.id).toBe(coreId);
     });
+  });
+});
+
+describe('spliceFavoritesBlock', () => {
+  const block = 'favoriteModels:\n  - a\n  - b\n';
+
+  it('appends a block to empty input', () => {
+    expect(spliceFavoritesBlock('', block)).toBe(block);
+  });
+
+  it('prepends when no existing favoriteModels line', () => {
+    const existing = 'defaultModel: x\nOLLAMA_BASE_URL: http://h\n';
+    const out = spliceFavoritesBlock(existing, block);
+    expect(out.startsWith(block)).toBe(true);
+    expect(out).toContain('defaultModel: x');
+    expect(out).toContain('OLLAMA_BASE_URL');
+  });
+
+  it('replaces an indented block-list cleanly', () => {
+    const existing = `defaultModel: x
+favoriteModels:
+  - old1
+  - old2
+OLLAMA_BASE_URL: http://h
+`;
+    const out = spliceFavoritesBlock(existing, block);
+    expect(out).not.toContain('old1');
+    expect(out).not.toContain('old2');
+    expect(out).toContain('  - a');
+    expect(out).toContain('OLLAMA_BASE_URL');
+  });
+
+  it('replaces a non-indented block-list without orphaning items', () => {
+    // This was the bug: a previous regex-only approach matched only
+    // `favoriteModels:` and indented items, leaving the column-0 dashes
+    // behind as syntactically-invalid orphans.
+    const existing = `defaultModel: x
+favoriteModels:
+- old1
+- old2
+- old3
+OLLAMA_BASE_URL: http://h
+`;
+    const out = spliceFavoritesBlock(existing, block);
+    expect(out).not.toContain('old1');
+    expect(out).not.toContain('old2');
+    expect(out).not.toContain('old3');
+    expect(out).toContain('OLLAMA_BASE_URL');
+  });
+
+  it('preserves comments and unrelated keys', () => {
+    const existing = `# user-written comment
+defaultModel: x
+favoriteModels:
+  - old
+# another comment
+OLLAMA_BASE_URL: http://h
+`;
+    const out = spliceFavoritesBlock(existing, block);
+    expect(out).toContain('# user-written comment');
+    expect(out).toContain('# another comment');
+    expect(out).toContain('OLLAMA_BASE_URL');
   });
 });

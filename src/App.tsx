@@ -431,6 +431,8 @@ function AppContent() {
     } else if (item.type === 'note') {
       navigateTo({ type: 'note', id: item.id });
     } else if (item.type === 'conversation') {
+      (window as { __chatClickAt?: { id: string; t: number } }).__chatClickAt = { id: item.id, t: performance.now() };
+      console.debug('[perf] click conversation', item.id);
       navigateTo({ type: 'conversation', id: item.id });
       // Focus input after selection
       setTimeout(() => {
@@ -719,6 +721,23 @@ function AppContent() {
       }
     }
   };
+
+  const handleToggleFavorite = useCallback(async (modelKey: string) => {
+    const current = config?.favoriteModels ?? [];
+    const next = current.includes(modelKey)
+      ? current.filter(k => k !== modelKey)
+      : [...current, modelKey];
+    setConfig(prev => prev ? { ...prev, favoriteModels: next } : prev);
+    try {
+      const vaultPathForSave = vaultService.getVaultPath();
+      if (vaultPathForSave) markSelfWrite(`${vaultPathForSave}/config.yaml`);
+      await vaultService.updateFavoriteModels(next);
+    } catch (e) {
+      console.error('Failed to persist favorites:', e);
+      // Roll back state on persist failure so UI matches disk.
+      setConfig(prev => prev ? { ...prev, favoriteModels: current } : prev);
+    }
+  }, [config, markSelfWrite]);
 
   const handleModelChange = (modelKey: string) => {
     if (!currentConversation) return;
@@ -1109,6 +1128,7 @@ function AppContent() {
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
                 favoriteModels={config?.favoriteModels}
+                onToggleFavorite={handleToggleFavorite}
                 defaultModel={config?.defaultModel}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1206,6 +1226,7 @@ function AppContent() {
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
+            onToggleFavorite={handleToggleFavorite}
             defaultModel={config?.defaultModel}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import { Conversation, Message, ModelInfo, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { generateMessageId } from '../utils/ids';
 import { PROVIDER_NAMES } from '../utils/models';
@@ -63,6 +63,8 @@ interface ChatInterfaceProps {
   onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
   availableModels: ModelInfo[];
   favoriteModels?: string[];  // Format: "provider/model-id"
+  /** Toggle a model in/out of the favorites list (writes back to config.yaml). */
+  onToggleFavorite?: (modelKey: string) => void;
   /** Configured default model from config.yaml. Used to seed the picker on
    *  the empty-state welcome screen; ignored if not in availableModels. */
   defaultModel?: string;
@@ -108,6 +110,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onModelChange,
   availableModels,
   favoriteModels,
+  onToggleFavorite,
   defaultModel,
   onNavigateToNote,
   onNavigateToConversation,
@@ -191,7 +194,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const renderedMessages = useMemo(() => {
     if (!conversation) return null;
 
-    return conversation.messages.map((message, index) => {
+    const __memoStart = performance.now();
+    const __msgCount = conversation.messages.length;
+    const result = conversation.messages.map((message, index) => {
       // Skip rendering the last assistant message if we still have streaming content
       const isLastMessage = index === conversation.messages.length - 1;
       if (isLastMessage && message.role === 'assistant' && streamingContent) {
@@ -251,7 +256,24 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         </div>
       );
     });
+    console.debug(`[perf] renderedMessages useMemo built (${__msgCount} msgs) in ${(performance.now() - __memoStart).toFixed(1)}ms`);
+    return result;
   }, [conversation, getImageUrl, streamingContent, assistantName]);
+
+  // Time from sidebar click to DOM commit (pre-paint) and to first paint
+  useLayoutEffect(() => {
+    if (!conversation) return;
+    const stamp = (window as { __chatClickAt?: { id: string; t: number } }).__chatClickAt;
+    if (stamp && stamp.id === conversation.id) {
+      const commitMs = performance.now() - stamp.t;
+      console.debug(`[perf] click→commit ${commitMs.toFixed(1)}ms (${conversation.messages.length} msgs)`);
+      requestAnimationFrame(() => {
+        const paintMs = performance.now() - stamp.t;
+        console.debug(`[perf] click→paint  ${paintMs.toFixed(1)}ms`);
+        delete (window as { __chatClickAt?: { id: string; t: number } }).__chatClickAt;
+      });
+    }
+  }, [conversation?.id]);
 
   useImperativeHandle(ref, () => ({
     focusInput: () => {
@@ -504,6 +526,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             onModelChange={onModelChange}
             availableModels={availableModels}
             favoriteModels={favoriteModels}
+            onToggleFavorite={onToggleFavorite}
           />
         </div>
       );
@@ -620,6 +643,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         onModelChange={onModelChange}
         availableModels={availableModels}
         favoriteModels={favoriteModels}
+        onToggleFavorite={onToggleFavorite}
       />
     </div>
   );
