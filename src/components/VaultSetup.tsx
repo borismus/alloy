@@ -38,7 +38,8 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
       }
     } catch (error) {
       console.error('Error selecting vault folder:', error);
-      if (onError) onError('Error selecting folder. Please try again.');
+      const detail = error instanceof Error ? error.message : String(error);
+      if (onError) onError(`Error selecting folder: ${detail}`);
     } finally {
       setIsSelecting(false);
     }

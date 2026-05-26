@@ -38,12 +38,13 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
   const handleRevealVaultInFinder = async () => {
     try {
       if (!vaultPath) {
-        console.error('Vault path not found');
+        alert('Vault path not set');
         return;
       }
       await revealItemInDir(vaultPath);
     } catch (error) {
       console.error('Failed to reveal vault in Finder:', error);
+      alert(`Failed to reveal in Finder: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -87,13 +88,14 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
       const filePath = await vaultService.getConfigFilePath();
 
       if (!filePath) {
-        console.error('Config file path not found');
+        alert('Config file not found in vault');
         return;
       }
 
       await openPath(filePath);
     } catch (error) {
       console.error('Failed to open config file:', error);
+      alert(`Failed to open config: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

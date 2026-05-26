@@ -35,13 +35,23 @@ export class VaultService {
       title: 'Select Alloy Vault Folder',
     });
 
-    if (selected && typeof selected === 'string') {
-      this.setVaultPath(selected);
-      await this.initializeVault(selected);
-      return selected;
+    if (!selected || typeof selected !== 'string') {
+      return null;
     }
 
-    return null;
+    // In Tauri, the embedded server needs to know which folder to bind to
+    // before any /api/fs/* call can resolve. Without this, the subsequent
+    // initializeVault() and loadConfig() calls fail with PathTraversal
+    // because the absolute path the user picked sits outside whatever
+    // vault (if any) was previously bound.
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      const { setEmbeddedVaultPath } = await import('./tauri-bootstrap');
+      await setEmbeddedVaultPath(selected);
+    }
+
+    this.setVaultPath(selected);
+    await this.initializeVault(selected);
+    return selected;
   }
 
   async initializeVault(path: string): Promise<void> {

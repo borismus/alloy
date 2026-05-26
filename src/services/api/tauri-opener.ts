@@ -31,7 +31,9 @@ export async function openPath(path: string): Promise<void> {
 
 export async function revealItemInDir(path: string): Promise<void> {
   if (isTauri()) {
-    await tauriInvoke<void>('plugin:opener|reveal_item_in_dir', { path });
+    // The real plugin takes an array of paths (see node_modules/@tauri-apps/
+    // plugin-opener/dist-js/index.js — `{ paths }` not `{ path }`).
+    await tauriInvoke<void>('plugin:opener|reveal_item_in_dir', { paths: [path] });
     return;
   }
   // Browser fallback: copy the path to clipboard so the user can find it.
