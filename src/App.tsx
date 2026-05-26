@@ -1109,6 +1109,7 @@ function AppContent() {
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
                 favoriteModels={config?.favoriteModels}
+                defaultModel={config?.defaultModel}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                 scrollToMessageId={pendingScrollToMessageId}
@@ -1205,6 +1206,7 @@ function AppContent() {
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
+            defaultModel={config?.defaultModel}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             scrollToMessageId={pendingScrollToMessageId}
