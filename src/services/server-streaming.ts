@@ -112,7 +112,7 @@ export async function executeViaServer(
   // Subscribe to SSE events
   return new Promise<ServerStreamResult>((resolve, reject) => {
     let displayedLength = 0; // How much content we've already sent to onChunk
-    let result: ServerStreamResult | null = null;
+    let serverTitle: string | undefined;
     let eventSource: EventSource | null = null;
     let settled = false;
 
@@ -166,6 +166,7 @@ export async function executeViaServer(
 
       eventSource.addEventListener('title', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
+        serverTitle = data.title;
         options.onTitle?.(data.title);
       });
 
@@ -201,7 +202,7 @@ export async function executeViaServer(
           content: data.content,
           usage: data.usage,
           stopReason: data.stopReason,
-          title: result?.title,
+          title: serverTitle,
           toolUse: allToolUses.length > 0 ? allToolUses : undefined,
         }));
       });
