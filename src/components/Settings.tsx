@@ -24,6 +24,7 @@ interface SettingsProps {
 
 export function Settings({ onClose, vaultPath }: SettingsProps) {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | CheckResult>('idle');
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   const handleCheckForUpdates = async () => {
     setUpdateStatus('checking');
@@ -55,8 +56,6 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
     window.location.reload();
   };
 
-  // Network sharing (Tauri only). Lets the user expose the embedded server
-  // to other devices on the LAN/Tailnet so phones can hit the same vault.
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
 
@@ -80,6 +79,17 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
       alert(`Failed to toggle share: ${e}`);
     } finally {
       setShareBusy(false);
+    }
+  };
+
+  const handleCopyShareUrl = async () => {
+    if (!shareStatus?.url) return;
+    try {
+      await navigator.clipboard.writeText(shareStatus.url);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 1500);
+    } catch (e) {
+      console.error('[Settings] copy url failed:', e);
     }
   };
 
@@ -112,20 +122,14 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
             <h3>Vault</h3>
             <p className="settings-description">All conversations, notes, and settings are stored here.</p>
             {vaultPath && (
-              <p className="vault-path">{vaultPath}</p>
+              <p className="vault-path" title={vaultPath} dir="rtl">{vaultPath}</p>
             )}
             <div className="settings-button-group">
               <button
                 onClick={handleRevealVaultInFinder}
-                className="settings-button"
+                className="settings-button settings-button-secondary"
               >
                 Reveal in Finder
-              </button>
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="settings-button settings-button-danger"
-              >
-                Reset
               </button>
             </div>
           </div>
@@ -133,44 +137,52 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
           <div className="settings-section">
             <h3>Configuration</h3>
             <p className="settings-description">API keys, providers, and preferences.</p>
-            <button
-              onClick={handleEditConfig}
-              className="settings-button"
-            >
-              Edit config.yaml
-            </button>
+            <div className="settings-button-group">
+              <button
+                onClick={handleEditConfig}
+                className="settings-button settings-button-secondary"
+              >
+                Edit config.yaml
+              </button>
+            </div>
           </div>
 
           {isTauri() && shareStatus && (
             <div className="settings-section">
-              <h3>Network</h3>
-              <p className="settings-description">
-                Allow other devices on your network to access this Alloy session
-                via a browser. Use over Tailscale or LAN only.
-              </p>
-              <div className="settings-button-group">
+              <div className="settings-row">
+                <div className="settings-row-text">
+                  <h3>Share on network</h3>
+                  <p className="settings-description">
+                    Let other devices on your LAN or Tailnet open this vault in a browser.
+                  </p>
+                </div>
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={shareStatus.enabled}
+                  aria-label="Share on network"
                   onClick={handleToggleShare}
-                  className="settings-button"
                   disabled={shareBusy || !shareStatus.vault_configured}
                   title={!shareStatus.vault_configured ? 'Pick a vault first' : undefined}
+                  className={`toggle-switch ${shareStatus.enabled ? 'is-on' : ''}`}
                 >
-                  {shareBusy
-                    ? '…'
-                    : shareStatus.enabled
-                      ? `Stop sharing (port ${shareStatus.port})`
-                      : `Share on network (port ${shareStatus.port})`}
+                  <span className="toggle-switch-thumb" />
                 </button>
               </div>
-              {shareStatus.enabled && shareStatus.url && (
-                <p className="vault-path" style={{ marginTop: '8px' }}>
-                  Open on your phone: <code>{shareStatus.url}</code>
-                </p>
-              )}
               {!shareStatus.vault_configured && (
-                <p className="settings-description" style={{ marginTop: '4px', fontSize: '12px' }}>
-                  Pick a vault first to enable network sharing.
-                </p>
+                <p className="settings-hint">Pick a vault first to enable sharing.</p>
+              )}
+              {shareStatus.enabled && shareStatus.url && (
+                <div className="share-url">
+                  <code>{shareStatus.url}</code>
+                  <button
+                    type="button"
+                    onClick={handleCopyShareUrl}
+                    className="share-url-copy"
+                  >
+                    {copiedUrl ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -181,10 +193,10 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
             <div className="settings-button-group">
               <button
                 onClick={handleCheckForUpdates}
-                className="settings-button"
+                className="settings-button settings-button-secondary"
                 disabled={updateStatus === 'checking'}
               >
-                {updateStatus === 'checking' ? 'Checking...' : 'Check for Updates'}
+                {updateStatus === 'checking' ? 'Checking…' : 'Check for updates'}
               </button>
               {updateStatus !== 'idle' && updateStatus !== 'checking' && (
                 <span className={`update-status ${
@@ -201,14 +213,39 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
             </div>
           </div>
 
+          <div className="settings-section settings-section-danger">
+            <h3>Danger zone</h3>
+            <p className="settings-description">
+              Clears local app state (selected vault, UI prefs) and reloads. Vault files are not deleted.
+            </p>
+            <div className="settings-button-group">
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="settings-button settings-button-danger-outline"
+              >
+                Reset local state
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
 
       {showResetConfirm && (
         <div className="settings-overlay" onClick={() => setShowResetConfirm(false)}>
           <div className="settings-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Reset Alloy?</h3>
-            <p>This will clear all local settings and reload the app. Your vault files will not be deleted.</p>
+            <h3>Reset local app state?</h3>
+            <p>The app will reload. You'll be asked to pick a vault again.</p>
+            <ul className="confirm-list">
+              <li className="confirm-list-clear">
+                <span className="confirm-list-icon" aria-hidden>×</span>
+                <span>Selected vault, sidebar state, UI preferences</span>
+              </li>
+              <li className="confirm-list-keep">
+                <span className="confirm-list-icon" aria-hidden>✓</span>
+                <span>Conversations, notes, triggers, config (all vault files)</span>
+              </li>
+            </ul>
             <div className="settings-button-group">
               <button
                 onClick={() => setShowResetConfirm(false)}
