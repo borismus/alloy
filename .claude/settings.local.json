@@ -39,7 +39,11 @@
       "Bash(wc:*)",
       "Bash(xargs -I {} basename {})",
       "mcp__playwright__browser_console_messages",
-      "Bash(rustup --version)"
+      "Bash(rustup --version)",
+      "Bash(SERVER_MODE=true npm run build)",
+      "mcp__playwright__browser_select_option",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_fill_form"
     ]
   },
   "enableAllProjectMcpServers": true,
