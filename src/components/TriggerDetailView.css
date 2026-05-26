@@ -67,13 +67,17 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: opacity 0.15s ease, box-shadow 0.15s ease;
   font-family: inherit;
 }
 
 .btn-ask-about:hover {
-  opacity: 0.9;
-  transform: translateX(2px);
+  opacity: 0.92;
+}
+
+.btn-ask-about:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4);
 }
 
 .btn-ask-about svg {
@@ -81,13 +85,13 @@
 }
 
 .btn-ask-about:hover svg {
-  transform: translateX(3px);
+  transform: translateX(2px);
 }
 
 /* No response state */
 .no-response {
   background: var(--bg-secondary, #f8f9fa);
-  border: 1px dashed var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
   padding: 2rem;
   text-align: center;
@@ -197,23 +201,24 @@
   font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
-  padding: 0.15rem 0.4rem;
+  padding: 0.15rem 0.45rem;
   border-radius: 4px;
+  letter-spacing: 0.3px;
 }
 
 .history-result.triggered {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+  background: #ecfdf5;
+  color: #047857;
 }
 
 .history-result.skipped {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
 .history-result.error {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .history-reasoning {
@@ -239,6 +244,13 @@
 
 .btn-small:hover {
   background: var(--bg-hover, #f0f0f0);
+  border-color: #c8ccd1;
+}
+
+.btn-small:focus-visible {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 .btn-small:disabled {
