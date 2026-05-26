@@ -38,18 +38,17 @@ pub struct EmbeddedServer {
 
 #[derive(Default)]
 struct EmbeddedInner {
-    /// The base URL the SPA (inside the Tauri webview) should hit. Always
-    /// loopback. `None` until a vault has been bound.
+    /// The base URL the SPA (inside the Tauri webview) hits. Always loopback,
+    /// even when sharing is on (`0.0.0.0` binds include `127.0.0.1`).
+    /// `None` until a vault has been bound.
     internal_url: Option<String>,
     /// Vault path currently in use, if any.
     vault_path: Option<PathBuf>,
-    /// Internal listener task; aborted on vault swap.
-    internal_task: Option<JoinHandle<()>>,
-    /// Public-facing listener (bound to 0.0.0.0:<sharePort>) when
-    /// `shareOnNetwork` is on. Aborted on toggle-off or vault swap.
-    public_task: Option<JoinHandle<()>>,
-    /// Most recent AppState (kept around so the public listener can be
-    /// (re)spawned with the same state when the share toggle flips).
+    /// The single axum listener task. Same task whether share is on or off;
+    /// `set_share` aborts it and rebinds with the new interface.
+    listener_task: Option<JoinHandle<()>>,
+    /// Most recent AppState (kept around so we can rebuild a router on
+    /// rebind without rebuilding all the registries).
     state: Option<AppState>,
     /// Cached effective config, kept in sync with config.yaml.
     config: Option<Arc<Config>>,
@@ -86,78 +85,94 @@ impl EmbeddedServer {
         self.inner.lock().unwrap().vault_path.clone()
     }
 
-    /// Bind (or rebind) the internal listener using the given vault path.
-    /// Returns the new URL. If a listener was already running, it's aborted.
+    /// Bind (or rebind) the listener using the given vault path.
+    /// Returns the loopback URL.
+    ///
+    /// Idempotent on the same path: the SPA setup flow calls this twice in
+    /// quick succession (once from `selectVaultFolder` so /api/fs/* works
+    /// during the folder check, once from `loadVault` for the full mount),
+    /// and naively rebuilding the AppState + tearing down the listener on
+    /// the second call races against any in-flight HTTP request from the
+    /// first. So we short-circuit when the same path is already bound.
     pub async fn set_vault(&self, vault_path: PathBuf) -> Result<String, EmbedError> {
+        // Fast path: same vault already bound and serving.
+        {
+            let inner = self.inner.lock().unwrap();
+            if let (Some(current), Some(url), true) = (
+                inner.vault_path.as_ref(),
+                inner.internal_url.as_ref(),
+                inner.listener_task.is_some(),
+            ) {
+                if current == &vault_path {
+                    return Ok(url.clone());
+                }
+            }
+        }
+
         let state = build_app_state(&vault_path).await?;
         let config = state.config.clone();
 
-        // Kick off the trigger scheduler against this AppState. Note: on a
-        // vault rebind we leak the previous scheduler task — the AppState
-        // it captured is now orphaned but harmless (it points at the old
-        // vault and will keep ticking, but nothing reads its output).
-        // Acceptable since vault rebinding is a manual user action.
+        // Kick off the trigger scheduler against this AppState. On a vault
+        // *swap* (different path) we leak the previous scheduler task — the
+        // AppState it captured is now orphaned but harmless. Acceptable
+        // since vault swapping is a manual user action.
         spawn_scheduler(state.clone(), state.triggers.inflight.clone());
 
-        // Bind a fresh listener on a random loopback port.
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let addr = listener.local_addr()?;
-        let url = format!("http://{}", addr);
-
-        let app = build_router(state.clone());
-        let task = tokio::spawn(async move {
-            if let Err(e) = axum::serve(
-                listener,
-                app.into_make_service_with_connect_info::<SocketAddr>(),
-            )
-            .await
-            {
-                tracing::error!("internal axum serve exited: {}", e);
-            }
-        });
-
-        // Atomically swap state + listener; abort prior listener(s).
-        let public_should_run = config.share_on_network;
-        let public_port = config.share_port;
+        // Stash state+config first so `bind_listener` can read share state
+        // out of the cached config.
         {
             let mut inner = self.inner.lock().unwrap();
-            if let Some(prev) = inner.internal_task.take() {
+            if let Some(prev) = inner.listener_task.take() {
                 prev.abort();
             }
-            if let Some(prev) = inner.public_task.take() {
-                prev.abort();
-            }
-            inner.internal_task = Some(task);
-            inner.internal_url = Some(url.clone());
             inner.vault_path = Some(vault_path);
             inner.state = Some(state);
             inner.config = Some(config);
         }
 
-        // If `shareOnNetwork` was true in the loaded config, kick off the
-        // public listener too. Failure here is non-fatal (Tauri webview
-        // still works via the internal listener) but surfaces as a log.
-        if public_should_run {
-            if let Err(e) = self.spawn_public_listener(public_port).await {
-                tracing::warn!("public listener failed to start: {}", e);
-            }
-        }
-
+        let url = self.bind_listener().await?;
         Ok(url)
     }
 
-    /// Bind (or rebind) the public listener on `0.0.0.0:<port>`. Aborts
-    /// any existing one first. Returns the new URL on success.
-    async fn spawn_public_listener(&self, port: u16) -> Result<String, EmbedError> {
-        let state = {
+    /// (Re)bind the single axum listener. Interface depends on share state:
+    /// `0.0.0.0:<port>` when sharing is on, `127.0.0.1:<port>` otherwise.
+    /// If the configured port is taken, falls back to a random loopback port
+    /// — share-on requires the configured port (returns error).
+    async fn bind_listener(&self) -> Result<String, EmbedError> {
+        let (state, sharing, port) = {
             let inner = self.inner.lock().unwrap();
-            inner.state.clone().ok_or_else(|| {
-                EmbedError::Config("cannot start public listener without a vault".into())
-            })?
+            let state = inner.state.clone().ok_or_else(|| {
+                EmbedError::Config("cannot bind listener without a vault".into())
+            })?;
+            let cfg = inner.config.as_ref().cloned().unwrap_or_default();
+            (state, cfg.share_on_network, cfg.share_port)
         };
 
-        let addr = format!("0.0.0.0:{}", port);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        let iface = if sharing { "0.0.0.0" } else { "127.0.0.1" };
+        let primary_addr = format!("{}:{}", iface, port);
+
+        // Try the configured port first; fall back to a random loopback port
+        // only when share is off and the well-known port is taken (e.g. a
+        // standalone alloy-serve already running). For shared sessions we
+        // require the configured port so external clients have a stable URL.
+        //
+        // SO_REUSEADDR matters on a rebind: when we abort the prior task,
+        // its TcpListener drops asynchronously and the kernel may still
+        // hold the port for a moment. Without REUSEADDR the immediate
+        // rebind fails with EADDRINUSE and we'd silently slip onto a
+        // random port even though :3001 is about to be free.
+        let listener = match bind_with_reuse(&primary_addr).await {
+            Ok(l) => l,
+            Err(e) if !sharing => {
+                tracing::warn!(
+                    "{} taken ({}); falling back to random loopback port. \
+                     `npm run dev`'s vite /api proxy expects {} — close whatever is holding it.",
+                    primary_addr, e, port
+                );
+                bind_with_reuse("127.0.0.1:0").await?
+            }
+            Err(e) => return Err(EmbedError::Bind(e)),
+        };
         let bound = listener.local_addr()?;
 
         let app = build_router(state);
@@ -168,19 +183,27 @@ impl EmbeddedServer {
             )
             .await
             {
-                tracing::error!("public axum serve exited: {}", e);
+                tracing::error!("axum serve exited: {}", e);
             }
         });
 
+        // The SPA in the Tauri webview always talks to loopback even when
+        // we bind 0.0.0.0 publicly — loopback is included in 0.0.0.0.
+        let internal_url = format!("http://127.0.0.1:{}", bound.port());
+
         {
             let mut inner = self.inner.lock().unwrap();
-            if let Some(prev) = inner.public_task.take() {
+            if let Some(prev) = inner.listener_task.take() {
                 prev.abort();
             }
-            inner.public_task = Some(task);
+            inner.listener_task = Some(task);
+            inner.internal_url = Some(internal_url.clone());
         }
-        tracing::info!("public listener bound at http://{}", bound);
-        Ok(format!("http://{}", bound))
+        tracing::info!(
+            "listener bound at http://{} (internal url: {})",
+            bound, internal_url
+        );
+        Ok(internal_url)
     }
 
     /// True if vault is bound (required for sharing).
@@ -193,12 +216,13 @@ impl EmbeddedServer {
         self.inner
             .lock()
             .unwrap()
-            .public_task
+            .config
             .as_ref()
-            .is_some()
+            .map(|c| c.share_on_network)
+            .unwrap_or(false)
     }
 
-    /// The port the public listener was configured to bind on.
+    /// The port the listener binds on.
     pub fn share_port(&self) -> u16 {
         self.inner
             .lock()
@@ -209,28 +233,23 @@ impl EmbeddedServer {
             .unwrap_or(3001)
     }
 
-    /// Toggle the public listener. Persists the new value to the vault's
-    /// `config.yaml`. Returns the public URL when enabling, None when
-    /// disabling.
+    /// Toggle network exposure. Persists the new value to the vault's
+    /// `config.yaml`, then rebinds the listener on `0.0.0.0` (share on) or
+    /// `127.0.0.1` (share off). Returns the loopback URL.
     pub async fn set_share(&self, enabled: bool) -> Result<Option<String>, EmbedError> {
-        let (vault_path, port) = {
+        let vault_path = {
             let inner = self.inner.lock().unwrap();
-            let vault_path = inner.vault_path.clone().ok_or_else(|| {
+            inner.vault_path.clone().ok_or_else(|| {
                 EmbedError::Config("cannot toggle share before a vault is set".into())
-            })?;
-            let port = inner
-                .config
-                .as_ref()
-                .map(|c| c.share_port)
-                .unwrap_or(3001);
-            (vault_path, port)
+            })?
         };
 
         // Persist to disk so the next launch remembers the setting.
         let config_path = vault_path.join("config.yaml");
         write_share_on_network(&config_path, enabled).map_err(EmbedError::from)?;
 
-        // Update cached config.
+        // Update cached config and the live AtomicBool the request-time
+        // middleware reads.
         {
             let mut inner = self.inner.lock().unwrap();
             if let Some(cfg) = inner.config.as_mut() {
@@ -238,18 +257,15 @@ impl EmbeddedServer {
                 new.share_on_network = enabled;
                 *cfg = Arc::new(new);
             }
+            if let Some(state) = inner.state.as_ref() {
+                state
+                    .share_on_network
+                    .store(enabled, std::sync::atomic::Ordering::Relaxed);
+            }
         }
 
-        if enabled {
-            let url = self.spawn_public_listener(port).await?;
-            Ok(Some(url))
-        } else {
-            let mut inner = self.inner.lock().unwrap();
-            if let Some(prev) = inner.public_task.take() {
-                prev.abort();
-            }
-            Ok(None)
-        }
+        let url = self.bind_listener().await?;
+        Ok(if enabled { Some(url) } else { None })
     }
 }
 
@@ -285,6 +301,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
     ));
     let model_cache = Arc::new(ModelCache::new());
     let triggers = Arc::new(SchedulerHandle::new());
+    let share_on_network = Arc::new(std::sync::atomic::AtomicBool::new(config.share_on_network));
 
     Ok(AppState {
         vault,
@@ -293,9 +310,26 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         sessions,
         tools,
         config,
+        share_on_network,
         model_cache,
         triggers,
     })
+}
+
+/// Bind a TCP listener with SO_REUSEADDR set so a follow-up bind after
+/// aborting a prior listener doesn't race the kernel's port-release.
+async fn bind_with_reuse(addr: &str) -> std::io::Result<tokio::net::TcpListener> {
+    let sock_addr: SocketAddr = addr.parse().map_err(|e: std::net::AddrParseError| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, e)
+    })?;
+    let socket = if sock_addr.is_ipv4() {
+        tokio::net::TcpSocket::new_v4()?
+    } else {
+        tokio::net::TcpSocket::new_v6()?
+    };
+    socket.set_reuseaddr(true)?;
+    socket.bind(sock_addr)?;
+    socket.listen(1024)
 }
 
 /// Convenience: Tauri shell calls this from `setup`. Reads the initial vault

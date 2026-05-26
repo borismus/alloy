@@ -20,7 +20,7 @@ pub mod types;
 pub mod vault;
 pub mod vault_writer;
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use axum::Router;
 use tower_http::cors::CorsLayer;
@@ -43,6 +43,11 @@ pub struct AppState {
     pub sessions: SessionRegistry,
     pub tools: Arc<ToolRegistry>,
     pub config: Arc<Config>,
+    /// Live mirror of `config.shareOnNetwork`. Read by the share-gate
+    /// middleware on every request so toggling the share UI takes effect
+    /// without rebuilding state. `embed::set_share` flips this in lockstep
+    /// with the listener rebind.
+    pub share_on_network: Arc<AtomicBool>,
     pub model_cache: Arc<ModelCache>,
     /// Holds the scheduler's "currently running" set so the `/run` route
     /// and the background tick don't double-fire the same trigger.
@@ -68,6 +73,10 @@ pub fn build_router(state: AppState) -> Router {
         // catch-all means OPTIONS preflight on /api/* paths doesn't end up
         // returning 405 (which would block the actual POST in WKWebView).
         .fallback(routes::static_files::fallback)
+        .layer(axum::middleware::from_fn_with_state(
+            state.share_on_network.clone(),
+            auth::tailscale_share_gate,
+        ))
         .layer(axum::middleware::from_fn(auth::ip_allowlist))
         .layer(cors)
         .with_state(state)

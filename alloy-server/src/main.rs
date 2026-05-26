@@ -1,4 +1,7 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use alloy_server::{
     AppState, build_router, cli::Args, config::Config, providers::ProviderRegistry,
@@ -67,6 +70,8 @@ async fn main() -> anyhow::Result<()> {
     let model_cache = Arc::new(ModelCache::new());
     let triggers = Arc::new(SchedulerHandle::new());
 
+    let share_on_network = Arc::new(AtomicBool::new(config.share_on_network));
+
     let state = AppState {
         vault,
         watcher,
@@ -74,6 +79,7 @@ async fn main() -> anyhow::Result<()> {
         sessions,
         tools,
         config,
+        share_on_network,
         model_cache,
         triggers: triggers.clone(),
     };
