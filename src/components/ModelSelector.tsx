@@ -28,6 +28,15 @@ export function ModelSelector({ value, onChange, disabled, models, favoriteModel
   // value is now in "provider/model-id" format, same as model.key
   const selectedModel = models.find(m => m.key === value);
 
+  // Stale-model fallback: when the conversation was last used with a model
+  // that /api/models no longer returns (renamed, deprecated, regional
+  // alias), the catalog lookup misses. Show the model id stripped of its
+  // provider prefix instead of a misleading "Select Model" — the dropdown
+  // still lets the user pick a current one.
+  const selectedLabel = selectedModel?.name
+    || (value ? value.split('/').slice(1).join('/') || value : '')
+    || 'Select Model';
+
   // Check if a model is in the favorites list
   const isFavorite = (model: ModelInfo) => favoriteModels.includes(model.key);
 
@@ -96,7 +105,7 @@ export function ModelSelector({ value, onChange, disabled, models, favoriteModel
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
       >
-        <span>{selectedModel?.name || 'Select Model'}</span>
+        <span>{selectedLabel}</span>
         <svg className={`chevron ${isOpen ? 'open' : ''}`} width="12" height="8" viewBox="0 0 12 8" fill="none">
           <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
