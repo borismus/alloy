@@ -10,8 +10,7 @@ import type { ConversationInfo } from '../types';
 import './MarkdownContent.css';
 import 'highlight.js/styles/github.css';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const remarkPlugins: any[] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkBreaks];
+const remarkPlugins = [remarkGfm, remarkMath, remarkBreaks];
 const rehypePlugins = [rehypeHighlight, rehypeKatex];
 
 // Some models (notably Gemini) emit literal <br> tags. ReactMarkdown escapes raw HTML,
@@ -25,6 +24,41 @@ function normalizeBrTags(content: string): string {
       return line.replace(/<br\s*\/?>/gi, replacement);
     })
     .join('\n');
+}
+
+// Single-dollar inline math (e.g. `$\rightarrow$`) is enabled, but unescaped
+// currency like `$5` would otherwise be parsed as a math delimiter. Escape `$`
+// when it precedes a digit so remark-math treats it as a literal dollar. Skip
+// fenced code blocks and inline code so we don't corrupt code samples.
+function escapeCurrencyDollars(content: string): string {
+  const escape = (text: string) => text.replace(/(^|[^\\])\$(?=\d)/g, '$1\\$');
+  const out: string[] = [];
+  let i = 0;
+  let buf = '';
+  while (i < content.length) {
+    if (content.startsWith('```', i)) {
+      out.push(escape(buf));
+      buf = '';
+      const end = content.indexOf('```', i + 3);
+      const stop = end === -1 ? content.length : end + 3;
+      out.push(content.slice(i, stop));
+      i = stop;
+      continue;
+    }
+    if (content[i] === '`') {
+      out.push(escape(buf));
+      buf = '';
+      const end = content.indexOf('`', i + 1);
+      const stop = end === -1 ? content.length : end + 1;
+      out.push(content.slice(i, stop));
+      i = stop;
+      continue;
+    }
+    buf += content[i];
+    i++;
+  }
+  out.push(escape(buf));
+  return out.join('');
 }
 
 // Allow custom URL protocols (wikilink:, provenance:) in addition to standard ones
@@ -52,7 +86,10 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
   urlTransform = defaultUrlTransform,
   conversations,
 }) => {
-  const processedContent = useMemo(() => processWikiLinks(normalizeBrTags(content)), [content]);
+  const processedContent = useMemo(
+    () => processWikiLinks(escapeCurrencyDollars(normalizeBrTags(content))),
+    [content]
+  );
   const markdownComponents = useMemo(
     () => createMarkdownComponents({ onNavigateToNote, onNavigateToConversation, conversations }),
     [onNavigateToNote, onNavigateToConversation, conversations]
