@@ -307,7 +307,7 @@ describe('VaultService', () => {
 
       const result = await vaultService.getConversationFilePath('conv-123');
 
-      expect(result).toBe('//conversations/conv-123.yaml');
+      expect(result).toBe('/test/vault/conversations/conv-123.yaml');
     });
 
     it('should return null if conversation does not exist', async () => {

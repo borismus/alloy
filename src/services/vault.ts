@@ -553,14 +553,28 @@ export class VaultService {
     return this.extractCoreId(filename);
   }
 
+  /**
+   * Public getters return ABSOLUTE filesystem paths because their callers
+   * (revealItemInDir, openPath, markSelfWrite vs. native watcher events)
+   * need to talk to the OS. Internal helpers (`findConversationFile` etc.)
+   * keep returning server-relative paths for use in /api/fs/* calls.
+   */
   async getConversationFilePath(id: string): Promise<string | null> {
-    // Find file by core ID (handles files with slugs)
-    return await this.findConversationFile(id);
+    const rel = await this.findConversationFile(id);
+    return rel ? this.toAbsolute(rel) : null;
   }
 
   async getTriggerFilePath(id: string): Promise<string | null> {
-    // Find file by core ID (handles files with slugs)
-    return await this.findTriggerFile(id);
+    const rel = await this.findTriggerFile(id);
+    return rel ? this.toAbsolute(rel) : null;
+  }
+
+  /** Map a server-relative vault path (e.g. "/conversations/foo.yaml") to
+   *  an absolute filesystem path, if we know the absolute vault root. */
+  private toAbsolute(relative: string): string {
+    if (!this.absoluteVaultPath) return relative;
+    const trimmed = relative.replace(/^\/+/, '');
+    return `${this.absoluteVaultPath.replace(/\/+$/, '')}/${trimmed}`;
   }
 
   generateSlug(title: string): string {
@@ -721,10 +735,10 @@ export class VaultService {
   async getNoteFilePath(filename: string): Promise<string | null> {
     if (!this.vaultPath) return null;
     // memory.md and riffs/ are at vault root, regular notes at notes/
-    if (filename === 'memory.md' || filename.startsWith('riffs/')) {
-      return await join(this.vaultPath, filename);
-    }
-    return await join(this.vaultPath, 'notes', filename);
+    const rel = filename === 'memory.md' || filename.startsWith('riffs/')
+      ? await join(this.vaultPath, filename)
+      : await join(this.vaultPath, 'notes', filename);
+    return this.toAbsolute(rel);
   }
 
   async deleteNote(filename: string): Promise<boolean> {
