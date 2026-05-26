@@ -85,12 +85,34 @@ class ErrorBoundary extends React.Component<
 }
 
 
+/**
+ * True when an error came from `fetch` failing to reach the server (rather
+ * than the server returning a 4xx/5xx). Used to distinguish "backend down"
+ * from "vault is broken" in init so we can show the right UI.
+ */
+function isBackendUnreachable(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return msg.includes('failed to fetch')
+      || msg.includes('networkerror')
+      || msg.includes('load failed')
+      || msg.includes('econnrefused');
+  }
+  return false;
+}
+
 function AppContent() {
   useVisualViewport();
   const [config, setConfig] = useState<Config | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Set when the backend is unreachable on init (vs. real config errors). We
+  // keep the saved vaultPath in localStorage so a retry / page reload works
+  // the moment the backend comes back, instead of dumping the user to vault
+  // setup like a fresh install.
+  const [initError, setInitError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
@@ -375,7 +397,17 @@ function AppContent() {
         }
       } catch (error) {
         console.error('Error initializing app:', error);
-        localStorage.removeItem('vaultPath');
+        if (isBackendUnreachable(error)) {
+          // /api fetch failed (likely ECONNREFUSED via vite proxy because the
+          // embedded server isn't on :3001). Don't clear vaultPath — the user
+          // didn't pick a bad vault, the backend is just down.
+          setInitError(
+            'Could not reach the Alloy backend. If this is a dev session, make sure `tauri dev` is running; ' +
+            'if you opened the app from another device via Tailscale, the desktop needs "Share on Network" enabled.'
+          );
+        } else {
+          localStorage.removeItem('vaultPath');
+        }
         setIsLoading(false);
       }
     };
@@ -538,7 +570,14 @@ function AppContent() {
       }
     } catch (error) {
       console.error('Error loading vault:', error);
-      localStorage.removeItem('vaultPath');
+      if (isBackendUnreachable(error)) {
+        setInitError(
+          'Could not reach the Alloy backend. If this is a dev session, make sure `tauri dev` is running; ' +
+          'if you opened the app from another device via Tailscale, the desktop needs "Share on Network" enabled.'
+        );
+      } else {
+        localStorage.removeItem('vaultPath');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -824,6 +863,16 @@ function AppContent() {
 
   if (isLoading) {
     return <div className="loading">Loading...</div>;
+  }
+
+  if (initError) {
+    return (
+      <div className="loading" style={{ flexDirection: 'column', gap: 16, padding: 32, textAlign: 'center' }}>
+        <div style={{ fontWeight: 600 }}>Backend unreachable</div>
+        <div style={{ maxWidth: 480, opacity: 0.85 }}>{initError}</div>
+        <button onClick={() => window.location.reload()}>Retry</button>
+      </div>
+    );
   }
 
   if (!config) {
