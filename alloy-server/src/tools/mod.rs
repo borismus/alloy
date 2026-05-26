@@ -9,6 +9,7 @@ pub mod http;
 pub mod search;
 pub mod skills;
 pub mod subagents;
+pub mod triggers;
 pub mod websearch;
 
 use std::sync::Arc;
@@ -66,6 +67,7 @@ impl ToolRegistry {
             "spawn_subagent" => {
                 subagents::execute(self.clone(), ctx, &call.input).await
             }
+            "create_trigger" => triggers::execute(self, &call.input).await,
             other => Err(format!("Tool not implemented: {}", other)),
         };
         match result {

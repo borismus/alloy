@@ -162,6 +162,17 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
             ],
             &["path", "content"],
         ),
+        def(
+            "create_trigger",
+            "Create a recurring background trigger that re-runs your prompt on a schedule and notifies the user when something meaningful changes. Use for monitoring requests like \"watch BTC price hourly\" or \"check this RSS feed daily.\" The trigger runs server-side so it fires whether or not the user has the app open. The first baseline run starts within ~60 seconds of creation.",
+            &[
+                ("title", "string", r#"Short human-readable label shown in the sidebar (e.g., "Watch BTC price", "Daily Hacker News digest")"#),
+                ("trigger_prompt", "string", "The prompt the trigger evaluates each tick. The model is told to compare against the previous baseline and only re-notify on meaningful change, so write the prompt as if asking for a snapshot of current state. Include any data points or thresholds that matter."),
+                ("interval_minutes", "string", r#"How often to check, in minutes. Default "60" (hourly). Common values: "5" (rapid), "60" (hourly), "1440" (daily)."#),
+                ("model", "string", r#"Optional model id (e.g., "openrouter/anthropic/claude-haiku-4.5"). Defaults to the user's configured defaultModel. Prefer cheaper models since triggers run repeatedly."#),
+            ],
+            &["title", "trigger_prompt"],
+        ),
     ]
 }
 
