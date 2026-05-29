@@ -245,8 +245,25 @@ const MessageRow: React.FC<{
     return null; // Skip log messages in background view
   }
 
-  // Assistant message: orchestrator acks shown inline, task results in cards
+  // Assistant message: plain text shown inline; if the turn used tools, render
+  // via AgentResponseView so tool-use pills (and usage) are visible.
   if (message.source !== 'task') {
+    if (message.toolUse && message.toolUse.length > 0) {
+      return (
+        <div className="background-ack-message" data-message-id={message.id}>
+          <AgentResponseView
+            content={message.content}
+            status="complete"
+            toolUses={message.toolUse}
+            skillUses={message.skillUse}
+            onNavigateToNote={onNavigateToNote}
+            onNavigateToConversation={onNavigateToConversation}
+            usage={message.usage}
+            showHeader={false}
+          />
+        </div>
+      );
+    }
     return (
       <div className="background-ack-message" data-message-id={message.id}>
         <MarkdownContent content={message.content} />

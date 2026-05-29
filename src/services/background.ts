@@ -1,10 +1,9 @@
 /**
  * Background conversation helpers.
  *
- * The orchestrator + parallel-task feature is currently stubbed in
- * `contexts/BackgroundContext.tsx` (see Phase 3 commit). Only the
- * conversation-id helpers remain — they're used to identify the
- * `_background-YYYY-MM-DD.yaml` files in the vault for rendering.
+ * Background mode runs as a simple server-streamed chat (see
+ * `contexts/BackgroundContext.tsx`). These conversation-id helpers identify
+ * the `_background-YYYY-MM-DD.yaml` files in the vault for routing/rendering.
  */
 
 /**
