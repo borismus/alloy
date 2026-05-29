@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use crate::config::ProviderConfig;
 use crate::providers::{
     ChatMessage, Provider, StreamRequest, StreamResult, Usage, chat_messages_to_openai,
+    image_content_blocks,
 };
 use crate::types::{ToolCall, to_openai_tools};
 
@@ -402,7 +403,7 @@ fn apply_anthropic_caching(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                     "cache_control": { "type": "ephemeral" },
                 }],
             }),
-            ChatMessage::User { content } => {
+            ChatMessage::User { content, images } => {
                 let cache = Some(i) == cache_target_user_idx;
                 let mut block = serde_json::Map::new();
                 block.insert("type".into(), json!("text"));
@@ -410,9 +411,13 @@ fn apply_anthropic_caching(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                 if cache {
                     block.insert("cache_control".into(), json!({ "type": "ephemeral" }));
                 }
+                // Text block stays at content[0] so cache_control always lands
+                // on it; image blocks follow.
+                let mut parts = vec![serde_json::Value::Object(block)];
+                parts.extend(image_content_blocks(images));
                 json!({
                     "role": "user",
-                    "content": [serde_json::Value::Object(block)],
+                    "content": parts,
                 })
             }
             ChatMessage::Assistant {
@@ -463,11 +468,11 @@ mod tests {
     fn caches_only_second_to_last_user_turn() {
         let msgs = vec![
             ChatMessage::System { content: "sys".into() },
-            ChatMessage::User { content: "u1".into() },
+            ChatMessage::User { content: "u1".into(), images: vec![] },
             ChatMessage::Assistant { content: "a1".into(), tool_calls: vec![] },
-            ChatMessage::User { content: "u2".into() },
+            ChatMessage::User { content: "u2".into(), images: vec![] },
             ChatMessage::Assistant { content: "a2".into(), tool_calls: vec![] },
-            ChatMessage::User { content: "u3".into() },
+            ChatMessage::User { content: "u3".into(), images: vec![] },
         ];
         let wire = apply_anthropic_caching(&msgs);
         // System always cached.
@@ -488,12 +493,33 @@ mod tests {
     fn single_user_message_only_caches_system() {
         let msgs = vec![
             ChatMessage::System { content: "sys".into() },
-            ChatMessage::User { content: "u1".into() },
+            ChatMessage::User { content: "u1".into(), images: vec![] },
         ];
         let wire = apply_anthropic_caching(&msgs);
         let sys = &wire[0]["content"][0];
         assert_eq!(sys["cache_control"]["type"], "ephemeral");
         let u1 = &wire[1]["content"][0];
         assert!(u1.get("cache_control").is_none());
+    }
+
+    #[test]
+    fn appends_image_blocks_after_cached_text() {
+        use crate::providers::ImageData;
+        let msgs = vec![
+            ChatMessage::System { content: "sys".into() },
+            ChatMessage::User {
+                content: "u1".into(),
+                images: vec![ImageData {
+                    mime_type: "image/png".into(),
+                    base64: "AAAA".into(),
+                }],
+            },
+        ];
+        let wire = apply_anthropic_caching(&msgs);
+        let content = &wire[1]["content"];
+        // Text block stays first so cache_control can land on it; image follows.
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,AAAA");
     }
 }

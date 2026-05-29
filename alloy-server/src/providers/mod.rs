@@ -9,12 +9,14 @@ pub mod openai_compatible;
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::config::{ProviderConfig, ProviderKind};
 use crate::types::{ToolCall, ToolDefinition};
+use crate::vault::Vault;
 
 /// Incoming wire message from the SPA's /api/stream/start body — simple
 /// user/assistant text. The tool loop builds richer internal messages
@@ -24,6 +26,25 @@ pub struct WireMessage {
     pub role: String,
     #[serde(default)]
     pub content: String,
+    #[serde(default)]
+    pub attachments: Vec<WireAttachment>,
+}
+
+/// Image attachment reference from the SPA. The bytes live in the vault at
+/// `conversations/{path}`; the server reads + base64-encodes them when building
+/// the provider request (the SPA never ships the base64 over the wire).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WireAttachment {
+    pub path: String,
+    #[serde(rename = "mimeType", default)]
+    pub mime_type: String,
+}
+
+/// A decoded image ready to embed in a provider request as a base64 data URL.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageData {
+    pub mime_type: String,
+    pub base64: String,
 }
 
 /// Provider-internal message format. Supports OpenAI tool-calling: assistant
@@ -37,6 +58,8 @@ pub enum ChatMessage {
     },
     User {
         content: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<ImageData>,
     },
     Assistant {
         #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -97,7 +120,11 @@ impl ChatMessage {
 
 /// Convert a wire message vec from the SPA into ChatMessages, prepending a
 /// system message if provided.
-pub fn wire_to_chat(messages: &[WireMessage], system_prompt: Option<&str>) -> Vec<ChatMessage> {
+pub async fn wire_to_chat(
+    messages: &[WireMessage],
+    system_prompt: Option<&str>,
+    vault: Option<&Vault>,
+) -> Vec<ChatMessage> {
     let mut out = Vec::with_capacity(messages.len() + 1);
     if let Some(s) = system_prompt.filter(|s| !s.is_empty()) {
         out.push(ChatMessage::System {
@@ -108,6 +135,7 @@ pub fn wire_to_chat(messages: &[WireMessage], system_prompt: Option<&str>) -> Ve
         match m.role.as_str() {
             "user" => out.push(ChatMessage::User {
                 content: m.content.clone(),
+                images: resolve_images(vault, &m.attachments).await,
             }),
             "assistant" => out.push(ChatMessage::Assistant {
                 content: m.content.clone(),
@@ -116,7 +144,36 @@ pub fn wire_to_chat(messages: &[WireMessage], system_prompt: Option<&str>) -> Ve
             "log" => {} // skip
             _ => out.push(ChatMessage::User {
                 content: m.content.clone(),
+                images: resolve_images(vault, &m.attachments).await,
             }),
+        }
+    }
+    out
+}
+
+/// Read each image attachment from the vault (`conversations/{path}`) and
+/// base64-encode it. Missing/unreadable files are logged and skipped so a
+/// stale attachment reference can't break the whole turn. Returns empty when
+/// no vault is available (e.g. sub-agent calls) or there are no attachments.
+async fn resolve_images(vault: Option<&Vault>, attachments: &[WireAttachment]) -> Vec<ImageData> {
+    let Some(vault) = vault else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(attachments.len());
+    for att in attachments {
+        let path = match vault.resolve(&format!("conversations/{}", att.path)) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("skipping attachment {}: {}", att.path, e);
+                continue;
+            }
+        };
+        match tokio::fs::read(&path).await {
+            Ok(bytes) => out.push(ImageData {
+                mime_type: att.mime_type.clone(),
+                base64: B64.encode(&bytes),
+            }),
+            Err(e) => tracing::warn!("failed to read attachment {}: {}", att.path, e),
         }
     }
     out
@@ -277,10 +334,15 @@ pub(crate) fn chat_messages_to_openai(messages: &[ChatMessage]) -> Vec<Value> {
                 "role": "system",
                 "content": content,
             }),
-            ChatMessage::User { content } => serde_json::json!({
-                "role": "user",
-                "content": content,
-            }),
+            ChatMessage::User { content, images } => {
+                if images.is_empty() {
+                    serde_json::json!({ "role": "user", "content": content })
+                } else {
+                    let mut parts = vec![serde_json::json!({ "type": "text", "text": content })];
+                    parts.extend(image_content_blocks(images));
+                    serde_json::json!({ "role": "user", "content": parts })
+                }
+            }
             ChatMessage::Assistant {
                 content,
                 tool_calls,
@@ -309,6 +371,24 @@ pub(crate) fn chat_messages_to_openai(messages: &[ChatMessage]) -> Vec<Value> {
                 "tool_call_id": tool_call_id,
                 "content": content,
             }),
+        })
+        .collect()
+}
+
+/// Build OpenAI-style image content blocks from decoded images. Shared by the
+/// plain OpenAI path and the Anthropic-caching path — both target an
+/// OpenAI-compatible upstream (OpenRouter), so the image wire shape is the same
+/// (`image_url` with a base64 data URL); only `cache_control` markers differ.
+pub(crate) fn image_content_blocks(images: &[ImageData]) -> Vec<Value> {
+    images
+        .iter()
+        .map(|img| {
+            serde_json::json!({
+                "type": "image_url",
+                "image_url": {
+                    "url": format!("data:{};base64,{}", img.mime_type, img.base64),
+                },
+            })
         })
         .collect()
 }

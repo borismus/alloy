@@ -122,9 +122,12 @@ async fn run_one_agent(
         &[WireMessage {
             role: "user".into(),
             content: prompt,
+            attachments: Vec::new(),
         }],
         system_prompt.as_deref(),
-    );
+        None,
+    )
+    .await;
 
     let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
     // Drain chunks so the channel doesn't fill up — sub-agent output is

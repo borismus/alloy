@@ -79,13 +79,22 @@ export async function executeViaServer(
   const sessionId = generateSessionId();
   const apiBase = getApiBase();
 
-  // Convert messages to server format (strip fields the server doesn't need)
+  // Convert messages to server format (strip fields the server doesn't need).
+  // Image attachments are passed as lightweight references (path + mimeType);
+  // the server reads the bytes from the vault and base64-encodes them, so the
+  // start payload stays small.
   const serverMessages = messages
     .filter(m => m.role !== 'log')
-    .map(m => ({
-      role: m.role,
-      content: m.content,
-    }));
+    .map(m => {
+      const imageAttachments = m.attachments?.filter(a => a.type === 'image') ?? [];
+      return {
+        role: m.role,
+        content: m.content,
+        ...(imageAttachments.length > 0
+          ? { attachments: imageAttachments.map(a => ({ path: a.path, mimeType: a.mimeType })) }
+          : {}),
+      };
+    });
 
   // Start the streaming session
   const startResponse = await fetch(`${apiBase}/api/stream/start`, {

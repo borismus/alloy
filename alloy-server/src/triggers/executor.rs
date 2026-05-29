@@ -96,16 +96,19 @@ pub async fn run(trigger: &Trigger, state: &AppState) -> TriggerRunOutcome {
             messages.push(WireMessage {
                 role: "user".into(),
                 content: format!("BASELINE (from your last notification):\n\n{}", truncated),
+                attachments: Vec::new(),
             });
             messages.push(WireMessage {
                 role: "assistant".into(),
                 content: "I will compare the current state against this baseline and only trigger if there is a meaningful change.".into(),
+                attachments: Vec::new(),
             });
         }
     }
     messages.push(WireMessage {
         role: "user".into(),
         content: trigger.trigger_prompt.clone(),
+        attachments: Vec::new(),
     });
 
     let system_prompt = if is_baseline {

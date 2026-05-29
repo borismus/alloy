@@ -185,10 +185,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     return counted > 0 ? cost : undefined;
   }, [conversation?.messages]);
 
-  // Use ref to keep getImageUrl callback stable - prevents message re-renders when imageUrls changes
-  const imageUrlsRef = useRef(imageUrls);
-  imageUrlsRef.current = imageUrls;
-  const getImageUrl = useCallback((path: string) => imageUrlsRef.current[path], []);
+  // getImageUrl's identity intentionally changes whenever imageUrls changes.
+  // This propagates through the renderedMessages memo (which lists getImageUrl
+  // in its deps) AND past the React.memo on UserMessage, so a newly-loaded
+  // image actually re-renders. imageUrls only changes when images finish
+  // loading (not on every keystroke), so this isn't a hot path.
+  const getImageUrl = useCallback((path: string) => imageUrls[path], [imageUrls]);
 
   // Memoize the rendered messages to prevent expensive re-renders during typing
   const renderedMessages = useMemo(() => {

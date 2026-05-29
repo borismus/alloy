@@ -275,7 +275,8 @@ async fn run_stream(
         session: session.clone(),
     });
 
-    let messages = wire_to_chat(&params.messages, params.system_prompt.as_deref());
+    let messages =
+        wire_to_chat(&params.messages, params.system_prompt.as_deref(), Some(vault.as_ref())).await;
 
     let loop_req = LoopRequest {
         provider: provider.clone(),
