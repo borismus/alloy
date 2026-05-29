@@ -185,20 +185,23 @@ function ensureWebSocket(): Promise<WebSocket> {
       try {
         const data = JSON.parse(event.data) as WatchEvent;
 
-        // Dispatch to matching watchers
+        // The server emits vault-relative paths (e.g. "conversations/foo.yaml").
+        // Client code (useVaultWatcher + markSelfWrite) is written against
+        // absolute paths the way native Tauri fs.watch delivers them, so we
+        // rebuild absolute paths against each watcher's registered root
+        // before dispatching.
         watchers.forEach((callbacks, watchPath) => {
-          const matches = data.paths.some(p =>
-            p === watchPath || p.startsWith(watchPath + '/') || watchPath.startsWith(p)
+          const absolutePaths = data.paths.map((p) =>
+            p.startsWith('/') ? p : `${watchPath.replace(/\/$/, '')}/${p}`
           );
-          if (matches) {
-            callbacks.forEach(cb => {
-              try {
-                cb(data);
-              } catch (err) {
-                console.error('[WS] Watcher callback error:', err);
-              }
-            });
-          }
+          const adjustedEvent: WatchEvent = { type: data.type, paths: absolutePaths };
+          callbacks.forEach((cb) => {
+            try {
+              cb(adjustedEvent);
+            } catch (err) {
+              console.error('[WS] Watcher callback error:', err);
+            }
+          });
         });
       } catch (err) {
         console.error('[WS] Failed to parse message:', err);
