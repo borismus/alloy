@@ -85,6 +85,25 @@
   word-break: break-word;
 }
 
+.note-editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
+  min-height: 100%;
+  margin: 0 auto;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: #333;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
 .note-input-area {
   padding: 1rem 1.5rem 1.5rem;
   border-top: 1px solid #e5e5e5;

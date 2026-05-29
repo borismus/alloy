@@ -102,6 +102,78 @@ describe('VaultService', () => {
       expect(configCall![1]).toContain('ANTHROPIC_API_KEY');
       expect(configCall![1]).toContain('defaultModel');
     });
+
+    it('uses server-relative paths (not the absolute vault path) once a vault is bound', async () => {
+      // Regression: passing the absolute path to /api/fs/* makes the server
+      // re-root it under the vault, producing a doubled path. After
+      // setVaultPath, fs ops must target the server-relative base ('/').
+      // (The real path-join shim collapses leading slashes; the test mock
+      // doesn't, hence the slash-insensitive matchers below.)
+      vaultService.setVaultPath('/Users/me/vault');
+      vi.mocked(fs.exists).mockResolvedValue(false);
+      vi.mocked(fs.mkdir).mockResolvedValue();
+      vi.mocked(fs.writeTextFile).mockResolvedValue();
+
+      await vaultService.initializeVault('/Users/me/vault');
+
+      expect(fs.mkdir).toHaveBeenCalledWith(expect.stringMatching(/^\/+conversations$/), { recursive: true });
+      expect(fs.writeTextFile).toHaveBeenCalledWith(expect.stringMatching(/^\/+memory\.md$/), expect.stringContaining('# Memory'));
+      // Crucially, never the doubled absolute path.
+      expect(fs.writeTextFile).not.toHaveBeenCalledWith(
+        '/Users/me/vault/memory.md',
+        expect.anything()
+      );
+    });
+  });
+
+  describe('note path resolution', () => {
+    beforeEach(() => {
+      vaultService.setVaultPath('/Users/me/vault');
+    });
+
+    it('readNote reads memory.md from the server-relative root, not the absolute path', async () => {
+      vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readTextFile).mockResolvedValue('real memory');
+
+      const content = await vaultService.readNote('memory.md');
+
+      expect(content).toBe('real memory');
+      expect(fs.readTextFile).toHaveBeenCalledWith(expect.stringMatching(/^\/+memory\.md$/));
+      // Never the absolute vault path (which the server would double).
+      expect(fs.readTextFile).not.toHaveBeenCalledWith('/Users/me/vault/memory.md');
+    });
+
+    it('readNote reads regular notes from /notes', async () => {
+      vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readTextFile).mockResolvedValue('a note');
+
+      await vaultService.readNote('hello.md');
+
+      expect(fs.readTextFile).toHaveBeenCalledWith(expect.stringMatching(/^\/+notes\/hello\.md$/));
+    });
+
+    it('readNote returns null when the file does not exist', async () => {
+      vi.mocked(fs.exists).mockResolvedValue(false);
+
+      expect(await vaultService.readNote('missing.md')).toBeNull();
+      expect(fs.readTextFile).not.toHaveBeenCalled();
+    });
+
+    it('saveNote writes to the server-relative path and returns the absolute path', async () => {
+      vi.mocked(fs.writeTextFile).mockResolvedValue();
+
+      const returned = await vaultService.saveNote('memory.md', 'updated');
+
+      expect(fs.writeTextFile).toHaveBeenCalledWith(expect.stringMatching(/^\/+memory\.md$/), 'updated');
+      expect(fs.writeTextFile).not.toHaveBeenCalledWith('/Users/me/vault/memory.md', expect.anything());
+      // The returned path is absolute so callers can markSelfWrite it.
+      expect(returned).toBe('/Users/me/vault/memory.md');
+    });
+
+    it('getNoteFilePath returns the absolute path (for markSelfWrite / OS ops)', async () => {
+      expect(await vaultService.getNoteFilePath('memory.md')).toBe('/Users/me/vault/memory.md');
+      expect(await vaultService.getNoteFilePath('hello.md')).toBe('/Users/me/vault/notes/hello.md');
+    });
   });
 
   describe('loadConfig', () => {

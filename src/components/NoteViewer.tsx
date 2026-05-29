@@ -1,8 +1,7 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { ItemHeader } from './ItemHeader';
-import { MarkdownContent } from './MarkdownContent';
 import type { ConversationInfo } from '../types';
-import { parseFrontmatter } from '../utils/frontmatter';
+import { parseFrontmatter, splitFrontmatter } from '../utils/frontmatter';
 import './NoteViewer.css';
 
 interface NoteViewerProps {
@@ -15,37 +14,68 @@ interface NoteViewerProps {
   onBack?: () => void;
   canGoBack?: boolean;
   onClose?: () => void;
+  onContentChange?: (fullContent: string) => void; // Immediate: keep App state in sync
+  onSave?: (filename: string, fullContent: string) => void; // Debounced: persist to disk
 }
+
+const SAVE_DEBOUNCE_MS = 600;
 
 export const NoteViewer: React.FC<NoteViewerProps> = ({
   content,
   filename,
-  onNavigateToNote,
-  onNavigateToConversation,
   onIntegrate,
-  conversations,
   onBack,
   canGoBack = false,
   onClose,
+  onContentChange,
+  onSave,
 }) => {
-  const contentRef = useRef<HTMLDivElement>(null);
-  const prevContentLengthRef = useRef<number>(0);
-
-  // Parse frontmatter and get body content
-  const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
+  // Parse frontmatter for the integrate hint; split raw block for editing.
+  const { frontmatter } = useMemo(() => parseFrontmatter(content), [content]);
+  const { rawFrontmatter, body } = useMemo(() => splitFrontmatter(content), [content]);
   const isRiffNote = filename?.startsWith('riffs/');
   const isUnintegrated = isRiffNote && frontmatter.integrated === false;
 
-  // Auto-scroll to bottom for riff notes when content grows
+  // Local editing state holds the BODY only; frontmatter is re-attached on save.
+  const [draft, setDraft] = useState(body);
+  const draftRef = useRef(body); // mirrors draft for the unmount flush
+  const lastEmittedBodyRef = useRef(body); // tracks our own edits to avoid clobbering
+  const saveTimer = useRef<number | undefined>(undefined);
+
+  // Reset local draft only on a genuine external change (e.g. file edited
+  // elsewhere). Our own edits set lastEmittedBodyRef, so they don't trigger a
+  // reset and the caret stays put.
   useEffect(() => {
-    if (isRiffNote && contentRef.current) {
-      // Only scroll if content has grown (not on initial load or content changes)
-      if (body.length > prevContentLengthRef.current && prevContentLengthRef.current > 0) {
-        contentRef.current.scrollTop = contentRef.current.scrollHeight;
-      }
-      prevContentLengthRef.current = body.length;
+    if (body !== lastEmittedBodyRef.current) {
+      setDraft(body);
+      draftRef.current = body;
+      lastEmittedBodyRef.current = body;
     }
-  }, [body, isRiffNote]);
+  }, [body]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newBody = e.target.value;
+    const full = rawFrontmatter + newBody;
+    setDraft(newBody);
+    draftRef.current = newBody;
+    lastEmittedBodyRef.current = newBody;
+    onContentChange?.(full);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      if (filename) onSave?.(filename, full);
+    }, SAVE_DEBOUNCE_MS);
+  };
+
+  // Flush any pending save on unmount / note switch so the last edit isn't lost.
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        if (filename) onSave?.(filename, rawFrontmatter + draftRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Get display name from filename
   const displayName = filename
@@ -68,13 +98,13 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
           </button>
         </div>
       )}
-      <div className="note-content-container" ref={contentRef}>
-        <MarkdownContent
-          content={body}
-          className="note-content"
-          onNavigateToNote={onNavigateToNote}
-          onNavigateToConversation={onNavigateToConversation}
-          conversations={conversations}
+      <div className="note-content-container">
+        <textarea
+          className="note-editor"
+          value={draft}
+          onChange={handleChange}
+          spellCheck={false}
+          placeholder="Empty note"
         />
       </div>
     </div>

@@ -118,15 +118,22 @@ export class VaultService {
   }
 
   async initializeVault(path: string): Promise<void> {
+    // All fs ops go through /api/fs/*, which resolves paths against the
+    // server-owned vault root, so they MUST be server-relative (base
+    // this.vaultPath === '/'). Using the absolute `path` here would make the
+    // server re-root it, creating a doubled vault (vault/Users/.../vault/...).
+    // Callers always setVaultPath() before initializeVault(), so vaultPath is
+    // set; fall back to the absolute path only if it somehow isn't.
+    const base = this.vaultPath ?? path;
     // Ensure all directories and default files exist in parallel
     const dirs = [
-      await join(path, 'conversations'),
-      await join(path, 'skills'),
-      await join(path, 'notes'),
-      await join(path, 'triggers'),
-      await join(path, 'conversations', 'attachments'),
+      await join(base, 'conversations'),
+      await join(base, 'skills'),
+      await join(base, 'notes'),
+      await join(base, 'triggers'),
+      await join(base, 'conversations', 'attachments'),
     ];
-    const memoryPath = await join(path, 'memory.md');
+    const memoryPath = await join(base, 'memory.md');
 
     await Promise.all([
       ...dirs.map(async (dir) => {
@@ -150,7 +157,7 @@ export class VaultService {
     ]);
 
     // Create config.yaml if it doesn't exist
-    const configPath = await join(path, 'config.yaml');
+    const configPath = await join(base, 'config.yaml');
     if (!(await exists(configPath))) {
       // Create config with commented templates for providers
       const defaultConfigYaml = `defaultModel: anthropic/claude-sonnet-4-6
@@ -250,8 +257,12 @@ export class VaultService {
   async saveConversation(conversation: Conversation): Promise<void> {
     if (!this.vaultPath) return;
 
-    // Filter out empty or undefined messages (can happen when aborting a streaming response)
-    const filteredMessages = conversation.messages.filter(m => m && m.content?.trim() !== '');
+    // Filter out empty or undefined messages (can happen when aborting a streaming response).
+    // Keep messages that carry attachments even when their text content is empty
+    // (e.g. an image sent with no accompanying text).
+    const filteredMessages = conversation.messages.filter(
+      m => m && (m.content?.trim() !== '' || (m.attachments?.length ?? 0) > 0),
+    );
 
     // Don't save conversations with no actual messages
     if (filteredMessages.length === 0) return;
@@ -815,22 +826,55 @@ export class VaultService {
     return `${this.vaultPath}/notes`;
   }
 
-  async getNoteFilePath(filename: string): Promise<string | null> {
+  /**
+   * Server-relative API path for a note filename, used for all /api/fs/*
+   * operations (read/write/exists/remove). memory.md and riffs/ live at the
+   * vault root; regular notes under notes/. This is the path the server
+   * resolves against its own vault root — it MUST stay relative (base
+   * this.vaultPath === '/'). Passing an absolute path here makes the server
+   * re-root it under the vault, producing a doubled path
+   * (vault/Users/.../vault/memory.md). Use getNoteFilePath() for the absolute
+   * form needed by OS-level ops (markSelfWrite, reveal).
+   */
+  private async noteApiPath(filename: string): Promise<string | null> {
     if (!this.vaultPath) return null;
-    // memory.md and riffs/ are at vault root, regular notes at notes/
-    const rel = filename === 'memory.md' || filename.startsWith('riffs/')
+    return filename === 'memory.md' || filename.startsWith('riffs/')
       ? await join(this.vaultPath, filename)
       : await join(this.vaultPath, 'notes', filename);
-    return this.toAbsolute(rel);
+  }
+
+  async getNoteFilePath(filename: string): Promise<string | null> {
+    const rel = await this.noteApiPath(filename);
+    return rel ? this.toAbsolute(rel) : null;
+  }
+
+  /**
+   * Read a note's content via its server-relative path (correct in both Tauri
+   * and web mode). Returns null if no vault is open or the file doesn't exist.
+   */
+  async readNote(filename: string): Promise<string | null> {
+    const apiPath = await this.noteApiPath(filename);
+    if (!apiPath || !(await exists(apiPath))) return null;
+    return await readTextFile(apiPath);
+  }
+
+  /**
+   * Write a note's full content (frontmatter + body) to disk. The caller
+   * assembles the complete document. Writes via the server-relative path;
+   * returns the ABSOLUTE path written (so the caller can markSelfWrite it,
+   * which keys on absolute paths to match watcher events), or null if no
+   * vault is open.
+   */
+  async saveNote(filename: string, content: string): Promise<string | null> {
+    const apiPath = await this.noteApiPath(filename);
+    if (!apiPath) return null;
+    await writeTextFile(apiPath, content);
+    return this.toAbsolute(apiPath);
   }
 
   async deleteNote(filename: string): Promise<boolean> {
-    if (!this.vaultPath) return false;
-
-    // memory.md and riffs/ are at vault root, regular notes at notes/
-    const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
-      ? await join(this.vaultPath, filename)
-      : await join(this.vaultPath, 'notes', filename);
+    const notePath = await this.noteApiPath(filename);
+    if (!notePath) return false;
 
     if (await exists(notePath)) {
       await remove(notePath);

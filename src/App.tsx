@@ -23,7 +23,6 @@ import { FindInConversation, FindInConversationHandle } from './components/FindI
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
 import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
-import { readTextFile, exists } from '@tauri-apps/plugin-fs';
 import { isTauri } from './services/api';
 import { reconnectToActiveSessions } from './services/server-streaming';
 import { loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
@@ -301,19 +300,11 @@ function AppContent() {
 
     // If the modified note is currently selected, refresh its content
     if (selectedItem?.type === 'note' && selectedItem.id === filename) {
-      const vaultPathStr = vaultService.getVaultPath();
-      const notesPath = vaultService.getNotesPath();
-      if (vaultPathStr && notesPath) {
-        // memory.md and riffs/ are at vault root, other notes are in notes/
-        const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
-          ? `${vaultPathStr}/${filename}`
-          : `${notesPath}/${filename}`;
-        readTextFile(notePath).then(content => {
-          setNoteContent(content);
-        }).catch(error => {
-          console.error('Failed to refresh note content:', error);
-        });
-      }
+      vaultService.readNote(filename).then(content => {
+        if (content !== null) setNoteContent(content);
+      }).catch(error => {
+        console.error('Failed to refresh note content:', error);
+      });
     }
   }, [selectedItem]);
 
@@ -361,6 +352,18 @@ function AppContent() {
       onTriggerModified: handleTriggerModified,
     }
   );
+
+  // Save edited note content to disk (debounced from NoteViewer)
+  const handleSaveNote = useCallback(async (filename: string, fullContent: string) => {
+    const path = await vaultService.getNoteFilePath(filename);
+    if (path) markSelfWrite(path); // before write
+    await vaultService.saveNote(filename, fullContent);
+    if (path) markSelfWrite(path); // refresh self-write window to cover the FS event
+    setNoteContent(fullContent); // keep selectedNote.content in sync
+    if (filename === 'memory.md') {
+      setMemory({ content: fullContent, sizeBytes: new TextEncoder().encode(fullContent).length });
+    }
+  }, [markSelfWrite]);
 
   // Extracted hook: handles message sending, streaming, saving, error recovery
   const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow } = useSendMessage({
@@ -450,19 +453,11 @@ function AppContent() {
       markAsRead(item.id);
     } else if (item.type === 'note' || item.type === 'riff') {
       // Load note content
-      const vaultPathStr = vaultService.getVaultPath();
-      const notesPath = vaultService.getNotesPath();
-      if (vaultPathStr && notesPath) {
-        const notePath = item.id === 'memory.md' || item.id.startsWith('riffs/')
-          ? `${vaultPathStr}/${item.id}`
-          : `${notesPath}/${item.id}`;
-        try {
-          const content = await readTextFile(notePath);
-          setNoteContent(content);
-        } catch (error) {
-          console.error('[App] Failed to load note:', error);
-          setNoteContent(null);
-        }
+      try {
+        setNoteContent(await vaultService.readNote(item.id));
+      } catch (error) {
+        console.error('[App] Failed to load note:', error);
+        setNoteContent(null);
       }
     }
     // For triggers, no additional loading needed - derived from triggers list
@@ -689,36 +684,26 @@ function AppContent() {
   }, [isMobile, mobileView, selectedItem, config, availableModels.length]);
 
   const handleSelectNote = async (filename: string) => {
-    const vaultPathStr = vaultService.getVaultPath();
-    const notesPath = vaultService.getNotesPath();
-    if (vaultPathStr && notesPath) {
-      // Don't navigate to the same note we're already viewing
-      if (selectedItem?.type === 'note' && selectedItem.id === filename) {
+    if (!vaultService.getVaultPath()) return;
+    // Don't navigate to the same note we're already viewing
+    if (selectedItem?.type === 'note' && selectedItem.id === filename) {
+      return;
+    }
+
+    try {
+      const content = await vaultService.readNote(filename);
+      if (content === null) {
+        const displayName = filename.replace(/\.md$/, '');
+        showToast(`Note "${displayName}" doesn't exist`, 'warning');
         return;
       }
-
-      // memory.md and riffs/ are at vault root, other notes are in notes/
-      const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
-        ? `${vaultPathStr}/${filename}`
-        : `${notesPath}/${filename}`;
-      try {
-        // Check if the note exists before trying to read it
-        const noteExists = await exists(notePath);
-        if (!noteExists) {
-          const displayName = filename.replace(/\.md$/, '');
-          showToast(`Note "${displayName}" doesn't exist`, 'warning');
-          return;
-        }
-
-        const content = await readTextFile(notePath);
-        // Clear draft conversation and select note
-        setDraftConversation(null);
-        navigateTo({ type: 'note', id: filename });
-        setNoteContent(content);
-      } catch (error) {
-        console.error('[App] Failed to load note:', error);
-        showToast(`Failed to load note`, 'error');
-      }
+      // Clear draft conversation and select note
+      setDraftConversation(null);
+      navigateTo({ type: 'note', id: filename });
+      setNoteContent(content);
+    } catch (error) {
+      console.error('[App] Failed to load note:', error);
+      showToast(`Failed to load note`, 'error');
     }
   };
 
@@ -1078,6 +1063,7 @@ function AppContent() {
                 />
               ) : selectedNote ? (
                 <NoteViewer
+                  key={selectedNote.filename}
                   content={selectedNote.content}
                   filename={selectedNote.filename}
                   onNavigateToNote={handleSelectNote}
@@ -1086,6 +1072,8 @@ function AppContent() {
                   conversations={conversations}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
+                  onContentChange={setNoteContent}
+                  onSave={handleSaveNote}
                 />
               ) : (
                 // Loading state while note content loads
@@ -1204,6 +1192,7 @@ function AppContent() {
           />
         ) : selectedNote ? (
           <NoteViewer
+            key={selectedNote.filename}
             content={selectedNote.content}
             filename={selectedNote.filename}
             onNavigateToNote={handleSelectNote}
@@ -1213,6 +1202,8 @@ function AppContent() {
             onBack={goBack}
             canGoBack={canGoBack}
             onClose={() => { setSelectedItem(null); setNoteContent(null); }}
+            onContentChange={setNoteContent}
+            onSave={handleSaveNote}
           />
         ) : currentConversation ? (
           <ChatInterface
