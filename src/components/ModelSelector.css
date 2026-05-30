@@ -56,7 +56,10 @@
 
 .model-selector-dropdown {
   position: absolute;
-  left: 0;
+  /* Right-aligned: the picker sits near the right edge of the input row, so
+     opening leftward keeps the dropdown on-screen instead of being clipped by
+     the right edge of .chat-interface (overflow: hidden). */
+  right: 0;
   min-width: 280px;
   max-width: min(420px, 90vw);
   max-height: 420px;
