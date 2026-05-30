@@ -49,14 +49,19 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           # Pull the CHANGELOG.md section for this version (## <version> up to
-          # the next ## heading). Falls back to a generic line if absent.
+          # the next ## heading), trimming leading/trailing blank lines. All in
+          # awk so it's portable across the runner's BSD tools. Falls back to a
+          # generic line if the section is absent.
           NOTES=$(awk -v ver="$VERSION" '
             $0 ~ "^## +"ver"([ \t]|$)" { flag=1; next }
             /^## / && flag { flag=0 }
-            flag { print }
+            flag { lines[n++]=$0 }
+            END {
+              s=0; while (s<n && lines[s] ~ /^[ \t]*$/) s++
+              e=n-1; while (e>=s && lines[e] ~ /^[ \t]*$/) e--
+              for (i=s;i<=e;i++) print lines[i]
+            }
           ' CHANGELOG.md)
-          # Trim leading/trailing blank lines
-          NOTES=$(printf '%s\n' "$NOTES" | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba}')
           if [ -z "$NOTES" ]; then
             NOTES="See the assets to download this version and install."
           fi
