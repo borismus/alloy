@@ -21,15 +21,17 @@ Tests are in `tests/e2e/`. The Playwright config starts the Vite dev server auto
 
 ## Playwright MCP (AI-Assisted Testing)
 
-The Playwright MCP server runs in **server mode** — it's not auto-launched with Claude sessions. Start it manually when needed:
+The Playwright MCP server is configured in `.mcp.json` (`npx @playwright/mcp`) and is available to Claude Code automatically — no separate launch step. To drive the app against fixture data, start the backend and SPA pointed at the test vault:
 
 ```bash
-npm run test:mcp
+# Terminal 1: backend on the test vault
+cd alloy-server && cargo run --release -- --vault ../tests/fixtures/test-vault --port 3001
+
+# Terminal 2: the SPA (Vite proxies /api to :3001)
+npm run dev
 ```
 
-This starts the API server (port 3001), the Vite dev server (port 1420) pointed at `tests/fixtures/test-vault/`, and the Playwright MCP server on port 3100 (SSE at `http://localhost:3100/sse`). The `.mcp.json` is already configured to connect there.
-
-Once running, Claude Code can use the `mcp__playwright__*` tools to navigate, click, fill forms, take screenshots, etc. against the app running with test data.
+Then Claude Code can use the `mcp__playwright__*` tools to navigate, click, fill forms, take screenshots, etc. against `http://localhost:1420`.
 
 ## Test Vault
 

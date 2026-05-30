@@ -31,14 +31,18 @@ alloy/
 │   │   ├── skills/           # Skill loading and execution
 │   │   ├── tools/            # Built-in tool implementations
 │   │   ├── triggers/         # Trigger scheduling and execution
-│   │   └── context/          # Context window estimation
+│   │   ├── context/          # Context window estimation
+│   │   └── api/              # HTTP shims for Tauri plugins (web + Tauri)
 │   ├── contexts/             # React contexts
 │   ├── hooks/                # Custom hooks
 │   ├── types/                # TypeScript types
-│   ├── mocks/                # Tauri API mocks for web mode
 │   └── App.tsx               # Main app component
 │
-├── src-tauri/                # Rust backend
+├── alloy-server/             # Rust (axum) backend: model calls + tool execution
+│   ├── src/                  # Routes, providers, tools, streaming (see its README)
+│   └── Cargo.toml            # Rust dependencies
+│
+├── src-tauri/                # Tauri desktop shell (embeds alloy-server)
 │   ├── src/
 │   │   └── lib.rs            # Tauri app setup
 │   ├── Cargo.toml            # Rust dependencies
@@ -66,10 +70,10 @@ alloy/
 
 The app runs in two modes:
 
-- **Tauri mode** (`npm run tauri dev`): Native desktop app. Uses `@tauri-apps/plugin-http` for external requests.
-- **Server mode** (`npm run dev:web`): Web browser mode, no Rust required. Tauri plugins are swapped for HTTP-based mocks via Vite aliases.
+- **Tauri mode** (`npm run tauri dev`): Native desktop app. The Tauri shell embeds the Rust `alloy-server` on a random loopback port; the SPA in the webview talks to it over `/api/*`.
+- **Server mode** (`npm run dev`): Web browser mode at `http://localhost:1420`. Run `alloy-server` separately on port 3001 (`cd alloy-server && cargo run --release -- --vault <path> --port 3001`); Vite proxies `/api` to it.
 
-When adding features that use Tauri APIs or make HTTP requests, ensure they work in both modes.
+In both modes, model calls and tool execution happen in `alloy-server`. All builds route Tauri plugin imports to HTTP shims under `src/services/api/` (via `vite.config.ts` aliases); each shim forwards to the real native plugin under Tauri, else degrades to a browser/`/api` fallback. When adding features that use Tauri APIs or make HTTP requests, ensure they work in both modes.
 
 ## API Integration
 
@@ -143,7 +147,7 @@ All vault operations can be inspected by looking at the files in your vault fold
 
 - **Fast iteration**: Keep `npm run tauri dev` running
 - **Test persistence**: Check your vault folder to verify files
-- **Web mode**: Use `npm run dev:web` for faster frontend iteration without Rust
+- **Web mode**: Use `npm run dev` for faster frontend iteration (talks to a separately-run `alloy-server` on :3001)
 - **Search**: Works across all message content in all conversations
 - **Memory**: Edit `memory.md` to customize AI context
 

@@ -85,7 +85,7 @@ And permissions are in the `security.capabilities` section.
 3. **Update your key**:
    Edit `[your-vault]/config.yaml`:
    ```yaml
-   anthropicApiKey: sk-ant-your-key-here
+   ANTHROPIC_API_KEY: sk-ant-your-key-here
    ```
 
 4. **Check your account has credits**:
