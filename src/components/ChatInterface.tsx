@@ -11,6 +11,7 @@ import { AgentResponseView } from './AgentResponseView';
 import { SubagentResponsesView } from './SubagentResponsesView';
 import { ItemHeader } from './ItemHeader';
 import { ContextUsageChip } from './ContextUsageChip';
+import { ThreadCostChip } from './ThreadCostChip';
 import { MarkdownContent } from './MarkdownContent';
 import { ChatInputForm, ChatInputFormHandle, PendingImage } from './ChatInputForm';
 import { QueuedMessagesList } from './QueuedMessagesList';
@@ -553,7 +554,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         onBackground={onBackground}
       >
         {conversation && conversation.messages.length > 0 && (
-          <ContextUsageChip conversation={conversation} availableModels={availableModels} onCompactNow={onCompactNow} />
+          <>
+            <ThreadCostChip conversation={conversation} />
+            <ContextUsageChip conversation={conversation} availableModels={availableModels} onCompactNow={onCompactNow} />
+          </>
         )}
       </ItemHeader>
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>

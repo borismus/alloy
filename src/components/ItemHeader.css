@@ -6,8 +6,12 @@
   border-bottom: 1px solid var(--border-color, #e0e0e0);
   background: var(--bg-secondary, #f8f9fa);
   flex-shrink: 0;
-  overflow: hidden;
   min-width: 0;
+  /* Establish a stacking context above .messages-container and don't clip
+     header popovers (e.g. the context-usage chip) that open below the bar.
+     Title ellipsis is handled by .item-header-title / h2, not by clipping here. */
+  position: relative;
+  z-index: 20;
 }
 
 .item-header-title {
