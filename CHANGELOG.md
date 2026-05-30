@@ -4,6 +4,11 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.3
+
+Maintenance release to verify the auto-updater fixed in 0.3.2 works end to end
+(detect → download → install → relaunch). No user-facing changes.
+
 ## 0.3.2
 
 Fixes the in-app auto-updater, which was silently broken in 0.3.0 and 0.3.1 —
