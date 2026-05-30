@@ -83,8 +83,6 @@ using `append_to_note`. Before answering, check `memory.md` for context.
 | `list_directory` | List files in vault directories |
 | `search_directory` | Search files and content |
 | `http_get` | Fetch data from URLs |
-| `http_post` | Send POST requests |
-| `get_secret` | Access API keys from config |
 | `web_search` | Search the web (Serper or SearXNG) |
 | `use_skill` | Load another skill on-demand |
 | `spawn_subagent` | Run 1-3 parallel sub-agents |
@@ -108,7 +106,7 @@ The `web_search` tool requires one of:
 
 ```bash
 npm run tauri dev       # Desktop app (requires Rust)
-npm run dev:web         # Web-only mode (no Rust needed)
+npm run dev             # Web mode (Vite; run alloy-server on :3001)
 npm run test:run        # Run tests
 npm run tauri build     # Production build
 ```

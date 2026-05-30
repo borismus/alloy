@@ -15,8 +15,6 @@ const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: str
   append_file: { active: 'Appending', complete: 'Appended to file', icon: 'file' },
   append_to_note: { active: 'Appending', complete: 'Append', icon: 'file' },
   http_get: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
-  http_post: { active: 'Sending request', complete: 'Sent request', icon: 'globe' },
-  get_secret: { active: 'Getting secret', complete: 'Got secret', icon: 'key' },
   web_search: { active: 'Searching', complete: 'Searched', icon: 'search' },
   spawn_subagent: { active: 'Running sub-agents', complete: 'Ran sub-agents', icon: 'agents' },
 };

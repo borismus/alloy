@@ -6,7 +6,7 @@ running server-side.
 
 Used in two modes:
 - **Standalone CLI** (`alloy-serve --vault ... --port ...`) — for headless
-  deployments and the existing web-only `npm run dev:web` workflow.
+  deployments and the web-only `npm run dev` workflow.
 - **Embedded in Tauri** (Phase 2, `src/embed.rs`) — the Tauri desktop shell
   spawns axum in-process via `tokio::spawn`. The SPA inside the webview talks
   to it over `/api/*` on a random loopback port. Optionally exposes a public
@@ -43,7 +43,7 @@ network" and visit the displayed URL from your phone.
 ```bash
 cd alloy-server
 cargo run --release -- --vault ~/Documents/Alloy --port 3001
-VITE_API_URL=http://localhost:3001 npm run dev:web
+npm run dev   # Vite proxies /api to :3001 (see vite.config.ts)
 # open http://localhost:1420
 ```
 
@@ -154,11 +154,6 @@ Node server's behavior.
 | `search_directory` | ✓ | notes/, skills/, conversations/. Substring search, depth 3, 500 file cap |
 | `use_skill` | ✓ | Loaded once from `vault/skills/*/SKILL.md` at startup |
 | `spawn_subagent` | ✓ | 1-3 in parallel. No nesting. Sub-agents get read-only tool set |
-
-`http_post` and `get_secret` are intentionally not implemented. They
-existed primarily so the model could authenticate calls to Serper for web
-search — now handled inside the dedicated `web_search` tool which reads
-`SERPER_API_KEY` directly.
 
 ## Provider model resolution
 

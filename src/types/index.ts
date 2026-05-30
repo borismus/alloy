@@ -36,7 +36,7 @@ export interface Attachment {
 }
 
 export interface ToolUse {
-  type: string;           // tool name: 'read_file', 'http_post', etc.
+  type: string;           // tool name: 'read_file', 'http_get', etc.
   input?: Record<string, unknown>;  // tool inputs (for debugging)
   result?: string;        // truncated result (for display)
   isError?: boolean;
