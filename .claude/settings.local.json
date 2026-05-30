@@ -43,7 +43,14 @@
       "Bash(SERVER_MODE=true npm run build)",
       "mcp__playwright__browser_select_option",
       "mcp__playwright__browser_type",
-      "mcp__playwright__browser_fill_form"
+      "mcp__playwright__browser_fill_form",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(git --no-pager diff -- src/components/ChatInterface.tsx)",
+      "Bash(git --no-pager diff -- src/utils/frontmatter.ts)",
+      "Bash(git --no-pager diff -- tsconfig.json)",
+      "Bash(git --no-pager diff -- alloy-server/src/streaming.rs)",
+      "Bash(git --no-pager diff -- alloy-server/src/triggers/executor.rs)",
+      "mcp__playwright__browser_run_code_unsafe"
     ]
   },
   "enableAllProjectMcpServers": true,
