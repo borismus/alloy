@@ -50,7 +50,8 @@
       "Bash(git --no-pager diff -- tsconfig.json)",
       "Bash(git --no-pager diff -- alloy-server/src/streaming.rs)",
       "Bash(git --no-pager diff -- alloy-server/src/triggers/executor.rs)",
-      "mcp__playwright__browser_run_code_unsafe"
+      "mcp__playwright__browser_run_code_unsafe",
+      "Bash(npx eslint *)"
     ]
   },
   "enableAllProjectMcpServers": true,
