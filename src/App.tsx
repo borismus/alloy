@@ -241,7 +241,16 @@ function AppContent() {
     }
   }, []);
 
-  const handleConversationRemoved = useCallback((id: string) => {
+  const handleConversationRemoved = useCallback(async (id: string) => {
+    // A title-change rename arrives from the watcher as remove(old file) +
+    // create(new file) with the SAME core id (the slug after the id differs).
+    // This happens on a new conversation's first reply, when the generated
+    // title replaces the fallback title. If a file for this id still exists,
+    // it was renamed, not deleted — don't drop it or clear the selection
+    // (which would bounce the user to the background view).
+    if (await vaultService.getConversationFilePath(id)) {
+      return;
+    }
     setConversations(prev => prev.filter(c => c.id !== id));
     // Clear selection if removed conversation was selected
     if (selectedItem?.type === 'conversation' && selectedItem.id === id) {
