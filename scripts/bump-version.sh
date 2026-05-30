@@ -83,6 +83,16 @@ fi
 echo ""
 echo "All versions updated to $VERSION"
 
+# Warn (non-fatal) if CHANGELOG.md has no section for this version — the release
+# workflow publishes that section as the GitHub release notes, falling back to a
+# generic line if it's missing.
+CHANGELOG="$PROJECT_ROOT/CHANGELOG.md"
+if [ -f "$CHANGELOG" ] && ! grep -qE "^## +$VERSION([ \t]|\$)" "$CHANGELOG"; then
+    echo ""
+    echo "Warning: no '## $VERSION' section in CHANGELOG.md."
+    echo "         The release will use a generic body. Add a section to set notes."
+fi
+
 # Git operations
 echo ""
 echo "Creating git commit and tag..."
