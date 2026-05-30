@@ -178,6 +178,10 @@ export interface Config {
   // User-defined models, additive to the bundled defaults.
   // Entries whose key collides with a bundled model are ignored.
   models?: ModelInfo[];
+  // Where the "Edit" actions open vault files. 'obsidian' opens markdown notes
+  // via the obsidian:// URI; 'system' (and any non-markdown file) opens with the
+  // OS default app. Defaults to 'obsidian' when unset.
+  externalEditor?: 'obsidian' | 'system';
   // Provider API keys - presence indicates provider is enabled
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
@@ -239,6 +243,7 @@ export interface NoteInfo {
   isIntegrated?: boolean;  // for riffs: whether integrated into notes
   title?: string;          // for riffs: custom title from frontmatter
   artifactType?: RiffArtifactType;  // for riffs: what kind of artifact
+  content?: string;        // note body text, loaded for full-text search
 }
 
 // Unified timeline item for sidebar display

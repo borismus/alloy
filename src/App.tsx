@@ -24,6 +24,7 @@ import { FindInConversation, FindInConversationHandle } from './components/FindI
 import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
+import { openInEditor, type ExternalEditor } from './utils/openInEditor';
 import { reconnectToActiveSessions } from './services/server-streaming';
 import { loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
@@ -353,17 +354,28 @@ function AppContent() {
     }
   );
 
-  // Save edited note content to disk (debounced from NoteViewer)
-  const handleSaveNote = useCallback(async (filename: string, fullContent: string) => {
+  // Where "Edit" actions open vault files (Obsidian for markdown, else system).
+  const externalEditor: ExternalEditor = config?.externalEditor ?? 'obsidian';
+
+  // Open a note for editing in the configured external editor.
+  const handleEditNote = useCallback(async (filename: string) => {
     const path = await vaultService.getNoteFilePath(filename);
-    if (path) markSelfWrite(path); // before write
-    await vaultService.saveNote(filename, fullContent);
-    if (path) markSelfWrite(path); // refresh self-write window to cover the FS event
-    setNoteContent(fullContent); // keep selectedNote.content in sync
-    if (filename === 'memory.md') {
-      setMemory({ content: fullContent, sizeBytes: new TextEncoder().encode(fullContent).length });
+    if (path) await openInEditor(path, config?.externalEditor ?? 'obsidian');
+  }, [config?.externalEditor]);
+
+  // Persist the external-editor preference (comment-preserving), optimistic.
+  const handleSetExternalEditor = useCallback(async (value: ExternalEditor) => {
+    const prev = config?.externalEditor;
+    setConfig(c => c ? { ...c, externalEditor: value } : c);
+    try {
+      const vaultPathForSave = vaultService.getVaultPath();
+      if (vaultPathForSave) markSelfWrite(`${vaultPathForSave}/config.yaml`);
+      await vaultService.updateConfigValue('externalEditor', value);
+    } catch (e) {
+      console.error('Failed to persist externalEditor:', e);
+      setConfig(c => c ? { ...c, externalEditor: prev } : c);
     }
-  }, [markSelfWrite]);
+  }, [config?.externalEditor, markSelfWrite]);
 
   // Extracted hook: handles message sending, streaming, saving, error recovery
   const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow } = useSendMessage({
@@ -678,10 +690,10 @@ function AppContent() {
   useEffect(() => {
     // Only auto-create if we're in conversation view with nothing selected at all
     // (not a note, trigger, or existing conversation)
-    if (isMobile && mobileView === 'conversation' && !selectedItem && config && availableModels.length > 0) {
+    if (isMobile && mobileView === 'conversation' && !selectedItem && !riffContext.isRiffMode && config && availableModels.length > 0) {
       handleNewConversation();
     }
-  }, [isMobile, mobileView, selectedItem, config, availableModels.length]);
+  }, [isMobile, mobileView, selectedItem, riffContext.isRiffMode, config, availableModels.length]);
 
   const handleSelectNote = async (filename: string) => {
     if (!vaultService.getVaultPath()) return;
@@ -1004,6 +1016,7 @@ function AppContent() {
               streamingConversationIds={getStreamingConversationIds()}
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
+              externalEditor={externalEditor}
               onNewConversation={() => {
                 handleNewConversation();
                 setMobileView('conversation');
@@ -1069,11 +1082,10 @@ function AppContent() {
                   onNavigateToNote={handleSelectNote}
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                   onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
+                  onEdit={handleEditNote}
                   conversations={conversations}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
-                  onContentChange={setNoteContent}
-                  onSave={handleSaveNote}
                 />
               ) : (
                 // Loading state while note content loads
@@ -1142,6 +1154,7 @@ function AppContent() {
               streamingConversationIds={getStreamingConversationIds()}
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
+              externalEditor={externalEditor}
               onNewConversation={handleNewConversation}
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
@@ -1198,12 +1211,11 @@ function AppContent() {
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
+            onEdit={handleEditNote}
             conversations={conversations}
             onBack={goBack}
             canGoBack={canGoBack}
             onClose={() => { setSelectedItem(null); setNoteContent(null); }}
-            onContentChange={setNoteContent}
-            onSave={handleSaveNote}
           />
         ) : currentConversation ? (
           <ChatInterface
@@ -1242,6 +1254,8 @@ function AppContent() {
         <Settings
           onClose={() => setShowSettings(false)}
           vaultPath={vaultPath}
+          externalEditor={externalEditor}
+          onExternalEditorChange={handleSetExternalEditor}
         />
       )}
       <ToastContainer messages={toasts} onDismiss={dismissToast} />

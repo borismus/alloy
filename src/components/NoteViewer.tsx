@@ -1,7 +1,8 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { ItemHeader } from './ItemHeader';
+import { MarkdownContent } from './MarkdownContent';
 import type { ConversationInfo } from '../types';
-import { parseFrontmatter, splitFrontmatter } from '../utils/frontmatter';
+import { parseFrontmatter } from '../utils/frontmatter';
 import './NoteViewer.css';
 
 interface NoteViewerProps {
@@ -10,72 +11,43 @@ interface NoteViewerProps {
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   onIntegrate?: () => void; // Called when user wants to integrate a riff
+  onEdit?: (filename: string) => void; // Open the note in the external editor
   conversations?: ConversationInfo[]; // For looking up conversation titles
   onBack?: () => void;
   canGoBack?: boolean;
   onClose?: () => void;
-  onContentChange?: (fullContent: string) => void; // Immediate: keep App state in sync
-  onSave?: (filename: string, fullContent: string) => void; // Debounced: persist to disk
 }
-
-const SAVE_DEBOUNCE_MS = 600;
 
 export const NoteViewer: React.FC<NoteViewerProps> = ({
   content,
   filename,
+  onNavigateToNote,
+  onNavigateToConversation,
   onIntegrate,
+  onEdit,
+  conversations,
   onBack,
   canGoBack = false,
   onClose,
-  onContentChange,
-  onSave,
 }) => {
-  // Parse frontmatter for the integrate hint; split raw block for editing.
-  const { frontmatter } = useMemo(() => parseFrontmatter(content), [content]);
-  const { rawFrontmatter, body } = useMemo(() => splitFrontmatter(content), [content]);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const prevContentLengthRef = useRef<number>(0);
+
+  // Parse frontmatter and get body content
+  const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
   const isRiffNote = filename?.startsWith('riffs/');
   const isUnintegrated = isRiffNote && frontmatter.integrated === false;
 
-  // Local editing state holds the BODY only; frontmatter is re-attached on save.
-  const [draft, setDraft] = useState(body);
-  const draftRef = useRef(body); // mirrors draft for the unmount flush
-  const lastEmittedBodyRef = useRef(body); // tracks our own edits to avoid clobbering
-  const saveTimer = useRef<number | undefined>(undefined);
-
-  // Reset local draft only on a genuine external change (e.g. file edited
-  // elsewhere). Our own edits set lastEmittedBodyRef, so they don't trigger a
-  // reset and the caret stays put.
+  // Auto-scroll to bottom for riff notes when content grows
   useEffect(() => {
-    if (body !== lastEmittedBodyRef.current) {
-      setDraft(body);
-      draftRef.current = body;
-      lastEmittedBodyRef.current = body;
-    }
-  }, [body]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newBody = e.target.value;
-    const full = rawFrontmatter + newBody;
-    setDraft(newBody);
-    draftRef.current = newBody;
-    lastEmittedBodyRef.current = newBody;
-    onContentChange?.(full);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      if (filename) onSave?.(filename, full);
-    }, SAVE_DEBOUNCE_MS);
-  };
-
-  // Flush any pending save on unmount / note switch so the last edit isn't lost.
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        if (filename) onSave?.(filename, rawFrontmatter + draftRef.current);
+    if (isRiffNote && contentRef.current) {
+      // Only scroll if content has grown (not on initial load or content changes)
+      if (body.length > prevContentLengthRef.current && prevContentLengthRef.current > 0) {
+        contentRef.current.scrollTop = contentRef.current.scrollHeight;
       }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      prevContentLengthRef.current = body.length;
+    }
+  }, [body, isRiffNote]);
 
   // Get display name from filename
   const displayName = filename
@@ -89,7 +61,17 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
         onBack={onBack}
         canGoBack={canGoBack}
         onClose={onClose}
-      />
+      >
+        {filename && onEdit && (
+          <button
+            className="edit-note-btn"
+            onClick={() => onEdit(filename)}
+            title="Open this note in your external editor"
+          >
+            Edit
+          </button>
+        )}
+      </ItemHeader>
       {isUnintegrated && onIntegrate && (
         <div className="riff-integrate-bar">
           <span className="integrate-hint">This riff hasn't been integrated yet</span>
@@ -98,13 +80,13 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
           </button>
         </div>
       )}
-      <div className="note-content-container">
-        <textarea
-          className="note-editor"
-          value={draft}
-          onChange={handleChange}
-          spellCheck={false}
-          placeholder="Empty note"
+      <div className="note-content-container" ref={contentRef}>
+        <MarkdownContent
+          content={body}
+          className="note-content"
+          onNavigateToNote={onNavigateToNote}
+          onNavigateToConversation={onNavigateToConversation}
+          conversations={conversations}
         />
       </div>
     </div>

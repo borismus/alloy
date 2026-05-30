@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { VaultService, spliceFavoritesBlock } from './vault';
+import { VaultService, spliceFavoritesBlock, spliceScalar } from './vault';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import * as fs from '@tauri-apps/plugin-fs';
 import * as yaml from 'js-yaml';
@@ -157,17 +157,6 @@ describe('VaultService', () => {
 
       expect(await vaultService.readNote('missing.md')).toBeNull();
       expect(fs.readTextFile).not.toHaveBeenCalled();
-    });
-
-    it('saveNote writes to the server-relative path and returns the absolute path', async () => {
-      vi.mocked(fs.writeTextFile).mockResolvedValue();
-
-      const returned = await vaultService.saveNote('memory.md', 'updated');
-
-      expect(fs.writeTextFile).toHaveBeenCalledWith(expect.stringMatching(/^\/+memory\.md$/), 'updated');
-      expect(fs.writeTextFile).not.toHaveBeenCalledWith('/Users/me/vault/memory.md', expect.anything());
-      // The returned path is absolute so callers can markSelfWrite it.
-      expect(returned).toBe('/Users/me/vault/memory.md');
     });
 
     it('getNoteFilePath returns the absolute path (for markSelfWrite / OS ops)', async () => {
@@ -555,5 +544,34 @@ OLLAMA_BASE_URL: http://h
     expect(out).toContain('# user-written comment');
     expect(out).toContain('# another comment');
     expect(out).toContain('OLLAMA_BASE_URL');
+  });
+});
+
+describe('spliceScalar', () => {
+  it('replaces an existing key in place, preserving comments and other keys', () => {
+    const existing = `# my config
+defaultModel: x
+externalEditor: obsidian
+# keep me
+OLLAMA_BASE_URL: http://h
+`;
+    const out = spliceScalar(existing, 'externalEditor', 'system');
+    expect(out).toContain('externalEditor: system');
+    expect(out).not.toContain('externalEditor: obsidian');
+    expect(out).toContain('# my config');
+    expect(out).toContain('# keep me');
+    expect(out).toContain('OLLAMA_BASE_URL: http://h');
+  });
+
+  it('appends the key when absent, keeping existing content', () => {
+    const existing = `defaultModel: x\n# comment\n`;
+    const out = spliceScalar(existing, 'externalEditor', 'obsidian');
+    expect(out).toContain('defaultModel: x');
+    expect(out).toContain('# comment');
+    expect(out).toMatch(/externalEditor: obsidian\n$/);
+  });
+
+  it('handles empty config', () => {
+    expect(spliceScalar('', 'externalEditor', 'system')).toBe('externalEditor: system\n');
   });
 });

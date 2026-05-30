@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { vaultService } from '../services/vault';
 import { isTauri } from '../services/api';
 import { CheckResult } from './UpdateChecker';
@@ -20,9 +21,11 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 interface SettingsProps {
   onClose: () => void;
   vaultPath: string | null;
+  externalEditor: ExternalEditor;
+  onExternalEditorChange: (value: ExternalEditor) => void;
 }
 
-export function Settings({ onClose, vaultPath }: SettingsProps) {
+export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorChange }: SettingsProps) {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | CheckResult>('idle');
   const [copiedUrl, setCopiedUrl] = useState(false);
 
@@ -102,7 +105,7 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
         return;
       }
 
-      await openPath(filePath);
+      await openInEditor(filePath, externalEditor);
     } catch (error) {
       console.error('Failed to open config file:', error);
       alert(`Failed to open config: ${error instanceof Error ? error.message : String(error)}`);
@@ -145,6 +148,22 @@ export function Settings({ onClose, vaultPath }: SettingsProps) {
                 Edit config.yaml
               </button>
             </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>External editor</h3>
+            <p className="settings-description">
+              Where the "Edit" buttons open notes and vault files. Obsidian opens
+              markdown notes in your vault; other files always use the system default.
+            </p>
+            <select
+              className="settings-select"
+              value={externalEditor}
+              onChange={(e) => onExternalEditorChange(e.target.value as ExternalEditor)}
+            >
+              <option value="obsidian">Obsidian</option>
+              <option value="system">System default editor</option>
+            </select>
           </div>
 
           {isTauri() && shareStatus && (

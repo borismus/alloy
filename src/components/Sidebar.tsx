@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { ModelInfo, TimelineItem, TimelineFilter } from '../types';
 import { vaultService } from '../services/vault';
-import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTriggerContext } from '../contexts/TriggerContext';
 import { useTextareaProps } from '../utils/textareaProps';
@@ -101,6 +102,7 @@ interface SidebarProps {
   onDeleteConversation: (id: string) => void;
   onDeleteTrigger: (id: string) => void;
   onDeleteNote: (filename: string) => void;
+  externalEditor: ExternalEditor;
   // Mobile props
   fullScreen?: boolean;
   onMobileBack?: () => void;
@@ -127,6 +129,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onDeleteConversation,
   onDeleteTrigger,
   onDeleteNote,
+  externalEditor,
   fullScreen,
   onMobileBack,
   onSelectBackground,
@@ -278,7 +281,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         text: 'Edit',
         action: async () => {
           try {
-            await openPath(filePath);
+            await openInEditor(filePath, externalEditor);
           } catch (error) {
             console.error('Failed to open file in editor:', error);
           }
@@ -365,6 +368,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         const matchesTitle = item.title.toLowerCase().includes(query);
         const matchesId = item.id.toLowerCase().includes(query);
         const matchesPreview = item.preview?.toLowerCase().includes(query);
+        // For notes/riffs, also search the note body text
+        const matchesContent = item.note?.content?.toLowerCase().includes(query);
 
         // For conversations, also search message content
         if (item.type === 'conversation' && item.conversation) {
@@ -374,7 +379,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           if (hasMatchingMessage) return true;
         }
 
-        if (!matchesTitle && !matchesId && !matchesPreview) return false;
+        if (!matchesTitle && !matchesId && !matchesPreview && !matchesContent) return false;
       }
 
       return true;

@@ -68,6 +68,29 @@ export function spliceFavoritesBlock(existing: string, block: string): string {
 }
 
 /**
+ * Replace a top-level scalar `key: value` line in raw YAML text, preserving
+ * every other line (comments, provider templates, formatting). Appends the
+ * key if absent. Used for UI-toggled settings that must not clobber the user's
+ * hand-written config.yaml comments (saveConfig's full yaml.dump would).
+ */
+export function spliceScalar(existing: string, key: string, value: string): string {
+  const line = `${key}: ${value}`;
+  if (existing.trim().length === 0) return line + '\n';
+
+  const prefix = `${key}:`;
+  const lines = existing.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith(prefix)) {
+      lines[i] = line;
+      return lines.join('\n');
+    }
+  }
+  // Not found — append at the end.
+  const sep = existing.endsWith('\n') ? '' : '\n';
+  return existing + sep + line + '\n';
+}
+
+/**
  * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/trigger filename.
  * Input: "2025-01-14-1430-a1b2-my-topic.yaml" → "2025-01-14-1430-a1b2"
  */
@@ -224,6 +247,22 @@ export class VaultService {
 
     const next = spliceFavoritesBlock(existing, renderFavoritesBlock(keys));
     await writeTextFile(configPath, next);
+  }
+
+  /**
+   * Update a single top-level scalar in config.yaml, preserving comments and
+   * other keys (unlike saveConfig's full yaml.dump). For UI-toggled settings.
+   */
+  async updateConfigValue(key: string, value: string): Promise<void> {
+    if (!this.vaultPath) return;
+
+    const configPath = await join(this.vaultPath, 'config.yaml');
+    let existing = '';
+    if (await exists(configPath)) {
+      existing = await readTextFile(configPath);
+    }
+
+    await writeTextFile(configPath, spliceScalar(existing, key, value));
   }
 
   /**
@@ -858,20 +897,6 @@ export class VaultService {
     return await readTextFile(apiPath);
   }
 
-  /**
-   * Write a note's full content (frontmatter + body) to disk. The caller
-   * assembles the complete document. Writes via the server-relative path;
-   * returns the ABSOLUTE path written (so the caller can markSelfWrite it,
-   * which keys on absolute paths to match watcher events), or null if no
-   * vault is open.
-   */
-  async saveNote(filename: string, content: string): Promise<string | null> {
-    const apiPath = await this.noteApiPath(filename);
-    if (!apiPath) return null;
-    await writeTextFile(apiPath, content);
-    return this.toAbsolute(apiPath);
-  }
-
   async deleteNote(filename: string): Promise<boolean> {
     const notePath = await this.noteApiPath(filename);
     if (!notePath) return false;
@@ -928,10 +953,12 @@ export class VaultService {
     if (await exists(memoryPath)) {
       const fileStat = await stat(memoryPath);
       const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
+      const content = await readTextFile(memoryPath);
       notes.push({
         filename: 'memory.md',
         lastModified,
         hasSkillContent: false,
+        content,
       });
     }
 
@@ -943,23 +970,19 @@ export class VaultService {
       return notes; // Return just memory.md if notes dir is empty
     }
 
-    const entries = await readDir(notesPath);
-    const mdEntries = entries.filter(e => e.name?.endsWith('.md'));
-
-    const noteResults = await Promise.all(
-      mdEntries.map(async (entry) => {
-        const filePath = await join(notesPath, entry.name!);
-        const fileStat = await stat(filePath);
-        const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
-        return { filename: entry.name!, lastModified, hasSkillContent: false } as NoteInfo;
-      })
-    );
-    notes.push(...noteResults);
+    // Batch-read all note bodies in one HTTP request (mtime + content), so the
+    // sidebar can full-text search note bodies. The byte cap is generous enough
+    // to cover real notes in full; longer notes are searchable up to the cap.
+    const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
+    const noteHeaders: Record<string, { content: string; mtime: number }> =
+      await readDirHeaders(notesPath, '.md', 1_000_000);
+    for (const [name, { content, mtime }] of Object.entries(noteHeaders)) {
+      notes.push({ filename: name, lastModified: mtime, hasSkillContent: false, content });
+    }
 
     // Load riff notes from riffs/ directory — batch-read all headers in one HTTP request.
     const riffsPath = await join(this.vaultPath, 'riffs');
     if (await exists(riffsPath)) {
-      const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
       const headers: Record<string, { content: string; mtime: number }> = await readDirHeaders(riffsPath, '.md', 300);
       for (const [name, { content, mtime }] of Object.entries(headers)) {
         const lastModified = mtime;
