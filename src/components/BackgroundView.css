@@ -240,3 +240,30 @@
   text-align: center;
   padding: 0.25rem;
 }
+
+/* Mobile input form layout */
+@media (max-width: 768px) {
+  .background-view .input-form {
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Background only has a textarea + send button (no model selector or
+     attachments), so keep them in a single horizontal row instead of the
+     wrapped, stacked layout ChatInterface uses on mobile. */
+  .background-view .input-form .input-row {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .background-view .input-form .input-row textarea {
+    width: auto !important;
+    flex: 1 !important;
+    order: 0;
+  }
+
+  .background-view .input-form .input-row .send-button {
+    order: 1;
+  }
+}

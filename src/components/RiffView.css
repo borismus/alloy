@@ -382,4 +382,27 @@
     padding: 1rem;
     padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   }
+
+  /* Riff only has a mic + send button (no model selector), so keep the
+     input controls in a single horizontal row instead of the wrapped,
+     stacked layout ChatInterface uses on mobile. */
+  .riff-view .input-form .input-row {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .riff-view .input-form .input-row textarea {
+    width: auto !important;
+    flex: 1 !important;
+    order: 0;
+  }
+
+  .riff-view .input-form .input-row .riff-mic-button {
+    order: 1;
+  }
+
+  .riff-view .input-form .input-row .send-button {
+    order: 2;
+  }
 }
