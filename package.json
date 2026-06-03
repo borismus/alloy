@@ -31,7 +31,7 @@
     "lint:fix": "eslint . --fix",
     "build:watch": "vite build --watch",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "bash scripts/tauri-with-logs.sh",
     "clean": "rm -rf dist dist-web .vite playwright-report test-results && cd src-tauri && cargo clean",
     "test": "vitest",
     "test:ui": "vitest --ui",
