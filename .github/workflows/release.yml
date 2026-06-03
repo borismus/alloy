@@ -6,7 +6,69 @@ on:
       - 'v*'
 
 jobs:
-  release:
+  # Create the GitHub release ONCE, before the build matrix fans out. The build
+  # jobs then upload into this release by id. Previously each matrix job ran
+  # tauri-action with `tagName`, so both raced to *create* the same release —
+  # one won, the other failed with "release already exists", dropping its
+  # arch's assets and skipping the updater deploy.
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract release notes
+        id: notes
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Pull the CHANGELOG.md section for this version (## <version> up to
+          # the next ## heading), trimming leading/trailing blank lines. All in
+          # awk so it's portable across the runner's BSD tools. Falls back to a
+          # generic line if the section is absent.
+          NOTES=$(awk -v ver="$VERSION" '
+            $0 ~ "^## +"ver"([ \t]|$)" { flag=1; next }
+            /^## / && flag { flag=0 }
+            flag { lines[n++]=$0 }
+            END {
+              s=0; while (s<n && lines[s] ~ /^[ \t]*$/) s++
+              e=n-1; while (e>=s && lines[e] ~ /^[ \t]*$/) e--
+              for (i=s;i<=e;i++) print lines[i]
+            }
+          ' CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="See the assets to download this version and install."
+          fi
+          {
+            echo "body<<__RELEASE_NOTES_EOF__"
+            echo "$NOTES"
+            echo "__RELEASE_NOTES_EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: create
+        uses: actions/github-script@v7
+        env:
+          RELEASE_BODY: ${{ steps.notes.outputs.body }}
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Alloy ${tag}`,
+              body: process.env.RELEASE_BODY,
+              draft: true,
+              prerelease: false,
+            });
+            return data.id;
+
+  build:
+    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -43,34 +105,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Extract release notes
-        id: notes
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          # Pull the CHANGELOG.md section for this version (## <version> up to
-          # the next ## heading), trimming leading/trailing blank lines. All in
-          # awk so it's portable across the runner's BSD tools. Falls back to a
-          # generic line if the section is absent.
-          NOTES=$(awk -v ver="$VERSION" '
-            $0 ~ "^## +"ver"([ \t]|$)" { flag=1; next }
-            /^## / && flag { flag=0 }
-            flag { lines[n++]=$0 }
-            END {
-              s=0; while (s<n && lines[s] ~ /^[ \t]*$/) s++
-              e=n-1; while (e>=s && lines[e] ~ /^[ \t]*$/) e--
-              for (i=s;i<=e;i++) print lines[i]
-            }
-          ' CHANGELOG.md)
-          if [ -z "$NOTES" ]; then
-            NOTES="See the assets to download this version and install."
-          fi
-          {
-            echo "body<<__RELEASE_NOTES_EOF__"
-            echo "$NOTES"
-            echo "__RELEASE_NOTES_EOF__"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Import Apple Certificate
         if: matrix.platform == 'macos-latest'
         env:
@@ -103,11 +137,9 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Alloy v__VERSION__'
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: false
-          prerelease: false
+          # Upload into the release created above by id — no job races to
+          # create it, so "release already exists" can't happen.
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
 
       - name: List all generated files
@@ -128,8 +160,27 @@ jobs:
             src-tauri/target/*/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: warn
 
+  # Flip the release out of draft only after every build has uploaded its
+  # assets, so users never see a partial (single-arch) release.
+  publish-release:
+    needs: [create-release, build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.create-release.outputs.release_id }},
+              draft: false,
+            });
+
   deploy-updater:
-    needs: release
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
