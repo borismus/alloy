@@ -574,7 +574,17 @@ function AppContent() {
         setTriggers(loadedTriggers);
         setNotes(loadedNotes);
         setMemory(loadedMemory);
-        setBackgroundConversation(bgConv);
+        // A background conversation persisted before the catalog was fixed may
+        // reference a model that's no longer available (e.g. an embedding model
+        // picked as a stale fallback). Heal it to a valid model so sends don't
+        // 400. Skip when the catalog is empty — we can't validate, so leave the
+        // saved model untouched rather than clobber it.
+        const healedBgConv =
+          loadedModels.length === 0 ||
+          (bgConv.model && loadedModels.some(m => m.key === bgConv.model))
+            ? bgConv
+            : { ...bgConv, model: bgDefaultModel };
+        setBackgroundConversation(healedBgConv);
 
         // Reconnect to any in-flight streaming sessions.
         reconnectToActiveSessions({
