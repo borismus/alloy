@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.4
+
+- Fix background mode failing with "does not support chat": Ollama embedding
+  models (e.g. mxbai-embed-large) are no longer offered as chat models, and a
+  conversation left pointing at an unavailable model is healed to a valid one
+  on load.
+- Fix a spurious "defaultModel isn't available" error on startup: a transient
+  model-list fetch failure no longer gets cached and degrade the app for an
+  hour.
+
 ## 0.3.3
 
 Maintenance release to verify the auto-updater fixed in 0.3.2 works end to end
