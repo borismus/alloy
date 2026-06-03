@@ -81,13 +81,17 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
     }
 
     let mut all = Vec::new();
+    let mut any_failed = false;
     for cfg in &state.config.providers {
         match cfg.id.as_str() {
             "ollama" => {
                 if let Some(base) = &cfg.base_url {
                     match fetch_ollama_models(base).await {
                         Ok(mut models) => all.append(&mut models),
-                        Err(e) => tracing::warn!("ollama model fetch failed: {}", e),
+                        Err(e) => {
+                            any_failed = true;
+                            tracing::warn!("ollama model fetch failed: {}", e);
+                        }
                     }
                 }
             }
@@ -100,13 +104,23 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
                     .unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
                 match fetch_openai_compatible_models(&base, &cfg.api_key, &cfg.id).await {
                     Ok(mut models) => all.append(&mut models),
-                    Err(e) => tracing::warn!("{} model fetch failed: {}", cfg.id, e),
+                    Err(e) => {
+                        any_failed = true;
+                        tracing::warn!("{} model fetch failed: {}", cfg.id, e);
+                    }
                 }
             }
         }
     }
 
-    state.model_cache.set(all.clone());
+    // Only cache a complete result. If any provider fetch failed (e.g. a
+    // transient OpenRouter timeout on cold start), return the partial list for
+    // this request but DON'T poison the 1h cache — otherwise one hiccup leaves
+    // the SPA with a degraded list for an hour, firing the stale-defaultModel
+    // toast and falling back to whatever model happens to be first.
+    if !any_failed {
+        state.model_cache.set(all.clone());
+    }
     Json(all)
 }
 
@@ -224,6 +238,12 @@ async fn fetch_ollama_models(base_url: &str) -> Result<Vec<ModelInfo>, String> {
     Ok(body
         .models
         .into_iter()
+        // Ollama's tag list mixes in embedding-only models (mxbai-embed-large,
+        // nomic-embed-text, ...) that 400 with "does not support chat". They're
+        // not valid chat models, so drop them before they reach the picker — or
+        // get picked as a fallback default. By convention they all contain
+        // "embed" in the tag name.
+        .filter(|m| !m.name.to_lowercase().contains("embed"))
         .map(|m| ModelInfo {
             key: format!("ollama/{}", m.name),
             name: m.name,
