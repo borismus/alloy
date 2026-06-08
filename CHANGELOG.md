@@ -4,6 +4,14 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.5
+
+- Add automatic compaction for long conversations: older turns are folded into
+  a running summary so the context sent to the model (and its cost) stays
+  bounded. The full history is always kept and shown.
+- Fix tool-use pills disappearing after a conversation reloads — tool calls are
+  now persisted with the assistant message instead of only shown live.
+
 ## 0.3.4
 
 - Fix background mode failing with "does not support chat": Ollama embedding
