@@ -4,7 +4,7 @@
   "version": "0.3.4",
   "identifier": "com.alloy.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npx vite",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist-web"

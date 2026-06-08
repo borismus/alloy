@@ -16,7 +16,7 @@ Key features:
 ## Project Context
 
 - This is a TypeScript Tauri app. The primary codebase is TypeScript. When debugging platform-specific issues (dictation, WKWebView, native behaviors), recognize early when the issue is at the system/platform level rather than app level, and communicate that clearly instead of cycling through incorrect hypotheses.
-- **Dual runtime modes**: The app runs in both **Tauri mode** (native desktop) and **server mode** (web browser). Both modes must be maintained and tested. Model calls and tool execution run in the Rust `alloy-server` backend — embedded in the Tauri shell on a random loopback port, or run standalone (port 3001) for web mode. All builds route Tauri plugin imports to HTTP shims under `src/services/api/` (see `vite.config.ts` aliases); each shim detects the Tauri runtime and forwards to the real native plugin, otherwise degrades to a browser/`/api` fallback. When adding features that make HTTP requests or use Tauri APIs, ensure they work in both modes.
+- **Dual runtime modes**: The app runs in both **Tauri mode** (native desktop) and **server mode** (web browser). Both modes must be maintained and tested. Model calls and tool execution run in the Rust `alloy-server` backend — embedded in the Tauri shell on a random loopback port, or run standalone (dev port 3030 via `npm run dev`; the binary itself defaults to 3001) for web mode. All builds route Tauri plugin imports to HTTP shims under `src/services/api/` (see `vite.config.ts` aliases); each shim detects the Tauri runtime and forwards to the real native plugin, otherwise degrades to a browser/`/api` fallback. When adding features that make HTTP requests or use Tauri APIs, ensure they work in both modes.
 
 ## General Principles
 
@@ -62,7 +62,7 @@ alloy-server/               # Rust (axum) backend: model calls + tool execution
 
 ```bash
 npm run tauri dev       # Run desktop app in dev mode
-npm run dev             # Web mode (Vite, :1420); run alloy-server separately on :3001
+npm run dev             # Web mode: Vite frontend (:1420) + auto-rebuilding backend (:3030); vault from .env
 npm run test            # Run unit tests (watch mode)
 npm run test:run        # Run unit tests once
 npm run test:e2e        # Run Playwright e2e tests

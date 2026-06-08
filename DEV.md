@@ -71,7 +71,7 @@ alloy/
 The app runs in two modes:
 
 - **Tauri mode** (`npm run tauri dev`): Native desktop app. The Tauri shell embeds the Rust `alloy-server` on a random loopback port; the SPA in the webview talks to it over `/api/*`.
-- **Server mode** (`npm run dev`): Web browser mode at `http://localhost:1420`. Run `alloy-server` separately on port 3001 (`cd alloy-server && cargo run --release -- --vault <path> --port 3001`); Vite proxies `/api` to it.
+- **Server mode** (`npm run dev`): Web browser mode at `http://localhost:1420`. One command runs the Vite frontend **and** the auto-rebuilding `alloy-server` backend (cargo-watch) together; Ctrl-C stops both. The backend's vault comes from `ALLOY_VAULT` in `.env` (override per-run with `ALLOY_VAULT=… npm run dev` or `npm run dev -- <vault>`). It binds `:3030` and Vite proxies `/api` to it. The dev port is deliberately **not** 3001, so it never collides with — or silently proxies into — an installed Alloy app holding `:3001`. Override with `ALLOY_DEV_PORT`.
 
 In both modes, model calls and tool execution happen in `alloy-server`. All builds route Tauri plugin imports to HTTP shims under `src/services/api/` (via `vite.config.ts` aliases); each shim forwards to the real native plugin under Tauri, else degrades to a browser/`/api` fallback. When adding features that use Tauri APIs or make HTTP requests, ensure they work in both modes.
 
@@ -147,7 +147,7 @@ All vault operations can be inspected by looking at the files in your vault fold
 
 - **Fast iteration**: Keep `npm run tauri dev` running
 - **Test persistence**: Check your vault folder to verify files
-- **Web mode**: Use `npm run dev` for faster frontend iteration (talks to a separately-run `alloy-server` on :3001)
+- **Web mode**: `npm run dev` for faster iteration — Vite frontend + auto-rebuilding `alloy-server` on :3030, one command (vault from `.env`)
 - **Search**: Works across all message content in all conversations
 - **Memory**: Edit `memory.md` to customize AI context
 

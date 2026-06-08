@@ -24,7 +24,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "bash scripts/dev.sh",
     "build": "tsc && eslint . && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

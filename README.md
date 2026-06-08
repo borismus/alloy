@@ -106,7 +106,7 @@ The `web_search` tool requires one of:
 
 ```bash
 npm run tauri dev       # Desktop app (requires Rust)
-npm run dev             # Web mode (Vite; run alloy-server on :3001)
+npm run dev             # Web mode: frontend (:1420) + auto-rebuilding backend (:3030); vault from .env
 npm run test:run        # Run tests
 npm run tauri build     # Production build
 ```

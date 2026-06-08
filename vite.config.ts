@@ -5,6 +5,11 @@ import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
 
+// Dev backend port. Deliberately NOT 3001 (the standalone/share default) so a
+// dev session never collides with — or silently proxies into — an installed
+// Alloy app holding :3001. Keep in sync with scripts/dev-server.sh.
+const devServerPort = process.env.ALLOY_DEV_PORT || '3030';
+
 // All builds (web + Tauri) now route Tauri plugin imports to the HTTP shims
 // under src/services/api/. The shims for native-OS plugins (dialog, opener,
 // updater, process, menu) detect the Tauri runtime and forward to the real
@@ -36,11 +41,12 @@ export default defineConfig(async () => ({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
-    // In standalone dev (`npm run dev` against alloy-serve on :3001),
-    // proxy /api so the SPA can use same-origin paths.
+    // In web-mode dev (`npm run dev`, which runs Vite + the standalone
+    // alloy-serve), proxy /api so the SPA can use same-origin paths. Targets
+    // the dedicated dev port, not 3001, so it never reaches an installed app.
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${devServerPort}`,
         ws: true,
       },
     },

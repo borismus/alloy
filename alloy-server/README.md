@@ -41,9 +41,9 @@ network" and visit the displayed URL from your phone.
 ### Standalone CLI
 
 ```bash
-cd alloy-server
-cargo run --release -- --vault ~/Documents/Alloy --port 3001
-npm run dev   # Vite proxies /api to :3001 (see vite.config.ts)
+npm run dev   # frontend + auto-rebuilding backend (:3030); vault from ALLOY_VAULT in .env
+# override per-run: ALLOY_VAULT=~/Documents/Alloy npm run dev
+# Vite proxies /api to :3030 (see vite.config.ts; override port with ALLOY_DEV_PORT)
 # open http://localhost:1420
 ```
 
