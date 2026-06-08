@@ -27,7 +27,7 @@ use crate::types::{ToolCall, ToolResult, builtin_tools};
 use crate::{
     providers::{ProviderRegistry, StreamResult, Usage, WireMessage},
     vault::Vault,
-    vault_writer::{self, AssistantWrite},
+    vault_writer::{self, AssistantWrite, PersistedToolUse},
 };
 
 const SESSION_TTL: Duration = Duration::from_secs(5 * 60);
@@ -342,12 +342,17 @@ async fn run_stream(
             }
 
             if !params.skip_persist {
+                let (assistant_message_id, tool_use) = {
+                    let inner = session.inner.lock().unwrap();
+                    (inner.assistant_message_id.clone(), collect_tool_uses(&inner.tool_history))
+                };
                 let write = AssistantWrite {
                     conversation_id: params.conversation_id.clone(),
-                    assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
+                    assistant_message_id,
                     content: stream_result.content.clone(),
                     usage: stream_result.usage.clone(),
                     compacted: new_compacted,
+                    tool_use,
                 };
                 if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
                     tracing::warn!("failed to append assistant message: {}", e);
@@ -401,12 +406,17 @@ async fn run_stream(
             if !params.skip_persist {
                 let partial = session.inner.lock().unwrap().full_content.clone();
                 if !partial.trim().is_empty() {
+                    let (assistant_message_id, tool_use) = {
+                        let inner = session.inner.lock().unwrap();
+                        (inner.assistant_message_id.clone(), collect_tool_uses(&inner.tool_history))
+                    };
                     let write = AssistantWrite {
                         conversation_id: params.conversation_id.clone(),
-                        assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
+                        assistant_message_id,
                         content: partial,
                         usage: None,
                         compacted: None,
+                        tool_use,
                     };
                     if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
                         tracing::warn!("failed to persist partial content: {}", e);
@@ -425,6 +435,41 @@ fn mark_error(session: &Session, msg: String) {
         inner.error_message = Some(msg.clone());
     }
     let _ = session.tx.send(SessionEvent::Error(msg));
+}
+
+/// Fold a session's `tool_history` (interleaved Use/Result entries) into the
+/// flat `PersistedToolUse` shape the conversation YAML stores. Each `Use` is
+/// paired with its `Result` by id; the result string is truncated to 500 chars
+/// to match the live-display truncation in
+/// [src/services/server-streaming.ts](src/services/server-streaming.ts).
+fn collect_tool_uses(history: &[ToolHistoryEntry]) -> Vec<PersistedToolUse> {
+    let mut results: HashMap<&str, (&str, bool)> = HashMap::new();
+    for entry in history {
+        if let ToolHistoryEntry::Result { tool_use_id, content, is_error } = entry {
+            results.insert(tool_use_id.as_str(), (content.as_str(), *is_error));
+        }
+    }
+    history
+        .iter()
+        .filter_map(|entry| match entry {
+            ToolHistoryEntry::Use { id, name, input } => {
+                let (result, is_error) = match results.get(id.as_str()) {
+                    Some((content, err)) => (
+                        Some(content.chars().take(500).collect::<String>()),
+                        err.then_some(true),
+                    ),
+                    None => (None, None),
+                };
+                Some(PersistedToolUse {
+                    tool_type: name.clone(),
+                    input: Some(input.clone()),
+                    result,
+                    is_error,
+                })
+            }
+            ToolHistoryEntry::Result { .. } => None,
+        })
+        .collect()
 }
 
 struct SessionToolSink {
@@ -568,4 +613,99 @@ fn pick_title_model(conversation_model: &str) -> String {
         }
     }
     "anthropic/claude-haiku-4-5".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn use_entry(id: &str, name: &str) -> ToolHistoryEntry {
+        ToolHistoryEntry::Use {
+            id: id.into(),
+            name: name.into(),
+            input: json!({ "q": id }),
+        }
+    }
+
+    #[test]
+    fn collect_pairs_results_and_sets_error_only_when_true() {
+        let history = vec![
+            use_entry("t1", "web_search"),
+            ToolHistoryEntry::Result {
+                tool_use_id: "t1".into(),
+                content: "ok".into(),
+                is_error: false,
+            },
+            use_entry("t2", "http_get"),
+            ToolHistoryEntry::Result {
+                tool_use_id: "t2".into(),
+                content: "boom".into(),
+                is_error: true,
+            },
+            // A Use with no matching Result (e.g. cancelled before completion).
+            use_entry("t3", "read_file"),
+        ];
+        let out = collect_tool_uses(&history);
+        assert_eq!(out.len(), 3, "one PersistedToolUse per Use entry");
+
+        assert_eq!(out[0].tool_type, "web_search");
+        assert_eq!(out[0].result.as_deref(), Some("ok"));
+        assert_eq!(out[0].is_error, None, "success omits isError");
+
+        assert_eq!(out[1].result.as_deref(), Some("boom"));
+        assert_eq!(out[1].is_error, Some(true), "error sets isError=true");
+
+        assert_eq!(out[2].result, None, "unpaired use has no result");
+        assert_eq!(out[2].is_error, None);
+    }
+
+    #[test]
+    fn collect_truncates_result_to_500_chars() {
+        let history = vec![
+            use_entry("t1", "http_get"),
+            ToolHistoryEntry::Result {
+                tool_use_id: "t1".into(),
+                content: "x".repeat(1200),
+                is_error: false,
+            },
+        ];
+        let out = collect_tool_uses(&history);
+        assert_eq!(out[0].result.as_deref().unwrap().chars().count(), 500);
+    }
+
+    #[test]
+    fn collect_empty_history_is_empty() {
+        assert!(collect_tool_uses(&[]).is_empty());
+    }
+
+    // The persisted YAML keys must match the frontend `ToolUse` interface
+    // (type/input/result/isError) or the pills won't re-render on reload.
+    #[test]
+    fn persisted_shape_uses_frontend_keys() {
+        let history = vec![
+            use_entry("t1", "http_get"),
+            ToolHistoryEntry::Result {
+                tool_use_id: "t1".into(),
+                content: "boom".into(),
+                is_error: true,
+            },
+        ];
+        let yaml = serde_yaml::to_string(&collect_tool_uses(&history)).unwrap();
+        assert!(yaml.contains("type: http_get"), "got:\n{yaml}");
+        assert!(yaml.contains("isError: true"), "got:\n{yaml}");
+        assert!(yaml.contains("result: boom"), "got:\n{yaml}");
+        assert!(yaml.contains("input:"), "got:\n{yaml}");
+        // Success case must omit isError entirely (not isError: false).
+        let ok = vec![
+            use_entry("t2", "web_search"),
+            ToolHistoryEntry::Result {
+                tool_use_id: "t2".into(),
+                content: "fine".into(),
+                is_error: false,
+            },
+        ];
+        let yaml_ok = serde_yaml::to_string(&collect_tool_uses(&ok)).unwrap();
+        assert!(!yaml_ok.contains("isError"), "success should omit isError:\n{yaml_ok}");
+    }
 }

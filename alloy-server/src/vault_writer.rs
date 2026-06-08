@@ -25,6 +25,21 @@ struct Conversation {
     extra: serde_yaml::Mapping,
 }
 
+/// One tool invocation persisted onto an assistant message. Mirrors the
+/// frontend `ToolUse` interface in [src/types/index.ts](src/types/index.ts) so
+/// the YAML round-trips into `Message.toolUse` and the pills re-render on reload.
+#[derive(Debug, Clone, Serialize)]
+pub struct PersistedToolUse {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    #[serde(rename = "isError", skip_serializing_if = "Option::is_none")]
+    pub is_error: Option<bool>,
+}
+
 pub struct AssistantWrite {
     pub conversation_id: String,
     pub assistant_message_id: String,
@@ -32,6 +47,8 @@ pub struct AssistantWrite {
     pub usage: Option<Usage>,
     /// A compaction summary to insert at its boundary in the same write.
     pub compacted: Option<NewCompacted>,
+    /// Tool calls/results observed this turn, persisted so pills survive reload.
+    pub tool_use: Vec<PersistedToolUse>,
 }
 
 /// Append an assistant message to the conversation file. When `w.compacted` is
@@ -62,6 +79,12 @@ pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyho
         msg.insert(
             Value::String("usage".into()),
             serde_yaml::to_value(usage).unwrap_or(Value::Null),
+        );
+    }
+    if !w.tool_use.is_empty() {
+        msg.insert(
+            Value::String("toolUse".into()),
+            serde_yaml::to_value(&w.tool_use).unwrap_or(Value::Null),
         );
     }
     conversation.messages.push(Value::Mapping(msg));
