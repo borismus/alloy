@@ -73,6 +73,19 @@ impl ModelCache {
             .or_else(|| models.iter().find(|m| key.starts_with(&m.key)))
             .and_then(|m| Some((m.input_per_1m?, m.output_per_1m?)))
     }
+
+    /// Look up the context window (in tokens) for a model key, using the same
+    /// exact-then-prefix match as `pricing_for`. Returns `None` if the model
+    /// isn't cached yet or doesn't report a window.
+    pub fn context_window_for(&self, key: &str) -> Option<u64> {
+        let guard = self.entry.lock().unwrap();
+        let models = guard.as_ref()?.1.as_slice();
+        models
+            .iter()
+            .find(|m| m.key == key)
+            .or_else(|| models.iter().find(|m| key.starts_with(&m.key)))
+            .and_then(|m| m.context_window)
+    }
 }
 
 async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {

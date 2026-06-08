@@ -94,11 +94,13 @@ pub async fn run(trigger: &Trigger, state: &AppState) -> TriggerRunOutcome {
                 baseline
             };
             messages.push(WireMessage {
+                id: None,
                 role: "user".into(),
                 content: format!("BASELINE (from your last notification):\n\n{}", truncated),
                 attachments: Vec::new(),
             });
             messages.push(WireMessage {
+                id: None,
                 role: "assistant".into(),
                 content: "I will compare the current state against this baseline and only trigger if there is a meaningful change.".into(),
                 attachments: Vec::new(),
@@ -106,6 +108,7 @@ pub async fn run(trigger: &Trigger, state: &AppState) -> TriggerRunOutcome {
         }
     }
     messages.push(WireMessage {
+        id: None,
         role: "user".into(),
         content: trigger.trigger_prompt.clone(),
         attachments: Vec::new(),
@@ -138,6 +141,7 @@ pub async fn run(trigger: &Trigger, state: &AppState) -> TriggerRunOutcome {
         state.vault.clone(),
         state.tools.clone(),
         state.model_cache.clone(),
+        state.config.compaction,
         params,
     )
     .await;

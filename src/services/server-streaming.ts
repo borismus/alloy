@@ -88,6 +88,9 @@ export async function executeViaServer(
     .map(m => {
       const imageAttachments = m.attachments?.filter(a => a.type === 'image') ?? [];
       return {
+        // `id` lets the server anchor a server-inserted compacted message at the
+        // right boundary in the vault array (see alloy-server/src/compaction.rs).
+        ...(m.id ? { id: m.id } : {}),
         role: m.role,
         content: m.content,
         ...(imageAttachments.length > 0

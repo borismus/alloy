@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod cli;
+pub mod compaction;
 pub mod config;
 pub mod embed;
 pub mod error;

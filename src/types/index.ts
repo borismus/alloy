@@ -88,8 +88,11 @@ export interface QueuedMessage {
 export interface Message {
   // Unique identifier for provenance tracking (e.g., 'msg-a1b2')
   id?: string;
-  // 'log' messages are for UI display only and are filtered out before sending to agents
-  role: 'user' | 'assistant' | 'log';
+  // 'log' messages are for UI display only and are filtered out before sending to agents.
+  // 'compacted' messages are server-generated summaries of older turns: they are kept in
+  // history and rendered as a card, but at send time the server transmits only the most
+  // recent compacted message (as context) plus everything after it. See alloy-server/src/compaction.rs.
+  role: 'user' | 'assistant' | 'log' | 'compacted';
   timestamp: string;
   content: string;
   // Which model generated this assistant response

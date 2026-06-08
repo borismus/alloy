@@ -19,12 +19,13 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, watch};
 
+use crate::compaction::{self, CompactionSettings, NewCompacted};
 use crate::routes::models::ModelCache;
 use crate::tool_loop::{LoopRequest, ToolEventSink, execute_with_tools};
 use crate::tools::{ToolContext, ToolRegistry};
 use crate::types::{ToolCall, ToolResult, builtin_tools};
 use crate::{
-    providers::{ProviderRegistry, StreamResult, Usage, WireMessage, wire_to_chat},
+    providers::{ProviderRegistry, StreamResult, Usage, WireMessage},
     vault::Vault,
     vault_writer::{self, AssistantWrite},
 };
@@ -186,6 +187,7 @@ pub fn start_session(
     vault: Arc<Vault>,
     tools: Arc<ToolRegistry>,
     model_cache: Arc<ModelCache>,
+    compaction: CompactionSettings,
     params: StartParams,
 ) -> anyhow::Result<Arc<Session>> {
     // Idempotency: if the session id already exists, return it.
@@ -227,6 +229,7 @@ pub fn start_session(
             vault,
             tools,
             model_cache,
+            compaction,
             params,
             cancel_rx,
         )
@@ -237,12 +240,14 @@ pub fn start_session(
     Ok(session)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_stream(
     session: Arc<Session>,
     providers: ProviderRegistry,
     vault: Arc<Vault>,
     tools: Arc<ToolRegistry>,
     model_cache: Arc<ModelCache>,
+    compaction: CompactionSettings,
     params: StartParams,
     cancel: watch::Receiver<bool>,
 ) {
@@ -275,8 +280,30 @@ async fn run_stream(
         session: session.clone(),
     });
 
-    let messages =
-        wire_to_chat(&params.messages, params.system_prompt.as_deref(), Some(vault.as_ref())).await;
+    // Compaction: build the send view (folding older turns into a summary when
+    // over budget). Returns the messages to send plus an optional summary to
+    // persist at completion. Never compact when there's no conversation file to
+    // persist into (skip_persist) — but the in-memory send view is still built.
+    let cw = model_cache.context_window_for(&params.model);
+    let prepared = compaction::prepare(
+        &params.messages,
+        params.system_prompt.as_deref(),
+        Some(vault.as_ref()),
+        provider.as_ref(),
+        &upstream_model,
+        cw,
+        &compaction,
+    )
+    .await;
+    let messages = prepared.send;
+    // Only persist a freshly-generated compacted message when we own a
+    // conversation file (triggers/riff run with skip_persist and ephemeral
+    // histories).
+    let new_compacted: Option<NewCompacted> = if params.skip_persist {
+        None
+    } else {
+        prepared.new_compacted
+    };
 
     let loop_req = LoopRequest {
         provider: provider.clone(),
@@ -320,6 +347,7 @@ async fn run_stream(
                     assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
                     content: stream_result.content.clone(),
                     usage: stream_result.usage.clone(),
+                    compacted: new_compacted,
                 };
                 if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
                     tracing::warn!("failed to append assistant message: {}", e);
@@ -378,6 +406,7 @@ async fn run_stream(
                         assistant_message_id: session.inner.lock().unwrap().assistant_message_id.clone(),
                         content: partial,
                         usage: None,
+                        compacted: None,
                     };
                     if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
                         tracing::warn!("failed to persist partial content: {}", e);
@@ -450,9 +479,10 @@ pub async fn run_to_completion(
     vault: Arc<Vault>,
     tools: Arc<ToolRegistry>,
     model_cache: Arc<ModelCache>,
+    compaction: CompactionSettings,
     params: StartParams,
 ) -> anyhow::Result<SessionOutcome> {
-    let session = start_session(registry, providers, vault, tools, model_cache, params)?;
+    let session = start_session(registry, providers, vault, tools, model_cache, compaction, params)?;
     let mut rx = session.subscribe();
 
     // Cover the race where the background task already finished between

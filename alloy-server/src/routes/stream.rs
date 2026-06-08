@@ -45,6 +45,7 @@ async fn start(
         state.vault.clone(),
         state.tools.clone(),
         state.model_cache.clone(),
+        state.config.compaction,
         params,
     );
     match session {

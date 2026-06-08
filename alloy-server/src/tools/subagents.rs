@@ -120,6 +120,7 @@ async fn run_one_agent(
 
     let messages: Vec<ChatMessage> = wire_to_chat(
         &[WireMessage {
+            id: None,
             role: "user".into(),
             content: prompt,
             attachments: Vec::new(),

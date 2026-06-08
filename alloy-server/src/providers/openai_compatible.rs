@@ -355,6 +355,62 @@ impl Provider for OpenAICompatibleProvider {
         }
     }
 
+    async fn complete_once(
+        &self,
+        system: &str,
+        user: &str,
+        model: &str,
+        max_tokens: u32,
+    ) -> Option<String> {
+        let body = json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user },
+            ],
+            "max_tokens": max_tokens,
+        });
+
+        let response = match self.post_chat(body).send().await {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                tracing::warn!(
+                    "complete_once HTTP {}: {}",
+                    r.status(),
+                    r.text().await.unwrap_or_default()
+                );
+                return None;
+            }
+            Err(e) => {
+                tracing::warn!("complete_once request failed: {}", e);
+                return None;
+            }
+        };
+
+        let body: Value = match response.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("complete_once JSON parse failed: {}", e);
+                return None;
+            }
+        };
+
+        let text = body
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+            .trim();
+
+        if text.is_empty() {
+            None
+        } else {
+            Some(text.to_string())
+        }
+    }
+
     /// Heuristic: most cloud models on OpenRouter support tool calling. Ollama
     /// support varies by model — we'd need to call /api/show. For Phase 1 we
     /// assume yes and let upstream errors surface if a model can't handle it.

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use tokio::fs;
 
-use crate::{providers::Usage, vault::Vault};
+use crate::{compaction::NewCompacted, providers::Usage, vault::Vault};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Conversation {
@@ -30,15 +30,28 @@ pub struct AssistantWrite {
     pub assistant_message_id: String,
     pub content: String,
     pub usage: Option<Usage>,
+    /// A compaction summary to insert at its boundary in the same write.
+    pub compacted: Option<NewCompacted>,
 }
 
-/// Append an assistant message to the conversation file.
+/// Append an assistant message to the conversation file. When `w.compacted` is
+/// set, the compacted summary message is inserted at its boundary (immediately
+/// before the anchor message) in the SAME read-modify-write, so the client's
+/// file watcher only sees one change at completion (no mid-stream reload) and
+/// there's no second racing write.
 pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyhow::Result<()> {
     let file_path = find_conversation_file(vault, &w.conversation_id).await?;
     let text = fs::read_to_string(&file_path).await?;
     let mut conversation: Conversation = serde_yaml::from_str(&text)?;
 
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // Insert the compacted summary message (if any) before its anchor message,
+    // and stamp lastCompactedAt. Done before appending the assistant reply so
+    // the new reply still lands at the end.
+    if let Some(nc) = w.compacted {
+        insert_compacted_message(&mut conversation, nc, &now);
+    }
 
     let mut msg = serde_yaml::Mapping::new();
     msg.insert(Value::String("id".into()), Value::String(w.assistant_message_id));
@@ -67,6 +80,46 @@ pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyho
         file_path.file_name().unwrap_or_default().to_string_lossy()
     );
     Ok(())
+}
+
+/// Insert a `compacted` summary message immediately before its anchor message
+/// (the first retained message) and stamp `lastCompactedAt`. If the anchor id is
+/// missing or not found, the summary is dropped (it was still used for this
+/// turn's send; the next turn regenerates it) and a warning is logged.
+fn insert_compacted_message(conversation: &mut Conversation, nc: NewCompacted, now: &str) {
+    let Some(anchor_id) = nc.anchor_id.as_deref() else {
+        tracing::warn!("compaction: no anchor id; not persisting compacted message");
+        return;
+    };
+    let pos = conversation.messages.iter().position(|m| {
+        m.as_mapping()
+            .and_then(|map| map.get(Value::String("id".into())))
+            .and_then(|v| v.as_str())
+            == Some(anchor_id)
+    });
+    let Some(pos) = pos else {
+        tracing::warn!(
+            "compaction: anchor id {} not found; not persisting compacted message",
+            anchor_id
+        );
+        return;
+    };
+
+    let mut cmap = serde_yaml::Mapping::new();
+    cmap.insert(
+        Value::String("id".into()),
+        Value::String(format!("compact-{}", chrono::Utc::now().timestamp_millis())),
+    );
+    cmap.insert(Value::String("role".into()), Value::String("compacted".into()));
+    cmap.insert(Value::String("timestamp".into()), Value::String(now.to_string()));
+    cmap.insert(Value::String("content".into()), Value::String(nc.content));
+    conversation.messages.insert(pos, Value::Mapping(cmap));
+
+    conversation.extra.insert(
+        Value::String("lastCompactedAt".into()),
+        Value::String(now.to_string()),
+    );
+    tracing::info!("compaction: inserted compacted message before {}", anchor_id);
 }
 
 /// Update the conversation title and rename the file to include a slug.
@@ -173,7 +226,7 @@ fn render_markdown_preview(c: &Conversation) -> String {
         .filter_map(|v| {
             let m = v.as_mapping()?;
             let role = m.get(Value::String("role".into()))?.as_str()?;
-            if role == "log" {
+            if role == "log" || role == "compacted" {
                 return None;
             }
             let content = m.get(Value::String("content".into()))?.as_str().unwrap_or("");

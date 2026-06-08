@@ -54,6 +54,33 @@ const LogMessage = React.memo(({ message }: { message: Message }) => (
   </div>
 ));
 
+// CompactedMessage renders a server-generated summary of older turns. The full
+// originals stay in history above it; at send time only the most recent
+// compacted message (plus everything after) is transmitted. Collapsed by
+// default — click to read the summary.
+const CompactedMessage = React.memo(({ message }: { message: Message }) => {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="message compacted">
+      <button
+        type="button"
+        className="compacted-toggle"
+        onClick={() => setExpanded(e => !e)}
+        aria-expanded={expanded}
+      >
+        <span className="compacted-icon">⤵</span>
+        <span className="compacted-label">Earlier conversation summarized to save context</span>
+        <span className="compacted-chevron">{expanded ? '▾' : '▸'}</span>
+      </button>
+      {expanded && (
+        <div className="compacted-summary">
+          <MarkdownContent content={message.content} />
+        </div>
+      )}
+    </div>
+  );
+});
+
 interface ChatInterfaceProps {
   conversation: Conversation | null;
   onSendMessage: (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal) => Promise<void>;
@@ -208,6 +235,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
       if (message.role === 'log') {
         return <LogMessage key={`${conversation.id}-${index}`} message={message} />;
+      }
+
+      if (message.role === 'compacted') {
+        return <CompactedMessage key={`${conversation.id}-${index}`} message={message} />;
       }
 
       if (message.role === 'user') {

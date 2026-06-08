@@ -23,6 +23,10 @@ use crate::vault::Vault;
 /// (`ChatMessage`) during execution.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WireMessage {
+    /// Optional message id (carried so compaction can anchor a server-inserted
+    /// `compacted` message at the right boundary in the vault array).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub role: String,
     #[serde(default)]
     pub content: String,
@@ -220,6 +224,19 @@ pub trait Provider: Send + Sync {
 
     /// Generate a short title (3-6 words) from the first exchange.
     async fn generate_title(&self, user_msg: &str, assistant_msg: &str, model: &str) -> String;
+
+    /// One-shot, non-streaming completion. Used by compaction to generate a
+    /// conversation summary. Returns `None` on any failure so the caller can
+    /// fall back gracefully. Default impl returns `None`.
+    async fn complete_once(
+        &self,
+        _system: &str,
+        _user: &str,
+        _model: &str,
+        _max_tokens: u32,
+    ) -> Option<String> {
+        None
+    }
 
     /// Does this provider+model support tool calling? Used by the streaming
     /// session to decide whether to include the `tools` array. Default is

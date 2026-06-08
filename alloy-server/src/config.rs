@@ -40,6 +40,18 @@ pub struct RawConfig {
     pub share_on_network: Option<bool>,
     #[serde(rename = "sharePort", default)]
     pub share_port: Option<u16>,
+
+    #[serde(default)]
+    pub compaction: Option<RawCompaction>,
+}
+
+/// Raw `compaction:` block from config.yaml.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RawCompaction {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(rename = "triggerTokens", default)]
+    pub trigger_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -68,6 +80,8 @@ pub struct Config {
     pub share_on_network: bool,
     /// Port for the public listener when `share_on_network` is true.
     pub share_port: u16,
+    /// Auto-compaction settings (see compaction.rs).
+    pub compaction: crate::compaction::CompactionSettings,
 }
 
 impl Default for Config {
@@ -79,6 +93,7 @@ impl Default for Config {
             soniox_api_key: None,
             share_on_network: false,
             share_port: 3001,
+            compaction: crate::compaction::CompactionSettings::default(),
         }
     }
 }
@@ -154,6 +169,17 @@ impl Config {
             }
         }
 
+        let compaction = {
+            let defaults = crate::compaction::CompactionSettings::default();
+            match raw.compaction {
+                Some(c) => crate::compaction::CompactionSettings {
+                    enabled: c.enabled.unwrap_or(defaults.enabled),
+                    trigger_tokens: c.trigger_tokens.unwrap_or(defaults.trigger_tokens),
+                },
+                None => defaults,
+            }
+        };
+
         Self {
             default_model,
             providers,
@@ -161,6 +187,7 @@ impl Config {
             soniox_api_key: raw.soniox_api_key,
             share_on_network: raw.share_on_network.unwrap_or(false),
             share_port: raw.share_port.unwrap_or(3001),
+            compaction,
         }
     }
 }
