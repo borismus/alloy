@@ -39,6 +39,22 @@ if ! VAULT="$(cd "$VAULT" 2>/dev/null && pwd)"; then
   exit 1
 fi
 
+# Free the dev ports before launching. cargo-watch runs the backend in its own
+# process group, so our `kill 0` teardown (below) can't reliably reap it — on
+# SIGHUP (closed terminal), a hard kill, or a crash mid-rebuild it orphans and
+# keeps squatting :3030. A leftover backend then makes the next run's backend
+# die with "Address already in use", leaving Vite with no server. Pre-flighting
+# the ports guarantees a clean start regardless of how the last run ended.
+VITE_PORT=1420
+BACKEND_PORT="${ALLOY_DEV_PORT:-3030}"
+for port in "$VITE_PORT" "$BACKEND_PORT"; do
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$pids" ]]; then
+    echo "freeing port $port (killing: $pids)" >&2
+    kill $pids 2>/dev/null || true
+  fi
+done
+
 # Kill the whole process group on exit so the backend doesn't linger.
 trap 'kill 0' EXIT INT TERM
 
