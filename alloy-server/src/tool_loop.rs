@@ -33,6 +33,12 @@ impl ToolEventSink for NullSink {
 
 const MAX_ITERATIONS: u32 = 10;
 
+/// Per-turn cap on `web_search` calls. The model otherwise tends to fire off
+/// far more searches than a question warrants; once this budget is spent, the
+/// remaining calls short-circuit with an error result that tells the model to
+/// answer from what it already has instead of burning more iterations.
+const MAX_WEB_SEARCHES: u32 = 3;
+
 pub struct LoopRequest {
     pub provider: Arc<dyn Provider>,
     pub model: String,
@@ -63,6 +69,7 @@ pub async fn execute_with_tools(
     let mut first_response_id: Option<String> = None;
     let mut final_content = String::new();
     let mut final_stop_reason = "end_turn".to_string();
+    let mut web_search_count: u32 = 0;
 
     for iteration in 0..MAX_ITERATIONS {
         if *cancel.borrow() {
@@ -103,7 +110,26 @@ pub async fn execute_with_tools(
         // tool_use events confusing the UI.)
         for call in &result.tool_calls {
             sink.on_tool_use(call);
-            let tool_result = registry.execute(call, &tool_ctx).await;
+
+            // Enforce the per-turn web_search budget. Once spent, return an
+            // error result instead of executing so the model stops searching
+            // and synthesizes from the results it already has.
+            let tool_result = if call.name == "web_search" && {
+                web_search_count += 1;
+                web_search_count > MAX_WEB_SEARCHES
+            } {
+                ToolResult {
+                    tool_use_id: call.id.clone(),
+                    content: format!(
+                        "Web search budget exhausted ({} searches this turn). \
+                         Do not search again — answer using the results you already have.",
+                        MAX_WEB_SEARCHES
+                    ),
+                    is_error: Some(true),
+                }
+            } else {
+                registry.execute(call, &tool_ctx).await
+            };
             sink.on_tool_result(&tool_result);
             messages.push(ChatMessage::tool_result(
                 tool_result.tool_use_id.clone(),
