@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.6
+
+- Fix find-in-page (Cmd+F): the find bar had been hidden behind the
+  conversation header since 0.3.1, so it never appeared. It now shows just
+  below the header, with the active match highlighted distinctly from the rest.
+- Add Cmd+G / Cmd+Shift+G to jump to the next / previous match while finding.
+- Downscale oversized image uploads when saving them (max 1568px on the longest
+  side), keeping the vault and the payloads sent to models smaller.
+
 ## 0.3.5
 
 - Add automatic compaction for long conversations: older turns are folded into
