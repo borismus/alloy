@@ -46,6 +46,12 @@
   color: inherit;
 }
 
+/* The currently-focused match, painted on top of the general highlight */
+::highlight(search-current) {
+  background-color: #fb923c;
+  color: inherit;
+}
+
 .chat-interface.drag-over::after {
   content: 'Drop images here';
   position: absolute;

@@ -53,6 +53,19 @@ export function useKeyboardShortcuts(deps: KeyboardShortcutDeps) {
         }
       }
 
+      // Cmd+G / Cmd+Shift+G: next / previous match (while find is open)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        if (showFind) {
+          if (e.shiftKey) {
+            findRef.current?.previous();
+          } else {
+            findRef.current?.next();
+          }
+        }
+        return;
+      }
+
       if (e.key === 'Escape' && showSettings) {
         setShowSettings(false);
         return;
