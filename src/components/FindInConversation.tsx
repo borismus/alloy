@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
 import { useTextareaProps } from '../utils/textareaProps';
+import { findMatchRanges, nextMatchIndex, prevMatchIndex } from '../utils/findMatches';
 import './FindInConversation.css';
 
 interface FindInConversationProps {
@@ -13,44 +14,18 @@ export interface FindInConversationHandle {
   previous: () => void;
 }
 
-// Utility function to highlight search terms using CSS Custom Highlight API
-// Returns the array of ranges for navigation
+// Find matches and paint them via the CSS Custom Highlight API.
+// Returns the array of ranges for navigation. Match-finding lives in
+// findMatchRanges so it stays testable independent of the highlight API.
 function highlightSearchTerm(container: HTMLElement | null, search: string): Range[] {
-  if (!CSS.highlights) {
-    return [];
-  }
+  const ranges = findMatchRanges(container, search);
 
-  // Always clear previous highlights first
-  CSS.highlights.clear();
-
-  if (!container || !search.trim()) {
-    return [];
-  }
-
-  const ranges: Range[] = [];
-  const lowerSearch = search.toLowerCase();
-
-  // Use TreeWalker to find all text nodes
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let node: Text | null;
-
-  while ((node = walker.nextNode() as Text | null)) {
-    const text = node.textContent?.toLowerCase() || '';
-    let startIndex = 0;
-    let index: number;
-
-    while ((index = text.indexOf(lowerSearch, startIndex)) >= 0) {
-      const range = new Range();
-      range.setStart(node, index);
-      range.setEnd(node, index + search.length);
-      ranges.push(range);
-      startIndex = index + search.length;
+  if (CSS.highlights) {
+    // Always clear previous highlights first
+    CSS.highlights.clear();
+    if (ranges.length > 0) {
+      CSS.highlights.set('search', new Highlight(...ranges));
     }
-  }
-
-  if (ranges.length > 0) {
-    const highlight = new Highlight(...ranges);
-    CSS.highlights.set('search', highlight);
   }
 
   return ranges;
@@ -137,7 +112,7 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
   const goToNextMatch = () => {
     const ranges = rangesRef.current;
     if (ranges.length === 0) return;
-    const nextIndex = (currentIndex + 1) % ranges.length;
+    const nextIndex = nextMatchIndex(currentIndex, ranges.length);
     setCurrentIndex(nextIndex);
     setCurrentHighlight(ranges[nextIndex]);
     scrollToRange(ranges[nextIndex]);
@@ -146,7 +121,7 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
   const goToPreviousMatch = () => {
     const ranges = rangesRef.current;
     if (ranges.length === 0) return;
-    const prevIndex = (currentIndex - 1 + ranges.length) % ranges.length;
+    const prevIndex = prevMatchIndex(currentIndex, ranges.length);
     setCurrentIndex(prevIndex);
     setCurrentHighlight(ranges[prevIndex]);
     scrollToRange(ranges[prevIndex]);
