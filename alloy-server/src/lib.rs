@@ -23,7 +23,7 @@ pub mod vault_writer;
 
 use std::sync::{Arc, atomic::AtomicBool};
 
-use axum::Router;
+use axum::{Router, extract::DefaultBodyLimit};
 use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
@@ -80,5 +80,10 @@ pub fn build_router(state: AppState) -> Router {
         ))
         .layer(axum::middleware::from_fn(auth::ip_allowlist))
         .layer(cors)
+        // Raise the request-body cap above axum's ~2MB default so image uploads
+        // (base64 in JSON, ~33% larger than the raw bytes) aren't rejected with
+        // 413 before the handler runs. Oversized images are downscaled at write
+        // time (see routes::fs::write_file); text/stream bodies stay small.
+        .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
         .with_state(state)
 }

@@ -89,10 +89,49 @@ async fn write_file(
     let bytes = B64
         .decode(req.data.as_bytes())
         .map_err(|e| AppError::BadRequest(format!("Invalid base64: {e}")))?;
+    // Downscale oversized images before storing (keeps the vault and the
+    // provider payload bounded); non-images pass through untouched.
+    let bytes = maybe_downscale_image(bytes);
     fs::write(&resolved, &bytes)
         .await
         .map_err(|_| AppError::Internal(format!("Failed to write: {}", req.path)))?;
     Ok(Json(json!({})))
+}
+
+/// Largest dimension we keep for stored images. 1568px is Anthropic's
+/// recommended max (they downscale to roughly this anyway), and it keeps a
+/// re-encoded image comfortably under the providers' 5MB per-image limit.
+const MAX_IMAGE_DIM: u32 = 1568;
+
+/// If `bytes` is a PNG/JPEG/WebP larger than [`MAX_IMAGE_DIM`] on its longest
+/// side, decode, resize to fit (preserving aspect ratio), and re-encode in the
+/// SAME format so the caller's recorded extension/mime stay correct. Anything
+/// else — small images, GIFs (avoid flattening animation), non-images, or any
+/// decode/encode failure — is returned unchanged. Image processing must never
+/// fail a write.
+fn maybe_downscale_image(bytes: Vec<u8>) -> Vec<u8> {
+    use image::ImageFormat;
+
+    let format = match image::guess_format(&bytes) {
+        Ok(f @ (ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP)) => f,
+        _ => return bytes, // unknown, GIF, or non-image → store as-is
+    };
+
+    let img = match image::load_from_memory(&bytes) {
+        Ok(img) => img,
+        Err(_) => return bytes,
+    };
+
+    if img.width().max(img.height()) <= MAX_IMAGE_DIM {
+        return bytes; // already within bounds
+    }
+
+    let resized = img.resize(MAX_IMAGE_DIM, MAX_IMAGE_DIM, image::imageops::FilterType::Lanczos3);
+    let mut out = std::io::Cursor::new(Vec::new());
+    match resized.write_to(&mut out, format) {
+        Ok(()) => out.into_inner(),
+        Err(_) => bytes, // re-encode failed → fall back to the original
+    }
 }
 
 #[derive(Serialize)]
@@ -306,4 +345,60 @@ async fn stat(
         "isDirectory": metadata.is_dir(),
         "isFile": metadata.is_file(),
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, ImageFormat, RgbImage};
+
+    fn encode(img: &DynamicImage, fmt: ImageFormat) -> Vec<u8> {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, fmt).unwrap();
+        buf.into_inner()
+    }
+
+    fn solid(w: u32, h: u32) -> DynamicImage {
+        DynamicImage::ImageRgb8(RgbImage::from_pixel(w, h, image::Rgb([120, 80, 200])))
+    }
+
+    #[test]
+    fn downscales_large_png_preserving_format() {
+        let big = encode(&solid(4000, 3000), ImageFormat::Png);
+        let out = maybe_downscale_image(big.clone());
+        assert_ne!(out, big, "large image should be rewritten");
+        assert_eq!(image::guess_format(&out).unwrap(), ImageFormat::Png, "format preserved");
+        let decoded = image::load_from_memory(&out).unwrap();
+        assert_eq!(decoded.width().max(decoded.height()), MAX_IMAGE_DIM);
+        assert!(out.len() <= big.len());
+    }
+
+    #[test]
+    fn downscales_large_jpeg_preserving_format() {
+        let big = encode(&solid(4000, 2000), ImageFormat::Jpeg);
+        let out = maybe_downscale_image(big.clone());
+        assert_eq!(image::guess_format(&out).unwrap(), ImageFormat::Jpeg, "format preserved");
+        let decoded = image::load_from_memory(&out).unwrap();
+        assert_eq!(decoded.width().max(decoded.height()), MAX_IMAGE_DIM);
+    }
+
+    #[test]
+    fn small_image_returned_unchanged() {
+        let small = encode(&solid(800, 600), ImageFormat::Png);
+        assert_eq!(maybe_downscale_image(small.clone()), small);
+    }
+
+    #[test]
+    fn non_image_returned_unchanged() {
+        let junk = b"this is definitely not an image, just bytes".to_vec();
+        assert_eq!(maybe_downscale_image(junk.clone()), junk);
+    }
+
+    #[test]
+    fn gif_passed_through_even_when_large() {
+        // GIFs are deliberately not resized (would flatten animation).
+        let gif = encode(&solid(2000, 2000), ImageFormat::Gif);
+        assert_eq!(image::guess_format(&gif).unwrap(), ImageFormat::Gif);
+        assert_eq!(maybe_downscale_image(gif.clone()), gif);
+    }
 }

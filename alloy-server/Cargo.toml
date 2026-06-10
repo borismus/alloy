@@ -26,6 +26,9 @@ clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 base64 = "0.22"
+# Decode/resize uploaded images at write time (see routes::fs). Only the formats
+# we handle are enabled, to keep the build and binary lean.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 anyhow = "1"
 thiserror = "2"
 futures-util = "0.3"
