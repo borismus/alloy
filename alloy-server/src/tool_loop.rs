@@ -92,7 +92,13 @@ pub async fn execute_with_tools(
                 first_response_id = usage.response_id.clone();
             }
         }
-        final_content = result.content.clone();
+        // Accumulate — do NOT overwrite. The model often emits its answer text
+        // in the same turn as a tool call and then a final empty tool-only/
+        // closing turn; overwriting here would replace the answer with that
+        // empty turn's content (the message saves blank even though the text
+        // was streamed). Accumulating mirrors exactly what the client received
+        // via chunk_tx, so the persisted content matches what was shown.
+        final_content.push_str(&result.content);
         final_stop_reason = result.stop_reason.clone();
 
         if result.stop_reason != "tool_use" || result.tool_calls.is_empty() {
@@ -142,7 +148,10 @@ pub async fn execute_with_tools(
 
         // Separator between tool-call rounds in streamed text — matches the
         // " " space the SPA emits in [src/services/tools/executor.ts:389].
+        // Mirror it into final_content too so the saved text stays identical
+        // to what was streamed.
         let _ = chunk_tx.send(" ".into());
+        final_content.push(' ');
 
         tracing::debug!("tool loop iteration {} complete", iteration);
     }
@@ -159,9 +168,118 @@ pub async fn execute_with_tools(
     };
 
     Ok(StreamResult {
-        content: final_content,
+        content: final_content.trim().to_string(),
         usage,
         stop_reason: final_stop_reason,
         tool_calls: Vec::new(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::providers::ProviderRegistry;
+    use crate::skill_registry::SkillRegistry;
+    use crate::vault::Vault;
+    use async_trait::async_trait;
+    use serde_json::json;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    /// Provider that replays a fixed script of `StreamResult`s, one per
+    /// `stream()` call — lets us simulate a multi-turn agentic exchange.
+    struct ScriptedProvider {
+        steps: Mutex<VecDeque<StreamResult>>,
+    }
+
+    #[async_trait]
+    impl Provider for ScriptedProvider {
+        async fn stream(&self, _req: StreamRequest) -> anyhow::Result<StreamResult> {
+            Ok(self
+                .steps
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("stream() called more times than scripted"))
+        }
+        async fn generate_title(&self, _u: &str, _a: &str, _m: &str) -> String {
+            String::new()
+        }
+    }
+
+    fn usage(out: u32) -> Option<Usage> {
+        Some(Usage { input_tokens: 1, output_tokens: out, response_id: None, cost: None })
+    }
+
+    /// A turn that emits `text` and then calls a tool. The tool is unregistered
+    /// on purpose: `registry.execute` returns an error result with no network/IO,
+    /// which is all this loop test needs (the model's behavior is scripted).
+    fn tool_turn(text: &str, out: u32) -> StreamResult {
+        StreamResult {
+            content: text.into(),
+            usage: usage(out),
+            stop_reason: "tool_use".into(),
+            tool_calls: vec![ToolCall { id: "t1".into(), name: "noop".into(), input: json!({}) }],
+        }
+    }
+
+    fn final_turn(text: &str, out: u32) -> StreamResult {
+        StreamResult {
+            content: text.into(),
+            usage: usage(out),
+            stop_reason: "end_turn".into(),
+            tool_calls: vec![],
+        }
+    }
+
+    fn test_registry() -> Arc<ToolRegistry> {
+        Arc::new(ToolRegistry::new(
+            Arc::new(Config::default()),
+            Arc::new(Vault::new(std::env::temp_dir()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ))
+    }
+
+    async fn run(steps: Vec<StreamResult>) -> StreamResult {
+        let (chunk_tx, _rx) = mpsc::unbounded_channel();
+        let (_cancel_tx, cancel) = watch::channel(false);
+        let req = LoopRequest {
+            provider: Arc::new(ScriptedProvider { steps: Mutex::new(steps.into()) }),
+            model: "test/model".into(),
+            messages: vec![],
+            tools: vec![],
+            chunk_tx,
+            cancel,
+            tool_ctx: ToolContext {
+                message_id: None,
+                conversation_id: None,
+                inside_subagent: false,
+            },
+        };
+        execute_with_tools(req, test_registry(), Arc::new(NullSink))
+            .await
+            .unwrap()
+    }
+
+    /// Regression: the model emits its answer in the same turn as a tool call,
+    /// then closes with an empty turn. The empty turn must NOT wipe the answer
+    /// (the bug: `final_content` was overwritten each iteration, so the saved
+    /// message came back blank despite the text having been streamed).
+    #[tokio::test]
+    async fn answer_in_a_tool_turn_survives_an_empty_closing_turn() {
+        let result = run(vec![tool_turn("Here is the answer.", 1000), final_turn("", 20)]).await;
+        assert_eq!(result.content, "Here is the answer.");
+        // Usage accumulates across every model call in the turn.
+        assert_eq!(result.usage.unwrap().output_tokens, 1020);
+    }
+
+    /// Text from multiple turns is concatenated — matching what gets streamed to
+    /// the client — joined by the same " " round separator the loop emits.
+    #[tokio::test]
+    async fn text_accumulates_across_turns() {
+        let result = run(vec![tool_turn("Searching.", 5), final_turn("Final answer.", 30)]).await;
+        assert_eq!(result.content, "Searching. Final answer.");
+    }
 }
