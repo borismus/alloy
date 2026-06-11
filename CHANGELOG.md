@@ -4,6 +4,12 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.7
+
+- Cap web searches at 3 per response: the model was firing far more web
+  searches than questions warranted. After the third, it answers from the
+  results it already has instead of searching again.
+
 ## 0.3.6
 
 - Fix find-in-page (Cmd+F): the find bar had been hidden behind the
