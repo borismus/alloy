@@ -6,6 +6,13 @@ set -o pipefail
 
 LOG="${ALLOY_TAURI_LOG:-/tmp/alloy-tauri-dev.log}"
 
+# In dev, bind the embedded server to a dedicated port so it coexists with a
+# production Alloy already holding the default 3001. Release builds (`tauri
+# build`) leave this unset and keep 3001. Honor a caller-provided override.
+if [[ "${1:-}" == "dev" ]]; then
+  export ALLOY_EMBED_PORT="${ALLOY_EMBED_PORT:-3041}"
+fi
+
 # Start each run with a fresh log + a header marking the invocation.
 {
   echo "=== tauri $* @ $(date) ==="

@@ -139,7 +139,7 @@ impl EmbeddedServer {
     /// If the configured port is taken, falls back to a random loopback port
     /// — share-on requires the configured port (returns error).
     async fn bind_listener(&self) -> Result<String, EmbedError> {
-        let (state, sharing, port) = {
+        let (state, sharing, cfg_port) = {
             let inner = self.inner.lock().unwrap();
             let state = inner.state.clone().ok_or_else(|| {
                 EmbedError::Config("cannot bind listener without a vault".into())
@@ -147,6 +147,14 @@ impl EmbeddedServer {
             let cfg = inner.config.as_ref().cloned().unwrap_or_default();
             (state, cfg.share_on_network, cfg.share_port)
         };
+
+        // ALLOY_EMBED_PORT overrides the configured port. `npm run tauri dev`
+        // sets it so a dev build binds its own port instead of contending with
+        // a production Alloy already holding the configured one (default 3001).
+        let port = std::env::var("ALLOY_EMBED_PORT")
+            .ok()
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(cfg_port);
 
         let iface = if sharing { "0.0.0.0" } else { "127.0.0.1" };
         let primary_addr = format!("{}:{}", iface, port);
