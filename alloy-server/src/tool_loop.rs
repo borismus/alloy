@@ -109,27 +109,30 @@ pub async fn execute_with_tools(
         // sequential matches the SPA's behavior and avoids interleaved
         // tool_use events confusing the UI.)
         for call in &result.tool_calls {
-            sink.on_tool_use(call);
-
-            // Enforce the per-turn web_search budget. Once spent, return an
-            // error result instead of executing so the model stops searching
-            // and synthesizes from the results it already has.
-            let tool_result = if call.name == "web_search" && {
+            // Enforce the per-turn web_search budget *before* surfacing the
+            // call to the UI. A model (e.g. Gemini) can emit many web_search
+            // calls in one parallel batch; once the budget is spent, the extra
+            // ones are neither executed nor shown as pills. We still append an
+            // error tool_result so the model is told to stop searching and
+            // every tool_use keeps its matching tool_result (providers require
+            // the pairing).
+            if call.name == "web_search" {
                 web_search_count += 1;
-                web_search_count > MAX_WEB_SEARCHES
-            } {
-                ToolResult {
-                    tool_use_id: call.id.clone(),
-                    content: format!(
-                        "Web search budget exhausted ({} searches this turn). \
-                         Do not search again — answer using the results you already have.",
-                        MAX_WEB_SEARCHES
-                    ),
-                    is_error: Some(true),
+                if web_search_count > MAX_WEB_SEARCHES {
+                    messages.push(ChatMessage::tool_result(
+                        call.id.clone(),
+                        format!(
+                            "Web search budget exhausted ({} searches this turn). \
+                             Do not search again — answer using the results you already have.",
+                            MAX_WEB_SEARCHES
+                        ),
+                    ));
+                    continue;
                 }
-            } else {
-                registry.execute(call, &tool_ctx).await
-            };
+            }
+
+            sink.on_tool_use(call);
+            let tool_result = registry.execute(call, &tool_ctx).await;
             sink.on_tool_result(&tool_result);
             messages.push(ChatMessage::tool_result(
                 tool_result.tool_use_id.clone(),
