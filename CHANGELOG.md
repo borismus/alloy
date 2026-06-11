@@ -4,6 +4,14 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.8
+
+- Fix assistant responses that used tools sometimes saving with blank content:
+  the text streamed live but the persisted message came out empty. The saved
+  text now matches exactly what was shown.
+- Web searches beyond the per-response cap of 3 no longer appear as empty
+  search pills in the transcript.
+
 ## 0.3.7
 
 - Cap web searches at 3 per response: the model was firing far more web
