@@ -4,6 +4,12 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.9
+
+- Fix interrupting a response (pressing escape, or a mid-turn error) discarding
+  the whole turn — including web searches that had already run — and leaving the
+  message with no reply. The turn is now kept with whatever it produced.
+
 ## 0.3.8
 
 - Fix assistant responses that used tools sometimes saving with blank content:
