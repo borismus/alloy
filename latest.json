@@ -1,0 +1,6 @@
+{
+  "version": "0.3.9",
+  "notes": "See release notes on GitHub",
+  "pub_date": "2026-06-12T16:38:45Z",
+  "platforms": { "darwin-aarch64": { "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUV0cxWU9LRXFaYUsyTWY2ZnhJSGQ2dlhjUTgycTd0OE9VKzZpN3N1RWdzcU04NjU4VkJidzhCZUo1WTVva2xhNFp6Q0tTcjFNcjVoam5nQW50aW40VFQvUHhlNTNTeWdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgxMjgyMzA3CWZpbGU6QWxsb3kuYXBwLnRhci5negp6TG9DT0hicEk5MXhGaEMrRStaNmE5V1dmcHBiU1l6QVd6aTdqSTFZVkg1SHpEdjkwL3UwdEsyMXBpS1IvNU1QSTZqeGFaTnRObFNlTUlIb3RaM2FEQT09Cg==", "url": "https://borismus.github.io/alloy/Alloy-aarch64.app.tar.gz" }, "darwin-x86_64": { "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUV0cxWU9LRXFaYU9oTGNTNSt6eW5nZTdITSswSlRWeThkRitSMUZ1OVptQjRpSy9iODJMYjhLTXFZeFdhRG9NVmxEN1FrdGJ0WE8zVS9EcHVERjNYMGQ2a0EyN1JxYXdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgxMjgyMjcyCWZpbGU6QWxsb3kuYXBwLnRhci5negpBQ0JIRmNWcSt0OHFPcmZzVnE2b2RuWXJsTDhsOTQrL3RocWpsa2lZaDZQL0RtWk16eFJzdVkxNzFSYk5MQ25iTkVVdlBEeWdqbmdvei94UFI1WmxCQT09Cg==", "url": "https://borismus.github.io/alloy/Alloy-x86_64.app.tar.gz" } }
+}
