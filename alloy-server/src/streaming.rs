@@ -399,17 +399,30 @@ async fn run_stream(
         }
         Err(e) => {
             let msg = e.to_string();
-            mark_error(&session, msg.clone());
 
-            // Persist any partial content so it's not lost — only if we'd
-            // normally persist this session at all.
+            // Persist whatever the turn produced so it isn't lost — only if
+            // we'd normally persist this session at all. The model often emits
+            // tool calls (e.g. web_search) with no prose yet; if the turn then
+            // ends early (the user hits escape, or the follow-up provider call
+            // errors), gating on text alone would discard the whole turn —
+            // including the tool calls the user already watched run — and leave
+            // a dangling user message. Persist when there's partial text OR any
+            // tool history.
+            //
+            // Do this BEFORE signalling the error: the client reacts to the
+            // error event by reloading this file, so the turn must already be
+            // written or the client would reload a stale file (and could
+            // overwrite this turn).
             if !params.skip_persist {
-                let partial = session.inner.lock().unwrap().full_content.clone();
-                if !partial.trim().is_empty() {
-                    let (assistant_message_id, tool_use) = {
-                        let inner = session.inner.lock().unwrap();
-                        (inner.assistant_message_id.clone(), collect_tool_uses(&inner.tool_history))
-                    };
+                let (partial, assistant_message_id, tool_use) = {
+                    let inner = session.inner.lock().unwrap();
+                    (
+                        inner.full_content.clone(),
+                        inner.assistant_message_id.clone(),
+                        collect_tool_uses(&inner.tool_history),
+                    )
+                };
+                if !partial.trim().is_empty() || !tool_use.is_empty() {
                     let write = AssistantWrite {
                         conversation_id: params.conversation_id.clone(),
                         assistant_message_id,
@@ -423,6 +436,8 @@ async fn run_stream(
                     }
                 }
             }
+
+            mark_error(&session, msg);
         }
     }
 }

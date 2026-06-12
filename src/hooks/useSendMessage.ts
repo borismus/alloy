@@ -86,34 +86,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
       console.error('Error saving conversation on user message (non-fatal):', saveError);
     }
 
-    let accumulatedContent = '';
     const assistantMessageId = generateMessageId();
-
-    const savePartialConversation = async (partialContent: string) => {
-      const assistantMessage: Message = {
-        id: assistantMessageId,
-        role: 'assistant',
-        timestamp: new Date().toISOString(),
-        content: partialContent,
-      };
-      const finalConv: Conversation = {
-        ...updatedConversation,
-        messages: [...updatedMessages, assistantMessage],
-        updated: new Date().toISOString(),
-      };
-      setDraftConversation(prev => prev?.id === finalConv.id ? finalConv : prev);
-      setConversations(prev => prev.map(c => c.id === finalConv.id ? finalConv : c));
-      try {
-        const vaultPathForSave = vaultService.getVaultPath();
-        const filename = vaultService.generateFilename(finalConv.id, finalConv.title);
-        if (vaultPathForSave) {
-          markSelfWrite(`${vaultPathForSave}/conversations/${filename}`);
-        }
-        await vaultService.saveConversation(finalConv);
-      } catch (saveError) {
-        console.error('Error saving partial conversation (non-fatal):', saveError);
-      }
-    };
 
     try {
       const systemPrompt = skillRegistry.buildSystemPrompt({
@@ -132,10 +105,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
         isFirstMessage,
         content,
         {
-          onChunk: onChunk ? (chunk: string) => {
-            accumulatedContent += chunk;
-            onChunk(chunk);
-          } : undefined,
+          onChunk,
           onTitle: (newTitle: string) => {
             const conv = { ...updatedConversation, title: newTitle };
             setDraftConversation(prev => prev?.id === conv.id ? conv : prev);
@@ -166,8 +136,15 @@ export function useSendMessage(deps: UseSendMessageDeps) {
       setConversations(prev => prev.map(c => c.id === finalConversation.id ? finalConversation : c));
     } catch (error: any) {
       if (error?.name === 'AbortError' || signal?.aborted) {
-        if (accumulatedContent.trim()) {
-          await savePartialConversation(accumulatedContent);
+        // The server persists whatever the turn produced (partial text + any
+        // tool calls it already ran) when it's stopped. Reload from the vault
+        // so the UI reflects that saved turn, rather than overwriting it with a
+        // tool-less partial copy. The vault watcher backstops us if the
+        // server's write lands after this reload.
+        const saved = await vaultService.loadConversation(updatedConversation.id);
+        if (saved) {
+          setDraftConversation(prev => prev?.id === saved.id ? saved : prev);
+          setConversations(prev => prev.map(c => c.id === saved.id ? saved : c));
         }
         return;
       }
@@ -189,14 +166,25 @@ export function useSendMessage(deps: UseSendMessageDeps) {
         timestamp: new Date().toISOString(),
         content: `Error: ${error?.message || errorMessage}`,
       };
+      // The server persists this turn (including any tool calls) before it
+      // emits the error, so reload the file and append the log to *that*.
+      // Overwriting with our own copy would drop the assistant turn the server
+      // just saved, leaving a dangling user message.
+      const persisted = await vaultService.loadConversation(updatedConversation.id);
+      const base = persisted ?? updatedConversation;
       const errorConversation: Conversation = {
-        ...updatedConversation,
-        messages: [...updatedConversation.messages, logMessage],
+        ...base,
+        messages: [...base.messages, logMessage],
         updated: new Date().toISOString(),
       };
       setDraftConversation(prev => prev?.id === errorConversation.id ? errorConversation : prev);
       setConversations(prev => prev.map(c => c.id === errorConversation.id ? errorConversation : c));
       try {
+        const vaultPathForSave = vaultService.getVaultPath();
+        if (vaultPathForSave) {
+          const filename = vaultService.generateFilename(errorConversation.id, errorConversation.title);
+          markSelfWrite(`${vaultPathForSave}/conversations/${filename}`);
+        }
         await vaultService.saveConversation(errorConversation);
       } catch (saveError) {
         console.error('Error saving error log (non-fatal):', saveError);
