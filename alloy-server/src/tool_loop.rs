@@ -70,6 +70,10 @@ pub async fn execute_with_tools(
     let mut final_content = String::new();
     let mut final_stop_reason = "end_turn".to_string();
     let mut web_search_count: u32 = 0;
+    // Whether any tool ran this turn. Used to decide if a blank final result
+    // warrants a forced wrap-up call (see below). A turn with no tool calls
+    // that legitimately produced no text is left alone.
+    let mut any_tool_executed = false;
 
     for iteration in 0..MAX_ITERATIONS {
         if *cancel.borrow() {
@@ -144,6 +148,7 @@ pub async fn execute_with_tools(
                 tool_result.tool_use_id.clone(),
                 tool_result.content.clone(),
             ));
+            any_tool_executed = true;
         }
 
         // Separator between tool-call rounds in streamed text — matches the
@@ -154,6 +159,35 @@ pub async fn execute_with_tools(
         final_content.push(' ');
 
         tracing::debug!("tool loop iteration {} complete", iteration);
+    }
+
+    // Forced wrap-up. The model can use tools but never emit a text answer:
+    // some providers (e.g. Gemini) emit tool calls with no narration and expect
+    // to answer only at the end, and the turn can end blank either because the
+    // final post-tool response carried empty content or because we hit
+    // MAX_ITERATIONS while it still wanted tools. Either way the persisted
+    // message would be empty and the conversation would appear to stall. Make
+    // one more call *without* tools to force a written answer from the tool
+    // results already accumulated in `messages`.
+    if final_content.trim().is_empty() && any_tool_executed && !*cancel.borrow() {
+        let req = StreamRequest {
+            messages: messages.clone(),
+            model: model.clone(),
+            tools: vec![],
+            chunk_tx: chunk_tx.clone(),
+            cancel: cancel.clone(),
+        };
+        if let Ok(wrap) = provider.stream(req).await {
+            if let Some(usage) = &wrap.usage {
+                total_input += usage.input_tokens;
+                total_output += usage.output_tokens;
+                if first_response_id.is_none() {
+                    first_response_id = usage.response_id.clone();
+                }
+            }
+            final_content.push_str(&wrap.content);
+            final_stop_reason = wrap.stop_reason;
+        }
     }
 
     let usage = if total_input > 0 || total_output > 0 {
@@ -281,5 +315,41 @@ mod tests {
     async fn text_accumulates_across_turns() {
         let result = run(vec![tool_turn("Searching.", 5), final_turn("Final answer.", 30)]).await;
         assert_eq!(result.content, "Searching. Final answer.");
+    }
+
+    /// Gemini-style: the model emits tool calls with NO narration and then a
+    /// blank closing turn, so the loop ends empty. The forced wrap-up call (no
+    /// tools) must run to produce a written answer instead of saving a blank
+    /// message. Usage from the wrap-up call accumulates too.
+    #[tokio::test]
+    async fn blank_tool_turn_forces_a_wrap_up_answer() {
+        let result = run(vec![
+            tool_turn("", 100),
+            final_turn("", 5),
+            final_turn("Here is the answer.", 40),
+        ])
+        .await;
+        assert_eq!(result.content, "Here is the answer.");
+        assert_eq!(result.usage.unwrap().output_tokens, 145);
+    }
+
+    /// When the model never stops calling tools and the loop exhausts
+    /// MAX_ITERATIONS, the wrap-up call still forces a final text answer.
+    #[tokio::test]
+    async fn iteration_cap_forces_a_wrap_up_answer() {
+        let mut steps: Vec<StreamResult> =
+            (0..MAX_ITERATIONS).map(|_| tool_turn("", 10)).collect();
+        steps.push(final_turn("Wrapped up.", 20));
+        let result = run(steps).await;
+        assert_eq!(result.content, "Wrapped up.");
+    }
+
+    /// Regression: a turn that produces text normally must NOT trigger an extra
+    /// wrap-up call. The script holds exactly the expected number of turns;
+    /// `ScriptedProvider` panics if `stream()` is called once more.
+    #[tokio::test]
+    async fn nonblank_turn_skips_wrap_up() {
+        let result = run(vec![tool_turn("Looking.", 5), final_turn("Answer.", 10)]).await;
+        assert_eq!(result.content, "Looking. Answer.");
     }
 }
