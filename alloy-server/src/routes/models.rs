@@ -88,6 +88,26 @@ impl ModelCache {
     }
 }
 
+/// Curated Claude models for a `cli_claude` provider. Uses the CLI's `--model`
+/// aliases (always resolve to the latest snapshot). Pricing is `0.0` because the
+/// calls bill against the user's subscription, not per-token API credits.
+fn claude_cli_models(provider_id: &str) -> Vec<ModelInfo> {
+    [
+        ("opus", "Claude Opus (subscription)"),
+        ("sonnet", "Claude Sonnet (subscription)"),
+        ("haiku", "Claude Haiku (subscription)"),
+    ]
+    .into_iter()
+    .map(|(alias, name)| ModelInfo {
+        key: format!("{}/{}", provider_id, alias),
+        name: name.to_string(),
+        context_window: Some(200_000),
+        input_per_1m: Some(0.0),
+        output_per_1m: Some(0.0),
+    })
+    .collect()
+}
+
 async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
     if let Some(cached) = state.model_cache.get() {
         return Json(cached);
@@ -96,6 +116,12 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
     let mut all = Vec::new();
     let mut any_failed = false;
     for cfg in &state.config.providers {
+        // The Claude Code CLI has no model-list endpoint, so we contribute a
+        // curated set tied to subscription billing.
+        if cfg.kind == crate::config::ProviderKind::CliClaude {
+            all.extend(claude_cli_models(&cfg.id));
+            continue;
+        }
         match cfg.id.as_str() {
             "ollama" => {
                 if let Some(base) = &cfg.base_url {

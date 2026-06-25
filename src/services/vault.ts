@@ -193,6 +193,13 @@ export class VaultService {
 # OPENROUTER_API_KEY: sk-or-v1-...
 # OLLAMA_BASE_URL: http://localhost:11434
 
+# Use your Claude Pro/Max subscription via the Claude Code CLI (text-only;
+# bills your subscription, not API credits). Requires the \`claude\` binary
+# installed and logged in to your subscription (run \`claude\` once to log in).
+# CLAUDE_SUBSCRIPTION: true
+# CLAUDE_CODE_PATH: /opt/homebrew/bin/claude   # only if \`claude\` isn't on PATH
+# CLAUDE_CODE_OAUTH_TOKEN: sk-ant-oat-...       # from \`claude setup-token\` (optional)
+
 # API keys for skills
 # SERPER_API_KEY: ...
 

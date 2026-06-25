@@ -623,6 +623,7 @@ function AppContent() {
       grok: 'grok/grok-4.3',
       openrouter: 'openrouter/anthropic/claude-sonnet-4.5',
       ollama: '', // Ollama models are discovered dynamically
+      'claude-cli': 'claude-cli/sonnet', // not selectable in setup; config-only
     };
 
     // Build config YAML with the active provider uncommented and others commented out

@@ -7,5 +7,6 @@ export const PROVIDER_NAMES: Record<ProviderType, string> = {
   gemini: 'Gemini',
   grok: 'Grok',
   openrouter: 'OpenRouter',
+  'claude-cli': 'Claude (subscription)',
 };
 

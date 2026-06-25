@@ -4,6 +4,7 @@
 //! Ollama, and any other OpenAI-compatible upstream). Future kinds
 //! (Anthropic native, Gemini native) plug in as additional impls.
 
+pub mod cli_claude;
 pub mod openai_compatible;
 
 use std::{collections::HashMap, sync::Arc};
@@ -254,7 +255,7 @@ pub type ProviderArc = Arc<dyn Provider>;
 /// provider prefix" (→ fail loudly) from "user wrote a bare/vendor model
 /// id" (→ fall through to the default provider).
 const KNOWN_PROVIDER_IDS: &[&str] =
-    &["anthropic", "openai", "ollama", "gemini", "grok", "openrouter"];
+    &["anthropic", "openai", "ollama", "gemini", "grok", "openrouter", "claude-cli"];
 
 /// Registry mapping provider id ("openrouter", "ollama") to its client.
 #[derive(Clone)]
@@ -272,6 +273,7 @@ impl ProviderRegistry {
                 ProviderKind::OpenaiCompatible => {
                     Arc::new(openai_compatible::OpenAICompatibleProvider::new(cfg))
                 }
+                ProviderKind::CliClaude => Arc::new(cli_claude::CliClaudeProvider::new(cfg)),
             };
             if default_id.is_none() {
                 default_id = Some(cfg.id.clone());
@@ -420,6 +422,8 @@ mod tests {
             kind: ProviderKind::OpenaiCompatible,
             base_url: Some("https://openrouter.ai/api/v1".into()),
             api_key: "test".into(),
+            command: None,
+            oauth_token: None,
         }])
     }
 
