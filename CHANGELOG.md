@@ -4,6 +4,17 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.10
+
+- Add a Claude subscription provider: pick Claude Opus/Sonnet/Haiku billed
+  against your Claude Pro/Max subscription (via the Claude Code CLI) instead of
+  API credits. Enable it with `CLAUDE_SUBSCRIPTION: true` in `config.yaml` —
+  requires the `claude` CLI installed and logged in to your subscription.
+- These subscription models can use Claude Code's read-only and web tools —
+  web search/fetch and reading your vault notes — surfaced as the same tool
+  pills as other providers. Editing files and running shell commands are not
+  permitted.
+
 ## 0.3.9
 
 - Fix interrupting a response (pressing escape, or a mid-turn error) discarding
