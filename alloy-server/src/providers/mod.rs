@@ -16,7 +16,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::config::{ProviderConfig, ProviderKind};
-use crate::types::{ToolCall, ToolDefinition};
+use crate::types::{ToolCall, ToolDefinition, ToolEventSink};
 use crate::vault::Vault;
 
 /// Incoming wire message from the SPA's /api/stream/start body — simple
@@ -213,6 +213,13 @@ pub struct StreamRequest {
     pub tools: Vec<ToolDefinition>,
     pub chunk_tx: mpsc::UnboundedSender<String>,
     pub cancel: tokio::sync::watch::Receiver<bool>,
+    /// Sink for providers that run their own tool loop (the Claude Code CLI) to
+    /// surface `tool_use`/`tool_result` events. HTTP providers ignore it — their
+    /// tool calls are executed and emitted by `tool_loop::execute_with_tools`.
+    pub tool_sink: Arc<dyn ToolEventSink>,
+    /// Vault root, used by the CLI provider for `--add-dir` / cwd so read tools
+    /// resolve against the user's vault.
+    pub vault_dir: Option<std::path::PathBuf>,
 }
 
 #[async_trait]

@@ -17,6 +17,12 @@ const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: str
   http_get: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
   web_search: { active: 'Searching', complete: 'Searched', icon: 'search' },
   spawn_subagent: { active: 'Running sub-agents', complete: 'Ran sub-agents', icon: 'agents' },
+  // Claude Code's native tools (subscription provider, text + read-only/web).
+  Read: { active: 'Reading', complete: 'Read file', icon: 'file' },
+  Glob: { active: 'Finding files', complete: 'Found files', icon: 'search' },
+  Grep: { active: 'Searching files', complete: 'Searched files', icon: 'search' },
+  WebSearch: { active: 'Searching', complete: 'Searched', icon: 'search' },
+  WebFetch: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
 };
 
 interface ParsedAgentConfig {
@@ -198,6 +204,12 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
               }
               return <span className="tool-use-path">{path}</span>;
             })()}
+            {typeof tool.input?.path !== 'string' && typeof tool.input?.file_path === 'string' && (
+              <span className="tool-use-path">{(tool.input.file_path as string).split('/').pop()}</span>
+            )}
+            {(tool.type === 'Glob' || tool.type === 'Grep') && typeof tool.input?.pattern === 'string' && (
+              <span className="tool-use-path">{(tool.input.pattern as string).slice(0, 50)}</span>
+            )}
             {typeof tool.input?.url === 'string' && (
               <span
                 className="tool-use-url"

@@ -13,9 +13,9 @@ use serde_json::Value;
 use tokio::sync::{mpsc, watch};
 
 use crate::providers::{ChatMessage, wire_to_chat, WireMessage};
-use crate::tool_loop::{LoopRequest, NullSink, execute_with_tools};
+use crate::tool_loop::{LoopRequest, execute_with_tools};
 use crate::tools::{ToolContext, ToolRegistry, input_string};
-use crate::types::{ToolDefinition, builtin_tools};
+use crate::types::{NullSink, ToolDefinition, builtin_tools};
 
 #[derive(Deserialize)]
 struct AgentConfig {

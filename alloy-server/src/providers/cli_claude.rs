@@ -25,6 +25,16 @@ use tokio::process::Command;
 
 use crate::config::ProviderConfig;
 use crate::providers::{ChatMessage, ImageData, Provider, StreamRequest, StreamResult, Usage};
+use crate::types::{ToolCall, ToolResult};
+
+/// Claude Code's own tools we permit on the subscription path: web lookups plus
+/// read-only filesystem access (scoped to the vault via `--add-dir`). Edit/Write
+/// and Bash are deliberately excluded. With `--permission-mode default` (never
+/// `bypassPermissions`), anything outside this list is denied, not executed.
+const ALLOWED_TOOLS: &[&str] = &["WebSearch", "WebFetch", "Read", "Glob", "Grep"];
+
+/// Bound on Claude Code's internal agent loop, so a misbehaving turn can't spin.
+const MAX_AGENT_TURNS: &str = "20";
 
 pub struct CliClaudeProvider {
     /// Path to (or name of) the `claude` binary.
@@ -41,16 +51,14 @@ impl CliClaudeProvider {
         }
     }
 
-    /// Base command shared by streaming and one-shot calls: print mode, no
-    /// tools, no MCP, neutral settings, subscription auth.
+    /// Base command shared by streaming and one-shot calls: print mode, no MCP,
+    /// neutral settings, subscription auth. The caller adds tool flags (an empty
+    /// set for one-shot completions, the allow-list for streaming chat).
     fn base_command(&self, model: &str) -> Command {
         let mut cmd = Command::new(&self.command);
         cmd.arg("-p")
             .arg("--model")
             .arg(model)
-            // Text-only: empty allowed-tool set (verified to yield `tools: []`).
-            .arg("--tools")
-            .arg("")
             .arg("--permission-mode")
             .arg("default")
             // No MCP servers, ignore any other MCP config sources.
@@ -61,7 +69,8 @@ impl CliClaudeProvider {
             .arg("--setting-sources")
             .arg("user");
         // Run from a neutral dir so the child can't pick up a project CLAUDE.md
-        // / .claude (e.g. Alloy's own repo) as implicit context.
+        // / .claude (e.g. Alloy's own repo) as implicit context. Streaming
+        // overrides this to the vault so read tools resolve there.
         cmd.current_dir(std::env::temp_dir());
         // Force subscription billing: scrub API-key auth, optionally inject the
         // subscription OAuth token.
@@ -81,6 +90,8 @@ impl CliClaudeProvider {
     /// fallback contract; also used by title generation).
     async fn run_once(&self, system: Option<&str>, user: &str, model: &str) -> Option<String> {
         let mut cmd = self.base_command(model);
+        // One-shot completions never use tools.
+        cmd.arg("--tools").arg("");
         cmd.arg("--output-format").arg("json");
         if let Some(sys) = system.filter(|s| !s.is_empty()) {
             cmd.arg("--system-prompt").arg(sys);
@@ -129,7 +140,25 @@ impl Provider for CliClaudeProvider {
             .arg("--output-format")
             .arg("stream-json")
             .arg("--include-partial-messages")
-            .arg("--verbose");
+            .arg("--verbose")
+            .arg("--max-turns")
+            .arg(MAX_AGENT_TURNS);
+        // Permit Claude Code's own read-only + web tools. `--permission-mode
+        // default` (set in base_command) pre-approves exactly this list and
+        // denies everything else. Scope filesystem tools to the vault and run
+        // from it so relative reads ("read note X") resolve against the vault.
+        cmd.arg("--allowedTools").args(ALLOWED_TOOLS);
+        if let Some(dir) = &req.vault_dir {
+            cmd.arg("--add-dir").arg(dir);
+            cmd.current_dir(dir);
+            // Tell the model where it is so it reads with vault-relative paths
+            // instead of guessing absolute ones. Appended, so Alloy's own system
+            // prompt (passed via --system-prompt) is preserved.
+            cmd.arg("--append-system-prompt").arg(
+                "Your working directory is the user's vault — a folder of Markdown notes. \
+                 When using Read/Glob/Grep, use paths relative to it (e.g. \"notes/foo.md\").",
+            );
+        }
         if let Some(sys) = system.as_deref().filter(|s| !s.is_empty()) {
             cmd.arg("--system-prompt").arg(sys);
         }
@@ -172,6 +201,9 @@ impl Provider for CliClaudeProvider {
         let mut input_tokens: u32 = 0;
         let mut output_tokens: u32 = 0;
         let mut error_msg: Option<String> = None;
+        // Assistant message snapshots repeat already-seen tool_use blocks; only
+        // surface each tool call once.
+        let mut seen_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         let mut cancel = req.cancel;
         if *cancel.borrow() {
@@ -190,6 +222,20 @@ impl Provider for CliClaudeProvider {
                                     if let Some(text) = partial_text_delta(&v) {
                                         content.push_str(text);
                                         let _ = req.chunk_tx.send(text.to_string());
+                                    }
+                                }
+                                // Claude Code runs its tool loop internally; surface
+                                // its tool calls/results as Alloy pills via the sink.
+                                Some("assistant") => {
+                                    for call in extract_tool_uses(&v) {
+                                        if seen_tool_ids.insert(call.id.clone()) {
+                                            req.tool_sink.on_tool_use(&call);
+                                        }
+                                    }
+                                }
+                                Some("user") => {
+                                    for result in extract_tool_results(&v) {
+                                        req.tool_sink.on_tool_result(&result);
                                     }
                                 }
                                 Some("result") => {
@@ -388,6 +434,60 @@ fn partial_text_delta(v: &Value) -> Option<&str> {
     delta.get("text").and_then(Value::as_str)
 }
 
+/// Pull `tool_use` content blocks out of a full `assistant` message snapshot.
+fn extract_tool_uses(v: &Value) -> Vec<ToolCall> {
+    message_content_blocks(v)
+        .iter()
+        .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_use"))
+        .filter_map(|b| {
+            Some(ToolCall {
+                id: b.get("id").and_then(Value::as_str)?.to_string(),
+                name: b.get("name").and_then(Value::as_str)?.to_string(),
+                input: b.get("input").cloned().unwrap_or_else(|| json!({})),
+            })
+        })
+        .collect()
+}
+
+/// Pull `tool_result` content blocks out of a `user` message (the tool results
+/// Claude Code fed back into its own loop).
+fn extract_tool_results(v: &Value) -> Vec<ToolResult> {
+    message_content_blocks(v)
+        .iter()
+        .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+        .filter_map(|b| {
+            Some(ToolResult {
+                tool_use_id: b.get("tool_use_id").and_then(Value::as_str)?.to_string(),
+                content: tool_result_text(b.get("content")),
+                is_error: b.get("is_error").and_then(Value::as_bool),
+            })
+        })
+        .collect()
+}
+
+/// `message.content` array of a wrapped CLI message, or empty.
+fn message_content_blocks(v: &Value) -> Vec<Value> {
+    v.get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// A `tool_result` block's `content` is either a string or an array of text
+/// blocks; normalize to a plain string.
+fn tool_result_text(content: Option<&Value>) -> String {
+    match content {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(blocks)) => blocks
+            .iter()
+            .filter_map(|b| b.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,6 +538,38 @@ mod tests {
         assert_eq!(content[1]["type"], "image");
         assert_eq!(content[1]["source"]["media_type"], "image/png");
         assert_eq!(content[1]["source"]["data"], "AAAA");
+    }
+
+    #[test]
+    fn extracts_tool_use_from_assistant_message() {
+        let v = json!({"type":"assistant","message":{"content":[
+            {"type":"text","text":"let me check"},
+            {"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/v/note.md"}}
+        ]}});
+        let calls = extract_tool_uses(&v);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "toolu_1");
+        assert_eq!(calls[0].name, "Read");
+        assert_eq!(calls[0].input["file_path"], "/v/note.md");
+    }
+
+    #[test]
+    fn extracts_tool_result_string_and_array_and_error() {
+        let str_form = json!({"type":"user","message":{"content":[
+            {"type":"tool_result","tool_use_id":"toolu_1","content":"hello"}
+        ]}});
+        let r = extract_tool_results(&str_form);
+        assert_eq!(r[0].tool_use_id, "toolu_1");
+        assert_eq!(r[0].content, "hello");
+        assert_eq!(r[0].is_error, None);
+
+        let arr_form = json!({"type":"user","message":{"content":[
+            {"type":"tool_result","tool_use_id":"t2","is_error":true,
+             "content":[{"type":"text","text":"line1"},{"type":"text","text":"line2"}]}
+        ]}});
+        let r = extract_tool_results(&arr_form);
+        assert_eq!(r[0].content, "line1\nline2");
+        assert_eq!(r[0].is_error, Some(true));
     }
 
     #[test]

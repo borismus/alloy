@@ -21,9 +21,9 @@ use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::compaction::{self, CompactionSettings, NewCompacted};
 use crate::routes::models::ModelCache;
-use crate::tool_loop::{LoopRequest, ToolEventSink, execute_with_tools};
+use crate::tool_loop::{LoopRequest, execute_with_tools};
 use crate::tools::{ToolContext, ToolRegistry};
-use crate::types::{ToolCall, ToolResult, builtin_tools};
+use crate::types::{ToolCall, ToolEventSink, ToolResult, builtin_tools};
 use crate::{
     providers::{ProviderRegistry, StreamResult, Usage, WireMessage},
     vault::Vault,

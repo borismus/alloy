@@ -15,21 +15,7 @@ use crate::providers::{
     ChatMessage, Provider, StreamRequest, StreamResult, Usage,
 };
 use crate::tools::{ToolContext, ToolRegistry};
-use crate::types::{ToolCall, ToolDefinition, ToolResult};
-
-/// Callback emitted by the loop for each tool invocation, so the streaming
-/// session can fan it out to SSE subscribers as `tool_use` / `tool_result`
-/// events that the SPA's `ToolUseIndicator` UI already understands.
-pub trait ToolEventSink: Send + Sync {
-    fn on_tool_use(&self, call: &ToolCall);
-    fn on_tool_result(&self, result: &ToolResult);
-}
-
-pub struct NullSink;
-impl ToolEventSink for NullSink {
-    fn on_tool_use(&self, _: &ToolCall) {}
-    fn on_tool_result(&self, _: &ToolResult) {}
-}
+use crate::types::{ToolDefinition, ToolEventSink};
 
 const MAX_ITERATIONS: u32 = 10;
 
@@ -86,6 +72,8 @@ pub async fn execute_with_tools(
             tools: tools.clone(),
             chunk_tx: chunk_tx.clone(),
             cancel: cancel.clone(),
+            tool_sink: sink.clone(),
+            vault_dir: Some(registry.vault.root().to_path_buf()),
         };
         let result = provider.stream(req).await?;
 
@@ -176,6 +164,8 @@ pub async fn execute_with_tools(
             tools: vec![],
             chunk_tx: chunk_tx.clone(),
             cancel: cancel.clone(),
+            tool_sink: sink.clone(),
+            vault_dir: Some(registry.vault.root().to_path_buf()),
         };
         if let Ok(wrap) = provider.stream(req).await {
             if let Some(usage) = &wrap.usage {
@@ -215,6 +205,7 @@ mod tests {
     use crate::config::Config;
     use crate::providers::ProviderRegistry;
     use crate::skill_registry::SkillRegistry;
+    use crate::types::{NullSink, ToolCall};
     use crate::vault::Vault;
     use async_trait::async_trait;
     use serde_json::json;

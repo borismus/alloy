@@ -49,6 +49,24 @@ pub struct ToolResult {
     pub is_error: Option<bool>,
 }
 
+/// Callback emitted for each tool invocation, so the streaming session can fan
+/// it out to SSE subscribers as `tool_use` / `tool_result` events that the
+/// SPA's `ToolUseIndicator` UI already understands. Implemented by the session
+/// (see `streaming::SessionToolSink`). Called either by the tool loop (for
+/// providers whose tool calls Alloy executes) or directly by a provider that
+/// runs its own tool loop (the Claude Code CLI provider).
+pub trait ToolEventSink: Send + Sync {
+    fn on_tool_use(&self, call: &ToolCall);
+    fn on_tool_result(&self, result: &ToolResult);
+}
+
+/// No-op sink for callers that don't surface tool events (e.g. sub-agents).
+pub struct NullSink;
+impl ToolEventSink for NullSink {
+    fn on_tool_use(&self, _: &ToolCall) {}
+    fn on_tool_result(&self, _: &ToolResult) {}
+}
+
 fn def(
     name: &str,
     desc: &str,
