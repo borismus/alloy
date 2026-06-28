@@ -71,6 +71,24 @@ body {
   height: 100vh;
   height: var(--app-height, 100dvh);
   overflow: hidden;
+  /* Native-app feel: a drag shouldn't select the whole UI chrome (sidebar,
+     toolbars, titles in the list, etc.). Selection is opted back in on the
+     actual content below. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Re-enable text selection on real content: conversation/note body text,
+   user-message text, the conversation/note title in the header, and any
+   form fields. */
+.markdown-content,
+.message-content,
+.item-header-title h2,
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .loading {
