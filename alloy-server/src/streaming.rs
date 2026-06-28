@@ -624,6 +624,12 @@ fn pick_title_model(conversation_model: &str) -> String {
         match prefix {
             "openrouter" => return "anthropic/claude-haiku-4-5".to_string(),
             "ollama" => return conversation_model.to_string(),
+            // The Claude Code CLI takes a bare `--model` alias (the returned
+            // string is passed straight through to `claude --model`); a
+            // provider-prefixed id like "anthropic/claude-haiku-4-5" is rejected
+            // and title generation falls back to the raw user message. Haiku
+            // keeps the subscription cost low.
+            "claude-cli" => return "haiku".to_string(),
             _ => {}
         }
     }
@@ -641,6 +647,19 @@ mod tests {
             name: name.into(),
             input: json!({ "q": id }),
         }
+    }
+
+    #[test]
+    fn title_model_is_provider_appropriate() {
+        // OpenRouter wants a vendor-prefixed Haiku id.
+        assert_eq!(
+            pick_title_model("openrouter/google/gemini-3.5-flash"),
+            "anthropic/claude-haiku-4-5"
+        );
+        // Ollama is local — title with the same (local) model.
+        assert_eq!(pick_title_model("ollama/llama3"), "ollama/llama3");
+        // The Claude Code CLI takes a bare alias, not a provider-prefixed id.
+        assert_eq!(pick_title_model("claude-cli/opus"), "haiku");
     }
 
     #[test]
