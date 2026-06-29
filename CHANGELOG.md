@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.11
+
+- Claude subscription models now use the same built-in tools as every other
+  provider — web search, reading/writing vault files, notes, and skills — instead
+  of Claude Code's own tools. Tool activity shows as the usual pills.
+- Fix subscription mode failing to start in the installed app with a "claude not
+  on PATH" error: Alloy now finds the `claude` binary in its standard install
+  locations even when launched from Finder/Dock (which don't inherit your shell
+  PATH). You can still pin it with `CLAUDE_CODE_PATH` in `config.yaml`.
+
 ## 0.3.10
 
 - Add a Claude subscription provider: pick Claude Opus/Sonnet/Haiku billed

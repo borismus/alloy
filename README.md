@@ -101,6 +101,26 @@ The `web_search` tool requires one of:
 - **Google Gemini**
 - **xAI** (Grok)
 - **Ollama** (local models)
+- **Claude subscription** — use your Claude Pro/Max plan instead of API credits (see below)
+
+### Claude subscription mode
+
+Pick Claude Opus/Sonnet/Haiku billed against your **Claude Pro/Max subscription**
+rather than per-token API credits. It works by shelling out to the Claude Code
+CLI (there is no subscription-billed HTTP API).
+
+Enable it in your vault's `config.yaml`:
+
+```yaml
+CLAUDE_SUBSCRIPTION: true
+# CLAUDE_CODE_PATH: /opt/homebrew/bin/claude   # only if `claude` isn't on PATH
+# CLAUDE_CODE_OAUTH_TOKEN: sk-ant-oat-...       # from `claude setup-token` (optional)
+```
+
+Requires the [`claude` CLI](https://claude.com/claude-code) installed and logged
+in to your subscription (run `claude` once to log in). These models pick up
+Alloy's built-in tools — web search, reading/writing vault files, notes, skills —
+just like every other provider.
 
 ## Development
 
