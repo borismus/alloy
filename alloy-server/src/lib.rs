@@ -21,7 +21,7 @@ pub mod types;
 pub mod vault;
 pub mod vault_writer;
 
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{Arc, RwLock, atomic::AtomicBool};
 
 use axum::{Router, extract::DefaultBodyLimit};
 use tower_http::cors::CorsLayer;
@@ -53,6 +53,10 @@ pub struct AppState {
     /// Holds the scheduler's "currently running" set so the `/run` route
     /// and the background tick don't double-fire the same trigger.
     pub triggers: Arc<SchedulerHandle>,
+    /// This server's own loopback base URL (e.g. `http://127.0.0.1:3001`), set
+    /// once the listener binds. The `claude-cli` provider needs it to point the
+    /// Claude Code MCP client back at our `/api/mcp` endpoint. `None` until bound.
+    pub self_base_url: Arc<RwLock<Option<String>>>,
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -69,6 +73,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::stream::router())
         .merge(routes::models::router())
         .merge(routes::triggers::router())
+        .merge(routes::mcp::router())
         // SPA static assets are a FALLBACK — they only run for paths with
         // no declared route. Using a fallback instead of a /{*path}
         // catch-all means OPTIONS preflight on /api/* paths doesn't end up

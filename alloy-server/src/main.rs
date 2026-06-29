@@ -82,6 +82,10 @@ async fn main() -> anyhow::Result<()> {
         share_on_network,
         model_cache,
         triggers: triggers.clone(),
+        self_base_url: Arc::new(std::sync::RwLock::new(Some(format!(
+            "http://127.0.0.1:{}",
+            args.port
+        )))),
     };
 
     // Background trigger scheduler: fires regardless of client presence.

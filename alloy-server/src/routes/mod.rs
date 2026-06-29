@@ -1,4 +1,5 @@
 pub mod fs;
+pub mod mcp;
 pub mod models;
 pub mod path;
 pub mod static_files;

@@ -6,10 +6,13 @@
 //! only mechanism. Output is the CLI's `stream-json` NDJSON, which we parse back
 //! into Alloy's streaming text + `StreamResult`.
 //!
-//! Text-only by design: Claude Code is an agent with its own tools that act on
-//! the host filesystem and cannot accept Alloy's tool definitions, so we disable
-//! its tools (`--tools ""`) and report `supports_tools() == false`. The tool loop
-//! above the provider then skips tool wiring entirely.
+//! Tool parity via MCP: Claude Code runs its own agent loop and can't accept
+//! Alloy's tool definitions, so we point it at Alloy's own MCP endpoint
+//! (`/api/mcp`) and hard-disable its native host tools. Claude then calls
+//! `mcp__alloy__*`, which dispatch through the same `ToolRegistry::execute` as
+//! every other provider — identical tools, vault scoping, and side effects.
+//! `supports_tools()` stays false (Alloy doesn't attach ToolDefinitions to the
+//! cli request — Claude Code discovers them via MCP `tools/list`).
 //!
 //! Auth: with `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` present, Claude Code
 //! silently switches to API billing — so we scrub both from the child env. A
@@ -27,14 +30,55 @@ use crate::config::ProviderConfig;
 use crate::providers::{ChatMessage, ImageData, Provider, StreamRequest, StreamResult, Usage};
 use crate::types::{ToolCall, ToolResult};
 
-/// Claude Code's own tools we permit on the subscription path: web lookups plus
-/// read-only filesystem access (scoped to the vault via `--add-dir`). Edit/Write
-/// and Bash are deliberately excluded. With `--permission-mode default` (never
-/// `bypassPermissions`), anything outside this list is denied, not executed.
-const ALLOWED_TOOLS: &[&str] = &["WebSearch", "WebFetch", "Read", "Glob", "Grep"];
+/// Claude Code's standard built-in tools, hard-disabled so the subscription
+/// model acts ONLY through Alloy's MCP tools (`mcp__alloy__*`). We can't use
+/// `--tools` to allow-list (it breaks MCP tool-calling when Claude defers tools
+/// behind ToolSearch) and we can't use `--bare`/`CLAUDE_CODE_SIMPLE` (they
+/// disable subscription auth) — so an explicit deny list is the only lever that
+/// keeps real MCP tool execution working. This covers the stable built-in set;
+/// in particular `Skill` is denied so the model uses Alloy's `use_skill` instead
+/// of Claude Code's own skills (which can shell out via e.g. `run-applescript`).
+/// A user's *custom* plugin tools aren't enumerable here and are left intact —
+/// they're the user's own, and the host-access vectors (Bash/Read/Write/Skill)
+/// are closed.
+const DISALLOWED_NATIVE_TOOLS: &[&str] = &[
+    "Bash", "BashOutput", "KillShell", "Read", "Edit", "Write", "MultiEdit", "NotebookEdit",
+    "Glob", "Grep", "WebSearch", "WebFetch", "Task", "TodoWrite", "Skill", "SlashCommand",
+    "ExitPlanMode",
+];
 
 /// Bound on Claude Code's internal agent loop, so a misbehaving turn can't spin.
 const MAX_AGENT_TURNS: &str = "20";
+
+/// Well-known absolute install locations for the `claude` binary, searched when
+/// it isn't explicitly configured. A macOS app launched from Finder/Dock does
+/// NOT inherit the user's shell PATH (it gets `/usr/bin:/bin:/usr/sbin:/sbin`),
+/// so a bare `claude` — installed under Homebrew or the native installer — won't
+/// be found. We resolve to an absolute path instead.
+fn resolve_claude_binary(configured: Option<&str>) -> String {
+    // 1. Explicit `CLAUDE_CODE_PATH` wins (even if it doesn't exist yet — respect
+    //    the user's intent and let the spawn surface a clear error).
+    if let Some(c) = configured.filter(|c| !c.is_empty()) {
+        return c.to_string();
+    }
+    // 2. Search known install locations.
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        "/opt/homebrew/bin/claude".to_string(),       // Homebrew (Apple Silicon)
+        "/usr/local/bin/claude".to_string(),          // Homebrew (Intel) / npm global
+        format!("{home}/.claude/local/claude"),       // Claude Code native installer
+        format!("{home}/.local/bin/claude"),
+        format!("{home}/.bun/bin/claude"),
+        format!("{home}/.npm-global/bin/claude"),
+    ];
+    for c in candidates {
+        if std::path::Path::new(&c).exists() {
+            return c;
+        }
+    }
+    // 3. Fall back to a PATH lookup (works when Alloy is launched from a shell).
+    "claude".to_string()
+}
 
 pub struct CliClaudeProvider {
     /// Path to (or name of) the `claude` binary.
@@ -46,7 +90,7 @@ pub struct CliClaudeProvider {
 impl CliClaudeProvider {
     pub fn new(cfg: &ProviderConfig) -> Self {
         Self {
-            command: cfg.command.clone().unwrap_or_else(|| "claude".to_string()),
+            command: resolve_claude_binary(cfg.command.as_deref()),
             oauth_token: cfg.oauth_token.clone().filter(|t| !t.is_empty()),
         }
     }
@@ -61,10 +105,9 @@ impl CliClaudeProvider {
             .arg(model)
             .arg("--permission-mode")
             .arg("default")
-            // No MCP servers, ignore any other MCP config sources.
+            // Ignore the user's own MCP servers; each caller supplies its own
+            // `--mcp-config` (none for one-shots, Alloy's bridge for streaming).
             .arg("--strict-mcp-config")
-            .arg("--mcp-config")
-            .arg(r#"{"mcpServers":{}}"#)
             // Only load ~/.claude settings, not project/local ones.
             .arg("--setting-sources")
             .arg("user");
@@ -72,6 +115,15 @@ impl CliClaudeProvider {
         // / .claude (e.g. Alloy's own repo) as implicit context. Streaming
         // overrides this to the vault so read tools resolve there.
         cmd.current_dir(std::env::temp_dir());
+        // Prepend the common CLI install dirs to PATH so the child (and anything
+        // it shells out to) is found even when Alloy was launched from Finder/Dock
+        // with a minimal PATH.
+        let home = std::env::var("HOME").unwrap_or_default();
+        let existing = std::env::var("PATH").unwrap_or_default();
+        cmd.env(
+            "PATH",
+            format!("/opt/homebrew/bin:/usr/local/bin:{home}/.local/bin:{existing}"),
+        );
         // Force subscription billing: scrub API-key auth, optionally inject the
         // subscription OAuth token.
         cmd.env_remove("ANTHROPIC_API_KEY");
@@ -90,7 +142,8 @@ impl CliClaudeProvider {
     /// fallback contract; also used by title generation).
     async fn run_once(&self, system: Option<&str>, user: &str, model: &str) -> Option<String> {
         let mut cmd = self.base_command(model);
-        // One-shot completions never use tools.
+        // One-shot completions never use tools (no MCP servers, empty tool set).
+        cmd.arg("--mcp-config").arg(r#"{"mcpServers":{}}"#);
         cmd.arg("--tools").arg("");
         cmd.arg("--output-format").arg("json");
         if let Some(sys) = system.filter(|s| !s.is_empty()) {
@@ -143,29 +196,38 @@ impl Provider for CliClaudeProvider {
             .arg("--verbose")
             .arg("--max-turns")
             .arg(MAX_AGENT_TURNS);
-        // Permit Claude Code's own read-only + web tools. `--permission-mode
-        // default` (set in base_command) pre-approves exactly this list and
-        // denies everything else. Scope filesystem tools to the vault and run
-        // from it so relative reads ("read note X") resolve against the vault.
-        cmd.arg("--allowedTools").args(ALLOWED_TOOLS);
-        if let Some(dir) = &req.vault_dir {
-            cmd.arg("--add-dir").arg(dir);
-            cmd.current_dir(dir);
-            // Tell the model where it is so it reads with vault-relative paths
-            // instead of guessing absolute ones. Appended, so Alloy's own system
-            // prompt (passed via --system-prompt) is preserved.
-            cmd.arg("--append-system-prompt").arg(
-                "Your working directory is the user's vault — a folder of Markdown notes. \
-                 When using Read/Glob/Grep, use paths relative to it (e.g. \"notes/foo.md\").",
+        // Tool parity: route tool calls through Alloy's MCP bridge (our built-in
+        // tools), and hard-disable Claude Code's native host tools so the model
+        // can only act through Alloy. Without an MCP bridge (server URL unknown),
+        // the model runs text-only — never with native host tools.
+        // Disable Claude Code's standard built-in tools so the model acts only
+        // through Alloy's MCP tools. (Leaves ToolSearch + any plugin tools, which
+        // Claude Code uses to surface deferred MCP tools — disabling those breaks
+        // MCP tool-calling.)
+        cmd.arg("--disallowedTools").args(DISALLOWED_NATIVE_TOOLS);
+        if let Some(mcp) = &req.mcp {
+            let url = format!(
+                "{}/api/mcp?session={}&token={}",
+                mcp.base_url, mcp.session_id, mcp.token
             );
+            let cfg = json!({ "mcpServers": { "alloy": { "type": "http", "url": url } } });
+            cmd.arg("--mcp-config").arg(cfg.to_string());
+            cmd.arg("--allowedTools").arg("mcp__alloy__*");
+        } else {
+            cmd.arg("--mcp-config").arg(r#"{"mcpServers":{}}"#);
         }
         if let Some(sys) = system.as_deref().filter(|s| !s.is_empty()) {
             cmd.arg("--system-prompt").arg(sys);
         }
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| anyhow::anyhow!("failed to launch `{}` (is Claude Code installed and on PATH?): {}", self.command, e))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            anyhow::anyhow!(
+                "failed to launch the `claude` CLI at `{}`: {}. Install Claude Code, or set \
+                 `CLAUDE_CODE_PATH` in config.yaml to its absolute path (e.g. \
+                 /opt/homebrew/bin/claude) — a Finder-launched app doesn't inherit your shell PATH.",
+                self.command, e
+            )
+        })?;
 
         // Feed the single synthesized user message, then close stdin so the CLI
         // produces one response and exits.
@@ -570,6 +632,29 @@ mod tests {
         let r = extract_tool_results(&arr_form);
         assert_eq!(r[0].content, "line1\nline2");
         assert_eq!(r[0].is_error, Some(true));
+    }
+
+    #[test]
+    fn disallowed_native_tools_cover_the_dangerous_set() {
+        // Regression guard: `Skill` must stay denied so the model uses Alloy's
+        // `use_skill` over Claude Code's own skills (which can shell out). Same
+        // for the host-access tools.
+        for t in ["Skill", "Bash", "Read", "Write", "Edit", "WebSearch"] {
+            assert!(
+                DISALLOWED_NATIVE_TOOLS.contains(&t),
+                "{t} must be in the native-tool denylist"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_claude_binary_prefers_explicit_config() {
+        assert_eq!(
+            resolve_claude_binary(Some("/custom/claude")),
+            "/custom/claude"
+        );
+        // Empty config is ignored (falls through to discovery/PATH).
+        assert_ne!(resolve_claude_binary(Some("")), "");
     }
 
     #[test]

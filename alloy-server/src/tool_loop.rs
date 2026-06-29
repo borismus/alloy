@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 
 use crate::providers::{
-    ChatMessage, Provider, StreamRequest, StreamResult, Usage,
+    ChatMessage, McpBridge, Provider, StreamRequest, StreamResult, Usage,
 };
 use crate::tools::{ToolContext, ToolRegistry};
 use crate::types::{ToolDefinition, ToolEventSink};
@@ -33,6 +33,8 @@ pub struct LoopRequest {
     pub chunk_tx: mpsc::UnboundedSender<String>,
     pub cancel: watch::Receiver<bool>,
     pub tool_ctx: ToolContext,
+    /// MCP bridge coordinates for the Claude Code provider (see `McpBridge`).
+    pub mcp: Option<McpBridge>,
 }
 
 pub async fn execute_with_tools(
@@ -48,6 +50,7 @@ pub async fn execute_with_tools(
         chunk_tx,
         cancel,
         tool_ctx,
+        mcp,
     } = req;
 
     let mut total_input: u32 = 0;
@@ -73,7 +76,7 @@ pub async fn execute_with_tools(
             chunk_tx: chunk_tx.clone(),
             cancel: cancel.clone(),
             tool_sink: sink.clone(),
-            vault_dir: Some(registry.vault.root().to_path_buf()),
+            mcp: mcp.clone(),
         };
         let result = provider.stream(req).await?;
 
@@ -165,7 +168,7 @@ pub async fn execute_with_tools(
             chunk_tx: chunk_tx.clone(),
             cancel: cancel.clone(),
             tool_sink: sink.clone(),
-            vault_dir: Some(registry.vault.root().to_path_buf()),
+            mcp: mcp.clone(),
         };
         if let Ok(wrap) = provider.stream(req).await {
             if let Some(usage) = &wrap.usage {
@@ -282,6 +285,7 @@ mod tests {
                 conversation_id: None,
                 inside_subagent: false,
             },
+            mcp: None,
         };
         execute_with_tools(req, test_registry(), Arc::new(NullSink))
             .await

@@ -158,6 +158,9 @@ async fn run_one_agent(
             conversation_id: None,
             inside_subagent: true,
         },
+        // Sub-agents use whatever provider they're given via Alloy's own loop;
+        // no Claude Code MCP bridge.
+        mcp: None,
     };
 
     // Sub-agents don't emit tool events to the parent session — the parent's

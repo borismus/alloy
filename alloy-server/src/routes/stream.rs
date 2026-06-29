@@ -39,6 +39,7 @@ async fn start(
     Json(params): Json<StartParams>,
 ) -> Response {
     let session_id = params.session_id.clone();
+    let self_base_url = state.self_base_url.read().ok().and_then(|u| u.clone());
     let session = streaming::start_session(
         &state.sessions,
         state.providers.clone(),
@@ -46,6 +47,7 @@ async fn start(
         state.tools.clone(),
         state.model_cache.clone(),
         state.config.compaction,
+        self_base_url,
         params,
     );
     match session {

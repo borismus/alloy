@@ -217,9 +217,22 @@ pub struct StreamRequest {
     /// surface `tool_use`/`tool_result` events. HTTP providers ignore it — their
     /// tool calls are executed and emitted by `tool_loop::execute_with_tools`.
     pub tool_sink: Arc<dyn ToolEventSink>,
-    /// Vault root, used by the CLI provider for `--add-dir` / cwd so read tools
-    /// resolve against the user's vault.
-    pub vault_dir: Option<std::path::PathBuf>,
+    /// Coordinates for the Claude Code provider to reach Alloy's MCP bridge, so
+    /// it calls Alloy's built-in tools instead of Claude Code's native ones.
+    /// `None` for HTTP providers (and when the server URL isn't known yet).
+    pub mcp: Option<McpBridge>,
+}
+
+/// How the Claude Code CLI reaches back into this server's MCP endpoint for one
+/// streaming session. Built in `run_stream`; consumed by `cli_claude`.
+#[derive(Debug, Clone)]
+pub struct McpBridge {
+    /// This server's loopback base URL, e.g. `http://127.0.0.1:3001`.
+    pub base_url: String,
+    /// The streaming session id (correlates MCP tool calls to the session).
+    pub session_id: String,
+    /// Per-session secret the MCP endpoint verifies before executing tools.
+    pub token: String,
 }
 
 #[async_trait]

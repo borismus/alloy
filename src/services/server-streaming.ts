@@ -188,7 +188,10 @@ export async function executeViaServer(
       eventSource.addEventListener('tool_use', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
         const toolUse: ToolUse = {
-          type: data.name,
+          // The claude-cli provider calls Alloy's tools over MCP, which names
+          // them `mcp__alloy__<tool>`. Strip the prefix so pills (and persisted
+          // history) match the same labels/icons as every other provider.
+          type: typeof data.name === 'string' ? data.name.replace(/^mcp__alloy__/, '') : data.name,
           input: data.input,
         };
         if (data.id) toolUsesById.set(data.id, toolUse);

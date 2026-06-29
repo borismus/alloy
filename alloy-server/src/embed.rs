@@ -183,6 +183,13 @@ impl EmbeddedServer {
         };
         let bound = listener.local_addr()?;
 
+        // The SPA in the Tauri webview — and the Claude Code MCP client we spawn
+        // — always talk to loopback even when we bind 0.0.0.0 publicly.
+        let internal_url = format!("http://127.0.0.1:{}", bound.port());
+        if let Ok(mut slot) = state.self_base_url.write() {
+            *slot = Some(internal_url.clone());
+        }
+
         let app = build_router(state);
         let task = tokio::spawn(async move {
             if let Err(e) = axum::serve(
@@ -194,10 +201,6 @@ impl EmbeddedServer {
                 tracing::error!("axum serve exited: {}", e);
             }
         });
-
-        // The SPA in the Tauri webview always talks to loopback even when
-        // we bind 0.0.0.0 publicly — loopback is included in 0.0.0.0.
-        let internal_url = format!("http://127.0.0.1:{}", bound.port());
 
         {
             let mut inner = self.inner.lock().unwrap();
@@ -321,6 +324,8 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         share_on_network,
         model_cache,
         triggers,
+        // Populated once the listener binds (see `bind_listener`).
+        self_base_url: Arc::new(std::sync::RwLock::new(None)),
     })
 }
 

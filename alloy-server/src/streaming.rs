@@ -25,7 +25,7 @@ use crate::tool_loop::{LoopRequest, execute_with_tools};
 use crate::tools::{ToolContext, ToolRegistry};
 use crate::types::{ToolCall, ToolEventSink, ToolResult, builtin_tools};
 use crate::{
-    providers::{ProviderRegistry, StreamResult, Usage, WireMessage},
+    providers::{McpBridge, ProviderRegistry, StreamResult, Usage, WireMessage},
     vault::Vault,
     vault_writer::{self, AssistantWrite, PersistedToolUse},
 };
@@ -61,6 +61,9 @@ pub struct SessionInner {
     /// Tool calls/results observed during this session — replayed to late
     /// subscribers along with the accumulated text content.
     pub tool_history: Vec<ToolHistoryEntry>,
+    /// Per-session secret the `/api/mcp` endpoint checks before executing tools
+    /// on this session's behalf (used by the Claude Code MCP bridge).
+    pub mcp_token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,6 +142,35 @@ impl SessionRegistry {
         self.sessions.lock().unwrap().insert(id, session);
     }
 
+    /// Register a minimal streaming session for tests (e.g. the MCP auth check).
+    #[cfg(test)]
+    pub(crate) fn insert_test_session(
+        &self,
+        id: &str,
+        conversation_id: &str,
+        message_id: &str,
+        mcp_token: &str,
+    ) {
+        let (tx, _) = broadcast::channel::<SessionEvent>(BROADCAST_CAP);
+        let (cancel, _) = watch::channel(false);
+        let session = Arc::new(Session {
+            inner: Mutex::new(SessionInner {
+                conversation_id: conversation_id.into(),
+                assistant_message_id: message_id.into(),
+                status: SessionStatus::Streaming,
+                full_content: String::new(),
+                final_result: None,
+                final_title: None,
+                error_message: None,
+                tool_history: Vec::new(),
+                mcp_token: mcp_token.into(),
+            }),
+            tx,
+            cancel,
+        });
+        self.insert(id.into(), session);
+    }
+
     fn schedule_cleanup(&self, id: String) {
         let registry = self.clone();
         tokio::spawn(async move {
@@ -181,6 +213,7 @@ pub struct StartParams {
 
 /// Start a new streaming session. Returns the registered session immediately;
 /// the stream runs in the background.
+#[allow(clippy::too_many_arguments)]
 pub fn start_session(
     registry: &SessionRegistry,
     providers: ProviderRegistry,
@@ -188,6 +221,7 @@ pub fn start_session(
     tools: Arc<ToolRegistry>,
     model_cache: Arc<ModelCache>,
     compaction: CompactionSettings,
+    self_base_url: Option<String>,
     params: StartParams,
 ) -> anyhow::Result<Arc<Session>> {
     // Idempotency: if the session id already exists, return it.
@@ -212,6 +246,7 @@ pub fn start_session(
             final_title: None,
             error_message: None,
             tool_history: Vec::new(),
+            mcp_token: uuid::Uuid::new_v4().to_string(),
         }),
         tx: tx.clone(),
         cancel: cancel_tx,
@@ -230,6 +265,7 @@ pub fn start_session(
             tools,
             model_cache,
             compaction,
+            self_base_url,
             params,
             cancel_rx,
         )
@@ -248,6 +284,7 @@ async fn run_stream(
     tools: Arc<ToolRegistry>,
     model_cache: Arc<ModelCache>,
     compaction: CompactionSettings,
+    self_base_url: Option<String>,
     params: StartParams,
     cancel: watch::Receiver<bool>,
 ) {
@@ -305,6 +342,15 @@ async fn run_stream(
         prepared.new_compacted
     };
 
+    // MCP bridge for the Claude Code provider: lets it call Alloy's built-in
+    // tools (via /api/mcp) instead of Claude Code's native tools. Only built
+    // when we know our own URL; ignored by every other provider.
+    let mcp = self_base_url.map(|base_url| McpBridge {
+        base_url,
+        session_id: params.session_id.clone(),
+        token: session.inner.lock().unwrap().mcp_token.clone(),
+    });
+
     let loop_req = LoopRequest {
         provider: provider.clone(),
         model: upstream_model.clone(),
@@ -321,6 +367,7 @@ async fn run_stream(
             conversation_id: Some(format!("conversations/{}", params.conversation_id)),
             inside_subagent: false,
         },
+        mcp,
     };
 
     let result = execute_with_tools(loop_req, tools, sink).await;
@@ -542,7 +589,9 @@ pub async fn run_to_completion(
     compaction: CompactionSettings,
     params: StartParams,
 ) -> anyhow::Result<SessionOutcome> {
-    let session = start_session(registry, providers, vault, tools, model_cache, compaction, params)?;
+    let session = start_session(
+        registry, providers, vault, tools, model_cache, compaction, None, params,
+    )?;
     let mut rx = session.subscribe();
 
     // Cover the race where the background task already finished between
