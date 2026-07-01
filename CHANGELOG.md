@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.12
+
+- Add `/skill_name` slash commands: type `/` in the composer to pick a skill
+  from an autocomplete menu and run it directly on your message (works across
+  all models, including Claude subscription).
+- Fix your vault's own skills not appearing (only the built-in ones showed).
+- Stop long model names like "Claude Opus (subscription)" from shrinking the
+  message box.
+
 ## 0.3.11
 
 - Claude subscription models now use the same built-in tools as every other
