@@ -4,6 +4,10 @@
 
 .model-selector-button {
   min-width: 140px;
+  /* Cap the width so a long model name (e.g. "Claude Opus (subscription)")
+     can't grow the button and squeeze the composer's textarea. The label
+     truncates with an ellipsis; the full name is still shown in the dropdown. */
+  max-width: 200px;
   height: 48px;
   padding: 0.75rem 1rem;
   border: 1px solid #e0e0e0;
@@ -19,6 +23,14 @@
   justify-content: space-between;
   gap: 0.5rem;
   transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/* Truncate the selected-model label instead of letting it widen the button. */
+.model-selector-button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .model-selector-button:hover:not(.disabled) {
