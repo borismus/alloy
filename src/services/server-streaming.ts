@@ -56,6 +56,12 @@ export interface ServerStreamOptions {
    * callers (triggers) whose results live elsewhere.
    */
   skipPersist?: boolean;
+  /**
+   * Name of a vault skill the user explicitly invoked for this turn via a
+   * `/skill_name` slash command. The backend appends its instructions to the
+   * system prompt; unknown skills are ignored.
+   */
+  invokeSkill?: string;
 }
 
 /**
@@ -112,6 +118,7 @@ export async function executeViaServer(
       systemPrompt,
       isFirstMessage,
       userMessageContent,
+      invokeSkill: options.invokeSkill,
       skipPersist: options.skipPersist ?? false,
     }),
   });

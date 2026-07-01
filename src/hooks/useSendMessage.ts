@@ -3,6 +3,7 @@ import { vaultService } from '../services/vault';
 import { skillRegistry } from '../services/skills';
 import { executeViaServer } from '../services/server-streaming';
 import { generateMessageId } from '../utils/ids';
+import { parseSlashCommand } from '../utils/slashCommand';
 import { Conversation, Config, Message, Attachment, ToolUse } from '../types';
 import { ChatInterfaceHandle } from '../components/ChatInterface';
 
@@ -96,6 +97,12 @@ export function useSendMessage(deps: UseSendMessageDeps) {
 
       const convId = currentConversation.id;
 
+      // Explicit `/skill_name` invocation: pass the skill name to the backend,
+      // which appends its instructions to the system prompt. Only when it names
+      // a real skill — otherwise it's just a literal message starting with "/".
+      const slash = parseSlashCommand(content);
+      const invokeSkill = slash && skillRegistry.getSkill(slash.name) ? slash.name : undefined;
+
       const serverResult = await executeViaServer(
         convId,
         assistantMessageId,
@@ -106,6 +113,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
         content,
         {
           onChunk,
+          invokeSkill,
           onTitle: (newTitle: string) => {
             const conv = { ...updatedConversation, title: newTitle };
             setDraftConversation(prev => prev?.id === conv.id ? conv : prev);

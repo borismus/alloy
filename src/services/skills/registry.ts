@@ -15,8 +15,13 @@ export class SkillRegistry {
     }
   }
 
-  setVaultPath(path: string): void {
-    this.vaultPath = path;
+  setVaultPath(_path: string): void {
+    // Vault skills are read via HTTP /api/fs/* (even in the Tauri app), which
+    // resolves paths relative to the server-owned vault root. Passing the
+    // absolute path makes the server double it (root + abs) → empty dir, so
+    // vault skills silently fail to load. Use '/' as the join base, matching
+    // vaultService.setVaultPath.
+    this.vaultPath = '/';
   }
 
   async loadSkills(): Promise<void> {

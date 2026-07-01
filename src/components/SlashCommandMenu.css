@@ -1,0 +1,50 @@
+/* Slash-command autocomplete, anchored above the composer (which sits at the
+   bottom of the chat). The parent `.input-form` is position: relative. */
+.slash-command-menu {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% + 8px);
+  max-height: 260px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 999;
+  padding: 4px;
+}
+
+.slash-command-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.slash-command-item.active,
+.slash-command-item:hover {
+  background: #f0f0f5;
+}
+
+.slash-command-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.slash-command-desc {
+  color: #777;
+  font-size: 0.8rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -132,6 +132,7 @@ pub async fn run(trigger: &Trigger, state: &AppState) -> TriggerRunOutcome {
         system_prompt: Some(system_prompt),
         is_first_message: false,
         user_message_content: trigger.trigger_prompt.clone(),
+        invoke_skill: None,
         skip_persist: true,
     };
 

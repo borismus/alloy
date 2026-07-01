@@ -1,9 +1,14 @@
-import React, { useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { ModelInfo } from '../types';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
+import { SlashCommandMenu, SlashCommandItem } from './SlashCommandMenu';
+import { skillRegistry } from '../services/skills';
+import { slashQuery } from '../utils/slashCommand';
+
+const MAX_SLASH_ITEMS = 8;
 
 export interface PendingImage {
   data: Uint8Array;
@@ -43,6 +48,33 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaProps = useTextareaProps();
+
+  // Slash-command (`/skill_name`) autocomplete.
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const query = slashQuery(input); // null unless typing a leading "/<token>"
+  const slashItems = useMemo<SlashCommandItem[]>(() => {
+    if (query === null) return [];
+    const q = query.toLowerCase();
+    return skillRegistry
+      .getSkills()
+      .filter((s) => s.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+        const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+        return ap - bp || a.name.localeCompare(b.name);
+      })
+      .slice(0, MAX_SLASH_ITEMS)
+      .map((s) => ({ name: s.name, description: s.description }));
+  }, [query]);
+  const slashOpen = !slashDismissed && query !== null && slashItems.length > 0;
+  useEffect(() => setSlashActiveIndex(0), [query]);
+
+  const selectSlash = useCallback((item: SlashCommandItem) => {
+    setInput(`/${item.name} `);
+    setSlashDismissed(false);
+    textareaRef.current?.focus();
+  }, []);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -141,8 +173,44 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     isStreaming,
   });
 
+  // When the slash menu is open, intercept navigation/selection keys so they
+  // don't submit or stop; otherwise fall through to the normal chat keys.
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashActiveIndex((i) => Math.min(i + 1, slashItems.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashActiveIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        selectSlash(slashItems[slashActiveIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+    }
+    handleKeyDown(e);
+  };
+
   return (
     <form onSubmit={handleSubmit} className="input-form">
+      {slashOpen && (
+        <SlashCommandMenu
+          items={slashItems}
+          activeIndex={slashActiveIndex}
+          onSelect={selectSlash}
+          onHover={setSlashActiveIndex}
+        />
+      )}
       {pendingImages.length > 0 && (
         <div className="pending-images">
           {pendingImages.map((img, idx) => (
@@ -179,8 +247,11 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setSlashDismissed(false);
+          }}
+          onKeyDown={handleTextareaKeyDown}
           onPaste={handlePaste}
           placeholder="Send a message..."
           rows={1}

@@ -218,6 +218,8 @@
   background: white;
   flex-shrink: 0;
   touch-action: manipulation;
+  /* Anchor for the slash-command autocomplete (renders above the composer). */
+  position: relative;
 }
 
 .input-row {

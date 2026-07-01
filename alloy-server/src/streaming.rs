@@ -203,6 +203,11 @@ pub struct StartParams {
     pub is_first_message: bool,
     #[serde(rename = "userMessageContent", default)]
     pub user_message_content: String,
+    /// Name of a vault skill the user explicitly invoked for this turn (via a
+    /// `/skill_name` slash command). Its instructions are appended to the system
+    /// prompt; unknown/missing skills are ignored.
+    #[serde(rename = "invokeSkill", default)]
+    pub invoke_skill: Option<String>,
     /// Skip appending the assistant message to a conversation YAML.
     /// Used by triggers (whose results live in `triggers/*.yaml`, not
     /// `conversations/*.yaml`) and other programmatic callers that
@@ -317,14 +322,29 @@ async fn run_stream(
         session: session.clone(),
     });
 
+    // Explicit `/skill_name` invocation: append the skill's instructions to this
+    // turn's system prompt (the backend owns the vault skills — same source as
+    // the `use_skill` tool). Unknown/missing skills are ignored.
+    let system_prompt = apply_invoked_skill(
+        params.system_prompt.clone(),
+        params.invoke_skill.as_deref(),
+        &tools.skills,
+    );
+    // Strip the leading `/skill_name` token from the user message before it
+    // reaches the provider — otherwise the Claude Code CLI treats it as one of
+    // its own slash commands ("Unknown command: /skill_name"). The skill is
+    // already applied via the system prompt; the frontend keeps the original
+    // text for display.
+    let messages = strip_invocation_prefix(params.messages.clone(), params.invoke_skill.as_deref());
+
     // Compaction: build the send view (folding older turns into a summary when
     // over budget). Returns the messages to send plus an optional summary to
     // persist at completion. Never compact when there's no conversation file to
     // persist into (skip_persist) — but the in-memory send view is still built.
     let cw = model_cache.context_window_for(&params.model);
     let prepared = compaction::prepare(
-        &params.messages,
-        params.system_prompt.as_deref(),
+        &messages,
+        system_prompt.as_deref(),
         Some(vault.as_ref()),
         provider.as_ref(),
         &upstream_model,
@@ -487,6 +507,50 @@ async fn run_stream(
             mark_error(&session, msg);
         }
     }
+}
+
+/// Append an explicitly-invoked (`/skill_name`) skill's instructions to a turn's
+/// system prompt. A missing/blank name or an unknown skill leaves the prompt
+/// unchanged.
+fn apply_invoked_skill(
+    system: Option<String>,
+    invoke_skill: Option<&str>,
+    skills: &crate::skill_registry::SkillRegistry,
+) -> Option<String> {
+    let Some(name) = invoke_skill.map(str::trim).filter(|s| !s.is_empty()) else {
+        return system;
+    };
+    let Some(block) = crate::tools::skills::skill_block(skills, name) else {
+        return system;
+    };
+    let directive = format!(
+        "{block}\n\nThe user invoked this skill via a slash command — apply it to their message."
+    );
+    Some(match system {
+        Some(s) if !s.trim().is_empty() => format!("{s}\n\n{directive}"),
+        _ => directive,
+    })
+}
+
+/// Remove the leading `/skill_name` token from the most recent user message so
+/// providers (notably the Claude Code CLI) don't treat it as a slash command.
+/// Only strips when the prefix is followed by whitespace or end-of-string.
+fn strip_invocation_prefix(
+    mut messages: Vec<WireMessage>,
+    invoke_skill: Option<&str>,
+) -> Vec<WireMessage> {
+    let Some(name) = invoke_skill.map(str::trim).filter(|s| !s.is_empty()) else {
+        return messages;
+    };
+    if let Some(m) = messages.iter_mut().rev().find(|m| m.role == "user") {
+        let prefix = format!("/{name}");
+        if let Some(rest) = m.content.strip_prefix(&prefix) {
+            if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+                m.content = rest.trim_start().to_string();
+            }
+        }
+    }
+    messages
 }
 
 fn mark_error(session: &Session, msg: String) {
@@ -689,6 +753,83 @@ fn pick_title_model(conversation_model: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    use crate::skill_registry::SkillRegistry;
+
+    fn skills_with(name: &str, body: &str) -> SkillRegistry {
+        let dir = tempfile::tempdir().unwrap();
+        let sd = dir.path().join("skills").join(name);
+        std::fs::create_dir_all(&sd).unwrap();
+        std::fs::write(
+            sd.join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: d\n---\n\n{body}\n"),
+        )
+        .unwrap();
+        let reg = SkillRegistry::new();
+        reg.load(dir.path());
+        reg
+    }
+
+    #[test]
+    fn invoked_skill_appends_block_to_system_prompt() {
+        let reg = skills_with("research", "Do deep research.");
+        let out = apply_invoked_skill(Some("BASE".into()), Some("research"), &reg).unwrap();
+        assert!(out.starts_with("BASE\n\n"));
+        assert!(out.contains("# Skill: research"));
+        assert!(out.contains("Do deep research."));
+        assert!(out.contains("invoked this skill via a slash command"));
+    }
+
+    fn user_msg(content: &str) -> WireMessage {
+        WireMessage {
+            id: None,
+            role: "user".into(),
+            content: content.into(),
+            attachments: vec![],
+        }
+    }
+
+    #[test]
+    fn strips_leading_slash_command_from_last_user_message() {
+        let msgs = vec![user_msg("earlier"), user_msg("/flux-highlights\n\n# Body")];
+        let out = strip_invocation_prefix(msgs, Some("flux-highlights"));
+        assert_eq!(out[1].content, "# Body");
+        assert_eq!(out[0].content, "earlier"); // earlier turns untouched
+
+        // Bare command → empty content.
+        let out = strip_invocation_prefix(vec![user_msg("/research")], Some("research"));
+        assert_eq!(out[0].content, "");
+    }
+
+    #[test]
+    fn strip_leaves_unrelated_or_partial_matches_alone() {
+        // No invocation.
+        let out = strip_invocation_prefix(vec![user_msg("/research foo")], None);
+        assert_eq!(out[0].content, "/research foo");
+        // Prefix not followed by whitespace (different skill) → untouched.
+        let out = strip_invocation_prefix(vec![user_msg("/researchx foo")], Some("research"));
+        assert_eq!(out[0].content, "/researchx foo");
+    }
+
+    #[test]
+    fn invoked_skill_unknown_or_absent_leaves_prompt_unchanged() {
+        let reg = skills_with("research", "x");
+        // Unknown skill name → unchanged.
+        assert_eq!(
+            apply_invoked_skill(Some("BASE".into()), Some("nope"), &reg),
+            Some("BASE".into())
+        );
+        // No invocation → unchanged.
+        assert_eq!(
+            apply_invoked_skill(Some("BASE".into()), None, &reg),
+            Some("BASE".into())
+        );
+        // Blank name → unchanged.
+        assert_eq!(
+            apply_invoked_skill(Some("BASE".into()), Some("  "), &reg),
+            Some("BASE".into())
+        );
+    }
 
     fn use_entry(id: &str, name: &str) -> ToolHistoryEntry {
         ToolHistoryEntry::Use {
