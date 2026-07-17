@@ -4,6 +4,21 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.14
+
+- Much faster startup, especially on mobile: the conversation list now loads
+  metadata only (one batched read) instead of parsing every conversation's full
+  history up front. A conversation's messages load when you open it.
+- Local models (oMLX/Ollama) get far better prompt-cache reuse: the system
+  prompt no longer leads with a per-second timestamp (which changed every turn),
+  so cached prefixes actually stick.
+- Assistant replies now show how long they took, next to the token count.
+- Queued messages: the text is selectable/copiable, and several messages queued
+  while a reply is streaming are sent as one combined follow-up (one reply, not
+  one per line). A queued message no longer briefly disappears before its reply.
+- Upstream request failures now show the real cause (e.g. "Connection refused")
+  instead of a generic "error sending request" message, and errors are copiable.
+
 ## 0.3.13
 
 - Add local MLX support: point Alloy at an on-device or LAN MLX server (e.g.
