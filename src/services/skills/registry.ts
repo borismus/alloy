@@ -54,9 +54,20 @@ export class SkillRegistry {
     const skills = this.getSkills();
     let prompt = '';
 
-    // Current date/time context
+    // Current date context. Deliberately DATE-only (not time): the system
+    // prompt is the shared prefix of every request in a conversation, so a
+    // per-second timestamp here changes the prefix each turn and defeats
+    // server-side prompt/KV prefix caching (e.g. oMLX cache hit rate collapses
+    // to a few %). A day-stable date keeps the whole prefix reusable while
+    // still giving the model temporal context.
     const now = new Date();
-    prompt += `Current time: ${now.toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone})\n\n`;
+    const dateStr = now.toLocaleDateString(undefined, {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    prompt += `Current date: ${dateStr} (${Intl.DateTimeFormat().resolvedOptions().timeZone})\n\n`;
 
     // Inject memory content at the top if provided
     if (memoryContent) {
