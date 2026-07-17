@@ -29,11 +29,8 @@ import { reconnectToActiveSessions } from './services/server-streaming';
 import { loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RiffProvider, useRiffContext } from './contexts/RiffContext';
-import { BackgroundProvider } from './contexts/BackgroundContext';
 import { RiffBatchApprovalModal } from './components/RiffBatchApprovalModal';
 import { RiffView } from './components/RiffView';
-import { BackgroundView } from './components/BackgroundView';
-import { isBackgroundConversation } from './services/background';
 import { ContextMenu } from './components/ContextMenu';
 import { ToastContainer } from './components/Toast';
 import './App.css';
@@ -146,8 +143,6 @@ function AppContent() {
   const [draftConversation, setDraftConversation] = useState<Conversation | null>(null);
   // Memory content and size for system prompt injection
   const [memory, setMemory] = useState<{ content: string; sizeBytes: number } | null>(null);
-  // Background conversation (persistent, always-available command interface)
-  const [backgroundConversation, setBackgroundConversation] = useState<Conversation | null>(null);
   // Toast notifications
   const { toasts, showToast, dismissToast } = useToasts();
 
@@ -164,7 +159,7 @@ function AppContent() {
 
   // Mobile navigation state
   const isMobile = useIsMobile();
-  type MobileView = 'list' | 'conversation' | 'background';
+  type MobileView = 'list' | 'conversation';
   const [mobileView, setMobileView] = useState<MobileView>(() => {
     // Restore mobile view on reload (mobile Safari discards pages when backgrounded)
     try {
@@ -240,12 +235,8 @@ function AppContent() {
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
-    // Route background conversations to separate state
-    if (isBackgroundConversation(id)) {
-      const updated = await vaultService.loadConversation(id);
-      if (updated) setBackgroundConversation(updated);
-      return;
-    }
+    // Don't resurrect files left by the removed background-mode feature.
+    if (id === '_background' || id.startsWith('_background-')) return;
     const newConv = await vaultService.loadConversation(id);
     if (newConv) {
       setConversations(prev => {
@@ -263,8 +254,7 @@ function AppContent() {
     // create(new file) with the SAME core id (the slug after the id differs).
     // This happens on a new conversation's first reply, when the generated
     // title replaces the fallback title. If a file for this id still exists,
-    // it was renamed, not deleted — don't drop it or clear the selection
-    // (which would bounce the user to the background view).
+    // it was renamed, not deleted — don't drop it or clear the selection.
     if (await vaultService.getConversationFilePath(id)) {
       return;
     }
@@ -277,13 +267,6 @@ function AppContent() {
   }, [selectedItem]);
 
   const handleConversationModified = useCallback(async (id: string) => {
-    // Route background conversation updates to separate state
-    if (isBackgroundConversation(id)) {
-      const updated = await vaultService.loadConversation(id);
-      if (updated) setBackgroundConversation(updated);
-      return;
-    }
-
     const updated = await vaultService.loadConversation(id);
     if (!updated) return;
 
@@ -578,9 +561,7 @@ function AppContent() {
         setAvailableModels(loadedModels);
 
         // Warn loudly when defaultModel can't be honored. Without this the SPA
-        // silently substitutes availableModels[0] in `getDefaultModel` and the
-        // first background-mode message on a fresh device 400s upstream with
-        // an opaque error.
+        // silently substitutes availableModels[0] in `getDefaultModel`.
         if (
           loadedConfig.defaultModel &&
           loadedModels.length > 0 &&
@@ -595,17 +576,8 @@ function AppContent() {
         // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
         riffService.setVaultPath(path);
-        // If the configured defaultModel isn't available (stale config, provider
-        // switched, etc.), fall back to the live catalog so new background
-        // conversations get a working model instead of a broken one.
-        const configuredDefault =
-          loadedConfig.defaultModel &&
-          loadedModels.some(m => m.key === loadedConfig.defaultModel)
-            ? loadedConfig.defaultModel
-            : '';
-        const bgDefaultModel = configuredDefault || loadedModels[0]?.key || '';
 
-        const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory, bgConv] = await Promise.all([
+        const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory] = await Promise.all([
           // Metadata-only summaries (one batched header read); message bodies are
           // loaded lazily when a conversation is opened.
           vaultService.loadConversationSummaries(),
@@ -613,24 +585,12 @@ function AppContent() {
           vaultService.loadNotes(),
           skillRegistry.loadSkills(),
           vaultService.loadMemory(),
-          vaultService.loadBackgroundConversation(bgDefaultModel),
         ]);
 
         setConversations(loadedConversations);
         setTriggers(loadedTriggers);
         setNotes(loadedNotes);
         setMemory(loadedMemory);
-        // A background conversation persisted before the catalog was fixed may
-        // reference a model that's no longer available (e.g. an embedding model
-        // picked as a stale fallback). Heal it to a valid model so sends don't
-        // 400. Skip when the catalog is empty — we can't validate, so leave the
-        // saved model untouched rather than clobber it.
-        const healedBgConv =
-          loadedModels.length === 0 ||
-          (bgConv.model && loadedModels.some(m => m.key === bgConv.model))
-            ? bgConv
-            : { ...bgConv, model: bgDefaultModel };
-        setBackgroundConversation(healedBgConv);
 
         // Reconnect to any in-flight streaming sessions.
         reconnectToActiveSessions({
@@ -753,11 +713,10 @@ function AppContent() {
     sidebarRef, findRef,
   });
 
-  // Auto-create a new conversation when entering mobile conversation view without any selection
+  // Keep the main pane useful without a separate landing mode: desktop starts a
+  // transient draft when nothing is selected; mobile does so on entering chat.
   useEffect(() => {
-    // Only auto-create if we're in conversation view with nothing selected at all
-    // (not a note, trigger, or existing conversation)
-    if (isMobile && mobileView === 'conversation' && !selectedItem && !riffContext.isRiffMode && config && availableModels.length > 0) {
+    if ((!isMobile || mobileView === 'conversation') && !selectedItem && !riffContext.isRiffMode && config && availableModels.length > 0) {
       handleNewConversation();
     }
   }, [isMobile, mobileView, selectedItem, riffContext.isRiffMode, config, availableModels.length]);
@@ -1042,12 +1001,6 @@ function AppContent() {
 
   return (
     <TriggerProvider triggers={triggers}>
-      <BackgroundProvider
-        initialConversation={backgroundConversation}
-        defaultModel={config?.defaultModel || availableModels[0]?.key || ''}
-        memoryContent={memory?.content}
-        markSelfWrite={markSelfWrite}
-      >
         <UpdateChecker />
         {memory && (
           <MemoryWarning
@@ -1093,9 +1046,6 @@ function AppContent() {
               onDeleteConversation={handleDeleteConversation}
               onDeleteTrigger={handleDeleteTrigger}
               onDeleteNote={handleDeleteNote}
-              onSelectBackground={() => {
-                setMobileView('background');
-              }}
             />
           ) : (
           <div className="main-panel" ref={mainPanelRef}>
@@ -1172,16 +1122,6 @@ function AppContent() {
                 onBack={() => setMobileView('list')}
                 canGoBack={true}
               />
-            ) : mobileView === 'background' ? (
-              // Mobile: background mode
-              <BackgroundView
-                onNavigateToNote={handleSelectNote}
-                onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-                scrollToMessageId={pendingScrollToMessageId}
-                onScrollComplete={() => setPendingScrollToMessageId(null)}
-                onBack={() => setMobileView('list')}
-                canGoBack={true}
-              />
             ) : (
               // Mobile: conversation view
               <ChatInterface
@@ -1202,7 +1142,6 @@ function AppContent() {
                 scrollToMessageId={pendingScrollToMessageId}
                 onScrollComplete={() => setPendingScrollToMessageId(null)}
                 onMobileBack={() => setMobileView('list')}
-                onBackground={() => { setMobileView('background'); }}
               />
             )}
           </div>
@@ -1284,7 +1223,7 @@ function AppContent() {
             canGoBack={canGoBack}
             onClose={() => { setSelectedItem(null); setNoteContent(null); }}
           />
-        ) : currentConversation ? (
+        ) : (
           <ChatInterface
             ref={chatInterfaceRef}
             conversation={currentConversation}
@@ -1304,14 +1243,6 @@ function AppContent() {
             onScrollComplete={() => setPendingScrollToMessageId(null)}
             onBack={goBack}
             canGoBack={canGoBack}
-            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
-          />
-        ) : (
-          <BackgroundView
-            onNavigateToNote={handleSelectNote}
-            onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-            scrollToMessageId={pendingScrollToMessageId}
-            onScrollComplete={() => setPendingScrollToMessageId(null)}
           />
         )}
       </div>
@@ -1327,7 +1258,6 @@ function AppContent() {
       )}
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
-      </BackgroundProvider>
     </TriggerProvider>
   );
 }

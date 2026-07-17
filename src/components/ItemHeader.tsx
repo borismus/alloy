@@ -7,8 +7,7 @@ interface ItemHeaderProps {
   canGoBack?: boolean;
   onForward?: () => void;
   canGoForward?: boolean;
-  onClose?: () => void; // X button to dismiss/return to background
-  onBackground?: () => void; // Navigate to background mode
+  onClose?: () => void; // X button to dismiss
   children?: React.ReactNode; // For action buttons on the right
 }
 
@@ -19,7 +18,6 @@ export const ItemHeader: React.FC<ItemHeaderProps> = ({
   onForward,
   canGoForward = false,
   onClose,
-  onBackground,
   children,
 }) => {
   return (
@@ -49,20 +47,8 @@ export const ItemHeader: React.FC<ItemHeaderProps> = ({
         )}
         <h2>{title}</h2>
       </div>
-      {(children || onClose || onBackground) && (
+      {(children || onClose) && (
         <div className="item-header-actions">
-          {onBackground && (
-            <button
-              className="btn-background"
-              onClick={onBackground}
-              title="Background"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="4 17 10 11 4 5" />
-                <line x1="12" y1="19" x2="20" y2="19" />
-              </svg>
-            </button>
-          )}
           {children}
           {onClose && (
             <button

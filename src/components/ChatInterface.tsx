@@ -134,8 +134,6 @@ interface ChatInterfaceProps {
   onMobileBack?: () => void;  // Mobile-specific back (e.g., show sidebar)
   onBack?: () => void;
   canGoBack?: boolean;
-  onClose?: () => void;  // X button to return to background view
-  onBackground?: () => void;  // Navigate to background mode
 }
 
 export interface ChatInterfaceHandle {
@@ -178,8 +176,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onMobileBack,
   onBack,
   canGoBack = false,
-  onClose,
-  onBackground,
 }, ref) => {
   // On mobile, use mobile-specific back if provided, otherwise use onBack prop
   const handleBack = onMobileBack || onBack;
@@ -574,7 +570,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             title="New Conversation"
             onBack={handleBack}
             canGoBack={showBackButton}
-            onBackground={onBackground}
           />
           <div className="messages-container" ref={messagesContainerRef}>
             <div className="welcome-message">
@@ -600,7 +595,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         </div>
       );
     }
-    // Desktop: no conversation selected — BackgroundView handles this case in App.tsx
+    // Desktop creates a transient draft from App when no item is selected.
     return null;
   }
 
@@ -616,8 +611,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         title={conversation?.title || 'New Conversation'}
         onBack={handleBack}
         canGoBack={showBackButton}
-        onClose={onClose}
-        onBackground={onBackground}
       >
         {conversation && conversation.messages.length > 0 && (
           <>

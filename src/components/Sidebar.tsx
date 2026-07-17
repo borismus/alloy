@@ -106,7 +106,6 @@ interface SidebarProps {
   // Mobile props
   fullScreen?: boolean;
   onMobileBack?: () => void;
-  onSelectBackground?: () => void;
 }
 
 export interface SidebarHandle {
@@ -132,7 +131,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   externalEditor,
   fullScreen,
   onMobileBack,
-  onSelectBackground,
 }, ref) {
   const textareaProps = useTextareaProps();
   const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
@@ -411,18 +409,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         <div className="mobile-sidebar-header">
           <img src="/icon-192.png" alt="Alloy" className="mobile-app-icon" width="44" height="44" />
           <h2>Alloy</h2>
-          {onSelectBackground && (
-            <button
-              className="btn-background-nav"
-              onClick={onSelectBackground}
-              title="Background"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="4 17 10 11 4 5" />
-                <line x1="12" y1="19" x2="20" y2="19" />
-              </svg>
-            </button>
-          )}
         </div>
       )}
       <div className="search-box" data-tauri-drag-region>

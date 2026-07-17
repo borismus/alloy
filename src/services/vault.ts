@@ -424,7 +424,7 @@ export class VaultService {
     );
     const conversations = results.filter((c): c is Conversation => c !== null);
 
-    // Filter out all background conversations (current and historical daily files)
+    // Keep files created by the removed background-mode feature out of the timeline.
     const filtered = conversations.filter(c => c.id !== '_background' && !c.id.startsWith('_background-'));
 
     // Sort by updated date, newest first (fall back to created for older conversations)
@@ -514,32 +514,6 @@ export class VaultService {
     }
 
     return null;
-  }
-
-  /**
-   * Load today's background conversation, or create a new empty one.
-   * Uses date-stamped ID so each day gets a fresh file.
-   */
-  async loadBackgroundConversation(defaultModel: string, id?: string): Promise<Conversation> {
-    const bgId = id || this.getTodayBackgroundId();
-    const existing = await this.loadConversation(bgId);
-    if (existing) return existing;
-
-    return {
-      id: bgId,
-      created: new Date().toISOString(),
-      updated: new Date().toISOString(),
-      model: defaultModel,
-      messages: [],
-    };
-  }
-
-  private getTodayBackgroundId(): string {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    return `_background-${yyyy}-${mm}-${dd}`;
   }
 
   /**

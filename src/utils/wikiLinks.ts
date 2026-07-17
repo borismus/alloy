@@ -17,8 +17,6 @@ function extractDisplayName(path: string): string {
   const withoutPrefix = path.replace('conversations/', '');
   // Strip ^messageId suffix if present (provenance markers include message refs)
   const withoutMessageId = withoutPrefix.split('^')[0];
-  // Special case for background conversation
-  if (withoutMessageId === '_background') return 'Background';
   // Remove the ID prefix (YYYY-MM-DD-HHMM-hash-) to get the title slug
   const titleSlug = withoutMessageId.replace(/^\d{4}-\d{2}-\d{2}-\d{4}-[a-f0-9]+-?/, '');
   // Convert slug back to readable text (replace hyphens with spaces, capitalize)
@@ -93,7 +91,6 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
         // Use embedded label first, then look up conversation title, fall back to slug-derived name
         const conversationTitle = label
           || (conversationId === 'riff_history' ? 'Note Chat' : null)
-          || (conversationId === '_background' ? 'Background' : null)
           || lookupConversationTitle(conversationId, conversations);
         const displayText = conversationTitle || children;
 
