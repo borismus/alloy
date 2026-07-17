@@ -68,6 +68,10 @@ pub struct RawConfig {
 pub struct PrivateDir {
     pub alias: String,
     pub path: std::path::PathBuf,
+    /// Subpaths (relative to `path`) to skip when a local model lists/searches
+    /// this mount — e.g. the nested Alloy vault, so chat history isn't scanned.
+    #[serde(rename = "excludeDirs", default)]
+    pub exclude_dirs: Vec<String>,
 }
 
 /// Raw `compaction:` block from config.yaml.
@@ -258,6 +262,7 @@ impl Config {
             .map(|d| PrivateDir {
                 alias: d.alias,
                 path: crate::vault::normalize_path(&d.path),
+                exclude_dirs: d.exclude_dirs,
             })
             .collect();
 
@@ -376,6 +381,18 @@ mod tests {
         assert_eq!(dirs[0].alias, "notes");
         assert_eq!(dirs[0].path, std::path::PathBuf::from("/Users/x/Notes"));
         assert_eq!(dirs[1].alias, "journal");
+    }
+
+    #[test]
+    fn private_read_only_dirs_parse_exclude_dirs() {
+        let raw: RawConfig = serde_yaml::from_str(
+            "privateReadOnlyDirs:\n  - alias: obsidian\n    path: /Users/x/Notes\n    excludeDirs: [PromptBox, archive]\n",
+        )
+        .unwrap();
+        let cfg = Config::from_raw(raw);
+        let d = &cfg.private_read_only_dirs[0];
+        assert_eq!(d.alias, "obsidian");
+        assert_eq!(d.exclude_dirs, vec!["PromptBox", "archive"]);
     }
 
     #[test]

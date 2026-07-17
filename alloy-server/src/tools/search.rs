@@ -2,39 +2,47 @@
 //! directories. Ports [src/services/tools/builtin/search.ts](src/services/tools/builtin/search.ts)
 //! literally — plain case-insensitive substring matching, no regex.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::fs;
 
-use crate::tools::{ToolContext, ToolRegistry, input_string};
+use crate::tools::{ToolContext, ToolRegistry, input_bool, input_string, input_usize};
 
-const MAX_RESULTS: usize = 50;
-const DEFAULT_MAX_RESULTS: usize = 20;
-const MAX_FILE_SIZE: usize = 100 * 1024;
-const MAX_RECURSION_DEPTH: usize = 3;
-const MAX_FILES_TO_SEARCH: usize = 500;
-const SNIPPET_CONTEXT: usize = 50;
+const MAX_LIMIT: usize = 50;
+const DEFAULT_LIMIT: usize = 20;
+const MAX_FILE_SIZE: usize = 200 * 1024;
+const MAX_RECURSION_DEPTH: usize = 6;
+const MAX_FILES_TO_SCAN: usize = 2000; // files we read content for
+const MAX_CANDIDATES: usize = 50_000; // bound the (cheap) path/mtime walk
+const SNIPPET_CONTEXT: usize = 60;
 
 const READABLE_DIRS: &[&str] = &["notes/", "skills/", "conversations/"];
 const TEXT_EXTENSIONS: &[&str] = &["md", "txt", "yaml", "yml", "json", "js", "ts", "css", "html"];
 
-#[derive(Default, Serialize)]
-struct SearchResult {
+/// One matching file in the result page: path + recency + a single short snippet.
+#[derive(Serialize)]
+struct FileMatch {
     path: String,
-    matches: Vec<MatchInfo>,
+    modified: String,
+    #[serde(rename = "matchCount")]
+    match_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snippet: Option<String>,
 }
 
-#[derive(Serialize)]
+/// A single content match (internal to `find_matches`).
 struct MatchInfo {
+    #[allow(dead_code)]
     line: u32,
     snippet: String,
 }
 
-struct Counters {
-    total_matches: usize,
-    searched_files: usize,
+/// ISO-8601 (RFC 3339, seconds) UTC string for a file mtime.
+fn iso(t: SystemTime) -> String {
+    chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 pub async fn execute(
@@ -79,13 +87,12 @@ pub async fn execute(
         }
     }
 
-    let search_content = input_string(input, "search_content")
-        .map(|s| s != "false")
-        .unwrap_or(true);
-    let max_results = input_string(input, "max_results")
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(DEFAULT_MAX_RESULTS)
-        .min(MAX_RESULTS);
+    let search_content = input_bool(input, "search_content").unwrap_or(true);
+    let limit = input_usize(input, "limit")
+        .or_else(|| input_usize(input, "max_results")) // back-compat
+        .unwrap_or(DEFAULT_LIMIT)
+        .clamp(1, MAX_LIMIT);
+    let offset = input_usize(input, "offset").unwrap_or(0);
     let file_ext = input_string(input, "file_extension").map(|s| s.to_string());
 
     // Private search roots resolve to an external absolute path; vault searches
@@ -102,127 +109,140 @@ pub async fn execute(
     if fs::metadata(&search_path).await.is_err() {
         return Err(format!("Directory not found: {}", directory));
     }
-
-    let mut results: Vec<SearchResult> = Vec::new();
-    let mut counters = Counters {
-        total_matches: 0,
-        searched_files: 0,
+    let excludes = if private {
+        crate::tools::private::private_exclude_roots(&registry.config, directory)
+    } else {
+        Vec::new()
     };
+
+    // Phase 1: gather candidate text files (path + mtime only — no content
+    // reads), then order most-recent-first so both the scan and the result page
+    // come from recent files rather than arbitrary fs order.
+    let mut candidates =
+        collect_candidates(&search_path, directory, file_ext.as_deref(), &excludes).await;
+    candidates.sort_by(|a, b| b.2.cmp(&a.2));
+
+    // Phase 2: scan content in recency order until offset+limit matches or the
+    // content-read budget is hit.
     let query_lower = query.to_lowercase();
-
-    search_recursive(
-        &search_path,
-        directory,
-        &query_lower,
-        search_content,
-        file_ext.as_deref(),
-        &mut results,
-        &mut counters,
-        max_results,
-        0,
-    )
-    .await;
-
-    let response = json!({
-        "results": &results[..results.len().min(max_results)],
-        "total_matches": counters.total_matches,
-        "searched_files": counters.searched_files,
-    });
-    Ok(serde_json::to_string_pretty(&response).unwrap_or_default())
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn search_recursive(
-    full_path: &Path,
-    relative_path: &str,
-    query_lower: &str,
-    search_content: bool,
-    file_ext: Option<&str>,
-    results: &mut Vec<SearchResult>,
-    counters: &mut Counters,
-    max_results: usize,
-    depth: usize,
-) {
-    // Avoid async recursion by managing a stack manually.
-    let mut stack: Vec<(std::path::PathBuf, String, usize)> = vec![(
-        full_path.to_path_buf(),
-        relative_path.to_string(),
-        depth,
-    )];
-
-    while let Some((full, rel, d)) = stack.pop() {
-        if d > MAX_RECURSION_DEPTH {
-            continue;
-        }
-        if results.len() >= max_results || counters.searched_files >= MAX_FILES_TO_SEARCH {
+    let want = offset + limit;
+    let mut matched: Vec<FileMatch> = Vec::new();
+    let mut content_reads = 0usize;
+    for (abs, rel, mtime) in candidates {
+        if matched.len() >= want || content_reads >= MAX_FILES_TO_SCAN {
             break;
         }
+        let filename_matches = Path::new(&rel)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase().contains(&query_lower))
+            .unwrap_or(false);
+        let mut count = 0usize;
+        let mut snippet: Option<String> = None;
+        if search_content {
+            let size_ok = fs::metadata(&abs)
+                .await
+                .map(|m| (m.len() as usize) <= MAX_FILE_SIZE)
+                .unwrap_or(false);
+            if size_ok {
+                content_reads += 1;
+                if let Ok(content) = fs::read_to_string(&abs).await {
+                    let ms = find_matches(&content, &query_lower);
+                    count = ms.len();
+                    snippet = ms.into_iter().next().map(|m| m.snippet);
+                }
+            }
+        }
+        if filename_matches || count > 0 {
+            matched.push(FileMatch {
+                path: rel,
+                modified: iso(mtime),
+                match_count: count.max(usize::from(filename_matches)),
+                snippet,
+            });
+        }
+    }
 
+    let total_matched = matched.len();
+    let page: Vec<&FileMatch> = matched.iter().skip(offset).take(limit).collect();
+    let returned = page.len();
+    let mut obj = json!({
+        "directory": directory,
+        "query": query,
+        "offset": offset,
+        "returned": returned,
+        "files": page,
+    });
+    if offset + returned < total_matched {
+        obj["nextOffset"] = json!(offset + returned);
+    }
+    Ok(serde_json::to_string_pretty(&obj).unwrap_or_default())
+}
+
+/// Walk `root` (bounded by depth and MAX_CANDIDATES), collecting text files as
+/// `(abs_path, request-relative-path, mtime)`. Cheap: no content is read here.
+/// Skips dotfiles and anything under `excludes`.
+async fn collect_candidates(
+    root: &Path,
+    label: &str,
+    file_ext: Option<&str>,
+    excludes: &[PathBuf],
+) -> Vec<(PathBuf, String, SystemTime)> {
+    let mut out: Vec<(PathBuf, String, SystemTime)> = Vec::new();
+    let mut stack: Vec<(PathBuf, String, usize)> = vec![(root.to_path_buf(), label.to_string(), 0)];
+
+    while let Some((full, rel, depth)) = stack.pop() {
+        if out.len() >= MAX_CANDIDATES {
+            break;
+        }
         let mut entries = match fs::read_dir(&full).await {
             Ok(e) => e,
             Err(_) => continue,
         };
-
         while let Ok(Some(entry)) = entries.next_entry().await {
-            if results.len() >= max_results || counters.searched_files >= MAX_FILES_TO_SEARCH {
+            if out.len() >= MAX_CANDIDATES {
                 break;
             }
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') {
                 continue;
             }
+            let entry_full = entry.path();
+            if excludes.iter().any(|ex| entry_full.starts_with(ex)) {
+                continue;
+            }
             let file_type = match entry.file_type().await {
                 Ok(t) => t,
                 Err(_) => continue,
             };
-
-            let entry_full = entry.path();
             let entry_rel = if rel.ends_with('/') {
                 format!("{}{}", rel, name)
             } else {
                 format!("{}/{}", rel, name)
             };
-
             if file_type.is_dir() {
-                stack.push((entry_full, entry_rel, d + 1));
+                if depth < MAX_RECURSION_DEPTH {
+                    stack.push((entry_full, entry_rel, depth + 1));
+                }
                 continue;
             }
-
-            // Extension filter
             if let Some(ext) = file_ext {
-                let suffix = format!(".{}", ext);
-                if !name.ends_with(&suffix) {
+                if !name.ends_with(&format!(".{}", ext)) {
                     continue;
                 }
             }
             if !is_text_file(&name) {
                 continue;
             }
-
-            counters.searched_files += 1;
-            let filename_matches = name.to_lowercase().contains(query_lower);
-            let mut content_matches: Vec<MatchInfo> = Vec::new();
-
-            if search_content {
-                if let Ok(meta) = fs::metadata(&entry_full).await {
-                    if meta.len() as usize > MAX_FILE_SIZE {
-                        continue;
-                    }
-                }
-                if let Ok(content) = fs::read_to_string(&entry_full).await {
-                    content_matches = find_matches(&content, query_lower);
-                }
-            }
-
-            if filename_matches || !content_matches.is_empty() {
-                counters.total_matches += content_matches.len().max(1);
-                results.push(SearchResult {
-                    path: entry_rel,
-                    matches: content_matches,
-                });
-            }
+            let mtime = entry
+                .metadata()
+                .await
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            out.push((entry_full, entry_rel, mtime));
         }
     }
+    out
 }
 
 fn is_text_file(name: &str) -> bool {
@@ -344,6 +364,7 @@ mod tests {
             private_read_only_dirs: vec![PrivateDir {
                 alias: "notes".into(),
                 path: external_dir.to_path_buf(),
+                exclude_dirs: Vec::new(),
             }],
             ..Config::default()
         };

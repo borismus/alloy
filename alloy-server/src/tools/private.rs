@@ -74,6 +74,30 @@ pub fn resolve_private_path(config: &Config, request_path: &str) -> Result<Optio
     Ok(Some(target_canon))
 }
 
+/// Canonical absolute paths to skip when traversing the private mount that
+/// `request_path` addresses (from the mount's `excludeDirs`). Empty for
+/// non-private paths, unknown aliases, or mounts without exclusions. Used by
+/// `list_directory`/`search_directory` to keep e.g. the nested Alloy vault out
+/// of results. This is a convenience filter, not a security boundary (that's
+/// [`resolve_private_path`]), so entry paths are prefix-matched as-is.
+pub fn private_exclude_roots(config: &Config, request_path: &str) -> Vec<PathBuf> {
+    let rel = request_path.trim_start_matches('/');
+    let Some(rest) = rel.strip_prefix(MOUNT_PREFIX) else {
+        return Vec::new();
+    };
+    let (alias, _tail) = rest.split_once('/').unwrap_or((rest, ""));
+    let Some(dir) = config.private_read_only_dirs.iter().find(|d| d.alias == alias) else {
+        return Vec::new();
+    };
+    let Ok(root_canon) = dir.path.canonicalize() else {
+        return Vec::new();
+    };
+    dir.exclude_dirs
+        .iter()
+        .filter_map(|ex| root_canon.join(ex).canonicalize().ok())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,6 +134,7 @@ mod tests {
             private_read_only_dirs: vec![PrivateDir {
                 alias: alias.into(),
                 path: root.to_path_buf(),
+                exclude_dirs: Vec::new(),
             }],
             ..Config::default()
         }

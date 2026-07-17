@@ -94,3 +94,21 @@ impl ToolRegistry {
 pub(crate) fn input_string<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
     input.get(key).and_then(|v| v.as_str())
 }
+
+/// Read a non-negative integer arg that may arrive as a JSON number or a
+/// stringified number (models vary in how they encode tool args).
+pub(crate) fn input_usize(input: &Value, key: &str) -> Option<usize> {
+    input.get(key).and_then(|v| {
+        v.as_u64()
+            .map(|n| n as usize)
+            .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+    })
+}
+
+/// Read a boolean arg that may arrive as a JSON bool or a "true"/"false" string.
+pub(crate) fn input_bool(input: &Value, key: &str) -> Option<bool> {
+    input.get(key).and_then(|v| {
+        v.as_bool()
+            .or_else(|| v.as_str().map(|s| s.eq_ignore_ascii_case("true")))
+    })
+}

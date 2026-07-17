@@ -12,7 +12,38 @@
 use serde_json::{Value, json};
 use tokio::fs;
 
-use crate::tools::{ToolContext, ToolRegistry, input_string};
+use crate::tools::{ToolContext, ToolRegistry, input_bool, input_string, input_usize};
+
+/// Cap on `read_file` output so a huge file (e.g. a big conversation YAML)
+/// can't blow the model's context in one call.
+const MAX_READ_BYTES: usize = 64 * 1024;
+
+const LIST_DEFAULT_LIMIT: usize = 100;
+const LIST_MAX_LIMIT: usize = 200;
+const LIST_MAX_DEPTH: usize = 6;
+const LIST_MAX_SCANNED: usize = 20_000;
+
+/// ISO-8601 (RFC 3339, seconds) UTC string for a file mtime.
+fn iso(t: std::time::SystemTime) -> String {
+    chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// Truncate an over-large file read at a char boundary, appending a marker.
+fn cap_read(content: String) -> String {
+    if content.len() <= MAX_READ_BYTES {
+        return content;
+    }
+    let mut end = MAX_READ_BYTES;
+    while end > 0 && !content.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!(
+        "{}\n\n[truncated: file is {} bytes; showing the first {} KB]",
+        &content[..end],
+        content.len(),
+        MAX_READ_BYTES / 1024
+    )
+}
 
 #[derive(Copy, Clone, PartialEq)]
 enum Op {
@@ -93,7 +124,7 @@ pub async fn execute_read(
             return Err(not_found());
         }
         return match crate::tools::private::resolve_private_path(&registry.config, path) {
-            Ok(Some(abs)) => fs::read_to_string(&abs).await.map_err(|_| not_found()),
+            Ok(Some(abs)) => fs::read_to_string(&abs).await.map(cap_read).map_err(|_| not_found()),
             _ => Err(not_found()),
         };
     }
@@ -103,6 +134,7 @@ pub async fn execute_read(
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
     fs::read_to_string(&resolved)
         .await
+        .map(cap_read)
         .map_err(|_| format!("File not found: {}", path))
 }
 
@@ -180,6 +212,14 @@ pub async fn execute_append_to_note(
     Ok(format!("Appended to {}", path))
 }
 
+struct ListOpts {
+    limit: usize,
+    offset: usize,
+    recursive: bool,
+    /// Most-recent-first (default) vs. dirs-first-alphabetical (`sort=name`).
+    by_recent: bool,
+}
+
 pub async fn execute_list_directory(
     registry: &ToolRegistry,
     ctx: &ToolContext,
@@ -189,6 +229,15 @@ pub async fn execute_list_directory(
     if path.is_empty() {
         return Err("Missing required parameter: path".into());
     }
+    let opts = ListOpts {
+        limit: input_usize(input, "limit")
+            .unwrap_or(LIST_DEFAULT_LIMIT)
+            .clamp(1, LIST_MAX_LIMIT),
+        offset: input_usize(input, "offset").unwrap_or(0),
+        recursive: input_bool(input, "recursive").unwrap_or(false),
+        by_recent: input_string(input, "sort").map(|s| s != "name").unwrap_or(true),
+    };
+
     // Private mount: listable by local models only; cloud models get a generic
     // "not found" (never revealing the dir's existence or its host path).
     if crate::tools::private::is_private_path(path) {
@@ -200,64 +249,133 @@ pub async fn execute_list_directory(
             Ok(Some(abs)) => abs,
             _ => return Err(not_found()),
         };
-        // Report the mount path back, not the real host path.
-        return list_dir_json(&abs, path).await;
+        let excludes = crate::tools::private::private_exclude_roots(&registry.config, path);
+        return list_dir_json(&abs, path, &opts, &excludes).await;
     }
     if let Some(msg) = check_permission(path, Op::Read) {
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
-    list_dir_json(&resolved, path).await
+    list_dir_json(&resolved, path, &opts, &[]).await
 }
 
-/// Read `dir`, drop dotfiles, sort (dirs first then alphabetical), and render
-/// the `{ directory, files }` JSON. `label` is the path echoed back to the
-/// model (the vault-relative or `private/<alias>/` path — never the host path).
-async fn list_dir_json(dir: &std::path::Path, label: &str) -> Result<String, String> {
-    let mut entries = fs::read_dir(dir)
-        .await
-        .map_err(|_| format!("Directory not found: {}", label))?;
+struct ListEntry {
+    /// Path relative to the listed directory (just the name when non-recursive).
+    name: String,
+    is_directory: bool,
+    modified: std::time::SystemTime,
+}
 
-    #[derive(serde::Serialize)]
-    struct Entry {
-        name: String,
-        #[serde(rename = "isDirectory")]
-        is_directory: bool,
-    }
+/// List `dir` (optionally recursively), drop dotfiles and anything under
+/// `excludes`, then sort + paginate into `{ directory, total, offset, returned,
+/// nextOffset?, files: [{ name, isDirectory, modified }] }`. `label` is the
+/// path echoed back to the model (vault-relative or `private/<alias>/` — never
+/// the host path). Only the *output* is capped by `limit`; the listing itself
+/// is complete (names + mtime only, no content reads).
+async fn list_dir_json(
+    dir: &std::path::Path,
+    label: &str,
+    opts: &ListOpts,
+    excludes: &[std::path::PathBuf],
+) -> Result<String, String> {
+    let mut out: Vec<ListEntry> = Vec::new();
+    let mut scanned = 0usize;
+    let mut root_ok = false;
+    // (abs_dir, rel_prefix, depth) — root popped first (LIFO), so a failed root
+    // read is distinguishable from a failed subdir read.
+    let mut stack: Vec<(std::path::PathBuf, String, usize)> =
+        vec![(dir.to_path_buf(), String::new(), 0)];
 
-    let mut out: Vec<Entry> = Vec::new();
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| format!("Error listing directory: {}", e))?
-    {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') {
-            continue;
-        }
-        let file_type = match entry.file_type().await {
-            Ok(t) => t,
+    while let Some((abs, prefix, depth)) = stack.pop() {
+        let mut entries = match fs::read_dir(&abs).await {
+            Ok(e) => e,
             Err(_) => continue,
         };
-        out.push(Entry {
-            name,
-            is_directory: file_type.is_dir(),
-        });
+        root_ok = true;
+        while scanned < LIST_MAX_SCANNED {
+            let entry = match entries.next_entry().await {
+                Ok(Some(e)) => e,
+                _ => break,
+            };
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
+            let entry_abs = entry.path();
+            if excludes.iter().any(|ex| entry_abs.starts_with(ex)) {
+                continue;
+            }
+            let file_type = match entry.file_type().await {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let is_directory = file_type.is_dir();
+            let rel = if prefix.is_empty() {
+                name
+            } else {
+                format!("{}/{}", prefix, name)
+            };
+            let modified = entry
+                .metadata()
+                .await
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            scanned += 1;
+            if opts.recursive && is_directory && depth < LIST_MAX_DEPTH {
+                stack.push((entry_abs, rel.clone(), depth + 1));
+            }
+            out.push(ListEntry {
+                name: rel,
+                is_directory,
+                modified,
+            });
+        }
     }
-    out.sort_by(|a, b| {
-        // Directories first, then alphabetical.
-        match (a.is_directory, b.is_directory) {
+
+    if !root_ok {
+        return Err(format!("Directory not found: {}", label));
+    }
+
+    if opts.by_recent {
+        out.sort_by(|a, b| {
+            b.modified
+                .cmp(&a.modified)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
+    } else {
+        out.sort_by(|a, b| match (a.is_directory, b.is_directory) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
             _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
-    });
+        });
+    }
 
-    Ok(serde_json::to_string_pretty(&json!({
+    let total = out.len();
+    let files: Vec<Value> = out
+        .iter()
+        .skip(opts.offset)
+        .take(opts.limit)
+        .map(|e| {
+            json!({
+                "name": e.name,
+                "isDirectory": e.is_directory,
+                "modified": iso(e.modified),
+            })
+        })
+        .collect();
+    let returned = files.len();
+    let mut obj = json!({
         "directory": label,
-        "files": out,
-    }))
-    .unwrap_or_default())
+        "total": total,
+        "offset": opts.offset,
+        "returned": returned,
+        "files": files,
+    });
+    if opts.offset + returned < total {
+        obj["nextOffset"] = json!(opts.offset + returned);
+    }
+    Ok(serde_json::to_string_pretty(&obj).unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -355,6 +473,7 @@ mod tests {
             private_read_only_dirs: vec![PrivateDir {
                 alias: "notes".into(),
                 path: external_dir.to_path_buf(),
+                exclude_dirs: Vec::new(),
             }],
             ..Config::default()
         };
@@ -422,5 +541,79 @@ mod tests {
         // write_file has no ctx / no private branch — check_permission rejects it.
         assert!(execute_write(&reg, &input).await.is_err());
         assert!(!external.0.join("new.md").exists());
+    }
+
+    #[tokio::test]
+    async fn list_paginates_and_reports_total() {
+        let vault = TempDir::new("vault-pg");
+        let external = TempDir::new("ext-pg");
+        for i in 0..5 {
+            std::fs::write(external.0.join(format!("n{i}.md")), "x").unwrap();
+        }
+        let reg = registry_with_private(&vault.0, &external.0);
+        let out = execute_list_directory(&reg, &ctx(true), &json!({ "path": "private/notes", "limit": 2 }))
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["total"], 5);
+        assert_eq!(v["returned"], 2);
+        assert_eq!(v["nextOffset"], 2);
+        assert_eq!(v["files"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_recursive_includes_nested_with_relative_path() {
+        let vault = TempDir::new("vault-rec");
+        let external = TempDir::new("ext-rec");
+        std::fs::write(external.0.join("top.md"), "x").unwrap();
+        std::fs::create_dir_all(external.0.join("sub")).unwrap();
+        std::fs::write(external.0.join("sub").join("deep.md"), "x").unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+        // Non-recursive: top-level only.
+        let shallow = execute_list_directory(&reg, &ctx(true), &json!({ "path": "private/notes" }))
+            .await
+            .unwrap();
+        assert!(shallow.contains("top.md"));
+        assert!(!shallow.contains("deep.md"));
+        // Recursive: nested file appears with its relative subpath.
+        let deep = execute_list_directory(&reg, &ctx(true), &json!({ "path": "private/notes", "recursive": true }))
+            .await
+            .unwrap();
+        assert!(deep.contains("sub/deep.md"));
+    }
+
+    #[tokio::test]
+    async fn private_exclude_dirs_skips_subtree() {
+        use crate::config::{Config, PrivateDir};
+        use crate::providers::ProviderRegistry;
+        use crate::skill_registry::SkillRegistry;
+        use crate::vault::Vault;
+
+        let vault = TempDir::new("vault-ex");
+        let external = TempDir::new("ext-ex");
+        std::fs::write(external.0.join("keep.md"), "x").unwrap();
+        std::fs::create_dir_all(external.0.join("PromptBox")).unwrap();
+        std::fs::write(external.0.join("PromptBox").join("hidden.md"), "x").unwrap();
+
+        let config = Config {
+            private_read_only_dirs: vec![PrivateDir {
+                alias: "notes".into(),
+                path: external.0.clone(),
+                exclude_dirs: vec!["PromptBox".into()],
+            }],
+            ..Config::default()
+        };
+        let reg = Arc::new(ToolRegistry::new(
+            Arc::new(config),
+            Arc::new(Vault::new(vault.0.clone()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ));
+        let out = execute_list_directory(&reg, &ctx(true), &json!({ "path": "private/notes", "recursive": true }))
+            .await
+            .unwrap();
+        assert!(out.contains("keep.md"));
+        assert!(!out.contains("hidden.md"));
+        assert!(!out.contains("PromptBox"));
     }
 }
