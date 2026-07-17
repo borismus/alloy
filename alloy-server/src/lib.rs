@@ -10,6 +10,7 @@ pub mod compaction;
 pub mod config;
 pub mod embed;
 pub mod error;
+pub mod local;
 pub mod providers;
 pub mod routes;
 pub mod skill_registry;

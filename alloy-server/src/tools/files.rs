@@ -76,10 +76,26 @@ fn check_permission(path: &str, op: Op) -> Option<String> {
     }
 }
 
-pub async fn execute_read(registry: &ToolRegistry, input: &Value) -> Result<String, String> {
+pub async fn execute_read(
+    registry: &ToolRegistry,
+    ctx: &ToolContext,
+    input: &Value,
+) -> Result<String, String> {
     let path = input_string(input, "path").unwrap_or("").trim();
     if path.is_empty() {
         return Err("Missing required parameter: path".into());
+    }
+    // Private mount: readable by local models only. Cloud models get a generic
+    // "not found" without touching disk, so they can't tell it exists.
+    if crate::tools::private::is_private_path(path) {
+        let not_found = || format!("File not found: {}", path);
+        if !ctx.model_is_local {
+            return Err(not_found());
+        }
+        return match crate::tools::private::resolve_private_path(&registry.config, path) {
+            Ok(Some(abs)) => fs::read_to_string(&abs).await.map_err(|_| not_found()),
+            _ => Err(not_found()),
+        };
     }
     if let Some(msg) = check_permission(path, Op::Read) {
         return Err(msg);
@@ -166,19 +182,41 @@ pub async fn execute_append_to_note(
 
 pub async fn execute_list_directory(
     registry: &ToolRegistry,
+    ctx: &ToolContext,
     input: &Value,
 ) -> Result<String, String> {
     let path = input_string(input, "path").unwrap_or("").trim();
     if path.is_empty() {
         return Err("Missing required parameter: path".into());
     }
+    // Private mount: listable by local models only; cloud models get a generic
+    // "not found" (never revealing the dir's existence or its host path).
+    if crate::tools::private::is_private_path(path) {
+        let not_found = || format!("Directory not found: {}", path);
+        if !ctx.model_is_local {
+            return Err(not_found());
+        }
+        let abs = match crate::tools::private::resolve_private_path(&registry.config, path) {
+            Ok(Some(abs)) => abs,
+            _ => return Err(not_found()),
+        };
+        // Report the mount path back, not the real host path.
+        return list_dir_json(&abs, path).await;
+    }
     if let Some(msg) = check_permission(path, Op::Read) {
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
-    let mut entries = fs::read_dir(&resolved)
+    list_dir_json(&resolved, path).await
+}
+
+/// Read `dir`, drop dotfiles, sort (dirs first then alphabetical), and render
+/// the `{ directory, files }` JSON. `label` is the path echoed back to the
+/// model (the vault-relative or `private/<alias>/` path — never the host path).
+async fn list_dir_json(dir: &std::path::Path, label: &str) -> Result<String, String> {
+    let mut entries = fs::read_dir(dir)
         .await
-        .map_err(|_| format!("Directory not found: {}", path))?;
+        .map_err(|_| format!("Directory not found: {}", label))?;
 
     #[derive(serde::Serialize)]
     struct Entry {
@@ -216,7 +254,7 @@ pub async fn execute_list_directory(
     });
 
     Ok(serde_json::to_string_pretty(&json!({
-        "directory": path,
+        "directory": label,
         "files": out,
     }))
     .unwrap_or_default())
@@ -265,5 +303,124 @@ mod tests {
         assert!(check_permission("../outside.md", Op::Read).is_some());
         assert!(check_permission("notes/../outside.md", Op::Read).is_some());
         assert!(check_permission("/etc/passwd", Op::Read).is_some());
+    }
+
+    // A private mount path is never a valid *write* target — check_permission's
+    // fallthrough denies it, so no write branch is needed anywhere. Regression
+    // guard for that invariant.
+    #[test]
+    fn permission_private_writes_blocked() {
+        assert!(check_permission("private/notes/secret.md", Op::Write).is_some());
+        assert!(check_permission("private/notes/secret.md", Op::Read).is_some());
+    }
+
+    // ---- private-mount read/list enforcement (local-only) ----
+    use std::sync::Arc;
+
+    struct TempDir(std::path::PathBuf);
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let mut p = std::env::temp_dir();
+            p.push(format!(
+                "alloy-files-test-{}-{}-{}",
+                tag,
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&p).unwrap();
+            TempDir(p.canonicalize().unwrap())
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Build a registry whose vault is `vault_dir` and whose only private mount
+    /// is `private/notes -> external_dir`.
+    fn registry_with_private(
+        vault_dir: &std::path::Path,
+        external_dir: &std::path::Path,
+    ) -> Arc<ToolRegistry> {
+        use crate::config::{Config, PrivateDir};
+        use crate::providers::ProviderRegistry;
+        use crate::skill_registry::SkillRegistry;
+        use crate::vault::Vault;
+
+        let config = Config {
+            private_read_only_dirs: vec![PrivateDir {
+                alias: "notes".into(),
+                path: external_dir.to_path_buf(),
+            }],
+            ..Config::default()
+        };
+        Arc::new(ToolRegistry::new(
+            Arc::new(config),
+            Arc::new(Vault::new(vault_dir.to_path_buf()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ))
+    }
+
+    fn ctx(model_is_local: bool) -> ToolContext {
+        ToolContext {
+            message_id: None,
+            conversation_id: None,
+            inside_subagent: false,
+            model_is_local,
+        }
+    }
+
+    #[tokio::test]
+    async fn private_read_local_allowed_cloud_denied() {
+        let vault = TempDir::new("vault-r");
+        let external = TempDir::new("ext-r");
+        std::fs::write(external.0.join("diary.md"), "dear diary").unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+        let input = json!({ "path": "private/notes/diary.md" });
+
+        // Local model reads the external file.
+        let ok = execute_read(&reg, &ctx(true), &input).await.unwrap();
+        assert_eq!(ok, "dear diary");
+
+        // Cloud model gets a generic not-found — no content, no host path leaked.
+        let err = execute_read(&reg, &ctx(false), &input).await.unwrap_err();
+        assert!(!err.contains("dear diary"));
+        assert!(!err.contains(external.0.to_str().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn private_list_local_allowed_cloud_denied() {
+        let vault = TempDir::new("vault-l");
+        let external = TempDir::new("ext-l");
+        std::fs::write(external.0.join("a.md"), "x").unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+        let input = json!({ "path": "private/notes" });
+
+        let ok = execute_list_directory(&reg, &ctx(true), &input).await.unwrap();
+        assert!(ok.contains("a.md"));
+        // Echoes the mount path back, never the real host path.
+        assert!(ok.contains("private/notes"));
+        assert!(!ok.contains(external.0.to_str().unwrap()));
+
+        let err = execute_list_directory(&reg, &ctx(false), &input)
+            .await
+            .unwrap_err();
+        assert!(!err.contains("a.md"));
+    }
+
+    #[tokio::test]
+    async fn private_write_denied_even_for_local() {
+        let vault = TempDir::new("vault-w");
+        let external = TempDir::new("ext-w");
+        let reg = registry_with_private(&vault.0, &external.0);
+        let input = json!({ "path": "private/notes/new.md", "content": "nope" });
+        // write_file has no ctx / no private branch — check_permission rejects it.
+        assert!(execute_write(&reg, &input).await.is_err());
+        assert!(!external.0.join("new.md").exists());
     }
 }

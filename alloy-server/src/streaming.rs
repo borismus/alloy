@@ -330,6 +330,14 @@ async fn run_stream(
         params.invoke_skill.as_deref(),
         &tools.skills,
     );
+    // Local models get read access to the private mounts — tell them the mounts
+    // exist (external absolute paths aren't otherwise discoverable). Gated on
+    // local-ness so cloud models never learn these directories exist.
+    let system_prompt = apply_private_dirs_hint(
+        system_prompt,
+        &tools.config,
+        crate::local::model_is_local(&tools.config, &params.model),
+    );
     // Strip the leading `/skill_name` token from the user message before it
     // reaches the provider — otherwise the Claude Code CLI treats it as one of
     // its own slash commands ("Unknown command: /skill_name"). The skill is
@@ -386,11 +394,14 @@ async fn run_stream(
             message_id: Some(session.inner.lock().unwrap().assistant_message_id.clone()),
             conversation_id: Some(format!("conversations/{}", params.conversation_id)),
             inside_subagent: false,
+            model_is_local: crate::local::model_is_local(&tools.config, &params.model),
         },
         mcp,
     };
 
+    let started = std::time::Instant::now();
     let result = execute_with_tools(loop_req, tools, sink).await;
+    let duration_ms = started.elapsed().as_millis() as u64;
     let _ = pump.await;
 
     match result {
@@ -398,7 +409,7 @@ async fn run_stream(
             // Compute USD cost from cached pricing (sourced from OpenRouter's
             // /models endpoint via ModelCache). If the model isn't in the
             // cache yet — first conversation before /api/models ran — cost
-            // stays unset.
+            // stays unset. Also stamp the wall-clock turn duration.
             if let Some(usage) = stream_result.usage.as_mut() {
                 if let Some((in_per_m, out_per_m)) = model_cache.pricing_for(&params.model) {
                     let cost = (usage.input_tokens as f64 * in_per_m
@@ -406,6 +417,7 @@ async fn run_stream(
                         / 1_000_000.0;
                     usage.cost = Some(cost);
                 }
+                usage.duration_ms = Some(duration_ms);
             }
 
             if !params.skip_persist {
@@ -529,6 +541,33 @@ fn apply_invoked_skill(
     Some(match system {
         Some(s) if !s.trim().is_empty() => format!("{s}\n\n{directive}"),
         _ => directive,
+    })
+}
+
+/// Append a one-line hint listing the private read-only mounts, but only for
+/// local models with at least one configured mount. Cloud models must never see
+/// this — it would reveal that the directories exist.
+fn apply_private_dirs_hint(
+    system: Option<String>,
+    config: &crate::config::Config,
+    model_is_local: bool,
+) -> Option<String> {
+    if !model_is_local || config.private_read_only_dirs.is_empty() {
+        return system;
+    }
+    let mounts = config
+        .private_read_only_dirs
+        .iter()
+        .map(|d| format!("private/{}", d.alias))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let hint = format!(
+        "You also have read-only access to these private directories (available to local models only): {mounts}. \
+         Use read_file / list_directory / search_directory with those paths."
+    );
+    Some(match system {
+        Some(s) if !s.trim().is_empty() => format!("{s}\n\n{hint}"),
+        _ => hint,
     })
 }
 

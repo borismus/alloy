@@ -15,6 +15,7 @@ use axum::{Json, Router, extract::State, routing::get};
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
+use crate::local::is_local_url;
 
 const CACHE_TTL: Duration = Duration::from_secs(3600);
 
@@ -216,30 +217,6 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
-/// True when a base URL points at loopback (this machine), so a model served
-/// there keeps prompts on-device. Powers the picker's "Local" privacy badge.
-/// Conservative by design: only loopback counts, so a remote/self-hosted
-/// endpoint is never mislabeled as private.
-fn is_local_url(base_url: &str) -> bool {
-    if base_url.contains("[::1]") {
-        return true;
-    }
-    let host = base_url
-        .split("://")
-        .nth(1)
-        .unwrap_or(base_url)
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .rsplit('@')
-        .next()
-        .unwrap_or("")
-        .split(':')
-        .next()
-        .unwrap_or("");
-    matches!(host, "localhost" | "127.0.0.1" | "::1" | "0.0.0.0") || host.ends_with(".local")
-}
-
 async fn fetch_openai_compatible_models(
     base_url: &str,
     api_key: &str,
@@ -382,15 +359,4 @@ mod tests {
         assert_eq!(short_id("plain-id"), "plain-id");
     }
 
-    #[test]
-    fn local_url_detects_loopback_only() {
-        assert!(is_local_url("http://127.0.0.1:8000/v1"));
-        assert!(is_local_url("http://localhost:11434"));
-        assert!(is_local_url("http://[::1]:8000/v1"));
-        assert!(is_local_url("http://my-mac.local:8000/v1"));
-        // Remote / self-hosted endpoints must NOT be labeled private.
-        assert!(!is_local_url("https://openrouter.ai/api/v1"));
-        assert!(!is_local_url("http://192.168.1.50:8000/v1"));
-        assert!(!is_local_url("http://10.0.0.4:8000/v1"));
-    }
 }

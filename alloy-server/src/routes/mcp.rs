@@ -132,6 +132,9 @@ fn authorize(sessions: &SessionRegistry, q: &McpQuery) -> Option<ToolContext> {
         message_id: Some(inner.assistant_message_id.clone()),
         conversation_id: Some(format!("conversations/{}", inner.conversation_id)),
         inside_subagent: false,
+        // The MCP bridge serves the Claude Code CLI provider, which is cloud —
+        // never grant it private-mount access.
+        model_is_local: false,
     })
 }
 
@@ -219,6 +222,7 @@ mod tests {
             message_id: Some("m".into()),
             conversation_id: Some("conversations/c".into()),
             inside_subagent: false,
+            model_is_local: false,
         };
         let params = json!({ "name": "read_file", "arguments": { "path": "notes/x.md" } });
         let out = execute_tool_call(&tools, &params, &ctx).await;
@@ -234,6 +238,7 @@ mod tests {
             message_id: None,
             conversation_id: None,
             inside_subagent: false,
+            model_is_local: false,
         };
         // Missing required `path` → the tool returns an error result.
         let params = json!({ "name": "read_file", "arguments": {} });

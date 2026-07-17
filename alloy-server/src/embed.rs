@@ -287,7 +287,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
     let vault = Arc::new(Vault::new(vault_path.to_path_buf())?);
 
     let config_path = vault.root().join("config.yaml");
-    let config = Arc::new(if config_path.exists() {
+    let mut config = if config_path.exists() {
         Config::load(&config_path)?
     } else {
         tracing::warn!(
@@ -295,7 +295,10 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
             config_path.display()
         );
         Config::default()
-    });
+    };
+    // Enforce the external-only invariant on private read-only dirs (see main.rs).
+    config.validate_private_dirs(vault.root());
+    let config = Arc::new(config);
 
     let providers = ProviderRegistry::from_configs(&config.providers);
     let watcher = spawn_watcher(vault.clone())?;

@@ -51,8 +51,23 @@ pub struct RawConfig {
     #[serde(rename = "sharePort", default)]
     pub share_port: Option<u16>,
 
+    /// External directories that local (on-device / trusted) models may read
+    /// but cloud models may not — see [`PrivateDir`] and `tools::private`.
+    #[serde(rename = "privateReadOnlyDirs", default)]
+    pub private_read_only_dirs: Option<Vec<PrivateDir>>,
+
     #[serde(default)]
     pub compaction: Option<RawCompaction>,
+}
+
+/// A private read-only directory mounted for local models under
+/// `private/<alias>/`. `path` is an absolute path outside the vault (e.g. a
+/// separate Obsidian vault); local models read it via the mount, cloud models
+/// can't reach it or learn it exists.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrivateDir {
+    pub alias: String,
+    pub path: std::path::PathBuf,
 }
 
 /// Raw `compaction:` block from config.yaml.
@@ -106,6 +121,9 @@ pub struct Config {
     pub share_on_network: bool,
     /// Port for the public listener when `share_on_network` is true.
     pub share_port: u16,
+    /// External read-only dirs local models may read (mounted at `private/<alias>/`).
+    /// Validated against the vault root at bootstrap (see `validate_private_dirs`).
+    pub private_read_only_dirs: Vec<PrivateDir>,
     /// Auto-compaction settings (see compaction.rs).
     pub compaction: crate::compaction::CompactionSettings,
 }
@@ -119,6 +137,7 @@ impl Default for Config {
             soniox_api_key: None,
             share_on_network: false,
             share_port: 3001,
+            private_read_only_dirs: Vec::new(),
             compaction: crate::compaction::CompactionSettings::default(),
         }
     }
@@ -228,6 +247,20 @@ impl Config {
             }
         };
 
+        // Lexically normalize each private-dir path (collapse `.`/`..`). Filesystem
+        // validation (absolute + outside the vault) is deferred to
+        // `validate_private_dirs`, which runs at bootstrap where the vault root is
+        // known — this keeps `from_raw` I/O-free for tests.
+        let private_read_only_dirs = raw
+            .private_read_only_dirs
+            .into_iter()
+            .flatten()
+            .map(|d| PrivateDir {
+                alias: d.alias,
+                path: crate::vault::normalize_path(&d.path),
+            })
+            .collect();
+
         Self {
             default_model,
             providers,
@@ -235,8 +268,53 @@ impl Config {
             soniox_api_key: raw.soniox_api_key,
             share_on_network: raw.share_on_network.unwrap_or(false),
             share_port: raw.share_port.unwrap_or(3001),
+            private_read_only_dirs,
             compaction,
         }
+    }
+
+    /// Enforce the external-only invariant on `private_read_only_dirs` once the
+    /// vault root is known: drop (with a warning) any entry whose path isn't
+    /// absolute, doesn't exist, or lives inside the vault. Runs at bootstrap in
+    /// both the standalone (`main.rs`) and Tauri-embedded (`embed.rs`) paths.
+    pub fn validate_private_dirs(&mut self, vault_root: &Path) {
+        self.private_read_only_dirs.retain(|d| {
+            if !d.path.is_absolute() {
+                tracing::warn!(
+                    "privateReadOnlyDirs: dropping '{}' — path must be absolute: {}",
+                    d.alias,
+                    d.path.display()
+                );
+                return false;
+            }
+            match d.path.canonicalize() {
+                Ok(canon) => {
+                    if canon.starts_with(vault_root) {
+                        tracing::warn!(
+                            "privateReadOnlyDirs: dropping '{}' — path is inside the vault (must be external): {}",
+                            d.alias,
+                            d.path.display()
+                        );
+                        return false;
+                    }
+                    tracing::info!(
+                        "private read-only dir: private/{} -> {}",
+                        d.alias,
+                        canon.display()
+                    );
+                    true
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "privateReadOnlyDirs: dropping '{}' — path does not exist or is unreadable ({}): {}",
+                        d.alias,
+                        e,
+                        d.path.display()
+                    );
+                    false
+                }
+            }
+        });
     }
 }
 
@@ -283,6 +361,28 @@ mod tests {
             serde_yaml::from_str("OPENROUTER_API_KEY: sk\nCLAUDE_SUBSCRIPTION: false\n").unwrap();
         let cfg = Config::from_raw(raw);
         assert_eq!(ids(&cfg), vec!["openrouter"]);
+    }
+
+    #[test]
+    fn private_read_only_dirs_parse_alias_path_pairs() {
+        let raw: RawConfig = serde_yaml::from_str(
+            "OPENROUTER_API_KEY: sk\n\
+             privateReadOnlyDirs:\n  - alias: notes\n    path: /Users/x/Notes\n  - alias: journal\n    path: /Users/x/Journal\n",
+        )
+        .unwrap();
+        let cfg = Config::from_raw(raw);
+        let dirs = &cfg.private_read_only_dirs;
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs[0].alias, "notes");
+        assert_eq!(dirs[0].path, std::path::PathBuf::from("/Users/x/Notes"));
+        assert_eq!(dirs[1].alias, "journal");
+    }
+
+    #[test]
+    fn private_read_only_dirs_default_empty() {
+        let raw: RawConfig = serde_yaml::from_str("OPENROUTER_API_KEY: sk\n").unwrap();
+        let cfg = Config::from_raw(raw);
+        assert!(cfg.private_read_only_dirs.is_empty());
     }
 
     #[test]

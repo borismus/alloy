@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::fs;
 
-use crate::tools::{ToolRegistry, input_string};
+use crate::tools::{ToolContext, ToolRegistry, input_string};
 
 const MAX_RESULTS: usize = 50;
 const DEFAULT_MAX_RESULTS: usize = 20;
@@ -37,7 +37,11 @@ struct Counters {
     searched_files: usize,
 }
 
-pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, String> {
+pub async fn execute(
+    registry: &ToolRegistry,
+    ctx: &ToolContext,
+    input: &Value,
+) -> Result<String, String> {
     let directory = input_string(input, "directory").unwrap_or("").trim();
     let query = input_string(input, "query").unwrap_or("");
     if directory.is_empty() {
@@ -46,23 +50,33 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
     if query.is_empty() {
         return Err("Missing required parameter: query".into());
     }
+
+    // Private mount: searchable by local models only; cloud gets a generic
+    // "not found" without touching disk.
+    let private = crate::tools::private::is_private_path(directory);
+    if private && !ctx.model_is_local {
+        return Err(format!("Directory not found: {}", directory));
+    }
+
     if directory.contains("..") || directory.starts_with('/') {
         return Err("Invalid directory: must be relative and cannot contain \"..\"".into());
     }
 
-    let dir_normalized = if directory.ends_with('/') {
-        directory.to_string()
-    } else {
-        format!("{}/", directory)
-    };
-    let allowed = READABLE_DIRS
-        .iter()
-        .any(|p| dir_normalized == *p || dir_normalized.starts_with(p));
-    if !allowed {
-        return Err(format!(
-            "Access denied: search not allowed for directory \"{}\"",
-            directory
-        ));
+    if !private {
+        let dir_normalized = if directory.ends_with('/') {
+            directory.to_string()
+        } else {
+            format!("{}/", directory)
+        };
+        let allowed = READABLE_DIRS
+            .iter()
+            .any(|p| dir_normalized == *p || dir_normalized.starts_with(p));
+        if !allowed {
+            return Err(format!(
+                "Access denied: search not allowed for directory \"{}\"",
+                directory
+            ));
+        }
     }
 
     let search_content = input_string(input, "search_content")
@@ -74,7 +88,17 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
         .min(MAX_RESULTS);
     let file_ext = input_string(input, "file_extension").map(|s| s.to_string());
 
-    let search_path = registry.vault.resolve(directory).map_err(|e| e.to_string())?;
+    // Private search roots resolve to an external absolute path; vault searches
+    // go through the sandbox. Either way the label stays the request path so
+    // result `path` fields read as `private/<alias>/…` or `notes/…`.
+    let search_path = if private {
+        match crate::tools::private::resolve_private_path(&registry.config, directory) {
+            Ok(Some(abs)) => abs,
+            _ => return Err(format!("Directory not found: {}", directory)),
+        }
+    } else {
+        registry.vault.resolve(directory).map_err(|e| e.to_string())?
+    };
     if fs::metadata(&search_path).await.is_err() {
         return Err(format!("Directory not found: {}", directory));
     }
@@ -278,5 +302,85 @@ mod tests {
         assert!(is_text_file("data.YAML"));
         assert!(!is_text_file("image.png"));
         assert!(!is_text_file("noext"));
+    }
+
+    // ---- private-mount search enforcement (local-only) ----
+    use serde_json::json;
+    use std::sync::Arc;
+
+    struct TempDir(std::path::PathBuf);
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let mut p = std::env::temp_dir();
+            p.push(format!(
+                "alloy-search-test-{}-{}-{}",
+                tag,
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&p).unwrap();
+            TempDir(p.canonicalize().unwrap())
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn registry_with_private(
+        vault_dir: &std::path::Path,
+        external_dir: &std::path::Path,
+    ) -> Arc<ToolRegistry> {
+        use crate::config::{Config, PrivateDir};
+        use crate::providers::ProviderRegistry;
+        use crate::skill_registry::SkillRegistry;
+        use crate::vault::Vault;
+
+        let config = Config {
+            private_read_only_dirs: vec![PrivateDir {
+                alias: "notes".into(),
+                path: external_dir.to_path_buf(),
+            }],
+            ..Config::default()
+        };
+        Arc::new(ToolRegistry::new(
+            Arc::new(config),
+            Arc::new(Vault::new(vault_dir.to_path_buf()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ))
+    }
+
+    fn ctx(model_is_local: bool) -> ToolContext {
+        ToolContext {
+            message_id: None,
+            conversation_id: None,
+            inside_subagent: false,
+            model_is_local,
+        }
+    }
+
+    #[tokio::test]
+    async fn private_search_local_finds_cloud_denied() {
+        let vault = TempDir::new("vault");
+        let external = TempDir::new("ext");
+        std::fs::write(external.0.join("note.md"), "the needle is here").unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+        let input = json!({ "directory": "private/notes", "query": "needle" });
+
+        // Local model finds the match; result path stays under the mount.
+        let ok = execute(&reg, &ctx(true), &input).await.unwrap();
+        assert!(ok.contains("needle"));
+        assert!(ok.contains("private/notes/note.md"));
+        assert!(!ok.contains(external.0.to_str().unwrap()));
+
+        // Cloud model is denied and learns nothing.
+        let err = execute(&reg, &ctx(false), &input).await.unwrap_err();
+        assert!(!err.contains("needle"));
+        assert!(!err.contains("note.md"));
     }
 }

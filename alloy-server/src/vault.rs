@@ -50,7 +50,7 @@ impl Vault {
 /// `vault/../../etc/passwd` collapses before the `starts_with(root)` check.
 /// Done lexically rather than via `canonicalize` so paths to non-existent
 /// files still work (writeTextFile creates new files).
-fn normalize_path(path: &Path) -> PathBuf {
+pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
     let mut out = PathBuf::new();

@@ -157,6 +157,9 @@ async fn run_one_agent(
             message_id: None,
             conversation_id: None,
             inside_subagent: true,
+            // Computed from the sub-agent's own model, so a cloud parent spawning
+            // a local sub-agent (or vice versa) is classified correctly.
+            model_is_local: crate::local::model_is_local(&parent_registry.config, &model),
         },
         // Sub-agents use whatever provider they're given via Alloy's own loop;
         // no Claude Code MCP bridge.

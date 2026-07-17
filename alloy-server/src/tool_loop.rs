@@ -189,6 +189,7 @@ pub async fn execute_with_tools(
             output_tokens: total_output,
             response_id: first_response_id,
             cost: None,
+            duration_ms: None,
         })
     } else {
         None
@@ -237,7 +238,7 @@ mod tests {
     }
 
     fn usage(out: u32) -> Option<Usage> {
-        Some(Usage { input_tokens: 1, output_tokens: out, response_id: None, cost: None })
+        Some(Usage { input_tokens: 1, output_tokens: out, response_id: None, cost: None, duration_ms: None })
     }
 
     /// A turn that emits `text` and then calls a tool. The tool is unregistered
@@ -284,6 +285,7 @@ mod tests {
                 message_id: None,
                 conversation_id: None,
                 inside_subagent: false,
+                model_is_local: false,
             },
             mcp: None,
         };

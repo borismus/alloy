@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     })?);
 
     let config_path = vault.root().join("config.yaml");
-    let config = if config_path.exists() {
+    let mut config = if config_path.exists() {
         Config::load(&config_path)?
     } else {
         tracing::warn!(
@@ -42,6 +42,9 @@ async fn main() -> anyhow::Result<()> {
         );
         Config::default()
     };
+    // Enforce the external-only invariant on private read-only dirs now that the
+    // vault root is known (drops misconfigured entries with a warning).
+    config.validate_private_dirs(vault.root());
     let config = Arc::new(config);
 
     let providers = ProviderRegistry::from_configs(&config.providers);

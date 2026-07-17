@@ -6,6 +6,7 @@
 
 pub mod files;
 pub mod http;
+pub mod private;
 pub mod search;
 pub mod skills;
 pub mod subagents;
@@ -28,6 +29,10 @@ pub struct ToolContext {
     /// Sub-agent guard. When true (set on the recursive registry used inside
     /// `spawn_subagent`), nested `spawn_subagent` calls are rejected.
     pub inside_subagent: bool,
+    /// True when the model driving this tool loop runs on local/trusted hardware
+    /// (see `crate::local::model_is_local`). Gates read access to the private
+    /// mount (`private/<alias>/`); cloud models are denied and can't see it.
+    pub model_is_local: bool,
 }
 
 pub struct ToolRegistry {
@@ -58,11 +63,11 @@ impl ToolRegistry {
         let result = match call.name.as_str() {
             "web_search" => websearch::execute(self, &call.input).await,
             "http_get" => http::execute_get(self, &call.input).await,
-            "read_file" => files::execute_read(self, &call.input).await,
+            "read_file" => files::execute_read(self, ctx, &call.input).await,
             "write_file" => files::execute_write(self, &call.input).await,
-            "list_directory" => files::execute_list_directory(self, &call.input).await,
+            "list_directory" => files::execute_list_directory(self, ctx, &call.input).await,
             "append_to_note" => files::execute_append_to_note(self, ctx, &call.input).await,
-            "search_directory" => search::execute(self, &call.input).await,
+            "search_directory" => search::execute(self, ctx, &call.input).await,
             "use_skill" => skills::execute(&self.skills, &call.input).await,
             "spawn_subagent" => {
                 subagents::execute(self.clone(), ctx, &call.input).await
