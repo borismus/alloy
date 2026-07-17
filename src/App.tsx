@@ -102,10 +102,27 @@ function isBackendUnreachable(err: unknown): boolean {
   return false;
 }
 
+/**
+ * Merge a disk-loaded conversation with the in-memory copy, re-appending any
+ * trailing in-memory USER messages whose ids aren't on disk yet. Guards against
+ * a watcher reload wiping an optimistic (queued) user message that hasn't been
+ * persisted when the reload fires. Assistant messages stay disk-authoritative.
+ */
+function preserveOptimisticUserMessages(disk: Conversation, mem: Conversation | null | undefined): Conversation {
+  if (!mem) return disk;
+  const diskIds = new Set(disk.messages.map(m => m.id).filter(Boolean));
+  const extras = mem.messages.filter(m => m.id && !diskIds.has(m.id) && m.role === 'user');
+  if (extras.length === 0) return disk;
+  return { ...disk, messages: [...disk.messages, ...extras] };
+}
+
 function AppContent() {
   useVisualViewport();
   const [config, setConfig] = useState<Config | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Mirror of `conversations` for stale-free reads in async loaders/callbacks.
+  const conversationsRef = useRef<Conversation[]>([]);
+  conversationsRef.current = conversations;
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Set when the backend is unreachable on init (vs. real config errors). We
@@ -270,13 +287,40 @@ function AppContent() {
     const updated = await vaultService.loadConversation(id);
     if (!updated) return;
 
+    // A watcher reload can arrive mid-send (e.g. the backend just persisted the
+    // previous turn's reply) while an optimistic user message — like a queued
+    // message that just started sending — isn't on disk yet. Re-append those
+    // trailing in-memory user messages so the reload doesn't make them vanish
+    // until the reply lands.
     setConversations(prev =>
-      prev.map(c => c.id === id ? updated : c)
+      prev.map(c => c.id === id ? preserveOptimisticUserMessages(updated, c) : c)
     );
     // currentConversation is derived from conversations, so no need to update separately
     // But if it's a draft conversation, update that too
-    setDraftConversation(prev => prev?.id === id ? updated : prev);
+    setDraftConversation(prev => prev?.id === id ? preserveOptimisticUserMessages(updated, prev) : prev);
   }, []);
+
+  // Lazy-load a conversation's full message bodies on open. The startup list
+  // holds metadata-only summaries (messagesLoaded === false); the first time one
+  // is viewed we fetch its YAML and swap it into place, then keep it cached.
+  const ensureConversationLoaded = useCallback(async (id: string) => {
+    const existing = conversationsRef.current.find(c => c.id === id);
+    if (existing && existing.messagesLoaded !== false) return; // already full
+    const full = await vaultService.loadConversation(id);
+    if (!full) return;
+    const loaded: Conversation = { ...full, messagesLoaded: true };
+    setConversations(prev =>
+      prev.some(c => c.id === id) ? prev.map(c => c.id === id ? loaded : c) : prev
+    );
+  }, []);
+
+  // Load the open conversation's messages when it's selected, and again once the
+  // summary list first arrives (covers a selection restored before load).
+  useEffect(() => {
+    if (selectedItem?.type === 'conversation') {
+      ensureConversationLoaded(selectedItem.id);
+    }
+  }, [selectedItem, conversations.length, ensureConversationLoaded]);
 
   // Use ref to avoid circular dependency with loadVault
   const loadVaultRef = useRef<((path: string) => Promise<void>) | null>(null);
@@ -562,7 +606,9 @@ function AppContent() {
         const bgDefaultModel = configuredDefault || loadedModels[0]?.key || '';
 
         const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory, bgConv] = await Promise.all([
-          vaultService.loadConversations(),
+          // Metadata-only summaries (one batched header read); message bodies are
+          // loaded lazily when a conversation is opened.
+          vaultService.loadConversationSummaries(),
           vaultService.loadTriggers(),
           vaultService.loadNotes(),
           skillRegistry.loadSkills(),

@@ -313,10 +313,13 @@ export class VaultService {
     // Don't save conversations with no actual messages
     if (filteredMessages.length === 0) return;
 
-    const conversationToSave = {
-      ...conversation,
-      messages: filteredMessages,
-    };
+    // Force `messages` to the end and drop the runtime-only `messagesLoaded`
+    // flag, so the metadata stays a compact header block that
+    // loadConversationSummaries can read from just the top of the file.
+    const conversationToSave: Record<string, unknown> = { ...conversation };
+    delete conversationToSave.messagesLoaded;
+    delete conversationToSave.messages;
+    conversationToSave.messages = filteredMessages;
 
     const conversationsPath = await join(this.vaultPath, 'conversations');
     const newFilename = this.generateFilename(conversation.id, conversation.title);
@@ -336,7 +339,7 @@ export class VaultService {
     await writeTextFile(newFilePath, yaml.dump(conversationToSave));
 
     // Generate markdown preview for Obsidian
-    await this.writeMarkdownPreview(conversationToSave);
+    await this.writeMarkdownPreview(conversationToSave as unknown as Conversation);
   }
 
   private async writeMarkdownPreview(conversation: Conversation): Promise<void> {
@@ -428,6 +431,72 @@ export class VaultService {
     return filtered.sort((a, b) =>
       new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
     );
+  }
+
+  /**
+   * Lightweight conversation list for the sidebar: one batched header read
+   * (top ~512 bytes of each YAML) instead of loading every message. Metadata
+   * (id/title/model/created/updated) always precedes `messages:`, so the header
+   * block parses on its own. Full messages are loaded lazily on open via
+   * [loadConversation]. Turns ~1000 file reads + 190MB parse into one request.
+   */
+  async loadConversationSummaries(): Promise<Conversation[]> {
+    if (!this.vaultPath) return [];
+
+    const conversationsPath = await join(this.vaultPath, 'conversations');
+    if (!(await exists(conversationsPath))) return [];
+
+    const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
+    const headers: Record<string, { content: string; mtime: number }> =
+      await readDirHeaders(conversationsPath, '.yaml', 512);
+
+    const summaries: Conversation[] = [];
+    for (const [name, { content, mtime }] of Object.entries(headers)) {
+      // The header read is truncated mid-file, so the messages array is
+      // incomplete/unparseable — parse only the metadata block before `messages:`.
+      const headerBlock = content.split(/^messages:/m)[0];
+      let meta: Partial<Conversation> = {};
+      try {
+        meta = (yaml.load(headerBlock) as Partial<Conversation>) ?? {};
+      } catch {
+        meta = {};
+      }
+      const id = meta.id ?? name.replace(/\.yaml$/, '');
+      if (!id) continue;
+      // Legacy files stored title/updated AFTER the messages array (so they're
+      // absent from the header). Fall back to the filename slug for the title
+      // and the file mtime for the timestamps — the old slugged title is
+      // essentially the de-slugified id anyway.
+      const isoMtime = new Date(mtime).toISOString();
+      summaries.push({
+        id,
+        created: meta.created ?? isoMtime,
+        updated: meta.updated ?? isoMtime,
+        model: meta.model ?? '',
+        title: meta.title ?? this.deriveTitleFromFilename(name),
+        messages: [],
+        messagesLoaded: false,
+      });
+    }
+
+    const filtered = summaries.filter(
+      c => c.id !== '_background' && !c.id.startsWith('_background-')
+    );
+    return filtered.sort((a, b) =>
+      new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
+    );
+  }
+
+  /** Human title derived from a conversation filename/id when the header lacks
+   * one (legacy metadata-last files). Strips the leading `YYYY-MM-DD-<num>-`
+   * date/id prefix and de-slugifies the rest. */
+  private deriveTitleFromFilename(name: string): string {
+    const base = name.replace(/\.yaml$/, '');
+    // Strip the `YYYY-MM-DD-<timestamp>-` (and optional 4-hex id hash) prefix
+    // used by both id formats, leaving the slugged title.
+    const slug = base.replace(/^\d{4}-\d{2}-\d{2}-\d+-(?:[0-9a-f]{4}-)?/, '');
+    const title = slug.replace(/-/g, ' ').trim();
+    return title || 'Untitled conversation';
   }
 
   async loadConversation(id: string): Promise<Conversation | null> {

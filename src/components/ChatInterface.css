@@ -88,6 +88,13 @@
   color: #666;
 }
 
+/* Shown while a conversation's message bodies lazy-load on open. */
+.loading-conversation {
+  display: flex;
+  justify-content: center;
+  padding: 4rem 2rem;
+}
+
 .welcome-message h2,
 .no-conversation h2,
 .no-provider h2,

@@ -627,7 +627,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         )}
       </ItemHeader>
       <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
-        {conversation.messages.length === 0 && !showStreamingMessage && (
+        {conversation.messagesLoaded === false ? (
+          <div className="loading-conversation">
+            <div className="thinking-indicator"><span></span><span></span><span></span></div>
+          </div>
+        ) : conversation.messages.length === 0 && !showStreamingMessage && (
           <div className="welcome-message">
             <h2>Start a conversation</h2>
             <p>Ask me anything. Your conversation will be saved as a YAML file in your vault.</p>

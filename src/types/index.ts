@@ -175,6 +175,10 @@ export interface Conversation {
   messages: Message[];
   // ISO timestamp of the most recent compaction (auto or manual). Omitted if never compacted.
   lastCompactedAt?: string;
+  // False for list summaries loaded metadata-only (messages: []) at startup;
+  // true/undefined once the full conversation has been loaded. Drives lazy
+  // loading of message bodies on open. See vaultService.loadConversationSummaries.
+  messagesLoaded?: boolean;
 }
 
 export interface Config {
