@@ -5,6 +5,7 @@ interface MessageQueueContextValue {
   getQueue: (id: string) => QueuedMessage[];
   enqueue: (id: string, msg: QueuedMessage) => void;
   dequeue: (id: string) => QueuedMessage | null;
+  drain: (id: string) => QueuedMessage[];
   remove: (id: string, messageId: string) => void;
 }
 
@@ -43,6 +44,20 @@ export function MessageQueueProvider({ children }: { children: React.ReactNode }
     return first;
   }, []);
 
+  // Remove and return every queued message for a conversation at once. Used to
+  // fold all messages queued during a turn into a single follow-up send.
+  const drain = useCallback((id: string): QueuedMessage[] => {
+    const current = queuesRef.current.get(id) ?? [];
+    if (current.length === 0) return [];
+    setQueues(prev => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    return current;
+  }, []);
+
   const remove = useCallback((id: string, messageId: string) => {
     const current = queuesRef.current.get(id);
     if (!current) return;
@@ -62,8 +77,8 @@ export function MessageQueueProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const value = useMemo<MessageQueueContextValue>(
-    () => ({ getQueue, enqueue, dequeue, remove }),
-    [getQueue, enqueue, dequeue, remove, queues]
+    () => ({ getQueue, enqueue, dequeue, drain, remove }),
+    [getQueue, enqueue, dequeue, drain, remove, queues]
   );
 
   return <MessageQueueContext.Provider value={value}>{children}</MessageQueueContext.Provider>;

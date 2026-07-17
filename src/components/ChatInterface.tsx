@@ -208,7 +208,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     clear: clearStreaming,
   } = useConversationStreaming(conversation?.id ?? null);
 
-  const { queue, enqueue, dequeue, removeQueued } = useMessageQueue(conversation?.id ?? null);
+  const { queue, enqueue, drainQueue, removeQueued } = useMessageQueue(conversation?.id ?? null);
 
   const { setShouldAutoScroll, handleScroll } = useAutoScroll({
     endRef: messagesEndRef,
@@ -504,13 +504,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     processAndSend(message, pendingImages);
   }, [conversation, isStreaming, enqueue, processAndSend]);
 
-  // Process queued messages when streaming completes
+  // Process queued messages when streaming completes. Everything queued during
+  // the turn is folded into a single follow-up send (content joined by blank
+  // lines, images concatenated) so N queued messages produce one reply, not N.
   useEffect(() => {
     if (isStreaming || queue.length === 0) return;
-    const next = dequeue();
-    if (!next) return;
-    processAndSend(next.content, next.pendingImages);
-  }, [isStreaming, queue.length, dequeue, processAndSend]);
+    const drained = drainQueue();
+    if (drained.length === 0) return;
+    const combinedContent = drained.map(m => m.content).join('\n\n');
+    const combinedImages = drained.flatMap(m => m.pendingImages);
+    processAndSend(combinedContent, combinedImages);
+  }, [isStreaming, queue.length, drainQueue, processAndSend]);
 
   // Global Escape key handler for stopping streaming
   useGlobalEscape(handleStop, isStreaming);

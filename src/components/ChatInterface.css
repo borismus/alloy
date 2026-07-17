@@ -1040,15 +1040,19 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  overflow: hidden;
   flex: 1;
   min-width: 0;
 }
 
 .queued-message-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* Italic signals these are pending (queued), not yet sent. */
+  font-style: italic;
+  /* Selectable so the queued text can be copied before it sends. */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .queued-images-badge {

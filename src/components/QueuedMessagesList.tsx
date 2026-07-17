@@ -20,7 +20,7 @@ export const QueuedMessagesList = React.memo(({ queue, onRemove }: QueuedMessage
               </span>
             )}
             <span className="queued-message-text">
-              {qm.content.length > 100 ? qm.content.slice(0, 100) + '…' : qm.content}
+              {qm.content}
             </span>
           </div>
           <button

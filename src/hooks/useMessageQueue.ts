@@ -17,10 +17,15 @@ export function useMessageQueue(conversationId: string | null) {
     return ctx.dequeue(conversationId);
   }, [conversationId, ctx]);
 
+  const drainQueue = useCallback((): QueuedMessage[] => {
+    if (!conversationId) return [];
+    return ctx.drain(conversationId);
+  }, [conversationId, ctx]);
+
   const removeQueued = useCallback((messageId: string) => {
     if (!conversationId) return;
     ctx.remove(conversationId, messageId);
   }, [conversationId, ctx]);
 
-  return { queue, enqueue, dequeue, removeQueued };
+  return { queue, enqueue, dequeue, drainQueue, removeQueued };
 }
