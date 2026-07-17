@@ -194,6 +194,11 @@ pub struct Usage {
     pub response_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
+    /// Wall-clock time (ms) to produce this turn — model generation plus any
+    /// tool-loop iterations. Filled in by the streaming session; shown in the
+    /// message footer.
+    #[serde(rename = "durationMs", skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

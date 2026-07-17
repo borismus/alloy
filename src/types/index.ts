@@ -55,6 +55,7 @@ export interface Usage {
   cacheCreationInputTokens?: number; // Tokens written to prompt cache (billed at ~125% rate, Anthropic)
   cost?: number;        // Estimated USD (omitted for free/unknown models)
   responseId?: string;  // Provider response ID for billing cross-reference
+  durationMs?: number;  // Wall-clock time to produce the response (model + tool loop)
 }
 
 // Sub-agent response stored on completed messages

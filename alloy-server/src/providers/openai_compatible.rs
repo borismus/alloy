@@ -273,6 +273,7 @@ impl Provider for OpenAICompatibleProvider {
                 output_tokens,
                 response_id,
                 cost: None,
+                duration_ms: None,
             })
         } else {
             None

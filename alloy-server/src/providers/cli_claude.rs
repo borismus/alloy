@@ -377,6 +377,7 @@ impl Provider for CliClaudeProvider {
                 output_tokens,
                 response_id: None,
                 cost: None, // subscription billing — no per-token cost shown
+                duration_ms: None,
             })
         } else {
             None

@@ -914,6 +914,13 @@
   color: #999;
 }
 
+/* Response latency, shown left of the token badge in the footer. */
+.response-summary .latency-badge {
+  font-size: 0.7rem;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+}
+
 .copy-response-button {
   display: inline-flex;
   align-items: center;

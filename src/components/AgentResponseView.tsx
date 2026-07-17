@@ -6,6 +6,15 @@ import { MarkdownContent } from './MarkdownContent';
 
 export type AgentStatus = 'pending' | 'streaming' | 'complete' | 'error';
 
+/** Compact latency for the footer: "820ms", "12.3s", "1m 5s". */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${Math.round(s % 60)}s`;
+}
+
 interface AgentResponseViewProps {
   /** The streaming/completed content */
   content: string;
@@ -109,6 +118,9 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
         )}
         {status === 'complete' && content && (
           <div className="response-footer">
+            {usage?.durationMs != null && (
+              <span className="latency-badge" title="Response time">{formatDuration(usage.durationMs)}</span>
+            )}
             {usage && (
               <div className="usage-badge">
                 {usage.cost !== undefined && (

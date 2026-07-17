@@ -39,7 +39,7 @@ function getAuthHeaders(): Record<string, string> {
 
 export interface ServerStreamResult {
   content: string;
-  usage?: { inputTokens: number; outputTokens: number; cost?: number; responseId?: string };
+  usage?: { inputTokens: number; outputTokens: number; cost?: number; responseId?: string; durationMs?: number };
   stopReason?: string;
   title?: string; // Generated title for first messages
   toolUse?: ToolUse[]; // Tool uses observed during this turn (M4+ server-side tools)
