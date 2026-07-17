@@ -140,6 +140,7 @@ Node server's behavior.
 | POST | `/api/stream/stop/:id` | Cancel a session |
 | GET | `/api/stream/active` | List sessions (for reconnect) |
 | GET | `/api/models` | Aggregated model list across providers |
+| POST | `/api/tasks/:id/run` | Run a scheduled task now without shifting its cron schedule |
 
 ## Tools
 
@@ -147,13 +148,14 @@ Node server's behavior.
 |---|---|---|
 | `web_search` | ✓ | Serper. Reads `SERPER_API_KEY` from config |
 | `http_get` | ✓ | 30s timeout, 2MB body cap |
-| `read_file` | ✓ | notes/, skills/, conversations/, triggers/, root files |
+| `read_file` | ✓ | notes/, skills/, conversations/, tasks/, root files |
 | `list_directory` | ✓ | Same allowlist |
 | `write_file` | ✓ | Only `notes/*` and `memory.md` in server mode (other paths require approval; hard-error here) |
 | `append_to_note` | ✓ | Notes only. Auto-adds `&[[conv^msg]]` provenance markers |
 | `search_directory` | ✓ | notes/, skills/, conversations/. Substring search, depth 3, 500 file cap |
 | `use_skill` | ✓ | Loaded once from `vault/skills/*/SKILL.md` at startup |
 | `spawn_subagent` | ✓ | 1-3 in parallel. No nesting. Sub-agents get read-only tool set |
+| `create_scheduled_task` | ✓ | Five-field cron + timezone; optional delivery condition |
 
 ## Provider model resolution
 

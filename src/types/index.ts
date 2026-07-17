@@ -119,47 +119,40 @@ export interface ModelInfo {
   local?: boolean;        // True when served from this machine (loopback) — prompts stay on-device
 }
 
-// Single trigger attempt record
-export interface TriggerAttempt {
-  timestamp: string;
-  result: 'triggered' | 'skipped' | 'error';
-  reasoning: string;  // Explanation for triggered/skipped, empty for error
-  error?: string;     // Error message when result is 'error'
-  usage?: Usage;      // Token usage and cost for this check
+export interface TaskSchedule {
+  cron: string;
+  timezone: string;
 }
 
-// Result of a trigger check
-export interface TriggerResult {
-  result: 'triggered' | 'skipped' | 'error';
-  response: string;   // Full response if triggered, brief reasoning if skipped
-  error?: string;     // Error message when result is 'error'
+export interface TaskTrigger {
+  condition: string;
 }
 
-// Log entry for trigger execution history
-export interface TriggerLogEntry {
+export interface TaskAttempt {
   timestamp: string;
-  conversationId: string;
-  conversationTitle?: string;
-  triggered: boolean;
+  result: 'completed' | 'triggered' | 'skipped' | 'error';
   reasoning: string;
   error?: string;
+  usage?: Usage;
 }
 
-// Standalone trigger stored in triggers/ directory (flat structure)
-export interface Trigger {
+// Scheduled task stored in tasks/. `trigger` is the optional delivery gate:
+// without it every successful run is delivered; with it the result is surfaced
+// only when the condition is met.
+export interface ScheduledTask {
   id: string;
   created: string;
   updated: string;
   title: string;
-  model: string;  // Format: "provider/model-id"
-  // Trigger configuration (previously nested under trigger:)
+  model: string;
   enabled: boolean;
-  triggerPrompt: string;           // The prompt to evaluate and respond to
-  intervalMinutes: number;         // e.g., 60 for hourly
-  lastChecked?: string;            // ISO timestamp
-  lastTriggered?: string;          // ISO timestamp
-  history?: TriggerAttempt[];      // Recent trigger attempts (most recent first)
-  // Messages
+  prompt: string;
+  schedule: TaskSchedule;
+  trigger?: TaskTrigger;
+  lastScheduledAt?: string;
+  lastRunAt?: string;
+  lastDeliveredAt?: string;
+  history?: TaskAttempt[];
   messages: Message[];
 }
 
@@ -213,7 +206,7 @@ export interface ConversationStreamingState {
 }
 
 // Timeline filter type (replaces old SidebarTab)
-export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'triggers' | 'riffs';
+export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'tasks' | 'riffs';
 
 export type RiffArtifactType = 'note' | 'mermaid' | 'table' | 'summary';
 
@@ -256,22 +249,22 @@ export interface NoteInfo {
 
 // Unified timeline item for sidebar display
 export interface TimelineItem {
-  type: 'conversation' | 'note' | 'trigger' | 'riff';
-  id: string;              // conversation id, note filename, or trigger id
+  type: 'conversation' | 'note' | 'task' | 'riff';
+  id: string;              // conversation id, note filename, or task id
   title: string;           // display title
   lastUpdated: number;     // unix timestamp for sorting
   preview?: string;        // optional preview text
   // Type-specific data (one will be set based on type)
   conversation?: Conversation;
   note?: NoteInfo;
-  trigger?: Trigger;
+  task?: ScheduledTask;
 }
 
 // Selection state for main panel routing
 export type SelectedItem =
   | { type: 'conversation'; id: string }
   | { type: 'note'; id: string }      // id = filename
-  | { type: 'trigger'; id: string }
+  | { type: 'task'; id: string }
   | null;
 
 // Riff mode: proposed changes to integrate into other notes

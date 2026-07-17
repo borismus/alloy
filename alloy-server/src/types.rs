@@ -185,15 +185,17 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
             &["path", "content"],
         ),
         def(
-            "create_trigger",
-            "Create a recurring background trigger that re-runs your prompt on a schedule and notifies the user when something meaningful changes. Use for monitoring requests like \"watch BTC price hourly\" or \"check this RSS feed daily.\" The trigger runs server-side so it fires whether or not the user has the app open. The first baseline run starts within ~60 seconds of creation.",
+            "create_scheduled_task",
+            "Create a recurring server-side task using a standard five-field cron schedule. The task runs even when no client is open. Omit trigger_condition for reports that should be delivered every run (for example, a daily digest). Include trigger_condition for monitors that should deliver only when a condition is met (for example, an hourly price alert).",
             &[
-                ("title", "string", r#"Short human-readable label shown in the sidebar (e.g., "Watch BTC price", "Daily Hacker News digest")"#),
-                ("trigger_prompt", "string", "The prompt the trigger evaluates each tick. The model is told to compare against the previous baseline and only re-notify on meaningful change, so write the prompt as if asking for a snapshot of current state. Include any data points or thresholds that matter."),
-                ("interval_minutes", "string", r#"How often to check, in minutes. Default "60" (hourly). Common values: "5" (rapid), "60" (hourly), "1440" (daily)."#),
-                ("model", "string", r#"Optional model id (e.g., "openrouter/anthropic/claude-haiku-4.5"). Defaults to the user's configured defaultModel. Prefer cheaper models since triggers run repeatedly."#),
+                ("title", "string", r#"Short human-readable label shown in Tasks (e.g., "Monday Sailing Outlook", "BTC price alert")"#),
+                ("prompt", "string", "What the agent should do on each scheduled run. Include the desired output format and data sources."),
+                ("cron", "string", r#"Standard five-field cron: minute hour day-of-month month day-of-week. Examples: "*/5 * * * *" every 5 minutes, "0 8 * * *" daily at 8 AM, "0 8 * * 1" Monday at 8 AM."#),
+                ("timezone", "string", r#"Optional IANA timezone such as "America/Los_Angeles". Defaults to the server's local timezone and is persisted."#),
+                ("trigger_condition", "string", "Optional delivery condition. When present, the result is surfaced only when this condition is met and is not substantially unchanged from the last delivery."),
+                ("model", "string", r#"Optional provider/model id. Defaults to config.yaml defaultModel. Prefer economical models for frequent tasks."#),
             ],
-            &["title", "trigger_prompt"],
+            &["title", "prompt", "cron"],
         ),
     ]
 }

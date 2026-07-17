@@ -7,7 +7,7 @@ export type ExternalEditor = 'obsidian' | 'system';
  *
  * - 'obsidian' opens markdown notes via the `obsidian://open?path=<abs>` URI,
  *   which lets Obsidian locate the containing vault. Non-markdown files (e.g.
- *   config.yaml, conversation/trigger YAML) fall back to the system default
+ *   config.yaml, conversation/task YAML) fall back to the system default
  *   app, since Obsidian only edits markdown.
  * - 'system' always opens with the OS default app.
  *

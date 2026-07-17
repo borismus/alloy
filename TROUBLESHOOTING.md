@@ -105,7 +105,7 @@ ls -la ~/your-vault-path/
 # Should show:
 # conversations/
 # notes/
-# triggers/
+# tasks/
 # skills/
 # memory.md
 # config.yaml

@@ -33,6 +33,9 @@ anyhow = "1"
 thiserror = "2"
 futures-util = "0.3"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+chrono-tz = "0.10"
+cron = "0.15"
+iana-time-zone = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 eventsource-stream = "0.2"
 async-trait = "0.1"

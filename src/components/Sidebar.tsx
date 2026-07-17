@@ -4,7 +4,7 @@ import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
-import { useTriggerContext } from '../contexts/TriggerContext';
+import { useTaskContext } from '../contexts/TaskContext';
 import { useTextareaProps } from '../utils/textareaProps';
 import './Sidebar.css';
 
@@ -100,7 +100,7 @@ interface SidebarProps {
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onRenameRiff: (oldFilename: string, newName: string) => void;
   onDeleteConversation: (id: string) => void;
-  onDeleteTrigger: (id: string) => void;
+  onDeleteTask: (id: string) => void;
   onDeleteNote: (filename: string) => void;
   externalEditor: ExternalEditor;
   // Mobile props
@@ -126,21 +126,21 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   onRenameConversation,
   onRenameRiff,
   onDeleteConversation,
-  onDeleteTrigger,
+  onDeleteTask,
   onDeleteNote,
   externalEditor,
   fullScreen,
   onMobileBack,
 }, ref) {
   const textareaProps = useTextareaProps();
-  const { firedTriggers, dismissFiredTrigger } = useTriggerContext();
-  const firedTriggerIds = firedTriggers.map(f => f.conversationId);
+  const { deliveredResults, dismissDeliveredResult } = useTaskContext();
+  const deliveredTaskIds = deliveredResults.map(result => result.taskId);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingType, setRenamingType] = useState<'conversation' | 'riff' | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'trigger' | 'riff'; id: string } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'task' | 'riff'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Debounce search query to avoid scanning all message text on every keystroke
@@ -165,9 +165,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 
   const handleSelectItem = (item: TimelineItem) => {
     capturePositions();
-    // Dismiss fired trigger indicator when opening
-    if (item.type === 'conversation' && firedTriggerIds.includes(item.id)) {
-      dismissFiredTrigger(item.id);
+    // Dismiss the delivered-result indicator when opening its task.
+    if (item.type === 'task' && deliveredTaskIds.includes(item.id)) {
+      dismissDeliveredResult(item.id);
     }
     onSelectItem(item);
   };
@@ -212,8 +212,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     if (deletingItem) {
       if (deletingItem.type === 'conversation') {
         onDeleteConversation(deletingItem.id);
-      } else if (deletingItem.type === 'trigger') {
-        onDeleteTrigger(deletingItem.id);
+      } else if (deletingItem.type === 'task') {
+        onDeleteTask(deletingItem.id);
       } else if (deletingItem.type === 'note' || deletingItem.type === 'riff') {
         onDeleteNote(deletingItem.id);
       }
@@ -232,8 +232,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 
     if (item.type === 'conversation') {
       filePath = await vaultService.getConversationFilePath(item.id);
-    } else if (item.type === 'trigger') {
-      filePath = await vaultService.getTriggerFilePath(item.id);
+    } else if (item.type === 'task') {
+      filePath = await vaultService.getTaskFilePath(item.id);
     } else if (item.type === 'note' || item.type === 'riff') {
       filePath = await vaultService.getNoteFilePath(item.id);
     }
@@ -356,7 +356,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       if (activeFilter !== 'all') {
         if (activeFilter === 'conversations' && item.type !== 'conversation') return false;
         if (activeFilter === 'notes' && item.type !== 'note') return false;
-        if (activeFilter === 'triggers' && item.type !== 'trigger') return false;
+        if (activeFilter === 'tasks' && item.type !== 'task') return false;
         if (activeFilter === 'riffs' && item.type !== 'riff') return false;
       }
 
@@ -390,8 +390,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         return null;
       case 'note':
         return <span className="type-badge note">Note</span>;
-      case 'trigger':
-        return <span className="type-badge trigger">Trigger</span>;
+      case 'task':
+        return <span className="type-badge task">Task</span>;
       case 'riff':
         return (
           <span className={`type-badge riff ${item.note?.isIntegrated ? 'integrated' : 'draft'}`}>
@@ -446,7 +446,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           <option value="all">All</option>
           <option value="conversations">Conversations</option>
           <option value="notes">Notes</option>
-          <option value="triggers">Triggers</option>
+          <option value="tasks">Tasks</option>
           <option value="riffs">Riffs</option>
         </select>
       </div>
@@ -478,8 +478,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                   <span className="streaming-indicator" title="Streaming...">●</span>
                 )}
                 {!streamingConversationIds.includes(item.id) &&
-                 (unreadConversationIds.includes(item.id) || firedTriggerIds.includes(item.id)) && (
-                  <span className="unread-indicator" title={firedTriggerIds.includes(item.id) ? "Trigger fired" : "New response"}>●</span>
+                 (unreadConversationIds.includes(item.id) || deliveredTaskIds.includes(item.id)) && (
+                  <span className="unread-indicator" title={deliveredTaskIds.includes(item.id) ? "Task result delivered" : "New response"}>●</span>
                 )}
                 {getTypeBadge(item)}
                 {item.title}
@@ -527,7 +527,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       {deletingItem && (
         <div className="rename-modal" onClick={cancelDelete}>
           <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'trigger' ? 'Trigger' : deletingItem.type === 'riff' ? 'Riff' : 'Note'}</h3>
+            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'task' ? 'Task' : deletingItem.type === 'riff' ? 'Riff' : 'Note'}</h3>
             <p className="delete-warning">
               Are you sure you want to delete this {deletingItem.type}? This action cannot be undone.
             </p>

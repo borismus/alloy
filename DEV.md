@@ -26,11 +26,8 @@ alloy/
 │   ├── services/             # Business logic
 │   │   ├── vault.ts          # File system operations
 │   │   ├── riff.ts           # Draft integration logic
-│   │   ├── background.ts     # Background orchestrator
-│   │   ├── providers/        # AI provider implementations
+│   │   ├── server-streaming.ts # Backend stream client
 │   │   ├── skills/           # Skill loading and execution
-│   │   ├── tools/            # Built-in tool implementations
-│   │   ├── triggers/         # Trigger scheduling and execution
 │   │   ├── context/          # Context window estimation
 │   │   └── api/              # HTTP shims for Tauri plugins (web + Tauri)
 │   ├── contexts/             # React contexts

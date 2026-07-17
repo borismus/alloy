@@ -7,7 +7,7 @@ use alloy_server::{
     AppState, build_router, cli::Args, config::Config, providers::ProviderRegistry,
     routes::models::ModelCache, routes::watch::spawn_watcher, skill_registry::SkillRegistry,
     streaming::SessionRegistry, tools::ToolRegistry,
-    triggers::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
+    tasks::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
     vault::Vault,
 };
 use clap::Parser;
@@ -71,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let model_cache = Arc::new(ModelCache::new());
-    let triggers = Arc::new(SchedulerHandle::new());
+    let tasks = Arc::new(SchedulerHandle::new());
 
     let share_on_network = Arc::new(AtomicBool::new(config.share_on_network));
 
@@ -84,15 +84,15 @@ async fn main() -> anyhow::Result<()> {
         config,
         share_on_network,
         model_cache,
-        triggers: triggers.clone(),
+        tasks: tasks.clone(),
         self_base_url: Arc::new(std::sync::RwLock::new(Some(format!(
             "http://127.0.0.1:{}",
             args.port
         )))),
     };
 
-    // Background trigger scheduler: fires regardless of client presence.
-    spawn_scheduler(state.clone(), triggers.inflight.clone());
+    // Scheduled tasks run regardless of client presence.
+    spawn_scheduler(state.clone(), tasks.inflight.clone());
 
     let app = build_router(state);
 

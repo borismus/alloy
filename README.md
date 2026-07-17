@@ -28,7 +28,7 @@ Everything lives in your vault folder as plain files:
 ├── conversations/           # Chat history (YAML)
 │   └── attachments/         # Image attachments
 ├── notes/                   # AI-managed notes (Markdown)
-├── triggers/                # Scheduled prompts (YAML)
+├── tasks/                   # Scheduled tasks (YAML; optional delivery conditions)
 ├── skills/                  # Custom skills (Markdown)
 └── riffs/                   # Draft notes (Markdown)
 ```

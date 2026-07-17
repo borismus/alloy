@@ -209,7 +209,7 @@ pub struct StartParams {
     #[serde(rename = "invokeSkill", default)]
     pub invoke_skill: Option<String>,
     /// Skip appending the assistant message to a conversation YAML.
-    /// Used by triggers (whose results live in `triggers/*.yaml`, not
+    /// Used by scheduled tasks (whose results live in `tasks/*.yaml`, not
     /// `conversations/*.yaml`) and other programmatic callers that
     /// don't have a conversation file at all.
     #[serde(rename = "skipPersist", default)]
@@ -362,7 +362,7 @@ async fn run_stream(
     .await;
     let messages = prepared.send;
     // Only persist a freshly-generated compacted message when we own a
-    // conversation file (triggers/riff run with skip_persist and ephemeral
+    // conversation file (scheduled tasks/riffs use skip_persist and ephemeral
     // histories).
     let new_compacted: Option<NewCompacted> = if params.skip_persist {
         None
@@ -684,7 +684,7 @@ impl ToolEventSink for SessionToolSink {
 }
 
 /// Final outcome of a streaming session — used by callers (like the
-/// trigger executor) that need to await completion synchronously rather
+/// scheduled-task executor) that need to await completion synchronously rather
 /// than fan events out over SSE.
 #[derive(Debug, Clone)]
 pub struct SessionOutcome {
@@ -694,7 +694,7 @@ pub struct SessionOutcome {
 }
 
 /// Run a streaming session and await its terminal event. Used by
-/// programmatic callers (triggers, internal tasks) that want the final
+/// programmatic callers (scheduled tasks, internal jobs) that want the final
 /// result rather than an SSE stream.
 pub async fn run_to_completion(
     registry: &SessionRegistry,

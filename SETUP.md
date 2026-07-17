@@ -42,7 +42,7 @@ When you first launch Alloy:
 Your vault will be initialized with:
 - `conversations/` — Chat history (YAML)
 - `notes/` — AI-managed notes (Markdown)
-- `triggers/` — Scheduled prompts (YAML)
+- `tasks/` — Cron-based scheduled tasks (YAML)
 - `skills/` — Custom skills (Markdown)
 - `riffs/` — Draft notes (Markdown)
 - `memory.md` — Persistent context injected into system prompt

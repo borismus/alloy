@@ -15,9 +15,9 @@ pub mod providers;
 pub mod routes;
 pub mod skill_registry;
 pub mod streaming;
+pub mod tasks;
 pub mod tool_loop;
 pub mod tools;
-pub mod triggers;
 pub mod types;
 pub mod vault;
 pub mod vault_writer;
@@ -32,8 +32,8 @@ use crate::providers::ProviderRegistry;
 use crate::routes::models::ModelCache;
 use crate::routes::watch::WatcherChannel;
 use crate::streaming::SessionRegistry;
+use crate::tasks::scheduler::SchedulerHandle;
 use crate::tools::ToolRegistry;
-use crate::triggers::scheduler::SchedulerHandle;
 use crate::vault::Vault;
 
 /// Shared application state available to every handler.
@@ -51,9 +51,9 @@ pub struct AppState {
     /// with the listener rebind.
     pub share_on_network: Arc<AtomicBool>,
     pub model_cache: Arc<ModelCache>,
-    /// Holds the scheduler's "currently running" set so the `/run` route
-    /// and the background tick don't double-fire the same trigger.
-    pub triggers: Arc<SchedulerHandle>,
+    /// Holds the scheduler's currently-running set so manual and scheduled
+    /// execution cannot overlap for the same task.
+    pub tasks: Arc<SchedulerHandle>,
     /// This server's own loopback base URL (e.g. `http://127.0.0.1:3001`), set
     /// once the listener binds. The `claude-cli` provider needs it to point the
     /// Claude Code MCP client back at our `/api/mcp` endpoint. `None` until bound.
@@ -73,7 +73,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::watch::router())
         .merge(routes::stream::router())
         .merge(routes::models::router())
-        .merge(routes::triggers::router())
+        .merge(routes::tasks::router())
         .merge(routes::mcp::router())
         // SPA static assets are a FALLBACK — they only run for paths with
         // no declared route. Using a fallback instead of a /{*path}

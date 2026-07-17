@@ -5,7 +5,7 @@
 //! - skills/ — read+write client-side, but **write requires approval which
 //!   we don't ship in Phase 1** → server-mode hard-errors writes to skills/
 //! - conversations/ — read only
-//! - triggers/ — same as skills/ (read; write requires approval → server hard-error)
+//! - tasks/ — same as skills/ (read; write requires approval → server hard-error)
 //! - root files: read allowed; write allowed only for memory.md (other root
 //!   writes require approval → hard-error)
 
@@ -65,7 +65,7 @@ fn check_permission(path: &str, op: Op) -> Option<String> {
         ("notes/", true, true),
         ("skills/", true, false), // writes would need approval → blocked
         ("conversations/", true, false), // read-only
-        ("triggers/", true, false), // writes would need approval → blocked
+        ("tasks/", true, false), // writes would need approval → blocked
     ];
 
     if normalized.contains('/') {

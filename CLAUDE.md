@@ -8,7 +8,7 @@ Key features:
 - **Multi-provider**: Anthropic (Claude), OpenAI, Google Gemini, xAI (Grok), Ollama
 - **Council mode**: Query multiple models, chairman synthesizes responses
 - **Comparison mode**: See responses side-by-side
-- **Triggers**: Scheduled background prompts (monitors)
+- **Scheduled tasks**: Cron-based background prompts with optional delivery conditions
 - **Skills**: Markdown-defined capabilities with tool access
 - **Riff mode**: Draft-based note integration
 - **Vault storage**: All data as YAML/Markdown in user-chosen folder
@@ -39,7 +39,7 @@ src/
 │   ├── providers/          # AI provider implementations
 │   ├── skills/             # Skill loading and execution
 │   ├── tools/              # Built-in tool implementations
-│   ├── triggers/           # Trigger scheduling and execution
+│   ├── tasks/              # Scheduled-task loading and execution
 │   ├── context/            # Context window estimation and management
 │   └── api/                # HTTP shims for Tauri plugins (web + Tauri)
 ├── utils/                  # Shared utilities (IDs, frontmatter, wiki links, etc.)
@@ -78,14 +78,14 @@ npm run build           # Build for production
 ## Patterns & Conventions
 
 ### State Management
-- All major state lives in App.tsx (conversations, notes, triggers, selection)
-- React contexts for cross-cutting concerns (streaming, triggers, approvals)
+- All major state lives in App.tsx (conversations, notes, tasks, selection)
+- React contexts for cross-cutting concerns (streaming, tasks, approvals)
 - Derived state pattern: `currentConversation` derived from `selectedItem` + `conversations`
 
 ### File Operations
 - Use `vaultService` for all vault file operations
 - Mark self-writes with `markSelfWrite()` to avoid watcher loops
-- Atomic updates via `vaultService.updateConversation()` / `updateTrigger()`
+- Atomic updates via `vaultService.updateConversation()` / `updateTask()`
 
 ### Provider Pattern
 - All providers implement the interface in `services/providers/types.ts`
@@ -105,7 +105,7 @@ vault-folder/
 ├── memory.md             # Persistent AI memory
 ├── conversations/        # Chat history (YAML)
 ├── notes/                # User notes (Markdown)
-├── triggers/             # Scheduled prompts (YAML)
+├── tasks/                # Scheduled tasks (YAML)
 ├── skills/               # Custom skills (Markdown)
 └── riffs/              # Draft notes (Markdown)
 ```

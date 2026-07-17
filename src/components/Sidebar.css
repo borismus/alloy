@@ -176,7 +176,7 @@
   border-left: 3px solid #3b82f6;
 }
 
-.timeline-item.trigger {
+.timeline-item.task {
   border-left: 3px solid #10b981;
 }
 
@@ -217,7 +217,7 @@
   vertical-align: middle;
 }
 
-.type-badge.trigger {
+.type-badge.task {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
 }
@@ -239,31 +239,6 @@
 
 .type-badge.riff.integrated {
   background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%);
-}
-
-.trigger-settings-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: #999;
-  cursor: pointer;
-  border-radius: 4px;
-  opacity: 0;
-  transition: all 0.15s ease;
-}
-
-.timeline-item:hover .trigger-settings-btn {
-  opacity: 1;
-}
-
-.trigger-settings-btn:hover {
-  background: rgba(0, 0, 0, 0.1);
-  color: #10b981;
 }
 
 .rename-modal {

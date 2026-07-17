@@ -26,7 +26,7 @@ use crate::{
     skill_registry::SkillRegistry,
     streaming::SessionRegistry,
     tools::ToolRegistry,
-    triggers::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
+    tasks::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
     vault::Vault,
 };
 
@@ -112,11 +112,10 @@ impl EmbeddedServer {
         let state = build_app_state(&vault_path).await?;
         let config = state.config.clone();
 
-        // Kick off the trigger scheduler against this AppState. On a vault
-        // *swap* (different path) we leak the previous scheduler task — the
-        // AppState it captured is now orphaned but harmless. Acceptable
-        // since vault swapping is a manual user action.
-        spawn_scheduler(state.clone(), state.triggers.inflight.clone());
+        // Kick off the scheduled-task runner against this AppState. On a vault
+        // swap we currently leave the old task orphaned with its old AppState;
+        // vault swapping is manual and rare.
+        spawn_scheduler(state.clone(), state.tasks.inflight.clone());
 
         // Stash state+config first so `bind_listener` can read share state
         // out of the cached config.
@@ -314,7 +313,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         skills.clone(),
     ));
     let model_cache = Arc::new(ModelCache::new());
-    let triggers = Arc::new(SchedulerHandle::new());
+    let tasks = Arc::new(SchedulerHandle::new());
     let share_on_network = Arc::new(std::sync::atomic::AtomicBool::new(config.share_on_network));
 
     Ok(AppState {
@@ -326,7 +325,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         config,
         share_on_network,
         model_cache,
-        triggers,
+        tasks,
         // Populated once the listener binds (see `bind_listener`).
         self_base_url: Arc::new(std::sync::RwLock::new(None)),
     })

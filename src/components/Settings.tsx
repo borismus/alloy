@@ -262,7 +262,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               </li>
               <li className="confirm-list-keep">
                 <span className="confirm-list-icon" aria-hidden>✓</span>
-                <span>Conversations, notes, triggers, config (all vault files)</span>
+                <span>Conversations, notes, tasks, config (all vault files)</span>
               </li>
             </ul>
             <div className="settings-button-group">

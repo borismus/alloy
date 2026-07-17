@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, writeFile, stat } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
-import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, Trigger, TimelineItem } from '../types';
+import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, ScheduledTask, TimelineItem } from '../types';
 
 /**
  * Render the `favoriteModels:` YAML block used by updateFavoriteModels. Kept
@@ -91,7 +91,7 @@ export function spliceScalar(existing: string, key: string, value: string): stri
 }
 
 /**
- * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/trigger filename.
+ * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/task filename.
  * Input: "2025-01-14-1430-a1b2-my-topic.yaml" → "2025-01-14-1430-a1b2"
  */
 export function extractCoreId(filenameOrId: string): string {
@@ -153,7 +153,7 @@ export class VaultService {
       await join(base, 'conversations'),
       await join(base, 'skills'),
       await join(base, 'notes'),
-      await join(base, 'triggers'),
+      await join(base, 'tasks'),
       await join(base, 'conversations', 'attachments'),
     ];
     const memoryPath = await join(base, 'memory.md');
@@ -508,7 +508,7 @@ export class VaultService {
     if (filePath && await exists(filePath)) {
       const content = await readTextFile(filePath);
       const conversation = yaml.load(content) as Conversation;
-      // Migrate old trigger format if needed
+      // Migrate old provider/model fields if needed.
       this.migrateConversationFormat(conversation);
       return conversation;
     }
@@ -516,166 +516,82 @@ export class VaultService {
     return null;
   }
 
-  /**
-   * Load all triggers from the triggers/ directory.
-   * Excludes logs.yaml which is used for trigger execution history.
-   */
-  async loadTriggers(): Promise<Trigger[]> {
+  /** Load all canonical scheduled tasks from tasks/. */
+  async loadTasks(): Promise<ScheduledTask[]> {
     if (!this.vaultPath) return [];
 
-    const triggersPath = await join(this.vaultPath, 'triggers');
+    const tasksPath = await join(this.vaultPath, 'tasks');
+    if (!(await exists(tasksPath))) return [];
 
-    if (!(await exists(triggersPath))) {
-      return [];
-    }
-
-    const entries = await readDir(triggersPath);
-    const yamlEntries = entries.filter(e => e.name?.endsWith('.yaml') && e.name !== 'logs.yaml');
-
+    const entries = await readDir(tasksPath);
     const results = await Promise.all(
-      yamlEntries.map(async (entry) => {
+      entries.filter(entry => entry.name?.endsWith('.yaml')).map(async (entry) => {
         try {
-          const filePath = await join(triggersPath, entry.name!);
-          const content = await readTextFile(filePath);
-          let trigger = yaml.load(content) as any;
-          trigger = this.migrateTriggerFormat(trigger);
-          if (trigger.id && trigger.triggerPrompt) {
-            return trigger as Trigger;
-          }
+          const content = await readTextFile(await join(tasksPath, entry.name!));
+          const task = yaml.load(content) as ScheduledTask;
+          return task?.id && task?.prompt && task?.schedule ? task : null;
         } catch (error) {
-          console.error(`[VaultService] Failed to load trigger ${entry.name}:`, error);
+          console.error(`[VaultService] Failed to load task ${entry.name}:`, error);
+          return null;
         }
-        return null;
       })
     );
-    const triggers = results.filter((t): t is Trigger => t !== null);
-
-    // Sort by updated date, newest first
-    return triggers.sort((a, b) =>
-      new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
-    );
+    return results
+      .filter((task): task is ScheduledTask => task !== null)
+      .sort((a, b) => new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime());
   }
 
-  /**
-   * Find a trigger file by its ID, handling files with slugs in the filename.
-   */
-  async findTriggerFile(id: string): Promise<string | null> {
+  async findTaskFile(id: string): Promise<string | null> {
     if (!this.vaultPath) return null;
+    const tasksPath = await join(this.vaultPath, 'tasks');
+    if (!(await exists(tasksPath))) return null;
 
-    const triggersPath = await join(this.vaultPath, 'triggers');
-    if (!(await exists(triggersPath))) return null;
-
-    const entries = await readDir(triggersPath);
-
-    for (const entry of entries) {
-      if (entry.name?.endsWith('.yaml') && entry.name !== 'logs.yaml') {
-        if (entry.name === `${id}.yaml` || entry.name.startsWith(`${id}-`)) {
-          return await join(triggersPath, entry.name);
-        }
+    for (const entry of await readDir(tasksPath)) {
+      if (entry.name?.endsWith('.yaml') &&
+          (entry.name === `${id}.yaml` || entry.name.startsWith(`${id}-`))) {
+        return await join(tasksPath, entry.name);
       }
     }
-
     return null;
   }
 
-  /**
-   * Save a trigger to the triggers/ directory.
-   * Preserves existing filename if the trigger already exists.
-   */
-  async saveTrigger(trigger: Trigger): Promise<void> {
+  async saveTask(task: ScheduledTask): Promise<void> {
     if (!this.vaultPath) return;
-
-    const triggersPath = await join(this.vaultPath, 'triggers');
-
-    if (!(await exists(triggersPath))) {
-      await mkdir(triggersPath, { recursive: true });
-    }
-
-    // Use existing file path if it exists (preserves slug)
-    const existingFile = await this.findTriggerFile(trigger.id);
-    const filePath = existingFile || await join(triggersPath, `${trigger.id}.yaml`);
-
-    await writeTextFile(filePath, yaml.dump(trigger));
+    const tasksPath = await join(this.vaultPath, 'tasks');
+    if (!(await exists(tasksPath))) await mkdir(tasksPath, { recursive: true });
+    const existingFile = await this.findTaskFile(task.id);
+    await writeTextFile(existingFile || await join(tasksPath, `${task.id}.yaml`), yaml.dump(task));
   }
 
-  /**
-   * Load a single trigger by ID.
-   */
-  async loadTrigger(id: string): Promise<Trigger | null> {
+  async loadTask(id: string): Promise<ScheduledTask | null> {
     if (!this.vaultPath) return null;
-
-    const filePath = await this.findTriggerFile(id);
-
-    if (filePath) {
-      try {
-        const content = await readTextFile(filePath);
-        let trigger = yaml.load(content) as any;
-        // Migrate old nested format to flat format
-        return this.migrateTriggerFormat(trigger);
-      } catch (error) {
-        console.error(`[VaultService] Failed to load trigger ${id}:`, error);
-      }
+    const filePath = await this.findTaskFile(id);
+    if (!filePath) return null;
+    try {
+      return yaml.load(await readTextFile(filePath)) as ScheduledTask;
+    } catch (error) {
+      console.error(`[VaultService] Failed to load task ${id}:`, error);
+      return null;
     }
-
-    return null;
   }
 
-  /**
-   * Migrate old nested trigger format to flat format.
-   * Old: { trigger: { enabled, triggerPrompt, ... } }
-   * New: { enabled, triggerPrompt, ... }
-   */
-  private migrateTriggerFormat(trigger: any): Trigger {
-    // If already flat (has top-level triggerPrompt), return as-is
-    if ('triggerPrompt' in trigger && typeof trigger.triggerPrompt === 'string') {
-      return trigger as Trigger;
-    }
-
-    // Migrate from nested format
-    if (trigger.trigger && typeof trigger.trigger === 'object') {
-      const { trigger: config, ...rest } = trigger;
-      return {
-        ...rest,
-        enabled: config.enabled,
-        triggerPrompt: config.triggerPrompt,
-        intervalMinutes: config.intervalMinutes,
-        lastChecked: config.lastChecked,
-        lastTriggered: config.lastTriggered,
-        history: config.history,
-      } as Trigger;
-    }
-
-    return trigger as Trigger;
-  }
-
-  /**
-   * Delete a trigger file by ID.
-   */
-  async deleteTrigger(id: string): Promise<boolean> {
+  async deleteTask(id: string): Promise<boolean> {
     if (!this.vaultPath) return false;
-
-    const filePath = await this.findTriggerFile(id);
+    const filePath = await this.findTaskFile(id);
     if (!filePath) return false;
-
     await remove(filePath);
     return true;
   }
 
-  /**
-   * Atomically update a trigger: load fresh from disk, apply update function, save back.
-   */
-  async updateTrigger(
+  async updateTask(
     id: string,
-    updateFn: (fresh: Trigger) => Trigger
-  ): Promise<Trigger | null> {
+    updateFn: (fresh: ScheduledTask) => ScheduledTask
+  ): Promise<ScheduledTask | null> {
     if (!this.vaultPath) return null;
-
-    const fresh = await this.loadTrigger(id);
+    const fresh = await this.loadTask(id);
     if (!fresh) return null;
-
     const updated = updateFn(fresh);
-    await this.saveTrigger(updated);
-
+    await this.saveTask(updated);
     return updated;
   }
 
@@ -747,8 +663,8 @@ export class VaultService {
     return rel ? this.toAbsolute(rel) : null;
   }
 
-  async getTriggerFilePath(id: string): Promise<string | null> {
-    const rel = await this.findTriggerFile(id);
+  async getTaskFilePath(id: string): Promise<string | null> {
+    const rel = await this.findTaskFile(id);
     return rel ? this.toAbsolute(rel) : null;
   }
 
@@ -1077,12 +993,12 @@ export class VaultService {
 
   /**
    * Build a unified timeline of all content types, sorted by last updated.
-   * Returns conversations, notes (excluding riffs), triggers, and riffs as TimelineItems.
+   * Returns conversations, notes (excluding riffs), scheduled tasks, and riffs.
    */
   buildTimeline(
     conversations: Conversation[],
     notes: NoteInfo[],
-    triggers: Trigger[]
+    tasks: ScheduledTask[]
   ): TimelineItem[] {
     const items: TimelineItem[] = [];
 
@@ -1128,22 +1044,23 @@ export class VaultService {
       }
     }
 
-    // Add triggers
-    for (const trigger of triggers) {
-      const lastFiring = trigger.lastTriggered
-        ? new Date(trigger.lastTriggered).getTime()
+    // Add scheduled tasks. Skipped checks don't reorder the timeline; delivered
+    // output is the meaningful activity timestamp.
+    for (const task of tasks) {
+      const deliveredAt = task.lastDeliveredAt
+        ? new Date(task.lastDeliveredAt).getTime()
         : 0;
-      const preview = trigger.enabled
-        ? (lastFiring ? `Last fired: ${new Date(lastFiring).toLocaleDateString()}` : 'Never fired')
+      const preview = task.enabled
+        ? (deliveredAt ? `Last delivered: ${new Date(deliveredAt).toLocaleDateString()}` : 'Awaiting first result')
         : 'Disabled';
 
       items.push({
-        type: 'trigger',
-        id: trigger.id,
-        title: trigger.title,
-        lastUpdated: new Date(trigger.updated || trigger.created).getTime(),
+        type: 'task',
+        id: task.id,
+        title: task.title,
+        lastUpdated: deliveredAt || new Date(task.created).getTime(),
         preview,
-        trigger,
+        task,
       });
     }
 

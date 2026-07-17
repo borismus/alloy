@@ -10,14 +10,13 @@ import { useNavigation } from './hooks/useNavigation';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { MessageQueueProvider } from './contexts/MessageQueueContext';
-import { TriggerProvider } from './contexts/TriggerContext';
-import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, NoteInfo, TimelineFilter, TimelineItem, Trigger } from './types';
+import { TaskProvider } from './contexts/TaskContext';
+import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, NoteInfo, TimelineFilter, TimelineItem, ScheduledTask } from './types';
 import { useSendMessage } from './hooks/useSendMessage';
 import { VaultSetup } from './components/VaultSetup';
 import { ChatInterface, ChatInterfaceHandle } from './components/ChatInterface';
 import { Sidebar, SidebarHandle } from './components/Sidebar';
 import { Settings } from './components/Settings';
-import { TriggerDetailView } from './components/TriggerDetailView';
 import { NoteViewer } from './components/NoteViewer';
 import { FindInConversation, FindInConversationHandle } from './components/FindInConversation';
 // MobileNewConversation removed - ChatInterface handles both new and existing conversations
@@ -34,6 +33,10 @@ import { RiffView } from './components/RiffView';
 import { ContextMenu } from './components/ContextMenu';
 import { ToastContainer } from './components/Toast';
 import './App.css';
+
+const TaskDetailView = React.lazy(() =>
+  import('./components/TaskDetailView').then(module => ({ default: module.TaskDetailView }))
+);
 
 // Error boundary to catch render errors and prevent white screen
 class ErrorBoundary extends React.Component<
@@ -120,7 +123,7 @@ function AppContent() {
   // Mirror of `conversations` for stale-free reads in async loaders/callbacks.
   const conversationsRef = useRef<Conversation[]>([]);
   conversationsRef.current = conversations;
-  const [triggers, setTriggers] = useState<Trigger[]>([]);
+  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Set when the backend is unreachable on init (vs. real config errors). We
   // keep the saved vaultPath in localStorage so a retry / page reload works
@@ -150,8 +153,8 @@ function AppContent() {
   const currentConversation = selectedItem?.type === 'conversation'
     ? (draftConversation?.id === selectedItem.id ? draftConversation : conversations.find(c => c.id === selectedItem.id)) ?? null
     : null;
-  const selectedTrigger = selectedItem?.type === 'trigger'
-    ? triggers.find(t => t.id === selectedItem.id) ?? null
+  const selectedTask = selectedItem?.type === 'task'
+    ? tasks.find(t => t.id === selectedItem.id) ?? null
     : null;
   const selectedNote = selectedItem?.type === 'note' && noteContent !== null
     ? { filename: selectedItem.id, content: noteContent }
@@ -187,8 +190,8 @@ function AppContent() {
   const isRiffNote = selectedNote?.filename.startsWith('riffs/') &&
     !selectedNote.content.includes('integrated: true');
 
-  // Determine if user has selected a non-riff item (conversation, trigger, or integrated note)
-  const hasNonRiffSelection = !!(currentConversation || selectedTrigger || (selectedNote && (!selectedNote.filename.startsWith('riffs/') || selectedNote.content.includes('integrated: true'))));
+  // Determine if user has selected a non-riff item (conversation, task, or integrated note)
+  const hasNonRiffSelection = !!(currentConversation || selectedTask || (selectedNote && (!selectedNote.filename.startsWith('riffs/') || selectedNote.content.includes('integrated: true'))));
 
   // Auto-enter riff mode when viewing a draft note (desktop)
   useEffect(() => {
@@ -345,28 +348,28 @@ function AppContent() {
     }
   }, [selectedItem]);
 
-  // Trigger watcher callbacks
-  const handleTriggerAdded = useCallback(async (id: string) => {
-    const newTrigger = await vaultService.loadTrigger(id);
-    if (newTrigger) {
-      setTriggers(prev => {
+  // Task watcher callbacks
+  const handleTaskAdded = useCallback(async (id: string) => {
+    const newTask = await vaultService.loadTask(id);
+    if (newTask) {
+      setTasks(prev => {
         // Avoid duplicates
         if (prev.some(t => t.id === id)) return prev;
-        return [newTrigger, ...prev].sort((a, b) =>
+        return [newTask, ...prev].sort((a, b) =>
           new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
         );
       });
     }
   }, []);
 
-  const handleTriggerRemoved = useCallback((id: string) => {
-    setTriggers(prev => prev.filter(t => t.id !== id));
+  const handleTaskRemoved = useCallback((id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const handleTriggerModified = useCallback(async (id: string) => {
-    const updated = await vaultService.loadTrigger(id);
+  const handleTaskModified = useCallback(async (id: string) => {
+    const updated = await vaultService.loadTask(id);
     if (!updated) return;
-    setTriggers(prev =>
+    setTasks(prev =>
       prev.map(t => t.id === id ? updated : t)
     );
   }, []);
@@ -384,9 +387,9 @@ function AppContent() {
       onNoteAdded: handleNoteChanged,
       onNoteRemoved: handleNoteChanged,
       onNoteModified: handleNoteModified,
-      onTriggerAdded: handleTriggerAdded,
-      onTriggerRemoved: handleTriggerRemoved,
-      onTriggerModified: handleTriggerModified,
+      onTaskAdded: handleTaskAdded,
+      onTaskRemoved: handleTaskRemoved,
+      onTaskModified: handleTaskModified,
     }
   );
 
@@ -468,8 +471,8 @@ function AppContent() {
 
   // Build unified timeline whenever data changes
   useEffect(() => {
-    setTimelineItems(vaultService.buildTimeline(conversations, notes, triggers));
-  }, [conversations, notes, triggers]);
+    setTimelineItems(vaultService.buildTimeline(conversations, notes, tasks));
+  }, [conversations, notes, tasks]);
 
   // Compute selected item ID for sidebar highlighting
   const selectedItemId = selectedItem?.id ?? null;
@@ -489,8 +492,8 @@ function AppContent() {
       setTimeout(() => {
         chatInterfaceRef.current?.focusInput();
       }, 0);
-    } else if (item.type === 'trigger') {
-      navigateTo({ type: 'trigger', id: item.id });
+    } else if (item.type === 'task') {
+      navigateTo({ type: 'task', id: item.id });
     }
 
     // Clear draft conversation when switching away from it
@@ -508,7 +511,7 @@ function AppContent() {
         setNoteContent(null);
       }
     }
-    // For triggers, no additional loading needed - derived from triggers list
+    // For tasks, no additional loading needed - derived from tasks list
   }, [markAsRead, navigateTo]);
 
   // Handle deleting a note
@@ -577,18 +580,18 @@ function AppContent() {
         skillRegistry.setVaultPath(path);
         riffService.setVaultPath(path);
 
-        const [loadedConversations, loadedTriggers, loadedNotes, , loadedMemory] = await Promise.all([
+        const [loadedConversations, loadedTasks, loadedNotes, , loadedMemory] = await Promise.all([
           // Metadata-only summaries (one batched header read); message bodies are
           // loaded lazily when a conversation is opened.
           vaultService.loadConversationSummaries(),
-          vaultService.loadTriggers(),
+          vaultService.loadTasks(),
           vaultService.loadNotes(),
           skillRegistry.loadSkills(),
           vaultService.loadMemory(),
         ]);
 
         setConversations(loadedConversations);
-        setTriggers(loadedTriggers);
+        setTasks(loadedTasks);
         setNotes(loadedNotes);
         setMemory(loadedMemory);
 
@@ -930,25 +933,25 @@ function AppContent() {
     );
   }
 
-  // Handle deleting a trigger
-  const handleDeleteTrigger = async (triggerId: string) => {
+  // Handle deleting a task
+  const handleDeleteTask = async (taskId: string) => {
     try {
       const vaultPathForDelete = vaultService.getVaultPath();
       if (vaultPathForDelete) {
-        const filePath = await vaultService.getTriggerFilePath(triggerId);
+        const filePath = await vaultService.getTaskFilePath(taskId);
         if (filePath) markSelfWrite(filePath);
       }
-      await vaultService.deleteTrigger(triggerId);
-      setTriggers(prev => prev.filter(t => t.id !== triggerId));
+      await vaultService.deleteTask(taskId);
+      setTasks(prev => prev.filter(t => t.id !== taskId));
     } catch (error) {
-      console.error('Error deleting trigger:', error);
+      console.error('Error deleting task:', error);
     }
   };
 
-  // Handle "Ask about this" from trigger detail view - creates a spinoff conversation
-  const handleAskAboutTrigger = async (trigger: Trigger) => {
+  // Handle "Ask about this" from task detail view - creates a spinoff conversation
+  const handleAskAboutTask = async (task: ScheduledTask) => {
     // Get the latest triggered response (most recent assistant message)
-    const latestResponse = trigger.messages
+    const latestResponse = task.messages
       ?.filter(m => m.role === 'assistant')
       .pop();
 
@@ -957,7 +960,7 @@ function AppContent() {
       return;
     }
 
-    // Create a new conversation with the trigger response as context
+    // Create a new conversation with the task response as context
     // Use standard ID format (YYYY-MM-DD-HHMM-hash) to match vault watcher expectations
     const now = new Date();
     const date = now.toISOString().split('T')[0];
@@ -965,18 +968,18 @@ function AppContent() {
     const hash = Math.random().toString(16).slice(2, 6);
     const newId = `${date}-${time}-${hash}`;
     const nowISO = now.toISOString();
-    const defaultModel = getDefaultModel() || trigger.model;
+    const defaultModel = getDefaultModel() || task.model;
 
     const newConversation: Conversation = {
       id: newId,
       created: nowISO,
       updated: nowISO,
       model: defaultModel,
-      title: `Re: ${trigger.title || 'Trigger'}`,
+      title: `Re: ${task.title || 'Task'}`,
       messages: [
         {
           role: 'user',
-          content: `Context from monitor "${trigger.title}":\n\n${latestResponse.content}`,
+          content: `Context from scheduled task "${task.title}":\n\n${latestResponse.content}`,
           timestamp: nowISO,
         },
       ],
@@ -1000,7 +1003,7 @@ function AppContent() {
 
 
   return (
-    <TriggerProvider triggers={triggers}>
+    <TaskProvider tasks={tasks}>
         <UpdateChecker />
         {memory && (
           <MemoryWarning
@@ -1044,7 +1047,7 @@ function AppContent() {
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
-              onDeleteTrigger={handleDeleteTrigger}
+              onDeleteTask={handleDeleteTask}
               onDeleteNote={handleDeleteNote}
             />
           ) : (
@@ -1056,28 +1059,30 @@ function AppContent() {
                 onClose={() => setShowFind(false)}
               />
             )}
-            {selectedItem?.type === 'trigger' && selectedTrigger ? (
-              // Mobile: viewing a trigger
-              <TriggerDetailView
-                trigger={selectedTrigger}
-                onBack={() => setMobileView('list')}
-                canGoBack={true}
-                onDelete={async () => {
-                  await handleDeleteTrigger(selectedTrigger.id);
-                  setSelectedItem(null);
-                  setMobileView('list');
-                }}
-                onRunNow={async () => {
-                  const refreshed = await vaultService.loadTrigger(selectedTrigger.id);
-                  if (refreshed) {
-                    setTriggers(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
-                  }
-                }}
-                onAskAbout={handleAskAboutTrigger}
-                onTriggerUpdated={(updated) => {
-                  setTriggers(prev => prev.map(t => t.id === updated.id ? updated : t));
-                }}
-              />
+            {selectedItem?.type === 'task' && selectedTask ? (
+              // Mobile: viewing a task
+              <React.Suspense fallback={<div className="loading">Loading task…</div>}>
+                <TaskDetailView
+                  task={selectedTask}
+                  onBack={() => setMobileView('list')}
+                  canGoBack={true}
+                  onDelete={async () => {
+                    await handleDeleteTask(selectedTask.id);
+                    setSelectedItem(null);
+                    setMobileView('list');
+                  }}
+                  onRunComplete={async () => {
+                    const refreshed = await vaultService.loadTask(selectedTask.id);
+                    if (refreshed) {
+                      setTasks(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
+                    }
+                  }}
+                  onAskAbout={handleAskAboutTask}
+                  onTaskUpdated={(updated) => {
+                    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+                  }}
+                />
+              </React.Suspense>
             ) : selectedItem?.type === 'note' ? (
               // Mobile: viewing a note or draft
               isViewingDraft ? (
@@ -1165,7 +1170,7 @@ function AppContent() {
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
-              onDeleteTrigger={handleDeleteTrigger}
+              onDeleteTask={handleDeleteTask}
               onDeleteNote={handleDeleteNote}
             />
       <div className="main-panel" ref={mainPanelRef}>
@@ -1188,27 +1193,29 @@ function AppContent() {
             canGoBack={canGoBack}
             onClose={() => { setSelectedItem(null); setNoteContent(null); }}
           />
-        ) : selectedTrigger ? (
-          <TriggerDetailView
-            trigger={selectedTrigger}
-            onBack={goBack}
-            canGoBack={canGoBack}
-            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
-            onDelete={async () => {
-              await handleDeleteTrigger(selectedTrigger.id);
-              setSelectedItem(null);
-            }}
-            onRunNow={async () => {
-              const refreshed = await vaultService.loadTrigger(selectedTrigger.id);
-              if (refreshed) {
-                setTriggers(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
-              }
-            }}
-            onAskAbout={handleAskAboutTrigger}
-            onTriggerUpdated={(updated) => {
-              setTriggers(prev => prev.map(t => t.id === updated.id ? updated : t));
-            }}
-          />
+        ) : selectedTask ? (
+          <React.Suspense fallback={<div className="loading">Loading task…</div>}>
+            <TaskDetailView
+              task={selectedTask}
+              onBack={goBack}
+              canGoBack={canGoBack}
+              onClose={() => { setSelectedItem(null); setNoteContent(null); }}
+              onDelete={async () => {
+                await handleDeleteTask(selectedTask.id);
+                setSelectedItem(null);
+              }}
+              onRunComplete={async () => {
+                const refreshed = await vaultService.loadTask(selectedTask.id);
+                if (refreshed) {
+                  setTasks(prev => prev.map(t => t.id === refreshed.id ? refreshed : t));
+                }
+              }}
+              onAskAbout={handleAskAboutTask}
+              onTaskUpdated={(updated) => {
+                setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+              }}
+            />
+          </React.Suspense>
         ) : selectedNote ? (
           <NoteViewer
             key={selectedNote.filename}
@@ -1258,7 +1265,7 @@ function AppContent() {
       )}
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
-    </TriggerProvider>
+    </TaskProvider>
   );
 }
 

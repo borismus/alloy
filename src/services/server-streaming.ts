@@ -53,7 +53,7 @@ export interface ServerStreamOptions {
   /**
    * When true, the server runs the model + tool loop but does NOT append
    * the assistant message to any conversation YAML. Used by programmatic
-   * callers (triggers) whose results live elsewhere.
+   * callers (scheduled tasks) whose results live elsewhere.
    */
   skipPersist?: boolean;
   /**
@@ -286,7 +286,7 @@ export async function executeViaServer(
 /**
  * Convenience wrapper for "send a model call and get back the text" — no
  * conversation persistence, no UI streaming required from the caller.
- * Used by riff (drafts) and triggers. Internally still uses the streaming
+ * Used by riffs and scheduled tasks. Internally still uses the streaming
  * endpoint so the server runs its tool loop and prompt-caching machinery.
  */
 export async function executeChatOnce(

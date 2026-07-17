@@ -11,9 +11,9 @@ export interface VaultWatcherCallbacks {
   onNoteAdded?: (filename: string) => void;
   onNoteRemoved?: (filename: string) => void;
   onNoteModified?: (filename: string) => void;
-  onTriggerAdded?: (id: string) => void;
-  onTriggerRemoved?: (id: string) => void;
-  onTriggerModified?: (id: string) => void;
+  onTaskAdded?: (id: string) => void;
+  onTaskRemoved?: (id: string) => void;
+  onTaskModified?: (id: string) => void;
 }
 
 export interface UseVaultWatcherOptions {
@@ -91,8 +91,8 @@ export function useVaultWatcher(
     return extractCoreId(filename);
   }, []);
 
-  // Same ID extraction logic works for triggers (same filename format)
-  const extractTriggerId = extractConversationId;
+  // Same ID extraction logic works for tasks (same filename format).
+  const extractTaskId = extractConversationId;
 
   useEffect(() => {
     if (!vaultPath || !enabled) {
@@ -125,10 +125,9 @@ export function useVaultWatcher(
           (filePath.includes('/notes/') || filePath.includes('/riffs/')) &&
           filePath.endsWith('.md');
         const isRiffFile = filePath.includes('/riffs/');
-        const isTriggerFile =
-          filePath.includes('/triggers/') &&
-          filePath.endsWith('.yaml') &&
-          !filePath.endsWith('logs.yaml');
+        const isTaskFile =
+          filePath.includes('/tasks/') &&
+          filePath.endsWith('.yaml');
 
         // Skip .md files in conversations (auto-generated previews)
         if (filePath.includes('/conversations/') && filePath.endsWith('.md')) {
@@ -187,9 +186,9 @@ export function useVaultWatcher(
               callbacksRef.current.onNoteModified?.(filename);
               break;
           }
-        } else if (isTriggerFile) {
-          const triggerId = extractTriggerId(filePath);
-          if (!triggerId) continue;
+        } else if (isTaskFile) {
+          const taskId = extractTaskId(filePath);
+          if (!taskId) continue;
 
           // For rename events (macOS deletion), check if file still exists
           let effectiveEventType = eventType;
@@ -200,13 +199,13 @@ export function useVaultWatcher(
 
           switch (effectiveEventType) {
             case 'create':
-              callbacksRef.current.onTriggerAdded?.(triggerId);
+              callbacksRef.current.onTaskAdded?.(taskId);
               break;
             case 'remove':
-              callbacksRef.current.onTriggerRemoved?.(triggerId);
+              callbacksRef.current.onTaskRemoved?.(taskId);
               break;
             case 'modify':
-              callbacksRef.current.onTriggerModified?.(triggerId);
+              callbacksRef.current.onTaskModified?.(taskId);
               break;
           }
         }
@@ -238,7 +237,7 @@ export function useVaultWatcher(
         unwatchFn();
       }
     };
-  }, [vaultPath, enabled, debounceMs, isSelfWrite, extractConversationId]);
+  }, [vaultPath, enabled, debounceMs, isSelfWrite, extractConversationId, extractTaskId]);
 
   return {
     isWatching: isWatchingRef.current,
