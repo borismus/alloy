@@ -4,6 +4,17 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.13
+
+- Add local MLX support: point Alloy at an on-device or LAN MLX server (e.g.
+  oMLX or `mlx_lm.server`) with a `providers:` block in `config.yaml` — its
+  models are discovered automatically and show up in the picker.
+- The model picker now tags each model with its provider (OR, MLX, ANT, …) and
+  marks on-device models with a green padlock, so it's clear when your prompts
+  stay off the cloud. Claude subscription models drop the "(subscription)"
+  suffix (the ANT tag already says it).
+- Chat errors now have a copy button to grab the full message for debugging.
+
 ## 0.3.12
 
 - Add `/skill_name` slash commands: type `/` in the composer to pick a skill
