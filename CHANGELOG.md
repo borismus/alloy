@@ -4,6 +4,14 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.16
+
+- Local models now treat a configured private vault (e.g. your Obsidian notes)
+  as your primary knowledge base instead of the app's own `notes/` folder, so
+  "any notes about X?" searches the right place. `privateReadOnlyDirs` entries
+  take an optional `description` to label what each mount holds. Cloud models are
+  unaffected and still never see these directories.
+
 ## 0.3.15
 
 - Fix agents choking on large note vaults: `list_directory` and `search_directory`
