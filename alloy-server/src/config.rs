@@ -72,6 +72,10 @@ pub struct PrivateDir {
     /// this mount — e.g. the nested Alloy vault, so chat history isn't scanned.
     #[serde(rename = "excludeDirs", default)]
     pub exclude_dirs: Vec<String>,
+    /// Human description of what this mount holds, surfaced to local models so
+    /// they know it's the user's real notes (vs. the app's own `notes/`).
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Raw `compaction:` block from config.yaml.
@@ -263,6 +267,7 @@ impl Config {
                 alias: d.alias,
                 path: crate::vault::normalize_path(&d.path),
                 exclude_dirs: d.exclude_dirs,
+                description: d.description,
             })
             .collect();
 

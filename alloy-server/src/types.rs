@@ -131,9 +131,9 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         ),
         def(
             "list_directory",
-            "List files in a directory (vault dirs like notes/ or conversations/, or a private mount). Returns a page of entries sorted most-recent-first by default, each with its modified time. Large directories are paginated — use limit/offset. Set recursive=true to include subfolders.",
+            "List files in a directory. Returns a page of entries sorted most-recent-first by default, each with its modified time. Large directories are paginated — use limit/offset. Set recursive=true to include subfolders.",
             &[
-                ("path", "string", r#"Relative directory path (e.g., "notes", "conversations", or a private mount like "private/obsidian_vault")"#),
+                ("path", "string", r#"Relative directory path (e.g., "notes", "conversations", "skills")"#),
                 ("limit", "integer", "Max entries to return (default 100, max 200)"),
                 ("offset", "integer", "Entries to skip, for paging (default 0)"),
                 ("sort", "string", r#""recent" (default, newest first) or "name" (directories first, alphabetical)"#),
@@ -145,7 +145,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
             "search_directory",
             "Search a directory for a query in file names and content. Returns a page of matching files (most-recent-first), each with its path, modified time, match count, and one short snippet. Read a file for full content. Use limit/offset to page through more matches.",
             &[
-                ("directory", "string", r#"Directory to search (e.g., "notes", "conversations", or "private/obsidian_vault")"#),
+                ("directory", "string", r#"Directory to search (e.g., "notes", "conversations", "skills")"#),
                 ("query", "string", "Text to find in file names or content (case-insensitive)"),
                 ("fuzzy", "boolean", r#"Match files containing ALL query words anywhere, in any order (not necessarily adjacent). Default false = exact substring. Set true for topic questions like "data center water consumption" where the words may be spread across the note."#),
                 ("limit", "integer", "Max matching files to return (default 20, max 50)"),

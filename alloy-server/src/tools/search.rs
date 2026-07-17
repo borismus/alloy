@@ -469,6 +469,7 @@ mod tests {
                 alias: "notes".into(),
                 path: external_dir.to_path_buf(),
                 exclude_dirs: Vec::new(),
+                description: None,
             }],
             ..Config::default()
         };

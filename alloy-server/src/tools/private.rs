@@ -135,6 +135,7 @@ mod tests {
                 alias: alias.into(),
                 path: root.to_path_buf(),
                 exclude_dirs: Vec::new(),
+                description: None,
             }],
             ..Config::default()
         }

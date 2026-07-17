@@ -474,6 +474,7 @@ mod tests {
                 alias: "notes".into(),
                 path: external_dir.to_path_buf(),
                 exclude_dirs: Vec::new(),
+                description: None,
             }],
             ..Config::default()
         };
@@ -600,6 +601,7 @@ mod tests {
                 alias: "notes".into(),
                 path: external.0.clone(),
                 exclude_dirs: vec!["PromptBox".into()],
+                description: None,
             }],
             ..Config::default()
         };

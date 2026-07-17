@@ -544,26 +544,39 @@ fn apply_invoked_skill(
     })
 }
 
-/// Append a one-line hint listing the private read-only mounts, but only for
-/// local models with at least one configured mount. Cloud models must never see
-/// this — it would reveal that the directories exist.
+/// Append a description of the private read-only mounts, positioning them as the
+/// user's primary knowledge base and disambiguating them from the app's own
+/// `notes/`. Only for **local** models with at least one configured mount —
+/// cloud models (and mount-less local models) get the system prompt untouched,
+/// so cloud models never even learn these directories exist.
 fn apply_private_dirs_hint(
     system: Option<String>,
     config: &crate::config::Config,
     model_is_local: bool,
 ) -> Option<String> {
+    // INVARIANT: cloud models must never see this hint. Keep this early return.
     if !model_is_local || config.private_read_only_dirs.is_empty() {
         return system;
     }
-    let mounts = config
+    let lines = config
         .private_read_only_dirs
         .iter()
-        .map(|d| format!("private/{}", d.alias))
+        .map(|d| {
+            let desc = d
+                .description
+                .as_deref()
+                .unwrap_or("the user's personal notes / knowledge base");
+            format!("- `private/{}/` — {}", d.alias, desc)
+        })
         .collect::<Vec<_>>()
-        .join(", ");
+        .join("\n");
     let hint = format!(
-        "You also have read-only access to these private directories (available to local models only): {mounts}. \
-         Use read_file / list_directory / search_directory with those paths."
+        "The user's real notes / knowledge base live in these read-only directories \
+         (local models only), searchable with read_file, list_directory, and search_directory:\n\
+         {lines}\n\
+         When the user asks about \"their notes\" or any personal topic, search these FIRST. \
+         The vault's own `notes/` directory holds only notes created inside this app — it is NOT \
+         the user's personal notes."
     );
     Some(match system {
         Some(s) if !s.trim().is_empty() => format!("{s}\n\n{hint}"),
@@ -817,6 +830,51 @@ mod tests {
         assert!(out.contains("# Skill: research"));
         assert!(out.contains("Do deep research."));
         assert!(out.contains("invoked this skill via a slash command"));
+    }
+
+    fn cfg_with_mount(desc: Option<&str>) -> crate::config::Config {
+        crate::config::Config {
+            private_read_only_dirs: vec![crate::config::PrivateDir {
+                alias: "obsidian_vault".into(),
+                path: "/Users/x/Notes".into(),
+                exclude_dirs: vec![],
+                description: desc.map(str::to_string),
+            }],
+            ..crate::config::Config::default()
+        }
+    }
+
+    #[test]
+    fn private_hint_local_uses_description_and_positions_as_primary() {
+        let cfg = cfg_with_mount(Some("The user's Obsidian knowledge base."));
+        let out = apply_private_dirs_hint(Some("BASE".into()), &cfg, true).unwrap();
+        assert!(out.starts_with("BASE\n\n"));
+        assert!(out.contains("private/obsidian_vault/"));
+        assert!(out.contains("The user's Obsidian knowledge base."));
+        assert!(out.contains("search these FIRST"));
+        assert!(out.contains("NOT")); // disambiguates the app's notes/
+    }
+
+    #[test]
+    fn private_hint_falls_back_without_description() {
+        let cfg = cfg_with_mount(None);
+        let out = apply_private_dirs_hint(Some("BASE".into()), &cfg, true).unwrap();
+        assert!(out.contains("personal notes / knowledge base"));
+    }
+
+    // INVARIANT: cloud models must never see the private mounts.
+    #[test]
+    fn private_hint_never_shown_to_cloud_models() {
+        let cfg = cfg_with_mount(Some("secret notes"));
+        let out = apply_private_dirs_hint(Some("BASE".into()), &cfg, false);
+        assert_eq!(out, Some("BASE".into())); // untouched
+        assert!(!out.unwrap().contains("obsidian_vault"));
+        // No mounts configured → also untouched, even for a local model.
+        let empty = crate::config::Config::default();
+        assert_eq!(
+            apply_private_dirs_hint(Some("BASE".into()), &empty, true),
+            Some("BASE".into())
+        );
     }
 
     fn user_msg(content: &str) -> WireMessage {
