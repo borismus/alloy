@@ -146,7 +146,8 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
             "Search a directory for a query in file names and content. Returns a page of matching files (most-recent-first), each with its path, modified time, match count, and one short snippet. Read a file for full content. Use limit/offset to page through more matches.",
             &[
                 ("directory", "string", r#"Directory to search (e.g., "notes", "conversations", or "private/obsidian_vault")"#),
-                ("query", "string", "Text to find in file names or content (case-insensitive substring)"),
+                ("query", "string", "Text to find in file names or content (case-insensitive)"),
+                ("fuzzy", "boolean", r#"Match files containing ALL query words anywhere, in any order (not necessarily adjacent). Default false = exact substring. Set true for topic questions like "data center water consumption" where the words may be spread across the note."#),
                 ("limit", "integer", "Max matching files to return (default 20, max 50)"),
                 ("offset", "integer", "Matches to skip, for paging (default 0)"),
                 ("search_content", "boolean", "Search file content too (default true); set false to match names only"),

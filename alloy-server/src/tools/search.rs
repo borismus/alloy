@@ -15,8 +15,7 @@ const MAX_LIMIT: usize = 50;
 const DEFAULT_LIMIT: usize = 20;
 const MAX_FILE_SIZE: usize = 200 * 1024;
 const MAX_RECURSION_DEPTH: usize = 6;
-const MAX_FILES_TO_SCAN: usize = 2000; // files we read content for
-const MAX_CANDIDATES: usize = 50_000; // bound the (cheap) path/mtime walk
+const MAX_CANDIDATES: usize = 200_000; // sanity bound on the (cheap) path/mtime walk
 const SNIPPET_CONTEXT: usize = 60;
 
 const READABLE_DIRS: &[&str] = &["notes/", "skills/", "conversations/"];
@@ -88,6 +87,9 @@ pub async fn execute(
     }
 
     let search_content = input_bool(input, "search_content").unwrap_or(true);
+    // Fuzzy = match files containing ALL query terms anywhere (order-independent),
+    // vs. the default exact contiguous substring.
+    let fuzzy = input_bool(input, "fuzzy").unwrap_or(false);
     let limit = input_usize(input, "limit")
         .or_else(|| input_usize(input, "max_results")) // back-compat
         .unwrap_or(DEFAULT_LIMIT)
@@ -125,38 +127,67 @@ pub async fn execute(
     // Phase 2: scan content in recency order until offset+limit matches or the
     // content-read budget is hit.
     let query_lower = query.to_lowercase();
+    let terms: Vec<String> = if fuzzy {
+        query_lower.split_whitespace().map(str::to_string).collect()
+    } else {
+        Vec::new()
+    };
     let want = offset + limit;
     let mut matched: Vec<FileMatch> = Vec::new();
-    let mut content_reads = 0usize;
     for (abs, rel, mtime) in candidates {
-        if matched.len() >= want || content_reads >= MAX_FILES_TO_SCAN {
+        // Recency-first: once the requested page is full we can stop. For rare
+        // terms (few/no matches) this reads the whole vault — which is cheap
+        // (grep over these notes is sub-second).
+        if matched.len() >= want {
             break;
         }
-        let filename_matches = Path::new(&rel)
+        let filename_lower = Path::new(&rel)
             .file_name()
-            .map(|n| n.to_string_lossy().to_lowercase().contains(&query_lower))
-            .unwrap_or(false);
-        let mut count = 0usize;
-        let mut snippet: Option<String> = None;
-        if search_content {
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+
+        // Read content once (unless disabled or oversized).
+        let content = if search_content {
             let size_ok = fs::metadata(&abs)
                 .await
                 .map(|m| (m.len() as usize) <= MAX_FILE_SIZE)
                 .unwrap_or(false);
             if size_ok {
-                content_reads += 1;
-                if let Ok(content) = fs::read_to_string(&abs).await {
-                    let ms = find_matches(&content, &query_lower);
-                    count = ms.len();
-                    snippet = ms.into_iter().next().map(|m| m.snippet);
-                }
+                fs::read_to_string(&abs).await.ok()
+            } else {
+                None
             }
-        }
-        if filename_matches || count > 0 {
+        } else {
+            None
+        };
+
+        let hit = if fuzzy {
+            match content.as_deref() {
+                Some(c) => fuzzy_match(c, &filename_lower, &terms),
+                None if terms.iter().all(|t| filename_lower.contains(t)) => Some((terms.len(), None)),
+                None => None,
+            }
+        } else {
+            let fname = filename_lower.contains(&query_lower);
+            let (count, snip) = match content.as_deref() {
+                Some(c) => {
+                    let ms = find_matches(c, &query_lower);
+                    (ms.len(), ms.into_iter().next().map(|m| m.snippet))
+                }
+                None => (0, None),
+            };
+            if fname || count > 0 {
+                Some((count.max(usize::from(fname)), snip))
+            } else {
+                None
+            }
+        };
+
+        if let Some((count, snippet)) = hit {
             matched.push(FileMatch {
                 path: rel,
                 modified: iso(mtime),
-                match_count: count.max(usize::from(filename_matches)),
+                match_count: count,
                 snippet,
             });
         }
@@ -255,25 +286,66 @@ fn find_matches(content: &str, query_lower: &str) -> Vec<MatchInfo> {
     for (i, line) in content.lines().enumerate() {
         let lower = line.to_lowercase();
         if let Some(idx) = lower.find(query_lower) {
-            let start = idx.saturating_sub(SNIPPET_CONTEXT);
-            let end = (idx + query_lower.len() + SNIPPET_CONTEXT).min(line.len());
-            // Snap to char boundaries
-            let snippet_start = nearest_char_boundary(line, start, false);
-            let snippet_end = nearest_char_boundary(line, end, true);
-            let mut snippet = line[snippet_start..snippet_end].to_string();
-            if snippet_start > 0 {
-                snippet = format!("...{}", snippet);
-            }
-            if snippet_end < line.len() {
-                snippet = format!("{}...", snippet);
-            }
             out.push(MatchInfo {
                 line: (i + 1) as u32,
-                snippet,
+                snippet: snippet_around(line, idx, query_lower.len()),
             });
         }
     }
     out
+}
+
+/// Extract a `...context needle context...` snippet around a match at byte `idx`
+/// (of length `match_len`) within `line`, snapped to char boundaries.
+fn snippet_around(line: &str, idx: usize, match_len: usize) -> String {
+    let start = idx.saturating_sub(SNIPPET_CONTEXT);
+    let end = (idx + match_len + SNIPPET_CONTEXT).min(line.len());
+    let s = nearest_char_boundary(line, start, false);
+    let e = nearest_char_boundary(line, end, true);
+    let mut snippet = line[s..e].to_string();
+    if s > 0 {
+        snippet = format!("...{}", snippet);
+    }
+    if e < line.len() {
+        snippet = format!("{}...", snippet);
+    }
+    snippet
+}
+
+/// Fuzzy (multi-term) match: succeeds when EVERY term appears somewhere in the
+/// content or filename (order-independent, not necessarily adjacent). Returns
+/// (count of lines containing any term, first snippet) or None.
+fn fuzzy_match(
+    content: &str,
+    filename_lower: &str,
+    terms: &[String],
+) -> Option<(usize, Option<String>)> {
+    if terms.is_empty() {
+        return None;
+    }
+    let content_lower = content.to_lowercase();
+    if !terms
+        .iter()
+        .all(|t| content_lower.contains(t) || filename_lower.contains(t))
+    {
+        return None;
+    }
+    let mut count = 0usize;
+    let mut snippet = None;
+    for line in content.lines() {
+        let ll = line.to_lowercase();
+        if let Some((idx, len)) = terms
+            .iter()
+            .filter_map(|t| ll.find(t).map(|i| (i, t.len())))
+            .min_by_key(|(i, _)| *i)
+        {
+            count += 1;
+            if snippet.is_none() {
+                snippet = Some(snippet_around(line, idx, len));
+            }
+        }
+    }
+    Some((count.max(1), snippet))
 }
 
 /// Snap a byte offset to a char boundary in `s`. `forward=true` moves
@@ -314,6 +386,38 @@ mod tests {
         assert!(m[0].snippet.starts_with("..."));
         assert!(m[0].snippet.ends_with("..."));
         assert!(m[0].snippet.contains("needle"));
+    }
+
+    #[tokio::test]
+    async fn fuzzy_matches_nonadjacent_terms() {
+        let vault = TempDir::new("vault-fz");
+        let external = TempDir::new("ext-fz");
+        std::fs::write(
+            external.0.join("note.md"),
+            "Water consumption is high in modern data centers.",
+        )
+        .unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+        let dir = "private/notes";
+
+        // Exact (default): "data center water" is not a contiguous substring → no hit.
+        let exact = execute(&reg, &ctx(true), &json!({ "directory": dir, "query": "data center water" }))
+            .await
+            .unwrap();
+        let ev: serde_json::Value = serde_json::from_str(&exact).unwrap();
+        assert_eq!(ev["returned"], 0);
+
+        // Fuzzy: all three terms present anywhere → one hit.
+        let fz = execute(
+            &reg,
+            &ctx(true),
+            &json!({ "directory": dir, "query": "data center water", "fuzzy": true }),
+        )
+        .await
+        .unwrap();
+        let fv: serde_json::Value = serde_json::from_str(&fz).unwrap();
+        assert_eq!(fv["returned"], 1);
+        assert!(fz.contains("note.md"));
     }
 
     #[test]
