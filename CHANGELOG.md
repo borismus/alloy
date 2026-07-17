@@ -4,6 +4,18 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.15
+
+- Fix agents choking on large note vaults: `list_directory` and `search_directory`
+  now return small, most-recent-first pages (with limit/offset paging) instead of
+  dumping thousands of entries — a big directory used to produce a result too
+  large for the model, taking many minutes. `list_directory` can list recursively;
+  `read_file` is capped so one huge file can't flood the context.
+- `search_directory` gains a fuzzy option (match all query words anywhere, in any
+  order) and now scans the whole vault so a rare term in an old note is found.
+- Private read-only mounts support `excludeDirs` in config.yaml, so e.g. a nested
+  Alloy vault is kept out of your Obsidian-vault searches.
+
 ## 0.3.14
 
 - Much faster startup, especially on mobile: the conversation list now loads
