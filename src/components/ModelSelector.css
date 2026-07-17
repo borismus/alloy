@@ -213,6 +213,49 @@
   color: #667eea;
 }
 
+/* Provenance chip: short provider tag ("OR", "MLX", "ANT"). Monospace + uppercase
+   so it reads as a label, not part of the model name. */
+.provider-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  background: #f1f3f5;
+  border: 1px solid #e2e5ea;
+  border-radius: 5px;
+  padding: 2px 5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Local (loopback/LAN) variant: green signals prompts stay off the cloud. */
+.provider-tag.local {
+  color: #047857;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.provider-tag svg {
+  display: block;
+}
+
+/* On the closed button the tag sits before the (truncating) model name. */
+.model-selector-button .provider-tag {
+  margin-right: 2px;
+}
+
+/* In the list the tag leads the row, so fix its width and center the text to
+   form a tidy column that keeps the model names left-aligned. */
+.model-option .provider-tag {
+  min-width: 52px;
+  justify-content: center;
+}
+
 /* Star button — separate hit target from the row body. */
 .model-option-star {
   flex-shrink: 0;

@@ -111,6 +111,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
       case 'openrouter': return 'OpenRouter';
       case 'ollama': return 'Ollama';
       case 'claude-cli': return 'Claude (subscription)';
+      case 'mlx': return 'oMLX';
     }
   };
 

@@ -274,8 +274,9 @@ pub type ProviderArc = Arc<dyn Provider>;
 /// `resolve()` to distinguish "user wrote a bad model id with a real
 /// provider prefix" (→ fail loudly) from "user wrote a bare/vendor model
 /// id" (→ fall through to the default provider).
-const KNOWN_PROVIDER_IDS: &[&str] =
-    &["anthropic", "openai", "ollama", "gemini", "grok", "openrouter", "claude-cli"];
+const KNOWN_PROVIDER_IDS: &[&str] = &[
+    "anthropic", "openai", "ollama", "gemini", "grok", "openrouter", "claude-cli", "mlx",
+];
 
 /// Registry mapping provider id ("openrouter", "ollama") to its client.
 #[derive(Clone)]

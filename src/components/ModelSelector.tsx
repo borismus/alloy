@@ -1,6 +1,39 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { ModelInfo } from '../types';
+import { providerLabel, providerTag } from '../utils/models';
 import './ModelSelector.css';
+
+/** Small padlock, used to mark on-device (privacy-preserving) models. */
+function LockIcon({ size = 11 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="10.5" width="16" height="10.5" rx="2" fill="currentColor" />
+      <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" stroke="currentColor" strokeWidth="2" fill="none" />
+    </svg>
+  );
+}
+
+/**
+ * Provenance chip: short provider tag ("OR", "MLX", "ANT"). Local (loopback/LAN)
+ * models render a green padlock variant to signal prompts stay off the cloud;
+ * the full provider name is in the tooltip.
+ */
+function ProviderTag({ model }: { model: ModelInfo }) {
+  const tag = providerTag(model.provider, model.key);
+  const full = providerLabel(model.provider, model.key);
+  if (model.local) {
+    return (
+      <span className="provider-tag local" title={`${full} · runs locally, not sent to the cloud`}>
+        <LockIcon size={10} /> {tag}
+      </span>
+    );
+  }
+  return (
+    <span className="provider-tag" title={full}>
+      {tag}
+    </span>
+  );
+}
 
 interface ModelSelectorProps {
   value: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
@@ -168,6 +201,7 @@ export function ModelSelector({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
       >
+        {selectedModel && <ProviderTag model={selectedModel} />}
         <span>{selectedLabel}</span>
         <svg className={`chevron ${isOpen ? 'open' : ''}`} width="12" height="8" viewBox="0 0 12 8" fill="none">
           <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -235,6 +269,7 @@ export function ModelSelector({
                     >
                       {fav ? '★' : '☆'}
                     </button>
+                    <ProviderTag model={model} />
                     <span className="model-option-name">{model.name}</span>
                     {selected && (
                       <svg className="model-option-check" width="16" height="16" viewBox="0 0 16 16" fill="none">

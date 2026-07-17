@@ -22,6 +22,16 @@ const CACHE_TTL: Duration = Duration::from_secs(3600);
 pub struct ModelInfo {
     pub key: String,
     pub name: String,
+    /// Provider id this model came from (e.g. "mlx", "ollama", "openrouter").
+    /// Lets the picker label every row unambiguously — two providers can serve
+    /// a model with the same display name (e.g. "gemma4").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// True when the provider endpoint is loopback (127.0.0.1/localhost), i.e.
+    /// the model runs on this machine and prompts never leave the device.
+    /// Drives the "Local" privacy badge in the picker.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub local: bool,
     #[serde(rename = "contextWindow", skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
     /// USD per million input tokens (when known). Sourced from OpenRouter's
@@ -92,15 +102,19 @@ impl ModelCache {
 /// aliases (always resolve to the latest snapshot). Pricing is `0.0` because the
 /// calls bill against the user's subscription, not per-token API credits.
 fn claude_cli_models(provider_id: &str) -> Vec<ModelInfo> {
+    // Names drop the "(subscription)" suffix — the picker's "ANT" tag already
+    // conveys the Anthropic-subscription route.
     [
-        ("opus", "Claude Opus (subscription)"),
-        ("sonnet", "Claude Sonnet (subscription)"),
-        ("haiku", "Claude Haiku (subscription)"),
+        ("opus", "Claude Opus"),
+        ("sonnet", "Claude Sonnet"),
+        ("haiku", "Claude Haiku"),
     ]
     .into_iter()
     .map(|(alias, name)| ModelInfo {
         key: format!("{}/{}", provider_id, alias),
         name: name.to_string(),
+        provider: Some(provider_id.to_string()),
+        local: false,
         context_window: Some(200_000),
         input_per_1m: Some(0.0),
         output_per_1m: Some(0.0),
@@ -122,10 +136,14 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
             all.extend(claude_cli_models(&cfg.id));
             continue;
         }
+        // A model is "local" (on-device, privacy-preserving) when its provider
+        // endpoint is loopback. Computed once per provider and stamped on every
+        // model it contributes.
+        let local = cfg.base_url.as_deref().map(is_local_url).unwrap_or(false);
         match cfg.id.as_str() {
             "ollama" => {
                 if let Some(base) = &cfg.base_url {
-                    match fetch_ollama_models(base).await {
+                    match fetch_ollama_models(base, local).await {
                         Ok(mut models) => all.append(&mut models),
                         Err(e) => {
                             any_failed = true;
@@ -141,7 +159,7 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
                     .base_url
                     .clone()
                     .unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
-                match fetch_openai_compatible_models(&base, &cfg.api_key, &cfg.id).await {
+                match fetch_openai_compatible_models(&base, &cfg.api_key, &cfg.id, local).await {
                     Ok(mut models) => all.append(&mut models),
                     Err(e) => {
                         any_failed = true;
@@ -192,10 +210,41 @@ fn per_million(s: &str) -> Option<f64> {
     s.parse::<f64>().ok().map(|v| v * 1_000_000.0)
 }
 
+/// serde `skip_serializing_if` helper: drop `local: false` from the wire so
+/// only on-device models carry the flag.
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// True when a base URL points at loopback (this machine), so a model served
+/// there keeps prompts on-device. Powers the picker's "Local" privacy badge.
+/// Conservative by design: only loopback counts, so a remote/self-hosted
+/// endpoint is never mislabeled as private.
+fn is_local_url(base_url: &str) -> bool {
+    if base_url.contains("[::1]") {
+        return true;
+    }
+    let host = base_url
+        .split("://")
+        .nth(1)
+        .unwrap_or(base_url)
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("");
+    matches!(host, "localhost" | "127.0.0.1" | "::1" | "0.0.0.0") || host.ends_with(".local")
+}
+
 async fn fetch_openai_compatible_models(
     base_url: &str,
     api_key: &str,
     provider_id: &str,
+    local: bool,
 ) -> Result<Vec<ModelInfo>, String> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
     let client = reqwest::Client::builder()
@@ -242,6 +291,8 @@ async fn fetch_openai_compatible_models(
             ModelInfo {
                 key,
                 name: display,
+                provider: Some(provider_id.to_string()),
+                local,
                 context_window: m.context_length,
                 input_per_1m,
                 output_per_1m,
@@ -261,7 +312,7 @@ struct OllamaTagEntry {
     name: String,
 }
 
-async fn fetch_ollama_models(base_url: &str) -> Result<Vec<ModelInfo>, String> {
+async fn fetch_ollama_models(base_url: &str, local: bool) -> Result<Vec<ModelInfo>, String> {
     // Ollama's tag endpoint lives at the API root (not under /v1).
     let root = base_url.trim_end_matches("/v1").trim_end_matches('/');
     let url = format!("{}/api/tags", root);
@@ -286,6 +337,8 @@ async fn fetch_ollama_models(base_url: &str) -> Result<Vec<ModelInfo>, String> {
         .map(|m| ModelInfo {
             key: format!("ollama/{}", m.name),
             name: m.name,
+            provider: Some("ollama".to_string()),
+            local,
             context_window: None,
             input_per_1m: Some(0.0),
             output_per_1m: Some(0.0),
@@ -327,5 +380,17 @@ mod tests {
     fn short_id_extracts_last_segment() {
         assert_eq!(short_id("anthropic/claude-sonnet-4.6"), "claude-sonnet-4.6");
         assert_eq!(short_id("plain-id"), "plain-id");
+    }
+
+    #[test]
+    fn local_url_detects_loopback_only() {
+        assert!(is_local_url("http://127.0.0.1:8000/v1"));
+        assert!(is_local_url("http://localhost:11434"));
+        assert!(is_local_url("http://[::1]:8000/v1"));
+        assert!(is_local_url("http://my-mac.local:8000/v1"));
+        // Remote / self-hosted endpoints must NOT be labeled private.
+        assert!(!is_local_url("https://openrouter.ai/api/v1"));
+        assert!(!is_local_url("http://192.168.1.50:8000/v1"));
+        assert!(!is_local_url("http://10.0.0.4:8000/v1"));
     }
 }

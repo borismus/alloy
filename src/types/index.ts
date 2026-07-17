@@ -1,6 +1,6 @@
 // Core types for Alloy
 
-export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini' | 'grok' | 'openrouter' | 'claude-cli';
+export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini' | 'grok' | 'openrouter' | 'claude-cli' | 'mlx';
 
 /** Minimal conversation reference for wiki-link title lookups */
 export interface ConversationInfo {
@@ -116,6 +116,8 @@ export interface ModelInfo {
   key: string;   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   name: string;  // Human-readable display name (e.g., "Sonnet 4.5")
   contextWindow?: number; // Max input tokens (e.g., 200000 for Claude, 1000000 for Gemini)
+  provider?: string;      // Provider id (e.g., "mlx", "ollama") for unambiguous labeling
+  local?: boolean;        // True when served from this machine (loopback) — prompts stay on-device
 }
 
 // Single trigger attempt record
