@@ -787,6 +787,50 @@
   border-radius: 12px;
 }
 
+/* Error logs: align the text with a copy button so the full upstream message
+   is grabbable for debugging. */
+.message.log.error .log-content {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: min(680px, 90%);
+  text-align: left;
+  color: #b4232a;
+  background: #fdf0f0;
+}
+
+.message.log.error .log-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-copy-button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #b4232a;
+  opacity: 0.65;
+  cursor: pointer;
+  transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+}
+
+.log-copy-button:hover {
+  opacity: 1;
+  background: rgba(180, 35, 42, 0.1);
+}
+
+.log-copy-button.copied {
+  color: #1a7f37;
+  opacity: 1;
+}
+
 /* Compacted summary divider */
 .message.compacted {
   margin: 0.5rem 0 1rem;

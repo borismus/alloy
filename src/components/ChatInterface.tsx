@@ -47,12 +47,43 @@ const UserMessage = React.memo(({ message, getImageUrl, onNavigateToNote, onNavi
   );
 });
 
-// LogMessage handles system log messages
-const LogMessage = React.memo(({ message }: { message: Message }) => (
-  <div className="message log">
-    <div className="log-content">{message.content}</div>
-  </div>
-));
+// LogMessage handles system log messages. Errors (content prefixed "Error:")
+// get a copy button so the full upstream message can be grabbed for debugging.
+const LogMessage = React.memo(({ message }: { message: Message }) => {
+  const isError = message.content.startsWith('Error:');
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [message.content]);
+  return (
+    <div className={`message log${isError ? ' error' : ''}`}>
+      <div className="log-content">
+        <span className="log-text">{message.content}</span>
+        {isError && (
+          <button
+            className={`log-copy-button ${copied ? 'copied' : ''}`}
+            onClick={handleCopy}
+            title="Copy error"
+            aria-label="Copy error"
+          >
+            {copied ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
 
 // CompactedMessage renders a server-generated summary of older turns. The full
 // originals stay in history above it; at send time only the most recent
