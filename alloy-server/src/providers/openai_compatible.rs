@@ -148,7 +148,11 @@ impl Provider for OpenAICompatibleProvider {
             body["tools"] = Value::Array(to_openai_tools(&req.tools));
         }
 
-        let response = self.post_chat(body).send().await?;
+        let response = self
+            .post_chat(body)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", error_chain(&e)))?;
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
@@ -422,6 +426,26 @@ impl Provider for OpenAICompatibleProvider {
 
 fn fallback_title(user_msg: &str) -> String {
     user_msg.chars().take(50).collect()
+}
+
+/// Flatten an error and its `source()` chain into one line. `reqwest` hides the
+/// real failure (connection refused, timed out, DNS, TLS) behind a generic
+/// "error sending request for url (...)" Display — the useful cause lives in the
+/// source chain, so surface it for actionable errors in the chat transcript.
+fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(e) = source {
+        let msg = e.to_string();
+        // Skip links that just repeat the previous message (reqwest/hyper often
+        // nest near-identical wrappers).
+        if !out.ends_with(&msg) {
+            out.push_str(": ");
+            out.push_str(&msg);
+        }
+        source = e.source();
+    }
+    out
 }
 
 /// True if the model id routes to an Anthropic upstream (so prompt-caching
