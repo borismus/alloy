@@ -197,6 +197,11 @@ export interface Config {
 export interface ConversationStreamingState {
   isStreaming: boolean;
   streamingContent: string;
+  /** Provider-supplied reasoning for the active stream only; never persisted. */
+  streamingThinking?: string;
+  thinkingStartedAt?: number;
+  thinkingElapsedMs?: number;
+  thinkingDurationMs?: number;
   streamingToolUse?: ToolUse[];
   error?: string;
   // Active sub-agents during streaming (keyed by agent ID)

@@ -183,7 +183,13 @@ function AppContent() {
   const mainPanelRef = useRef<HTMLDivElement>(null);
   const findRef = useRef<FindInConversationHandle>(null);
   const [showFind, setShowFind] = useState(false);
-  const { startStreaming, updateStreamingContent, completeStreaming, stopStreaming, getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent } = useStreamingContext();
+  const {
+    startStreaming, updateStreamingContent,
+    setStreamingThinkingState, updateStreamingThinking, finishStreamingThinking,
+    completeStreaming, stopStreaming,
+    getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse,
+    startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent,
+  } = useStreamingContext();
   const riffContext = useRiffContext();
 
   // Check if selected note is a riff/draft on desktop (not integrated)
@@ -420,6 +426,7 @@ function AppContent() {
   const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow } = useSendMessage({
     config, memory, markSelfWrite, showToast, chatInterfaceRef,
     setDraftConversation, setConversations,
+    setStreamingThinkingState, updateStreamingThinking, finishStreamingThinking,
     addToolUse, startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent,
   });
 
@@ -599,6 +606,9 @@ function AppContent() {
         reconnectToActiveSessions({
           startStreaming,
           updateStreamingContent,
+          setStreamingThinkingState,
+          updateStreamingThinking,
+          finishStreamingThinking,
           completeStreaming,
           stopStreaming,
         }).catch(e => console.error('Failed to reconnect to active streams:', e));

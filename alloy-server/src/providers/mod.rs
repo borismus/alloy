@@ -10,7 +10,7 @@ pub mod openai_compatible;
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use base64::{Engine, engine::general_purpose::STANDARD as B64};
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -212,11 +212,17 @@ pub struct StreamResult {
     pub tool_calls: Vec<ToolCall>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderStreamEvent {
+    Content(String),
+    Thinking(String),
+}
+
 pub struct StreamRequest {
     pub messages: Vec<ChatMessage>,
     pub model: String,
     pub tools: Vec<ToolDefinition>,
-    pub chunk_tx: mpsc::UnboundedSender<String>,
+    pub delta_tx: mpsc::UnboundedSender<ProviderStreamEvent>,
     pub cancel: tokio::sync::watch::Receiver<bool>,
     /// Sink for providers that run their own tool loop (the Claude Code CLI) to
     /// surface `tool_use`/`tool_result` events. HTTP providers ignore it — their
@@ -242,8 +248,8 @@ pub struct McpBridge {
 
 #[async_trait]
 pub trait Provider: Send + Sync {
-    /// Stream a chat completion. Send incremental text deltas via the
-    /// provided mpsc channel; return the aggregated result on completion.
+    /// Stream a chat completion. Send visible content and provider-supplied
+    /// thinking as separate deltas; return only visible content on completion.
     /// If the model emits tool calls, `tool_calls` in the result is populated
     /// and `stop_reason` is "tool_use".
     async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult>;
@@ -280,7 +286,14 @@ pub type ProviderArc = Arc<dyn Provider>;
 /// provider prefix" (→ fail loudly) from "user wrote a bare/vendor model
 /// id" (→ fall through to the default provider).
 const KNOWN_PROVIDER_IDS: &[&str] = &[
-    "anthropic", "openai", "ollama", "gemini", "grok", "openrouter", "claude-cli", "mlx",
+    "anthropic",
+    "openai",
+    "ollama",
+    "gemini",
+    "grok",
+    "openrouter",
+    "claude-cli",
+    "mlx",
 ];
 
 /// Registry mapping provider id ("openrouter", "ollama") to its client.
@@ -291,6 +304,14 @@ pub struct ProviderRegistry {
 }
 
 impl ProviderRegistry {
+    #[cfg(test)]
+    pub(crate) fn from_test_provider(id: &str, provider: ProviderArc) -> Self {
+        Self {
+            by_id: HashMap::from([(id.to_string(), provider)]),
+            default_id: Some(id.to_string()),
+        }
+    }
+
     pub fn from_configs(configs: &[ProviderConfig]) -> Self {
         let mut by_id: HashMap<String, ProviderArc> = HashMap::new();
         let mut default_id = None;
@@ -330,8 +351,7 @@ impl ProviderRegistry {
                 return Ok((p.clone(), rest));
             }
             if KNOWN_PROVIDER_IDS.contains(&first) {
-                let mut configured: Vec<&str> =
-                    self.by_id.keys().map(String::as_str).collect();
+                let mut configured: Vec<&str> = self.by_id.keys().map(String::as_str).collect();
                 configured.sort();
                 let configured = if configured.is_empty() {
                     "none".to_string()
@@ -346,10 +366,9 @@ impl ProviderRegistry {
                 ));
             }
         }
-        let default = self
-            .default_id
-            .as_ref()
-            .ok_or_else(|| "No providers configured. Set OPENROUTER_API_KEY in config.yaml.".to_string())?;
+        let default = self.default_id.as_ref().ok_or_else(|| {
+            "No providers configured. Set OPENROUTER_API_KEY in config.yaml.".to_string()
+        })?;
         let p = self
             .by_id
             .get(default)
@@ -467,9 +486,18 @@ mod tests {
             Ok(_) => panic!("expected error"),
             Err(e) => e,
         };
-        assert!(err.contains("'anthropic'"), "error should name the wanted provider: {err}");
-        assert!(err.contains("openrouter"), "error should list configured providers: {err}");
-        assert!(err.contains("config.yaml"), "error should point at config.yaml: {err}");
+        assert!(
+            err.contains("'anthropic'"),
+            "error should name the wanted provider: {err}"
+        );
+        assert!(
+            err.contains("openrouter"),
+            "error should list configured providers: {err}"
+        );
+        assert!(
+            err.contains("config.yaml"),
+            "error should point at config.yaml: {err}"
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@ import { ToolUse, SkillUse, Usage } from '../types';
 import { ToolUseIndicator } from './ToolUseIndicator';
 import { SkillUseIndicator } from './SkillUseIndicator';
 import { MarkdownContent } from './MarkdownContent';
+import { ThinkingDisclosure } from './ThinkingDisclosure';
 
 export type AgentStatus = 'pending' | 'streaming' | 'complete' | 'error';
 
@@ -40,6 +41,11 @@ interface AgentResponseViewProps {
   onNavigateToNote?: (noteFilename: string) => void;
   /** Callback when a wiki-link to a conversation is clicked */
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
+  /** Ephemeral provider-supplied reasoning for the active stream. */
+  thinking?: string;
+  thinkingStartedAt?: number;
+  thinkingElapsedMs?: number;
+  thinkingDurationMs?: number;
   /** Token usage and cost for this response */
   usage?: Usage;
 }
@@ -61,6 +67,10 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
   headerContent,
   onNavigateToNote,
   onNavigateToConversation,
+  thinking = '',
+  thinkingStartedAt,
+  thinkingElapsedMs,
+  thinkingDurationMs,
   usage,
 }) => {
   // Use provided skillUses, or derive from use_skill tool calls
@@ -102,12 +112,16 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
         {status === 'pending' && (
           <span className="waiting-text">{pendingText}</span>
         )}
-        {isStreaming && !content.trim() && (
-          <div className="thinking-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
+        {isStreaming && thinkingStartedAt != null &&
+         (thinkingDurationMs == null || thinking.trim().length > 0) && (
+          <ThinkingDisclosure
+            key={`${thinkingDurationMs == null ? 'active' : 'finished'}-${thinkingStartedAt}`}
+            thinking={thinking}
+            startedAt={thinkingStartedAt}
+            initialElapsedMs={thinkingElapsedMs ?? 0}
+            durationMs={thinkingDurationMs}
+            active={thinkingDurationMs == null}
+          />
         )}
         {content && (
           <MarkdownContent

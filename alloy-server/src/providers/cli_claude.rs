@@ -22,12 +22,14 @@
 use std::process::Stdio;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 use crate::config::ProviderConfig;
-use crate::providers::{ChatMessage, ImageData, Provider, StreamRequest, StreamResult, Usage};
+use crate::providers::{
+    ChatMessage, ImageData, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
+};
 use crate::types::{ToolCall, ToolResult};
 
 /// Claude Code's standard built-in tools, hard-disabled so the subscription
@@ -42,8 +44,22 @@ use crate::types::{ToolCall, ToolResult};
 /// they're the user's own, and the host-access vectors (Bash/Read/Write/Skill)
 /// are closed.
 const DISALLOWED_NATIVE_TOOLS: &[&str] = &[
-    "Bash", "BashOutput", "KillShell", "Read", "Edit", "Write", "MultiEdit", "NotebookEdit",
-    "Glob", "Grep", "WebSearch", "WebFetch", "Task", "TodoWrite", "Skill", "SlashCommand",
+    "Bash",
+    "BashOutput",
+    "KillShell",
+    "Read",
+    "Edit",
+    "Write",
+    "MultiEdit",
+    "NotebookEdit",
+    "Glob",
+    "Grep",
+    "WebSearch",
+    "WebFetch",
+    "Task",
+    "TodoWrite",
+    "Skill",
+    "SlashCommand",
     "ExitPlanMode",
 ];
 
@@ -64,9 +80,9 @@ fn resolve_claude_binary(configured: Option<&str>) -> String {
     // 2. Search known install locations.
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = [
-        "/opt/homebrew/bin/claude".to_string(),       // Homebrew (Apple Silicon)
-        "/usr/local/bin/claude".to_string(),          // Homebrew (Intel) / npm global
-        format!("{home}/.claude/local/claude"),       // Claude Code native installer
+        "/opt/homebrew/bin/claude".to_string(), // Homebrew (Apple Silicon)
+        "/usr/local/bin/claude".to_string(),    // Homebrew (Intel) / npm global
+        format!("{home}/.claude/local/claude"), // Claude Code native installer
         format!("{home}/.local/bin/claude"),
         format!("{home}/.bun/bin/claude"),
         format!("{home}/.npm-global/bin/claude"),
@@ -177,7 +193,11 @@ impl CliClaudeProvider {
             return None;
         }
         let parsed: Value = serde_json::from_slice(&output.stdout).ok()?;
-        let text = parsed.get("result").and_then(Value::as_str).unwrap_or("").trim();
+        let text = parsed
+            .get("result")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
         (!text.is_empty()).then(|| text.to_string())
     }
 }
@@ -281,9 +301,12 @@ impl Provider for CliClaudeProvider {
                             let Ok(v): Result<Value, _> = serde_json::from_str(&line) else { continue };
                             match v.get("type").and_then(Value::as_str) {
                                 Some("stream_event") => {
+                                    if let Some(thinking) = partial_thinking_delta(&v) {
+                                        let _ = req.delta_tx.send(ProviderStreamEvent::Thinking(thinking.to_string()));
+                                    }
                                     if let Some(text) = partial_text_delta(&v) {
                                         content.push_str(text);
-                                        let _ = req.chunk_tx.send(text.to_string());
+                                        let _ = req.delta_tx.send(ProviderStreamEvent::Content(text.to_string()));
                                     }
                                 }
                                 // Claude Code runs its tool loop internally; surface
@@ -346,7 +369,7 @@ impl Provider for CliClaudeProvider {
             if let Some(t) = &result_text {
                 if !t.is_empty() {
                     content = t.clone();
-                    let _ = req.chunk_tx.send(t.clone());
+                    let _ = req.delta_tx.send(ProviderStreamEvent::Content(t.clone()));
                 }
             }
         }
@@ -482,9 +505,7 @@ fn user_message_content(text: &str, images: &[ImageData]) -> Value {
     Value::Array(parts)
 }
 
-/// Extract incremental visible text from a wrapped `stream_event`. Returns
-/// `Some(text)` only for `content_block_delta` → `text_delta`; thinking and
-/// signature deltas are intentionally skipped (not part of the answer).
+/// Extract incremental visible text from a wrapped `stream_event`.
 fn partial_text_delta(v: &Value) -> Option<&str> {
     let event = v.get("event")?;
     if event.get("type").and_then(Value::as_str)? != "content_block_delta" {
@@ -495,6 +516,19 @@ fn partial_text_delta(v: &Value) -> Option<&str> {
         return None;
     }
     delta.get("text").and_then(Value::as_str)
+}
+
+/// Extract provider-supplied thinking without mixing it into the answer.
+fn partial_thinking_delta(v: &Value) -> Option<&str> {
+    let event = v.get("event")?;
+    if event.get("type").and_then(Value::as_str)? != "content_block_delta" {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type").and_then(Value::as_str)? != "thinking_delta" {
+        return None;
+    }
+    delta.get("thinking").and_then(Value::as_str)
 }
 
 /// Pull `tool_use` content blocks out of a full `assistant` message snapshot.
@@ -556,16 +590,24 @@ mod tests {
     use super::*;
 
     fn user(content: &str) -> ChatMessage {
-        ChatMessage::User { content: content.into(), images: vec![] }
+        ChatMessage::User {
+            content: content.into(),
+            images: vec![],
+        }
     }
     fn assistant(content: &str) -> ChatMessage {
-        ChatMessage::Assistant { content: content.into(), tool_calls: vec![] }
+        ChatMessage::Assistant {
+            content: content.into(),
+            tool_calls: vec![],
+        }
     }
 
     #[test]
     fn single_turn_passes_text_verbatim() {
         let msgs = vec![
-            ChatMessage::System { content: "be brief".into() },
+            ChatMessage::System {
+                content: "be brief".into(),
+            },
             user("what is 2+2?"),
         ];
         let (system, text, images) = flatten_conversation(&msgs);
@@ -577,7 +619,9 @@ mod tests {
     #[test]
     fn multi_turn_builds_labeled_transcript() {
         let msgs = vec![
-            ChatMessage::System { content: "sys".into() },
+            ChatMessage::System {
+                content: "sys".into(),
+            },
             user("hi"),
             assistant("hello!"),
             user("how are you?"),
@@ -588,11 +632,17 @@ mod tests {
 
     #[test]
     fn collects_images_from_latest_user_turn() {
-        let img = ImageData { mime_type: "image/png".into(), base64: "AAAA".into() };
+        let img = ImageData {
+            mime_type: "image/png".into(),
+            base64: "AAAA".into(),
+        };
         let msgs = vec![
             user("first"),
             assistant("ok"),
-            ChatMessage::User { content: "look".into(), images: vec![img] },
+            ChatMessage::User {
+                content: "look".into(),
+                images: vec![img],
+            },
         ];
         let (_, _, images) = flatten_conversation(&msgs);
         assert_eq!(images.len(), 1);
@@ -659,12 +709,15 @@ mod tests {
     }
 
     #[test]
-    fn partial_text_delta_extracts_only_text_deltas() {
+    fn partial_deltas_keep_text_and_thinking_separate() {
         let text = json!({"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hello world"}}});
         assert_eq!(partial_text_delta(&text), Some("hello world"));
+        assert_eq!(partial_thinking_delta(&text), None);
         let thinking = json!({"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}});
         assert_eq!(partial_text_delta(&thinking), None);
+        assert_eq!(partial_thinking_delta(&thinking), Some("hmm"));
         let start = json!({"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}});
         assert_eq!(partial_text_delta(&start), None);
+        assert_eq!(partial_thinking_delta(&start), None);
     }
 }

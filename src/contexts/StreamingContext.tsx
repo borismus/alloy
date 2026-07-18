@@ -7,6 +7,9 @@ interface StreamingContextValue {
   getUnreadConversationIds: () => string[];
   startStreaming: (id: string) => AbortController;
   updateStreamingContent: (id: string, chunk: string) => void;
+  setStreamingThinkingState: (id: string, content: string, elapsedMs: number, durationMs?: number) => void;
+  updateStreamingThinking: (id: string, chunk: string) => void;
+  finishStreamingThinking: (id: string, durationMs: number) => void;
   addToolUse: (id: string, toolUse: ToolUse) => void;
   stopStreaming: (id: string) => void;
   completeStreaming: (id: string, isCurrentConversation?: boolean) => void;
@@ -21,6 +24,15 @@ interface StreamingContextValue {
 }
 
 const StreamingContext = createContext<StreamingContextValue | null>(null);
+
+const MAX_THINKING_CHARS = 128 * 1024;
+const THINKING_TRUNCATED_MARKER = '[earlier thinking truncated]\n';
+
+function boundThinking(value: string): string {
+  if (value.length <= MAX_THINKING_CHARS) return value;
+  const keep = MAX_THINKING_CHARS - THINKING_TRUNCATED_MARKER.length;
+  return THINKING_TRUNCATED_MARKER + value.slice(-keep);
+}
 
 export function StreamingProvider({ children }: { children: React.ReactNode }) {
   const [streamingStates, setStreamingStates] = useState<Map<string, ConversationStreamingState>>(
@@ -66,7 +78,13 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
 
     setStreamingStates((prev) => {
       const next = new Map(prev);
-      next.set(id, { isStreaming: true, streamingContent: '' });
+      next.set(id, {
+        isStreaming: true,
+        streamingContent: '',
+        streamingThinking: '',
+        thinkingStartedAt: Date.now(),
+        thinkingElapsedMs: 0,
+      });
       return next;
     });
     setStreamVersion(v => v + 1);
@@ -86,6 +104,63 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       });
       return next;
     });
+    setStreamVersion(v => v + 1);
+  }, []);
+
+  const setStreamingThinkingState = useCallback((
+    id: string,
+    content: string,
+    elapsedMs: number,
+    durationMs?: number,
+  ) => {
+    const receivedAt = Date.now();
+    const startedAt = receivedAt - Math.max(0, elapsedMs);
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing) return prev;
+      const next = new Map(prev);
+      const effectiveStartedAt = Math.min(existing.thinkingStartedAt ?? startedAt, startedAt);
+      next.set(id, {
+        ...existing,
+        streamingThinking: boundThinking(content),
+        thinkingStartedAt: effectiveStartedAt,
+        thinkingElapsedMs: receivedAt - effectiveStartedAt,
+        thinkingDurationMs: durationMs == null
+          ? undefined
+          : Math.max(durationMs, receivedAt - effectiveStartedAt),
+      });
+      return next;
+    });
+    setStreamVersion(v => v + 1);
+  }, []);
+
+  const updateStreamingThinking = useCallback((id: string, chunk: string) => {
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing) return prev;
+      const next = new Map(prev);
+      next.set(id, {
+        ...existing,
+        streamingThinking: boundThinking((existing.streamingThinking ?? '') + chunk),
+      });
+      return next;
+    });
+    setStreamVersion(v => v + 1);
+  }, []);
+
+  const finishStreamingThinking = useCallback((id: string, durationMs: number) => {
+    const finishedAt = Date.now();
+    setStreamingStates((prev) => {
+      const existing = prev.get(id);
+      if (!existing) return prev;
+      const next = new Map(prev);
+      const visibleDuration = existing.thinkingStartedAt == null
+        ? durationMs
+        : Math.max(durationMs, finishedAt - existing.thinkingStartedAt);
+      next.set(id, { ...existing, thinkingDurationMs: visibleDuration });
+      return next;
+    });
+    setStreamVersion(v => v + 1);
   }, []);
 
   const addToolUse = useCallback((id: string, toolUse: ToolUse) => {
@@ -134,7 +209,14 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       const existing = prev.get(id);
       if (!existing) return prev;
       const next = new Map(prev);
-      next.set(id, { ...existing, isStreaming: false });
+      next.set(id, {
+        ...existing,
+        isStreaming: false,
+        streamingThinking: undefined,
+        thinkingStartedAt: undefined,
+        thinkingElapsedMs: undefined,
+        thinkingDurationMs: undefined,
+      });
       return next;
     });
     setStreamVersion(v => v + 1);
@@ -267,6 +349,9 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       getUnreadConversationIds,
       startStreaming,
       updateStreamingContent,
+      setStreamingThinkingState,
+      updateStreamingThinking,
+      finishStreamingThinking,
       addToolUse,
       stopStreaming,
       completeStreaming,
@@ -285,6 +370,9 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
       getUnreadConversationIds,
       startStreaming,
       updateStreamingContent,
+      setStreamingThinkingState,
+      updateStreamingThinking,
+      finishStreamingThinking,
       addToolUse,
       stopStreaming,
       completeStreaming,

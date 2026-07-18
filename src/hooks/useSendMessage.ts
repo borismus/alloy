@@ -15,6 +15,9 @@ interface UseSendMessageDeps {
   chatInterfaceRef: React.RefObject<ChatInterfaceHandle | null>;
   setDraftConversation: React.Dispatch<React.SetStateAction<Conversation | null>>;
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
+  setStreamingThinkingState: (convId: string, content: string, elapsedMs: number, durationMs?: number) => void;
+  updateStreamingThinking: (convId: string, chunk: string) => void;
+  finishStreamingThinking: (convId: string, durationMs: number) => void;
   addToolUse: (convId: string, toolUse: ToolUse) => void;
   // Sub-agent callbacks kept on the deps surface for backward compat with App.tsx;
   // server-side spawn_subagent doesn't currently fan out per-agent updates,
@@ -42,7 +45,12 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     onChunk?: (text: string) => void,
     signal?: AbortSignal,
   ): Promise<void> => {
-    const { config, memory, markSelfWrite, showToast, chatInterfaceRef, setDraftConversation, setConversations, addToolUse } = depsRef.current;
+    const {
+      config, memory, markSelfWrite, showToast, chatInterfaceRef,
+      setDraftConversation, setConversations,
+      setStreamingThinkingState, updateStreamingThinking, finishStreamingThinking,
+      addToolUse,
+    } = depsRef.current;
     if (!config) return;
 
     const userMessage: Message = {
@@ -113,6 +121,10 @@ export function useSendMessage(deps: UseSendMessageDeps) {
         content,
         {
           onChunk,
+          onThinkingState: (thinking, elapsedMs, durationMs) =>
+            setStreamingThinkingState(convId, thinking, elapsedMs, durationMs),
+          onThinking: (thinking) => updateStreamingThinking(convId, thinking),
+          onThinkingDone: (durationMs) => finishStreamingThinking(convId, durationMs),
           invokeSkill,
           onTitle: (newTitle: string) => {
             const conv = { ...updatedConversation, title: newTitle };

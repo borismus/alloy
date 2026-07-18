@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 
 use crate::providers::{
-    ChatMessage, McpBridge, Provider, StreamRequest, StreamResult, Usage,
+    ChatMessage, McpBridge, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 use crate::tools::{ToolContext, ToolRegistry};
 use crate::types::{ToolDefinition, ToolEventSink};
@@ -30,7 +30,7 @@ pub struct LoopRequest {
     pub model: String,
     pub messages: Vec<ChatMessage>,
     pub tools: Vec<ToolDefinition>,
-    pub chunk_tx: mpsc::UnboundedSender<String>,
+    pub delta_tx: mpsc::UnboundedSender<ProviderStreamEvent>,
     pub cancel: watch::Receiver<bool>,
     pub tool_ctx: ToolContext,
     /// MCP bridge coordinates for the Claude Code provider (see `McpBridge`).
@@ -47,7 +47,7 @@ pub async fn execute_with_tools(
         model,
         mut messages,
         tools,
-        chunk_tx,
+        delta_tx,
         cancel,
         tool_ctx,
         mcp,
@@ -73,7 +73,7 @@ pub async fn execute_with_tools(
             messages: messages.clone(),
             model: model.clone(),
             tools: tools.clone(),
-            chunk_tx: chunk_tx.clone(),
+            delta_tx: delta_tx.clone(),
             cancel: cancel.clone(),
             tool_sink: sink.clone(),
             mcp: mcp.clone(),
@@ -92,7 +92,7 @@ pub async fn execute_with_tools(
         // closing turn; overwriting here would replace the answer with that
         // empty turn's content (the message saves blank even though the text
         // was streamed). Accumulating mirrors exactly what the client received
-        // via chunk_tx, so the persisted content matches what was shown.
+        // via delta_tx, so the persisted content matches what was shown.
         final_content.push_str(&result.content);
         final_stop_reason = result.stop_reason.clone();
 
@@ -146,7 +146,7 @@ pub async fn execute_with_tools(
         // " " space the SPA emits in [src/services/tools/executor.ts:389].
         // Mirror it into final_content too so the saved text stays identical
         // to what was streamed.
-        let _ = chunk_tx.send(" ".into());
+        let _ = delta_tx.send(ProviderStreamEvent::Content(" ".into()));
         final_content.push(' ');
 
         tracing::debug!("tool loop iteration {} complete", iteration);
@@ -165,7 +165,7 @@ pub async fn execute_with_tools(
             messages: messages.clone(),
             model: model.clone(),
             tools: vec![],
-            chunk_tx: chunk_tx.clone(),
+            delta_tx: delta_tx.clone(),
             cancel: cancel.clone(),
             tool_sink: sink.clone(),
             mcp: mcp.clone(),
@@ -238,7 +238,13 @@ mod tests {
     }
 
     fn usage(out: u32) -> Option<Usage> {
-        Some(Usage { input_tokens: 1, output_tokens: out, response_id: None, cost: None, duration_ms: None })
+        Some(Usage {
+            input_tokens: 1,
+            output_tokens: out,
+            response_id: None,
+            cost: None,
+            duration_ms: None,
+        })
     }
 
     /// A turn that emits `text` and then calls a tool. The tool is unregistered
@@ -249,7 +255,11 @@ mod tests {
             content: text.into(),
             usage: usage(out),
             stop_reason: "tool_use".into(),
-            tool_calls: vec![ToolCall { id: "t1".into(), name: "noop".into(), input: json!({}) }],
+            tool_calls: vec![ToolCall {
+                id: "t1".into(),
+                name: "noop".into(),
+                input: json!({}),
+            }],
         }
     }
 
@@ -272,14 +282,16 @@ mod tests {
     }
 
     async fn run(steps: Vec<StreamResult>) -> StreamResult {
-        let (chunk_tx, _rx) = mpsc::unbounded_channel();
+        let (delta_tx, _rx) = mpsc::unbounded_channel();
         let (_cancel_tx, cancel) = watch::channel(false);
         let req = LoopRequest {
-            provider: Arc::new(ScriptedProvider { steps: Mutex::new(steps.into()) }),
+            provider: Arc::new(ScriptedProvider {
+                steps: Mutex::new(steps.into()),
+            }),
             model: "test/model".into(),
             messages: vec![],
             tools: vec![],
-            chunk_tx,
+            delta_tx,
             cancel,
             tool_ctx: ToolContext {
                 message_id: None,
@@ -300,7 +312,11 @@ mod tests {
     /// message came back blank despite the text having been streamed).
     #[tokio::test]
     async fn answer_in_a_tool_turn_survives_an_empty_closing_turn() {
-        let result = run(vec![tool_turn("Here is the answer.", 1000), final_turn("", 20)]).await;
+        let result = run(vec![
+            tool_turn("Here is the answer.", 1000),
+            final_turn("", 20),
+        ])
+        .await;
         assert_eq!(result.content, "Here is the answer.");
         // Usage accumulates across every model call in the turn.
         assert_eq!(result.usage.unwrap().output_tokens, 1020);
@@ -310,7 +326,11 @@ mod tests {
     /// the client — joined by the same " " round separator the loop emits.
     #[tokio::test]
     async fn text_accumulates_across_turns() {
-        let result = run(vec![tool_turn("Searching.", 5), final_turn("Final answer.", 30)]).await;
+        let result = run(vec![
+            tool_turn("Searching.", 5),
+            final_turn("Final answer.", 30),
+        ])
+        .await;
         assert_eq!(result.content, "Searching. Final answer.");
     }
 
@@ -334,8 +354,7 @@ mod tests {
     /// MAX_ITERATIONS, the wrap-up call still forces a final text answer.
     #[tokio::test]
     async fn iteration_cap_forces_a_wrap_up_answer() {
-        let mut steps: Vec<StreamResult> =
-            (0..MAX_ITERATIONS).map(|_| tool_turn("", 10)).collect();
+        let mut steps: Vec<StreamResult> = (0..MAX_ITERATIONS).map(|_| tool_turn("", 10)).collect();
         steps.push(final_turn("Wrapped up.", 20));
         let result = run(steps).await;
         assert_eq!(result.content, "Wrapped up.");

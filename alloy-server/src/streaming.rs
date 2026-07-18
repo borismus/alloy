@@ -21,17 +21,21 @@ use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::compaction::{self, CompactionSettings, NewCompacted};
 use crate::routes::models::ModelCache;
-use crate::tool_loop::{LoopRequest, execute_with_tools};
+use crate::tool_loop::{execute_with_tools, LoopRequest};
 use crate::tools::{ToolContext, ToolRegistry};
-use crate::types::{ToolCall, ToolEventSink, ToolResult, builtin_tools};
+use crate::types::{builtin_tools, ToolCall, ToolEventSink, ToolResult};
 use crate::{
-    providers::{McpBridge, ProviderRegistry, StreamResult, Usage, WireMessage},
+    providers::{
+        McpBridge, ProviderRegistry, ProviderStreamEvent, StreamResult, Usage, WireMessage,
+    },
     vault::Vault,
     vault_writer::{self, AssistantWrite, PersistedToolUse},
 };
 
 const SESSION_TTL: Duration = Duration::from_secs(5 * 60);
 const BROADCAST_CAP: usize = 256;
+const MAX_THINKING_BYTES: usize = 128 * 1024;
+const THINKING_TRUNCATED_MARKER: &str = "[earlier thinking truncated]\n";
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -55,6 +59,12 @@ pub struct SessionInner {
     pub assistant_message_id: String,
     pub status: SessionStatus,
     pub full_content: String,
+    /// Provider-supplied reasoning, kept only in the in-memory session buffer.
+    /// It is replayable while the session lives but never enters StreamResult
+    /// or vault persistence.
+    pub full_thinking: String,
+    pub started_at_ms: i64,
+    pub thinking_duration_ms: Option<u64>,
     pub final_result: Option<StreamResult>,
     pub final_title: Option<String>,
     pub error_message: Option<String>,
@@ -85,6 +95,8 @@ pub enum ToolHistoryEntry {
 #[derive(Debug, Clone)]
 pub enum SessionEvent {
     Chunk(String),
+    Thinking(String),
+    ThinkingDone(u64),
     Title(String),
     ToolUse(ToolCall),
     ToolResult(ToolResult),
@@ -106,6 +118,22 @@ impl Session {
     pub fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
         self.tx.subscribe()
     }
+}
+
+fn append_bounded_thinking(buffer: &mut String, delta: &str) {
+    buffer.push_str(delta);
+    if buffer.len() <= MAX_THINKING_BYTES {
+        return;
+    }
+    let keep = MAX_THINKING_BYTES.saturating_sub(THINKING_TRUNCATED_MARKER.len());
+    let mut start = buffer.len().saturating_sub(keep);
+    while start < buffer.len() && !buffer.is_char_boundary(start) {
+        start += 1;
+    }
+    let tail = buffer[start..].to_string();
+    buffer.clear();
+    buffer.push_str(THINKING_TRUNCATED_MARKER);
+    buffer.push_str(&tail);
 }
 
 #[derive(Clone, Default)]
@@ -159,6 +187,9 @@ impl SessionRegistry {
                 assistant_message_id: message_id.into(),
                 status: SessionStatus::Streaming,
                 full_content: String::new(),
+                full_thinking: String::new(),
+                started_at_ms: chrono::Utc::now().timestamp_millis(),
+                thinking_duration_ms: None,
                 final_result: None,
                 final_title: None,
                 error_message: None,
@@ -247,6 +278,9 @@ pub fn start_session(
             assistant_message_id: assistant_message_id.clone(),
             status: SessionStatus::Streaming,
             full_content: String::new(),
+            full_thinking: String::new(),
+            started_at_ms: chrono::Utc::now().timestamp_millis(),
+            thinking_duration_ms: None,
             final_result: None,
             final_title: None,
             error_message: None,
@@ -302,17 +336,43 @@ async fn run_stream(
     };
     let upstream_model = upstream_model.to_string();
 
-    let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
+    let (delta_tx, mut delta_rx) = mpsc::unbounded_channel::<ProviderStreamEvent>();
 
-    // Pump per-token chunks from the provider into the SSE broadcast channel.
+    // Keep visible content and provider-supplied thinking on separate channels.
+    // Thinking is bounded and replayable but never copied into the final result.
     let session_pump = session.clone();
     let pump = tokio::spawn(async move {
-        while let Some(text) = chunk_rx.recv().await {
-            {
-                let mut inner = session_pump.inner.lock().unwrap();
-                inner.full_content.push_str(&text);
+        while let Some(delta) = delta_rx.recv().await {
+            match delta {
+                ProviderStreamEvent::Thinking(text) => {
+                    {
+                        let mut inner = session_pump.inner.lock().unwrap();
+                        append_bounded_thinking(&mut inner.full_thinking, &text);
+                    }
+                    let _ = session_pump.tx.send(SessionEvent::Thinking(text));
+                }
+                ProviderStreamEvent::Content(text) => {
+                    let thinking_done = {
+                        let mut inner = session_pump.inner.lock().unwrap();
+                        let done =
+                            if !text.trim().is_empty() && inner.thinking_duration_ms.is_none() {
+                                let elapsed =
+                                    chrono::Utc::now().timestamp_millis() - inner.started_at_ms;
+                                let duration = elapsed.max(0) as u64;
+                                inner.thinking_duration_ms = Some(duration);
+                                Some(duration)
+                            } else {
+                                None
+                            };
+                        inner.full_content.push_str(&text);
+                        done
+                    };
+                    if let Some(duration) = thinking_done {
+                        let _ = session_pump.tx.send(SessionEvent::ThinkingDone(duration));
+                    }
+                    let _ = session_pump.tx.send(SessionEvent::Chunk(text));
+                }
             }
-            let _ = session_pump.tx.send(SessionEvent::Chunk(text));
         }
     });
 
@@ -388,7 +448,7 @@ async fn run_stream(
         } else {
             Vec::new()
         },
-        chunk_tx,
+        delta_tx,
         cancel: cancel.clone(),
         tool_ctx: ToolContext {
             message_id: Some(session.inner.lock().unwrap().assistant_message_id.clone()),
@@ -423,7 +483,10 @@ async fn run_stream(
             if !params.skip_persist {
                 let (assistant_message_id, tool_use) = {
                     let inner = session.inner.lock().unwrap();
-                    (inner.assistant_message_id.clone(), collect_tool_uses(&inner.tool_history))
+                    (
+                        inner.assistant_message_id.clone(),
+                        collect_tool_uses(&inner.tool_history),
+                    )
                 };
                 let write = AssistantWrite {
                     conversation_id: params.conversation_id.clone(),
@@ -467,6 +530,7 @@ async fn run_stream(
             {
                 let mut inner = session.inner.lock().unwrap();
                 inner.status = SessionStatus::Complete;
+                inner.full_thinking.clear();
                 inner.final_result = Some(stream_result.clone());
                 inner.final_title = maybe_title;
             }
@@ -610,6 +674,7 @@ fn mark_error(session: &Session, msg: String) {
     {
         let mut inner = session.inner.lock().unwrap();
         inner.status = SessionStatus::Error;
+        inner.full_thinking.clear();
         inner.error_message = Some(msg.clone());
     }
     let _ = session.tx.send(SessionEvent::Error(msg));
@@ -623,7 +688,12 @@ fn mark_error(session: &Session, msg: String) {
 fn collect_tool_uses(history: &[ToolHistoryEntry]) -> Vec<PersistedToolUse> {
     let mut results: HashMap<&str, (&str, bool)> = HashMap::new();
     for entry in history {
-        if let ToolHistoryEntry::Result { tool_use_id, content, is_error } = entry {
+        if let ToolHistoryEntry::Result {
+            tool_use_id,
+            content,
+            is_error,
+        } = entry
+        {
             results.insert(tool_use_id.as_str(), (content.as_str(), *is_error));
         }
     }
@@ -706,7 +776,14 @@ pub async fn run_to_completion(
     params: StartParams,
 ) -> anyhow::Result<SessionOutcome> {
     let session = start_session(
-        registry, providers, vault, tools, model_cache, compaction, None, params,
+        registry,
+        providers,
+        vault,
+        tools,
+        model_cache,
+        compaction,
+        None,
+        params,
     )?;
     let mut rx = session.subscribe();
 
@@ -804,8 +881,11 @@ fn pick_title_model(conversation_model: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use serde_json::json;
 
+    use crate::config::Config;
+    use crate::providers::{Provider, StreamRequest};
     use crate::skill_registry::SkillRegistry;
 
     fn skills_with(name: &str, body: &str) -> SkillRegistry {
@@ -820,6 +900,97 @@ mod tests {
         let reg = SkillRegistry::new();
         reg.load(dir.path());
         reg
+    }
+
+    #[test]
+    fn thinking_buffer_is_bounded_at_a_utf8_boundary() {
+        let mut value = "é".repeat(MAX_THINKING_BYTES);
+        append_bounded_thinking(&mut value, "tail");
+        assert!(value.len() <= MAX_THINKING_BYTES);
+        assert!(value.starts_with(THINKING_TRUNCATED_MARKER));
+        assert!(value.ends_with("tail"));
+    }
+
+    struct ThinkingProvider;
+
+    #[async_trait]
+    impl Provider for ThinkingProvider {
+        async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
+            let _ = req
+                .delta_tx
+                .send(ProviderStreamEvent::Thinking("secret scratch work".into()));
+            let _ = req
+                .delta_tx
+                .send(ProviderStreamEvent::Content("visible answer".into()));
+            Ok(StreamResult {
+                content: "visible answer".into(),
+                usage: None,
+                stop_reason: "end_turn".into(),
+                tool_calls: vec![],
+            })
+        }
+
+        async fn generate_title(&self, _user: &str, _assistant: &str, _model: &str) -> String {
+            String::new()
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_thinking_never_enters_persisted_messages() {
+        let dir = tempfile::tempdir().unwrap();
+        let conversations = dir.path().join("conversations");
+        std::fs::create_dir(&conversations).unwrap();
+        let conversation_path = conversations.join("conv.yaml");
+        std::fs::write(
+            &conversation_path,
+            "id: conv\nmodel: test/model\ncreated: now\nupdated: now\nmessages: []\n",
+        )
+        .unwrap();
+
+        let vault = Arc::new(Vault::new(dir.path().to_path_buf()).unwrap());
+        let providers = ProviderRegistry::from_test_provider("test", Arc::new(ThinkingProvider));
+        let config = Arc::new(Config::default());
+        let tools = Arc::new(ToolRegistry::new(
+            config,
+            vault.clone(),
+            providers.clone(),
+            Arc::new(SkillRegistry::new()),
+        ));
+        let sessions = SessionRegistry::new();
+        let outcome = run_to_completion(
+            &sessions,
+            providers,
+            vault,
+            tools,
+            Arc::new(ModelCache::new()),
+            CompactionSettings::default(),
+            StartParams {
+                session_id: "session".into(),
+                conversation_id: "conv".into(),
+                assistant_message_id: Some("assistant".into()),
+                model: "test/model".into(),
+                messages: vec![user_msg("hello")],
+                system_prompt: None,
+                is_first_message: false,
+                user_message_content: "hello".into(),
+                invoke_skill: None,
+                skip_persist: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.content, "visible answer");
+        let yaml = std::fs::read_to_string(conversation_path).unwrap();
+        assert!(yaml.contains("visible answer"));
+        assert!(!yaml.contains("secret scratch work"), "got:\n{yaml}");
+        assert!(!yaml.contains("thinking:"), "got:\n{yaml}");
+        let session = sessions.get("session").unwrap();
+        assert!(session.inner.lock().unwrap().full_thinking.is_empty());
     }
 
     #[test]
@@ -1027,6 +1198,9 @@ mod tests {
             },
         ];
         let yaml_ok = serde_yaml::to_string(&collect_tool_uses(&ok)).unwrap();
-        assert!(!yaml_ok.contains("isError"), "success should omit isError:\n{yaml_ok}");
+        assert!(
+            !yaml_ok.contains("isError"),
+            "success should omit isError:\n{yaml_ok}"
+        );
     }
 }

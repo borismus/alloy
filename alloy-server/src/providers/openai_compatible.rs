@@ -8,14 +8,14 @@ use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    ChatMessage, Provider, StreamRequest, StreamResult, Usage, chat_messages_to_openai,
-    image_content_blocks,
+    chat_messages_to_openai, image_content_blocks, ChatMessage, Provider, ProviderStreamEvent,
+    StreamRequest, StreamResult, Usage,
 };
-use crate::types::{ToolCall, to_openai_tools};
+use crate::types::{to_openai_tools, ToolCall};
 
 pub struct OpenAICompatibleProvider {
     base_url: String,
@@ -86,6 +86,10 @@ struct ChoiceDelta {
 struct DeltaContent {
     #[serde(default)]
     content: Option<String>,
+    /// oMLX uses `reasoning_content`; other OpenAI-compatible servers use
+    /// `reasoning` or `thinking`. These are display-only and never persisted.
+    #[serde(default, alias = "reasoning", alias = "thinking")]
+    reasoning_content: Option<String>,
     #[serde(default)]
     tool_calls: Vec<ToolCallDelta>,
 }
@@ -214,10 +218,15 @@ impl Provider for OpenAICompatibleProvider {
                         other => other.to_string(),
                     };
                 }
+                if let Some(thinking) = choice.delta.reasoning_content {
+                    if !thinking.is_empty() {
+                        let _ = req.delta_tx.send(ProviderStreamEvent::Thinking(thinking));
+                    }
+                }
                 if let Some(text) = choice.delta.content {
                     if !text.is_empty() {
                         full_response.push_str(&text);
-                        let _ = req.chunk_tx.send(text);
+                        let _ = req.delta_tx.send(ProviderStreamEvent::Content(text));
                     }
                 }
                 for tc_delta in choice.delta.tool_calls {
@@ -537,6 +546,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_reasoning_delta_aliases_separately_from_content() {
+        for field in ["reasoning_content", "reasoning", "thinking"] {
+            let raw = format!(r#"{{"choices":[{{"delta":{{"{}":"hmm"}}}}]}}"#, field);
+            let chunk: StreamChunk = serde_json::from_str(&raw).unwrap();
+            assert_eq!(
+                chunk.choices[0].delta.reasoning_content.as_deref(),
+                Some("hmm")
+            );
+            assert!(chunk.choices[0].delta.content.is_none());
+        }
+    }
+
+    #[test]
     fn detects_anthropic_models() {
         assert!(is_anthropic_model("openrouter/anthropic/claude-sonnet-4.6"));
         assert!(is_anthropic_model("anthropic/claude-haiku-4-5"));
@@ -548,12 +570,29 @@ mod tests {
     #[test]
     fn caches_only_second_to_last_user_turn() {
         let msgs = vec![
-            ChatMessage::System { content: "sys".into() },
-            ChatMessage::User { content: "u1".into(), images: vec![] },
-            ChatMessage::Assistant { content: "a1".into(), tool_calls: vec![] },
-            ChatMessage::User { content: "u2".into(), images: vec![] },
-            ChatMessage::Assistant { content: "a2".into(), tool_calls: vec![] },
-            ChatMessage::User { content: "u3".into(), images: vec![] },
+            ChatMessage::System {
+                content: "sys".into(),
+            },
+            ChatMessage::User {
+                content: "u1".into(),
+                images: vec![],
+            },
+            ChatMessage::Assistant {
+                content: "a1".into(),
+                tool_calls: vec![],
+            },
+            ChatMessage::User {
+                content: "u2".into(),
+                images: vec![],
+            },
+            ChatMessage::Assistant {
+                content: "a2".into(),
+                tool_calls: vec![],
+            },
+            ChatMessage::User {
+                content: "u3".into(),
+                images: vec![],
+            },
         ];
         let wire = apply_anthropic_caching(&msgs);
         // System always cached.
@@ -573,8 +612,13 @@ mod tests {
     #[test]
     fn single_user_message_only_caches_system() {
         let msgs = vec![
-            ChatMessage::System { content: "sys".into() },
-            ChatMessage::User { content: "u1".into(), images: vec![] },
+            ChatMessage::System {
+                content: "sys".into(),
+            },
+            ChatMessage::User {
+                content: "u1".into(),
+                images: vec![],
+            },
         ];
         let wire = apply_anthropic_caching(&msgs);
         let sys = &wire[0]["content"][0];
@@ -587,7 +631,9 @@ mod tests {
     fn appends_image_blocks_after_cached_text() {
         use crate::providers::ImageData;
         let msgs = vec![
-            ChatMessage::System { content: "sys".into() },
+            ChatMessage::System {
+                content: "sys".into(),
+            },
             ChatMessage::User {
                 content: "u1".into(),
                 images: vec![ImageData {

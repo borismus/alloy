@@ -3,27 +3,28 @@
 //! Wire format mirrors [server/index.ts](server/index.ts) /api/stream/start
 //! and the SSE event names consumed by
 //! [src/services/server-streaming.ts](src/services/server-streaming.ts):
-//! `replay`, `chunk`, `title`, `complete`, `error`.
+//! `thinking_state`, `thinking`, `thinking_done`, `replay`, `chunk`, `title`,
+//! `complete`, `error`.
 
 use std::{convert::Infallible, time::Duration};
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::{
-        IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
+        IntoResponse, Response,
     },
     routing::{get, post},
+    Json, Router,
 };
 use futures_util::{Stream, StreamExt};
 use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::{
-    AppState,
     streaming::{self, SessionEvent, SessionStatus, StartParams},
+    AppState,
 };
 
 pub fn router() -> Router<AppState> {
@@ -34,10 +35,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/stream/active", get(active))
 }
 
-async fn start(
-    State(state): State<AppState>,
-    Json(params): Json<StartParams>,
-) -> Response {
+async fn start(State(state): State<AppState>, Json(params): Json<StartParams>) -> Response {
     let session_id = params.session_id.clone();
     let self_base_url = state.self_base_url.read().ok().and_then(|u| u.clone());
     let session = streaming::start_session(
@@ -60,10 +58,7 @@ async fn start(
     }
 }
 
-async fn events(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Response {
+async fn events(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     let Some(session) = state.sessions.get(&id) else {
         return (
             StatusCode::NOT_FOUND,
@@ -72,27 +67,56 @@ async fn events(
             .into_response();
     };
 
-    // Snapshot current state for the initial events (replay + maybe complete).
-    let (initial_content, status, final_result, final_title, error_message, tool_history) = {
+    // Snapshot replay state and attach the live receiver under the same lock
+    // used by the delta pump. This prevents a token from landing in the gap
+    // between the snapshot and subscription.
+    let (
+        initial_content,
+        initial_thinking,
+        thinking_elapsed_ms,
+        thinking_duration_ms,
+        status,
+        final_result,
+        final_title,
+        error_message,
+        tool_history,
+        live,
+    ) = {
         let inner = session.inner.lock().unwrap();
+        let status = inner.status.clone();
+        let thinking_elapsed_ms = inner.thinking_duration_ms.unwrap_or_else(|| {
+            (chrono::Utc::now().timestamp_millis() - inner.started_at_ms).max(0) as u64
+        });
+        let live = if status == SessionStatus::Streaming {
+            Some(session.subscribe())
+        } else {
+            None
+        };
         (
             inner.full_content.clone(),
-            inner.status.clone(),
+            inner.full_thinking.clone(),
+            thinking_elapsed_ms,
+            inner.thinking_duration_ms,
+            status,
             inner.final_result.clone(),
             inner.final_title.clone(),
             inner.error_message.clone(),
             inner.tool_history.clone(),
+            live,
         )
-    };
-
-    let live = if status == SessionStatus::Streaming {
-        Some(session.subscribe())
-    } else {
-        None
     };
 
     // Build an SSE stream by chaining: initial events → live broadcast (if any).
     let stream = async_stream::stream! {
+        // Always establish the timer, even for providers that don't expose
+        // reasoning. `content` is ephemeral and bounded in SessionInner.
+        yield Ok::<_, Infallible>(
+            Event::default().event("thinking_state").data(json!({
+                "content": initial_thinking,
+                "elapsedMs": thinking_elapsed_ms,
+                "durationMs": thinking_duration_ms,
+            }).to_string()),
+        );
         if !initial_content.is_empty() {
             yield Ok::<_, Infallible>(
                 Event::default()
@@ -166,6 +190,16 @@ async fn events(
                     SessionEvent::Chunk(text) => {
                         yield Ok(Event::default().event("chunk").data(
                             json!({ "text": text }).to_string()
+                        ));
+                    }
+                    SessionEvent::Thinking(text) => {
+                        yield Ok(Event::default().event("thinking").data(
+                            json!({ "text": text }).to_string()
+                        ));
+                    }
+                    SessionEvent::ThinkingDone(duration_ms) => {
+                        yield Ok(Event::default().event("thinking_done").data(
+                            json!({ "durationMs": duration_ms }).to_string()
                         ));
                     }
                     SessionEvent::Title(title) => {

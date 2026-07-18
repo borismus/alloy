@@ -12,10 +12,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{mpsc, watch};
 
-use crate::providers::{ChatMessage, wire_to_chat, WireMessage};
-use crate::tool_loop::{LoopRequest, execute_with_tools};
-use crate::tools::{ToolContext, ToolRegistry, input_string};
-use crate::types::{NullSink, ToolDefinition, builtin_tools};
+use crate::providers::{wire_to_chat, ChatMessage, ProviderStreamEvent, WireMessage};
+use crate::tool_loop::{execute_with_tools, LoopRequest};
+use crate::tools::{input_string, ToolContext, ToolRegistry};
+use crate::types::{builtin_tools, NullSink, ToolDefinition};
 
 #[derive(Deserialize)]
 struct AgentConfig {
@@ -46,9 +46,7 @@ pub async fn execute(
     input: &Value,
 ) -> Result<String, String> {
     if ctx.inside_subagent {
-        return Err(
-            "spawn_subagent cannot be called from within a sub-agent (no nesting).".into(),
-        );
+        return Err("spawn_subagent cannot be called from within a sub-agent (no nesting).".into());
     }
 
     let agents_raw = input_string(input, "agents").unwrap_or("");
@@ -73,7 +71,9 @@ pub async fn execute(
             .clone()
             .unwrap_or_else(|| format!("Agent {}", i + 1));
         let registry = registry.clone();
-        let model = cfg.model.unwrap_or_else(|| "anthropic/claude-haiku-4-5".to_string());
+        let model = cfg
+            .model
+            .unwrap_or_else(|| "anthropic/claude-haiku-4-5".to_string());
         let prompt = cfg.prompt.clone();
         let system_prompt = cfg.system_prompt.clone();
         let tools = tools.clone();
@@ -130,10 +130,10 @@ async fn run_one_agent(
     )
     .await;
 
-    let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel::<String>();
-    // Drain chunks so the channel doesn't fill up — sub-agent output is
+    let (delta_tx, mut delta_rx) = mpsc::unbounded_channel::<ProviderStreamEvent>();
+    // Drain deltas so the channel doesn't fill up — sub-agent output is
     // collected from the final result, not streamed to the client UI.
-    tokio::spawn(async move { while chunk_rx.recv().await.is_some() {} });
+    tokio::spawn(async move { while delta_rx.recv().await.is_some() {} });
 
     let (_cancel_tx, cancel_rx) = watch::channel(false);
 
@@ -151,7 +151,7 @@ async fn run_one_agent(
         model: upstream_model.clone(),
         messages,
         tools,
-        chunk_tx,
+        delta_tx,
         cancel: cancel_rx,
         tool_ctx: ToolContext {
             message_id: None,

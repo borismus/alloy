@@ -47,6 +47,9 @@ export interface ServerStreamResult {
 
 export interface ServerStreamOptions {
   onChunk?: (text: string) => void;
+  onThinkingState?: (content: string, elapsedMs: number, durationMs?: number) => void;
+  onThinking?: (text: string) => void;
+  onThinkingDone?: (durationMs: number) => void;
   onTitle?: (title: string) => void;
   onToolUse?: (toolUse: ToolUse) => void;
   signal?: AbortSignal;
@@ -164,6 +167,25 @@ export async function executeViaServer(
       if (token) url.searchParams.set('token', token);
 
       eventSource = new EventSource(url.toString());
+
+      eventSource.addEventListener('thinking_state', (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        options.onThinkingState?.(
+          typeof data.content === 'string' ? data.content : '',
+          typeof data.elapsedMs === 'number' ? data.elapsedMs : 0,
+          typeof data.durationMs === 'number' ? data.durationMs : undefined,
+        );
+      });
+
+      eventSource.addEventListener('thinking', (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        if (typeof data.text === 'string') options.onThinking?.(data.text);
+      });
+
+      eventSource.addEventListener('thinking_done', (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        if (typeof data.durationMs === 'number') options.onThinkingDone?.(data.durationMs);
+      });
 
       eventSource.addEventListener('replay', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
@@ -324,6 +346,9 @@ interface ActiveSession {
 export interface ReconnectCallbacks {
   startStreaming: (conversationId: string) => AbortController;
   updateStreamingContent: (conversationId: string, chunk: string) => void;
+  setStreamingThinkingState: (conversationId: string, content: string, elapsedMs: number, durationMs?: number) => void;
+  updateStreamingThinking: (conversationId: string, chunk: string) => void;
+  finishStreamingThinking: (conversationId: string, durationMs: number) => void;
   completeStreaming: (conversationId: string) => void;
   stopStreaming: (conversationId: string) => void;
 }
@@ -358,6 +383,26 @@ export async function reconnectToActiveSessions(callbacks: ReconnectCallbacks): 
     if (token) url.searchParams.set('token', token);
 
     const eventSource = new EventSource(url.toString());
+
+    eventSource.addEventListener('thinking_state', (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      callbacks.setStreamingThinkingState(
+        convId,
+        typeof data.content === 'string' ? data.content : '',
+        typeof data.elapsedMs === 'number' ? data.elapsedMs : 0,
+        typeof data.durationMs === 'number' ? data.durationMs : undefined,
+      );
+    });
+
+    eventSource.addEventListener('thinking', (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      if (typeof data.text === 'string') callbacks.updateStreamingThinking(convId, data.text);
+    });
+
+    eventSource.addEventListener('thinking_done', (e: MessageEvent) => {
+      const data = JSON.parse(e.data);
+      if (typeof data.durationMs === 'number') callbacks.finishStreamingThinking(convId, data.durationMs);
+    });
 
     eventSource.addEventListener('replay', (e: MessageEvent) => {
       const data = JSON.parse(e.data);

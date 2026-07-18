@@ -9,6 +9,10 @@ export function useConversationStreaming(conversationId: string | null) {
 
   const isStreaming = streamingState?.isStreaming ?? false;
   const streamingContent = streamingState?.streamingContent ?? '';
+  const streamingThinking = streamingState?.streamingThinking ?? '';
+  const thinkingStartedAt = streamingState?.thinkingStartedAt;
+  const thinkingElapsedMs = streamingState?.thinkingElapsedMs;
+  const thinkingDurationMs = streamingState?.thinkingDurationMs;
   const streamingToolUse = streamingState?.streamingToolUse ?? [];
   const error = streamingState?.error ?? null;
   const activeSubagents = streamingState?.activeSubagents ?? null;
@@ -53,6 +57,10 @@ export function useConversationStreaming(conversationId: string | null) {
   return {
     isStreaming,
     streamingContent,
+    streamingThinking,
+    thinkingStartedAt,
+    thinkingElapsedMs,
+    thinkingDurationMs,
     streamingToolUse,
     activeSubagents,
     preSubagentContent,

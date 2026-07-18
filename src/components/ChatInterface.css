@@ -887,6 +887,64 @@
   padding: 0.75rem 1rem;
 }
 
+.thinking-disclosure {
+  margin: 0.25rem 0 0.75rem;
+  color: var(--text-tertiary, #888);
+}
+
+.thinking-disclosure-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.thinking-disclosure.active .thinking-disclosure-toggle {
+  color: var(--text-secondary, #666);
+}
+
+.thinking-disclosure-toggle:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.thinking-disclosure-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, #667eea 55%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.thinking-chevron {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.thinking-disclosure.expanded .thinking-chevron {
+  transform: rotate(90deg);
+}
+
+.thinking-disclosure-body {
+  max-height: 15rem;
+  overflow: auto;
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  border-left: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  color: var(--text-secondary, #666);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .response-summary {
   background: #f8f9fa;
   border: 1px solid #e0e0e0;

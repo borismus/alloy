@@ -194,6 +194,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const {
     isStreaming,
     streamingContent,
+    streamingThinking,
+    thinkingStartedAt,
+    thinkingElapsedMs,
+    thinkingDurationMs,
     streamingToolUse,
     activeSubagents,
     preSubagentContent,
@@ -671,6 +675,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 <AgentResponseView
                   content={streamingContent || ''}
                   status={isStreaming ? 'streaming' : 'complete'}
+                  thinking={streamingThinking}
+                  thinkingStartedAt={thinkingStartedAt}
+                  thinkingElapsedMs={thinkingElapsedMs}
+                  thinkingDurationMs={thinkingDurationMs}
                   headerContent={assistantName}
                   onNavigateToNote={onNavigateToNote}
                   onNavigateToConversation={onNavigateToConversation}
@@ -681,6 +689,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
                 <AgentResponseView
                   content={streamingContent || ''}
                   status={isStreaming ? 'streaming' : 'complete'}
+                  thinking={streamingThinking}
+                  thinkingStartedAt={thinkingStartedAt}
+                  thinkingElapsedMs={thinkingElapsedMs}
+                  thinkingDurationMs={thinkingDurationMs}
                   toolUses={streamingToolUse}
                   headerContent={assistantName}
                   onNavigateToNote={onNavigateToNote}
