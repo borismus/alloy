@@ -4,6 +4,13 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.18
+
+- Make the sidebar easier to scan: local-model conversations carry a `Local`
+  badge, tasks carry a `Task` badge, and local tasks show both. Tasks now also
+  display their configured model beside the date. Redundant colored edge rails
+  were removed so overlapping labels stay unambiguous.
+
 ## 0.3.17
 
 - Replace triggers with Scheduled Tasks: use five-field cron schedules with an
