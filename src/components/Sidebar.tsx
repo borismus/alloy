@@ -349,6 +349,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return slashIndex !== -1 ? modelString.slice(slashIndex + 1) : modelString;
   };
 
+  const isLocalModel = (modelKey: string) =>
+    availableModels.some(model => model.key === modelKey && model.local);
+
+  const isLocalConversation = (item: TimelineItem) =>
+    item.type === 'conversation' && !!item.conversation && isLocalModel(item.conversation.model);
+
   // Filter items by type and search query
   const filteredItems = useMemo(() => {
     return timelineItems.filter(item => {
@@ -387,11 +393,20 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const getTypeBadge = (item: TimelineItem) => {
     switch (item.type) {
       case 'conversation':
-        return null;
+        return isLocalConversation(item)
+          ? <span className="type-badge local" title="Uses a local model">Local</span>
+          : null;
       case 'note':
         return <span className="type-badge note">Note</span>;
       case 'task':
-        return <span className="type-badge task">Task</span>;
+        return (
+          <>
+            <span className="type-badge task">Task</span>
+            {item.task && isLocalModel(item.task.model) && (
+              <span className="type-badge local" title="Uses a local model">Local</span>
+            )}
+          </>
+        );
       case 'riff':
         return (
           <span className={`type-badge riff ${item.note?.isIntegrated ? 'integrated' : 'draft'}`}>
@@ -491,7 +506,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                     {getModelDisplayName(item.conversation.model)}
                   </span>
                 )}
-                              </div>
+                {item.type === 'task' && item.task && (
+                  <span className="item-model" title={item.task.model}>
+                    {getModelDisplayName(item.task.model)}
+                  </span>
+                )}
+              </div>
             </div>
           ))
         )}

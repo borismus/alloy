@@ -171,19 +171,6 @@
   border-color: #667eea;
 }
 
-/* Type-specific left borders */
-.timeline-item.note {
-  border-left: 3px solid #3b82f6;
-}
-
-.timeline-item.task {
-  border-left: 3px solid #10b981;
-}
-
-.timeline-item.riff {
-  border-left: 3px solid #f59e0b;
-}
-
 .item-preview {
   font-size: 0.9rem;
   color: #333;
@@ -218,8 +205,14 @@
 }
 
 .type-badge.task {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   color: white;
+}
+
+.type-badge.local {
+  background: #dff8ee;
+  color: #087a58;
+  border: 1px solid rgba(16, 185, 129, 0.28);
 }
 
 .type-badge.note {
