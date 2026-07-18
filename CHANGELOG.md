@@ -4,6 +4,21 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.3.17
+
+- Replace triggers with Scheduled Tasks: use five-field cron schedules with an
+  explicit timezone, run tasks immediately from the UI, and optionally gate
+  delivery on a model-evaluated condition. Missed schedules catch up once after
+  downtime without replaying the full backlog.
+- Show live model thinking when a provider supplies it (including oMLX reasoning
+  and Claude CLI thinking). Thinking is collapsible, bounded, reconnectable while
+  active, and never written to conversation files or included when copying the
+  answer. Models without exposed reasoning still show a live thinking timer.
+- Remove the unused Background mode and simplify the app around conversations,
+  notes, riffs, and scheduled tasks.
+- Fix development/server compilation when the production `dist-web` asset folder
+  has not been built yet.
+
 ## 0.3.16
 
 - Local models now treat a configured private vault (e.g. your Obsidian notes)
