@@ -23,6 +23,7 @@ use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
 #[folder = "../dist-web/"]
+#[allow_missing = true]
 struct SpaAssets;
 
 /// Axum fallback handler. Only invoked when no declared route matches.
