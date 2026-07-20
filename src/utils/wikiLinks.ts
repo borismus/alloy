@@ -4,6 +4,21 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { CollapsibleDiagram } from '../components/CollapsibleDiagram';
 import type { ConversationInfo } from '../types';
 
+// Flatten a react-markdown code block's children back to raw source text.
+// Children may be a plain string (unhighlighted languages like mermaid) or
+// nested React <span> elements (when rehype-highlight highlighted the block,
+// e.g. svg via the xml alias). Walking the tree recovers the original source.
+function extractCodeText(children: React.ReactNode): string {
+  if (children == null || children === false || children === true) return '';
+  if (typeof children === 'string') return children;
+  if (typeof children === 'number') return String(children);
+  if (Array.isArray(children)) return children.map(extractCodeText).join('');
+  if (React.isValidElement(children)) {
+    return extractCodeText((children.props as { children?: React.ReactNode }).children);
+  }
+  return '';
+}
+
 // Helper to extract conversation ID from a path
 // Format: conversations/YYYY-MM-DD-HHMM-hash-title -> YYYY-MM-DD-HHMM-hash
 export function extractConversationId(path: string): string {
@@ -160,12 +175,16 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
       // Mermaid / SVG blocks render async and can be large, so surface them as
       // click-to-render blocks instead of rendering inline (avoids layout jumps
       // while streaming or scrolling). See CollapsibleDiagram.
+      //
+      // Use extractCodeText, not String(children): `svg` is a highlight.js xml
+      // alias, so rehype-highlight wraps the source in <span>s — String() would
+      // yield garbage. Flattening the nodes recovers the raw source either way.
       if (className?.includes('language-mermaid')) {
-        const code = String(children).replace(/\n$/, '');
+        const code = extractCodeText(children).replace(/\n$/, '');
         return React.createElement(CollapsibleDiagram, { kind: 'mermaid', code });
       }
       if (className?.includes('language-svg')) {
-        const code = String(children).replace(/\n$/, '');
+        const code = extractCodeText(children).replace(/\n$/, '');
         return React.createElement(CollapsibleDiagram, { kind: 'svg', code });
       }
       return React.createElement('code', { className, ...props }, children);

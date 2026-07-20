@@ -56,6 +56,10 @@
 }
 
 .diagram-svg {
-  max-width: 100%;
+  /* These SVGs often carry only a viewBox (no width/height), so they have no
+     intrinsic size. Give them an explicit width; the browser derives the
+     height from the viewBox aspect ratio. */
+  display: block;
+  width: 100%;
   height: auto;
 }
