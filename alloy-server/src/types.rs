@@ -194,6 +194,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
                 ("timezone", "string", r#"Optional IANA timezone such as "America/Los_Angeles". Defaults to the server's local timezone and is persisted."#),
                 ("trigger_condition", "string", "Optional delivery condition. When present, the result is surfaced only when this condition is met and is not substantially unchanged from the last delivery."),
                 ("model", "string", r#"Optional provider/model id. Defaults to config.yaml defaultModel. Prefer economical models for frequent tasks."#),
+                ("email", "boolean", "Optional. When true, each delivered result is also emailed (requires services.email in config.yaml). Off by default; only enable when the user asks to be emailed. Avoid for tasks that read private notes unless the user is fine emailing that content."),
             ],
             &["title", "prompt", "cron"],
         ),

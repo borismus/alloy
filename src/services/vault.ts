@@ -205,6 +205,15 @@ export class VaultService {
 
 # Speech-to-text (Soniox) for dictation
 # SONIOX_API_KEY: ...
+
+# External services. Email lets scheduled tasks notify you when they run
+# (set \`email: true\` on a task). Only Resend is supported.
+# services:
+#   email:
+#     provider: resend
+#     api_key: re_...
+#     from: Alloy <alloy@your-domain.com>
+#     to: you@example.com
 `;
       await writeTextFile(configPath, defaultConfigYaml);
     }

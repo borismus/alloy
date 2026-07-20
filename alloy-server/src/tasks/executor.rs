@@ -294,6 +294,7 @@ mod tests {
             title: "Task".into(),
             model: "mlx/test".into(),
             enabled: true,
+            email: false,
             prompt: "Do it".into(),
             schedule: TaskSchedule {
                 cron: "0 8 * * *".into(),

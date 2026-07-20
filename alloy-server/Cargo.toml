@@ -43,6 +43,8 @@ uuid = { version = "1", features = ["v4"] }
 async-stream = "0.3"
 rust-embed = { version = "8", features = ["mime-guess"] }
 regex = "1"
+# Render a task's Markdown result into HTML for email notifications.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 [dev-dependencies]
 tempfile = "3"

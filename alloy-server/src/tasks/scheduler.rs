@@ -166,7 +166,60 @@ pub async fn run_once(
         executor::apply_outcome(current, &outcome);
     })
     .await?;
+
+    // Fan out to email *after* the result is persisted. Best-effort: a send
+    // failure is logged but never changes the task's own outcome.
+    maybe_email_result(state, &task, &outcome, scheduled_for).await;
+
     Ok(outcome)
+}
+
+/// Email a delivered task result when the task opts in (`email: true`) and
+/// `services.email` is configured. Only `completed`/`triggered` runs are
+/// emailed; skips and errors are not.
+async fn maybe_email_result(
+    state: &AppState,
+    task: &ScheduledTask,
+    outcome: &TaskRunOutcome,
+    scheduled_for: Option<DateTime<Utc>>,
+) {
+    use crate::tasks::model::TaskVerdict;
+
+    if !task.email {
+        return;
+    }
+    let Some(email_cfg) = state.config.email.as_ref() else {
+        tracing::warn!(
+            "task {} has email: true but services.email is not configured",
+            task.id
+        );
+        return;
+    };
+    if !matches!(outcome.result, TaskVerdict::Completed | TaskVerdict::Triggered) {
+        return;
+    }
+    if outcome.response.trim().is_empty() {
+        return;
+    }
+
+    let delivered_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    // Deterministic per cron occurrence so a retry or a second Alloy racing the
+    // same slot doesn't double-send; manual runs key off the delivery instant.
+    let occurrence = scheduled_for
+        .map(|s| s.to_rfc3339_opts(SecondsFormat::Secs, true))
+        .unwrap_or_else(|| delivered_at.clone());
+    let idempotency_key = format!("task-{}-{}", task.id, occurrence);
+
+    let email = crate::notify::TaskEmail {
+        task_title: &task.title,
+        model: &task.model,
+        result_markdown: &outcome.response,
+        delivered_at: &delivered_at,
+        idempotency_key: &idempotency_key,
+    };
+    if let Err(e) = crate::notify::send_task_email(email_cfg, email).await {
+        tracing::warn!("failed to email task {} result: {}", task.id, e);
+    }
 }
 
 fn apply_claim(task: &mut ScheduledTask, started_at: &str, scheduled_for: Option<DateTime<Utc>>) {
@@ -228,6 +281,7 @@ mod tests {
             title: "t".into(),
             model: "x/y".into(),
             enabled: true,
+            email: false,
             prompt: "p".into(),
             schedule: TaskSchedule {
                 cron: cron.into(),

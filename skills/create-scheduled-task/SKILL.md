@@ -15,6 +15,7 @@ Help the user create a recurring task that runs server-side even when Alloy is c
 4. **Timezone** — use an explicit IANA timezone when the request is calendar-based, such as `America/Los_Angeles`. If omitted, Alloy resolves and persists the server's local timezone.
 5. **Delivery condition** — optional. Ask only when it is ambiguous whether every result should be delivered.
 6. **Model** — optional; otherwise use the configured default.
+7. **Email** — optional. Set `email: true` only when the user asks to be emailed each result. Requires `services.email` (Resend) in config.yaml. Be cautious enabling it for tasks that read private notes, since the full result is emailed.
 
 ## Distinguish reports from monitors
 
@@ -43,6 +44,7 @@ Call `create_scheduled_task` with:
 - optional `timezone`
 - optional `trigger_condition`
 - optional `model`
+- optional `email` (boolean; emails each delivered result)
 
 Never hand-write files under `tasks/`; the tool validates cron/timezone, picks a stable ID, and persists the complete schema.
 

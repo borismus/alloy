@@ -56,8 +56,54 @@ pub struct RawConfig {
     #[serde(rename = "privateReadOnlyDirs", default)]
     pub private_read_only_dirs: Option<Vec<PrivateDir>>,
 
+    /// Grouped external-service credentials (email, and later search/dictation).
+    #[serde(default)]
+    pub services: Option<RawServices>,
+
     #[serde(default)]
     pub compaction: Option<RawCompaction>,
+}
+
+/// `services:` block. Concern-grouped credentials for outbound integrations.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RawServices {
+    #[serde(default)]
+    pub email: Option<RawEmail>,
+}
+
+/// `services.email:` — transactional email for task notifications. Only Resend
+/// is supported today.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RawEmail {
+    /// Provider id. Must be `resend` (the only supported provider).
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// Verified sender, e.g. `Alloy <alloy@example.com>`.
+    #[serde(default)]
+    pub from: Option<String>,
+    /// One or more recipients (a single address or a list).
+    #[serde(default)]
+    pub to: Option<StringOrVec>,
+}
+
+/// Accept a scalar or a sequence for fields like `to:` that are naturally one
+/// value but occasionally several.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum StringOrVec {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl StringOrVec {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            StringOrVec::One(s) => vec![s],
+            StringOrVec::Many(v) => v,
+        }
+    }
 }
 
 /// A private read-only directory mounted for local models under
@@ -118,12 +164,23 @@ pub enum ProviderKind {
     CliClaude,
 }
 
+/// Resolved email-notification settings. `Some` only when `services.email` is
+/// fully specified for a supported provider (Resend).
+#[derive(Debug, Clone)]
+pub struct EmailConfig {
+    pub api_key: String,
+    pub from: String,
+    pub to: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub default_model: Option<String>,
     pub providers: Vec<ProviderConfig>,
     pub serper_api_key: Option<String>,
     pub soniox_api_key: Option<String>,
+    /// Email notifications for scheduled tasks (Resend). `None` when unconfigured.
+    pub email: Option<EmailConfig>,
     /// If true, also bind a public listener on `share_port` so other
     /// devices on the local network (or Tailnet) can reach the SPA.
     pub share_on_network: bool,
@@ -143,6 +200,7 @@ impl Default for Config {
             providers: Vec::new(),
             serper_api_key: None,
             soniox_api_key: None,
+            email: None,
             share_on_network: false,
             share_port: 3001,
             private_read_only_dirs: Vec::new(),
@@ -271,11 +329,14 @@ impl Config {
             })
             .collect();
 
+        let email = resolve_email(raw.services.and_then(|s| s.email));
+
         Self {
             default_model,
             providers,
             serper_api_key: raw.serper_api_key,
             soniox_api_key: raw.soniox_api_key,
+            email,
             share_on_network: raw.share_on_network.unwrap_or(false),
             share_port: raw.share_port.unwrap_or(3001),
             private_read_only_dirs,
@@ -328,6 +389,41 @@ impl Config {
     }
 }
 
+/// Resolve `services.email` into a usable `EmailConfig`. Returns `None` (and
+/// warns on partial config) unless the provider is Resend and api_key/from/to
+/// are all present, so a half-filled block silently degrades to "no email".
+fn resolve_email(raw: Option<RawEmail>) -> Option<EmailConfig> {
+    let raw = raw?;
+    let provider = raw.provider.as_deref().unwrap_or("resend").to_lowercase();
+    if provider != "resend" {
+        tracing::warn!(
+            "services.email: unsupported provider '{}' (only 'resend' is supported) — email disabled",
+            provider
+        );
+        return None;
+    }
+    let api_key = raw.api_key.filter(|s| !s.trim().is_empty());
+    let from = raw.from.filter(|s| !s.trim().is_empty());
+    let to: Vec<String> = raw
+        .to
+        .map(StringOrVec::into_vec)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|s| !s.trim().is_empty())
+        .collect();
+    match (api_key, from) {
+        (Some(api_key), Some(from)) if !to.is_empty() => {
+            Some(EmailConfig { api_key, from, to })
+        }
+        _ => {
+            tracing::warn!(
+                "services.email: incomplete (need api_key, from, and at least one to) — email disabled"
+            );
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,6 +467,51 @@ mod tests {
             serde_yaml::from_str("OPENROUTER_API_KEY: sk\nCLAUDE_SUBSCRIPTION: false\n").unwrap();
         let cfg = Config::from_raw(raw);
         assert_eq!(ids(&cfg), vec!["openrouter"]);
+    }
+
+    #[test]
+    fn email_resolves_only_when_complete_and_supported() {
+        // Complete Resend block, `to` as a scalar.
+        let cfg = Config::from_raw(
+            serde_yaml::from_str(
+                "services:\n  email:\n    provider: resend\n    api_key: re_x\n    from: Alloy <a@b.com>\n    to: you@example.com\n",
+            )
+            .unwrap(),
+        );
+        let email = cfg.email.expect("email configured");
+        assert_eq!(email.api_key, "re_x");
+        assert_eq!(email.from, "Alloy <a@b.com>");
+        assert_eq!(email.to, vec!["you@example.com"]);
+
+        // `to` as a list.
+        let cfg = Config::from_raw(
+            serde_yaml::from_str(
+                "services:\n  email:\n    provider: resend\n    api_key: re_x\n    from: a@b.com\n    to: [one@x.com, two@x.com]\n",
+            )
+            .unwrap(),
+        );
+        assert_eq!(cfg.email.unwrap().to, vec!["one@x.com", "two@x.com"]);
+
+        // Missing `to` → disabled.
+        let cfg = Config::from_raw(
+            serde_yaml::from_str(
+                "services:\n  email:\n    provider: resend\n    api_key: re_x\n    from: a@b.com\n",
+            )
+            .unwrap(),
+        );
+        assert!(cfg.email.is_none());
+
+        // Unsupported provider → disabled.
+        let cfg = Config::from_raw(
+            serde_yaml::from_str(
+                "services:\n  email:\n    provider: sendgrid\n    api_key: sg\n    from: a@b.com\n    to: you@x.com\n",
+            )
+            .unwrap(),
+        );
+        assert!(cfg.email.is_none());
+
+        // No services block → disabled.
+        assert!(Config::from_raw(serde_yaml::from_str("OPENROUTER_API_KEY: sk\n").unwrap()).email.is_none());
     }
 
     #[test]

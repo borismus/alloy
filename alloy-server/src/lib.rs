@@ -11,6 +11,7 @@ pub mod config;
 pub mod embed;
 pub mod error;
 pub mod local;
+pub mod notify;
 pub mod providers;
 pub mod routes;
 pub mod skill_registry;

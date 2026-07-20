@@ -146,6 +146,8 @@ export interface ScheduledTask {
   title: string;
   model: string;
   enabled: boolean;
+  /** When true, delivered results are also emailed via services.email (Resend). */
+  email?: boolean;
   prompt: string;
   schedule: TaskSchedule;
   trigger?: TaskTrigger;

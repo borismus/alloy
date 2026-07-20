@@ -43,6 +43,7 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
         .map(|condition| TaskTrigger {
             condition: condition.to_string(),
         });
+    let email = crate::tools::input_bool(input, "email").unwrap_or(false);
 
     let now = Utc::now();
     let id = generate_task_id(now);
@@ -75,6 +76,7 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
         title: title.to_string(),
         model,
         enabled: true,
+        email,
         prompt: prompt.to_string(),
         schedule: TaskSchedule {
             cron: cron_expression.to_string(),
@@ -102,8 +104,13 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
     } else {
         "unconditional — delivers every successful run"
     };
+    let email_note = if task.email {
+        " Delivered results are emailed."
+    } else {
+        ""
+    };
     Ok(format!(
-        "Created scheduled task \"{}\" (id: {}). Schedule: {} (`{}`, {}). Next run: {}. It is {}.",
+        "Created scheduled task \"{}\" (id: {}). Schedule: {} (`{}`, {}). Next run: {}. It is {}.{}",
         title,
         id,
         describe_cron(cron_expression),
@@ -111,6 +118,7 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
         timezone,
         next,
         kind,
+        email_note,
     ))
 }
 
