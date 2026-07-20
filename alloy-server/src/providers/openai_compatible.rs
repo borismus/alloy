@@ -72,6 +72,14 @@ struct StreamChunk {
     choices: Vec<ChoiceDelta>,
     #[serde(default)]
     usage: Option<UsageDelta>,
+    #[serde(default)]
+    error: Option<StreamError>,
+}
+
+#[derive(Deserialize, Default)]
+struct StreamError {
+    #[serde(default)]
+    message: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -168,6 +176,7 @@ impl Provider for OpenAICompatibleProvider {
         let mut input_tokens: u32 = 0;
         let mut output_tokens: u32 = 0;
         let mut stop_reason = "end_turn".to_string();
+        let mut stream_error: Option<String> = None;
 
         let mut tool_buf: Vec<ToolCallBuf> = Vec::new();
 
@@ -195,6 +204,14 @@ impl Provider for OpenAICompatibleProvider {
                 }
             };
 
+            if let Some(error) = chunk.error {
+                stream_error = Some(if error.message.is_empty() {
+                    "upstream stream failed".into()
+                } else {
+                    error.message
+                });
+                continue;
+            }
             if let Some(id) = chunk.id {
                 if response_id.is_none() {
                     response_id = Some(id);
@@ -211,6 +228,11 @@ impl Provider for OpenAICompatibleProvider {
 
             for choice in chunk.choices {
                 if let Some(fr) = choice.finish_reason {
+                    if fr == "error" {
+                        stream_error.get_or_insert_with(|| {
+                            "upstream ended the stream with an error".into()
+                        });
+                    }
                     stop_reason = match fr.as_str() {
                         "stop" => "end_turn".into(),
                         "length" => "max_tokens".into(),
@@ -224,7 +246,12 @@ impl Provider for OpenAICompatibleProvider {
                     }
                 }
                 if let Some(text) = choice.delta.content {
-                    if !text.is_empty() {
+                    if let Some(error) = bracketed_stream_error(&text) {
+                        // oMLX reports in-flight memory aborts as a final text
+                        // delta plus finish_reason="error". Keep that marker
+                        // out of assistant content and surface a real failure.
+                        stream_error = Some(error);
+                    } else if !text.is_empty() {
                         full_response.push_str(&text);
                         let _ = req.delta_tx.send(ProviderStreamEvent::Content(text));
                     }
@@ -248,6 +275,10 @@ impl Provider for OpenAICompatibleProvider {
                     }
                 }
             }
+        }
+
+        if let Some(error) = stream_error {
+            anyhow::bail!("upstream {} stream failed: {}", self.base_url, error);
         }
 
         // Finalize tool calls — parse the accumulated arguments JSON.
@@ -433,6 +464,12 @@ impl Provider for OpenAICompatibleProvider {
     }
 }
 
+fn bracketed_stream_error(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    let message = trimmed.strip_prefix("[Error:")?.strip_suffix(']')?.trim();
+    (!message.is_empty()).then(|| message.to_string())
+}
+
 fn fallback_title(user_msg: &str) -> String {
     user_msg.chars().take(50).collect()
 }
@@ -544,6 +581,22 @@ fn apply_anthropic_caching(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_stream_errors_from_omlx_and_openai_shapes() {
+        let marker = "\n\n[Error: Request aborted: process memory limit exceeded (usage 103.2 GB)]";
+        assert_eq!(
+            bracketed_stream_error(marker).as_deref(),
+            Some("Request aborted: process memory limit exceeded (usage 103.2 GB)")
+        );
+        assert!(bracketed_stream_error("A normal response").is_none());
+
+        let chunk: StreamChunk = serde_json::from_str(
+            r#"{"error":{"message":"server overloaded","type":"server_error"}}"#,
+        )
+        .unwrap();
+        assert_eq!(chunk.error.unwrap().message, "server overloaded");
+    }
 
     #[test]
     fn parses_reasoning_delta_aliases_separately_from_content() {
