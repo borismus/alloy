@@ -1,11 +1,11 @@
 ---
 name: create-scheduled-task
-description: Create recurring cron-based tasks, optionally delivering only when a condition is met.
+description: Create or edit recurring cron-based tasks, optionally delivering only when a condition is met.
 ---
 
-# Create Scheduled Task
+# Manage Scheduled Tasks
 
-Help the user create a recurring task that runs server-side even when Alloy is closed.
+Help the user create or edit recurring tasks that run server-side even when Alloy is closed.
 
 ## Gather the essentials
 
@@ -33,6 +33,16 @@ Do not put an always-run report behind a trigger condition.
 - `0 8 * * 1` — every Monday at 8 AM
 
 Prefer calendar times over approximating them as elapsed intervals. Explain the schedule in plain language before creating it.
+
+## Edit an existing task
+
+When the user asks to change a task, call `update_scheduled_task` instead of creating a duplicate. Identify the stable task id from the conversation or by listing/reading `tasks/`, then supply only the fields being changed:
+
+- `title`, `prompt`, `cron`, `timezone`, or `model`;
+- `enabled` or `email`;
+- `trigger_condition` (pass an empty string to remove conditional delivery).
+
+Unspecified fields and all run history/results are preserved.
 
 ## Create it
 

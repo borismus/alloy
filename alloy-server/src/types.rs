@@ -100,11 +100,11 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
     vec![
         def(
             "read_file",
-            "Read a file from allowed vault directories (notes/, skills/) or root files like memory.md. Cannot access conversations/.",
+            "Read a file from readable vault directories (notes/, skills/, conversations/, tasks/) or root files like memory.md. Conversations and tasks are read-only here; task changes must use dedicated scheduled-task tools.",
             &[(
                 "path",
                 "string",
-                r#"Relative path within vault (e.g., "memory.md", "notes/todo.md", "skills/my-skill/SKILL.md")"#,
+                r#"Relative path within vault (e.g., "memory.md", "notes/todo.md", "tasks/task-id.yaml")"#,
             )],
             &["path"],
         ),
@@ -133,7 +133,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
             "list_directory",
             "List files in a directory. Returns a page of entries sorted most-recent-first by default, each with its modified time. Large directories are paginated — use limit/offset. Set recursive=true to include subfolders.",
             &[
-                ("path", "string", r#"Relative directory path (e.g., "notes", "conversations", "skills")"#),
+                ("path", "string", r#"Relative directory path (e.g., "notes", "conversations", "tasks", "skills")"#),
                 ("limit", "integer", "Max entries to return (default 100, max 200)"),
                 ("offset", "integer", "Entries to skip, for paging (default 0)"),
                 ("sort", "string", r#""recent" (default, newest first) or "name" (directories first, alphabetical)"#),
@@ -197,6 +197,22 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
                 ("email", "boolean", "Optional. When true, each delivered result is also emailed (requires services.email in config.yaml). Off by default; only enable when the user asks to be emailed. Avoid for tasks that read private notes unless the user is fine emailing that content."),
             ],
             &["title", "prompt", "cron"],
+        ),
+        def(
+            "update_scheduled_task",
+            "Update an existing scheduled task in place without losing its run history or delivered results. Use this instead of creating a duplicate when the user asks to change a task. Only supplied fields are changed.",
+            &[
+                ("task_id", "string", "Stable task id. If needed, list/read the tasks directory to identify it."),
+                ("title", "string", "Optional replacement title."),
+                ("prompt", "string", "Optional replacement task prompt, including sources and output format."),
+                ("cron", "string", r#"Optional replacement standard five-field cron schedule."#),
+                ("timezone", "string", r#"Optional replacement IANA timezone such as "America/Los_Angeles"."#),
+                ("trigger_condition", "string", "Optional replacement delivery condition. Pass an empty string to remove the condition and deliver every successful run."),
+                ("model", "string", "Optional replacement provider/model id."),
+                ("enabled", "boolean", "Optional enabled state. Set false to pause the task."),
+                ("email", "boolean", "Optional email-delivery state. Enabling it requires services.email and may send private task results externally."),
+            ],
+            &["task_id"],
         ),
     ]
 }

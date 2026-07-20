@@ -274,5 +274,8 @@ mod tests {
                 .iter()
                 .any(|t| t.get("name").and_then(Value::as_str) == Some("read_file"))
         );
+        assert!(tools.iter().any(|t| {
+            t.get("name").and_then(Value::as_str) == Some("update_scheduled_task")
+        }));
     }
 }

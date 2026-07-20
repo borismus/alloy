@@ -122,6 +122,174 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
     ))
 }
 
+pub async fn execute_update(registry: &ToolRegistry, input: &Value) -> Result<String, String> {
+    let id = input_string(input, "task_id")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "update_scheduled_task: missing or empty 'task_id'".to_string())?;
+    let tasks_dir = registry.vault.resolve("tasks").map_err(|e| e.to_string())?;
+    let path = crate::tasks::model::find_by_id(&tasks_dir, id)
+        .await
+        .map_err(|e| format!("update_scheduled_task: failed to find task: {}", e))?
+        .ok_or_else(|| format!("update_scheduled_task: task not found: {}", id))?;
+    let mut task = crate::tasks::model::load_one(&path)
+        .await
+        .map_err(|e| format!("update_scheduled_task: failed to load task: {}", e))?;
+
+    let now = Utc::now();
+    let now_iso = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+    let changed = apply_updates(&mut task, input, &now_iso)?;
+    crate::tasks::model::write_atomic(&path, &task)
+        .await
+        .map_err(|e| format!("update_scheduled_task: serialize/write failed: {}", e))?;
+
+    let tz: Tz = task.schedule.timezone.parse().map_err(|_| {
+        format!(
+            "update_scheduled_task: unknown IANA timezone '{}'",
+            task.schedule.timezone
+        )
+    })?;
+    let schedule =
+        parse_cron(&task.schedule.cron).map_err(|e| format!("update_scheduled_task: {}", e))?;
+    let next = if task.enabled {
+        schedule
+            .after(&now.with_timezone(&tz))
+            .next()
+            .map(|value| value.format("%a, %b %-d at %-I:%M %p %Z").to_string())
+            .unwrap_or_else(|| "none".into())
+    } else {
+        "disabled".into()
+    };
+    let kind = if task.trigger.is_some() {
+        "conditional delivery"
+    } else {
+        "delivery after every successful run"
+    };
+    Ok(format!(
+        "Updated scheduled task \"{}\" (id: {}). Changed: {}. Schedule: {} (`{}`, {}). Next run: {}. It uses {} and email is {}.",
+        task.title,
+        task.id,
+        changed.join(", "),
+        describe_cron(&task.schedule.cron),
+        task.schedule.cron,
+        task.schedule.timezone,
+        next,
+        kind,
+        if task.email { "on" } else { "off" },
+    ))
+}
+
+fn apply_updates(
+    task: &mut ScheduledTask,
+    input: &Value,
+    now_iso: &str,
+) -> Result<Vec<String>, String> {
+    let mut changed = Vec::new();
+
+    if let Some(value) = optional_nonempty_string(input, "title")? {
+        task.title = value;
+        changed.push("title".into());
+    }
+    if let Some(value) = optional_nonempty_string(input, "prompt")? {
+        task.prompt = value;
+        changed.push("prompt".into());
+    }
+    if let Some(value) = optional_nonempty_string(input, "model")? {
+        task.model = value;
+        changed.push("model".into());
+    }
+    if let Some(value) = optional_bool(input, "enabled")? {
+        task.enabled = value;
+        changed.push("enabled".into());
+    }
+    if let Some(value) = optional_bool(input, "email")? {
+        task.email = value;
+        changed.push("email".into());
+    }
+
+    let cron = optional_nonempty_string(input, "cron")?;
+    let timezone = optional_nonempty_string(input, "timezone")?;
+    if cron.is_some() || timezone.is_some() {
+        let next_cron = cron.as_deref().unwrap_or(&task.schedule.cron);
+        let next_timezone = timezone.as_deref().unwrap_or(&task.schedule.timezone);
+        parse_cron(next_cron).map_err(|e| format!("update_scheduled_task: {}", e))?;
+        next_timezone.parse::<Tz>().map_err(|_| {
+            format!(
+                "update_scheduled_task: unknown IANA timezone '{}'",
+                next_timezone
+            )
+        })?;
+        let schedule_changed =
+            next_cron != task.schedule.cron || next_timezone != task.schedule.timezone;
+        task.schedule.cron = next_cron.to_string();
+        task.schedule.timezone = next_timezone.to_string();
+        if schedule_changed {
+            // Treat the edit time as the new schedule baseline so changing a
+            // cron expression doesn't immediately catch up an occurrence from
+            // the old schedule.
+            task.last_scheduled_at = Some(now_iso.to_string());
+        }
+        if cron.is_some() {
+            changed.push("schedule".into());
+        }
+        if timezone.is_some() {
+            changed.push("timezone".into());
+        }
+    }
+
+    if let Some(raw) = input.get("trigger_condition") {
+        let condition = raw.as_str().ok_or_else(|| {
+            "update_scheduled_task: 'trigger_condition' must be a string".to_string()
+        })?;
+        let condition = condition.trim();
+        task.trigger = if condition.is_empty() {
+            None
+        } else {
+            Some(TaskTrigger {
+                condition: condition.to_string(),
+            })
+        };
+        changed.push("delivery condition".into());
+    }
+
+    if changed.is_empty() {
+        return Err("update_scheduled_task: provide at least one field to update".into());
+    }
+    task.updated = now_iso.to_string();
+    Ok(changed)
+}
+
+fn optional_nonempty_string(input: &Value, name: &str) -> Result<Option<String>, String> {
+    let Some(raw) = input.get(name) else {
+        return Ok(None);
+    };
+    let value = raw
+        .as_str()
+        .ok_or_else(|| format!("update_scheduled_task: '{}' must be a string", name))?
+        .trim();
+    if value.is_empty() {
+        return Err(format!("update_scheduled_task: '{}' cannot be empty", name));
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn optional_bool(input: &Value, name: &str) -> Result<Option<bool>, String> {
+    let Some(raw) = input.get(name) else {
+        return Ok(None);
+    };
+    if let Some(value) = raw.as_bool() {
+        return Ok(Some(value));
+    }
+    match raw.as_str().map(str::trim) {
+        Some(value) if value.eq_ignore_ascii_case("true") => Ok(Some(true)),
+        Some(value) if value.eq_ignore_ascii_case("false") => Ok(Some(false)),
+        _ => Err(format!(
+            "update_scheduled_task: '{}' must be true or false",
+            name
+        )),
+    }
+}
+
 fn required<'a>(input: &'a Value, name: &str) -> Result<&'a str, String> {
     input_string(input, name)
         .map(str::trim)
@@ -224,5 +392,122 @@ mod tests {
     fn slug_is_bounded() {
         assert_eq!(slugify("Monday Sailing Outlook"), "monday-sailing-outlook");
         assert_eq!(slugify(&"a".repeat(80)).len(), 50);
+    }
+
+    fn sample_task() -> ScheduledTask {
+        ScheduledTask {
+            id: "task-1".into(),
+            created: "2026-01-01T00:00:00.000Z".into(),
+            updated: "2026-01-01T00:00:00.000Z".into(),
+            title: "Old title".into(),
+            model: "mlx/old".into(),
+            enabled: true,
+            email: false,
+            prompt: "Old prompt".into(),
+            schedule: TaskSchedule {
+                cron: "0 8 * * *".into(),
+                timezone: "America/Los_Angeles".into(),
+            },
+            trigger: Some(TaskTrigger {
+                condition: "Something changed".into(),
+            }),
+            last_scheduled_at: Some("2026-01-02T16:00:00.000Z".into()),
+            last_run_at: Some("2026-01-02T16:00:01.000Z".into()),
+            last_delivered_at: Some("2026-01-02T16:00:02.000Z".into()),
+            history: Some(vec![crate::tasks::model::TaskAttempt {
+                timestamp: "2026-01-02T16:00:02.000Z".into(),
+                result: crate::tasks::model::TaskVerdict::Completed,
+                reasoning: "Delivered".into(),
+                error: None,
+                usage: None,
+            }]),
+            messages: vec![serde_yaml::Value::String("preserve me".into())],
+            extra: Mapping::new(),
+        }
+    }
+
+    #[test]
+    fn partial_update_preserves_results_and_clears_condition() {
+        let mut task = sample_task();
+        let original_messages = task.messages.clone();
+        let input = serde_json::json!({
+            "task_id": "task-1",
+            "prompt": "Read private/obsidian_vault/Finance.md",
+            "trigger_condition": "",
+            "email": true
+        });
+
+        let changed = apply_updates(&mut task, &input, "2026-02-01T00:00:00.000Z").unwrap();
+
+        assert_eq!(task.prompt, "Read private/obsidian_vault/Finance.md");
+        assert!(task.trigger.is_none());
+        assert!(task.email);
+        let history = task.history.as_ref().unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].reasoning, "Delivered");
+        assert_eq!(task.messages, original_messages);
+        assert_eq!(task.schedule.cron, "0 8 * * *");
+        assert_eq!(changed, vec!["prompt", "email", "delivery condition"]);
+    }
+
+    #[test]
+    fn schedule_update_validates_and_resets_baseline() {
+        let mut task = sample_task();
+        apply_updates(
+            &mut task,
+            &serde_json::json!({"task_id": "task-1", "cron": "30 6 * * *"}),
+            "2026-02-01T00:00:00.000Z",
+        )
+        .unwrap();
+        assert_eq!(task.schedule.cron, "30 6 * * *");
+        assert_eq!(
+            task.last_scheduled_at.as_deref(),
+            Some("2026-02-01T00:00:00.000Z")
+        );
+
+        let error = apply_updates(
+            &mut task,
+            &serde_json::json!({"task_id": "task-1", "cron": "0 0 8 * * *"}),
+            "2026-02-01T00:00:01.000Z",
+        )
+        .unwrap_err();
+        assert!(error.contains("exactly five fields"));
+    }
+
+    #[tokio::test]
+    async fn update_tool_persists_partial_change() {
+        use std::sync::Arc;
+
+        let temp = tempfile::tempdir().unwrap();
+        let tasks_dir = temp.path().join("tasks");
+        std::fs::create_dir_all(&tasks_dir).unwrap();
+        let path = tasks_dir.join("task-1-old-title.yaml");
+        crate::tasks::model::write_atomic(&path, &sample_task())
+            .await
+            .unwrap();
+        let registry = Arc::new(ToolRegistry::new(
+            Arc::new(crate::config::Config::default()),
+            Arc::new(crate::vault::Vault::new(temp.path().to_path_buf()).unwrap()),
+            crate::providers::ProviderRegistry::from_configs(&[]),
+            Arc::new(crate::skill_registry::SkillRegistry::new()),
+        ));
+
+        let result = execute_update(
+            &registry,
+            &serde_json::json!({
+                "task_id": "task-1",
+                "prompt": "Updated prompt",
+                "enabled": false
+            }),
+        )
+        .await
+        .unwrap();
+        let saved = crate::tasks::model::load_one(&path).await.unwrap();
+
+        assert!(result.contains("Changed: prompt, enabled"));
+        assert_eq!(saved.prompt, "Updated prompt");
+        assert!(!saved.enabled);
+        assert_eq!(saved.history.as_ref().unwrap().len(), 1);
+        assert_eq!(saved.messages.len(), 1);
     }
 }

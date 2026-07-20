@@ -73,6 +73,7 @@ impl ToolRegistry {
                 subagents::execute(self.clone(), ctx, &call.input).await
             }
             "create_scheduled_task" => tasks::execute(self, &call.input).await,
+            "update_scheduled_task" => tasks::execute_update(self, &call.input).await,
             other => Err(format!("Tool not implemented: {}", other)),
         };
         match result {
