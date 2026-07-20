@@ -25,7 +25,7 @@ import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
 import { openInEditor, type ExternalEditor } from './utils/openInEditor';
 import { reconnectToActiveSessions } from './services/server-streaming';
-import { loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
+import { getEmbeddedApiBase, loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
 import { RiffProvider, useRiffContext } from './contexts/RiffContext';
 import { RiffBatchApprovalModal } from './components/RiffBatchApprovalModal';
@@ -100,6 +100,24 @@ function isBackendUnreachable(err: unknown): boolean {
       || msg.includes('econnrefused');
   }
   return false;
+}
+
+async function fetchAvailableModelList(): Promise<ModelInfo[]> {
+  const res = await fetch(`${getEmbeddedApiBase()}/api/models`);
+  if (!res.ok) throw new Error(`Model discovery failed: HTTP ${res.status}`);
+  return res.json();
+}
+
+function modelListsMatch(a: ModelInfo[], b: ModelInfo[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((model, index) => {
+    const other = b[index];
+    return model.key === other.key
+      && model.name === other.name
+      && model.provider === other.provider
+      && model.local === other.local
+      && model.contextWindow === other.contextWindow;
+  });
 }
 
 /**
@@ -491,6 +509,50 @@ function AppContent() {
     initializeApp();
   }, []);
 
+  // Re-check model discovery while the app is active. This matters most for
+  // LAN providers (oMLX/Ollama): the provider may have been unreachable at
+  // startup and become available after a Wi-Fi/network change. The backend
+  // caches complete discovery for an hour, but deliberately leaves partial
+  // results uncached, so an unavailable provider is retried on these checks.
+  useEffect(() => {
+    if (!config) return;
+
+    let disposed = false;
+    let inFlight = false;
+    const refreshModels = async () => {
+      if (disposed || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const discovered = await fetchAvailableModelList();
+        if (!disposed) {
+          setAvailableModels(current => modelListsMatch(current, discovered) ? current : discovered);
+        }
+      } catch (error) {
+        console.warn('[App] periodic /api/models fetch failed (non-fatal):', error);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const interval = window.setInterval(refreshModels, 5 * 60 * 1000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshModels();
+    };
+    const onFocus = () => void refreshModels();
+    const onOnline = () => void refreshModels();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [config]);
+
   // Build unified timeline whenever data changes
   useEffect(() => {
     setTimelineItems(vaultService.buildTimeline(conversations, notes, tasks));
@@ -573,13 +635,7 @@ function AppContent() {
         // architecture; the SPA no longer bundles per-provider lists.
         let loadedModels: ModelInfo[] = [];
         try {
-          const apiBase = (typeof window !== 'undefined' && (window as { __ALLOY_API_BASE__?: string }).__ALLOY_API_BASE__)
-            || (import.meta as { env: { VITE_API_URL?: string } }).env.VITE_API_URL
-            || '';
-          const res = await fetch(`${apiBase}/api/models`);
-          if (res.ok) {
-            loadedModels = await res.json();
-          }
+          loadedModels = await fetchAvailableModelList();
         } catch (e) {
           console.warn('[App] /api/models fetch failed (non-fatal):', e);
         }
