@@ -1089,6 +1089,7 @@ function AppContent() {
               <React.Suspense fallback={<div className="loading">Loading task…</div>}>
                 <TaskDetailView
                   task={selectedTask}
+                  availableModels={availableModels}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
                   onDelete={async () => {
@@ -1221,6 +1222,7 @@ function AppContent() {
           <React.Suspense fallback={<div className="loading">Loading task…</div>}>
             <TaskDetailView
               task={selectedTask}
+              availableModels={availableModels}
               onBack={goBack}
               canGoBack={canGoBack}
               onDelete={async () => {

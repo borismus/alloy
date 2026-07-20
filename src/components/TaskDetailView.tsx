@@ -1,15 +1,17 @@
 import { useMemo, useState } from 'react';
-import { ScheduledTask } from '../types';
+import { ScheduledTask, ModelInfo } from '../types';
 import { vaultService } from '../services/vault';
 import { useTaskContext } from '../contexts/TaskContext';
 import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { describeTaskSchedule } from '../utils/taskSchedule';
+import { providerLabel } from '../utils/models';
 import './TaskDetailView.css';
 
 interface TaskDetailViewProps {
   task: ScheduledTask;
+  availableModels: ModelInfo[];
   onDelete: () => void;
   onRunComplete: () => void;
   onAskAbout: (task: ScheduledTask) => void;
@@ -21,6 +23,16 @@ interface TaskDetailViewProps {
 
 function formatCost(cost: number): string {
   return cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2);
+}
+
+// Small padlock marking an on-device (local) model, matching the picker badge.
+function LocalLockIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="10.5" width="16" height="10.5" rx="2" fill="currentColor" />
+      <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" stroke="currentColor" strokeWidth="2" fill="none" />
+    </svg>
+  );
 }
 
 // js-yaml's default schema parses ISO timestamps into Date objects, so a run's
@@ -69,6 +81,7 @@ function deliveredMap(task: ScheduledTask): Map<string, string> {
 
 export function TaskDetailView({
   task,
+  availableModels,
   onDelete,
   onRunComplete,
   onAskAbout,
@@ -77,6 +90,11 @@ export function TaskDetailView({
   canGoBack = false,
   onClose,
 }: TaskDetailViewProps) {
+  const modelInfo = availableModels.find(m => m.key === task.model);
+  const modelName = modelInfo?.name ?? (task.model.split('/').slice(1).join('/') || task.model);
+  const modelProvider = providerLabel(modelInfo?.provider, task.model);
+  const modelIsLocal = modelInfo?.local ?? false;
+  const modelIsKnown = modelInfo !== undefined;
   const { activeRuns, markRunning, markDone } = useTaskContext();
   const [isRunning, setIsRunning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -260,6 +278,23 @@ export function TaskDetailView({
         <section className="task-schedule-section">
           <div className="section-header">
             <h3>Task details</h3>
+          </div>
+          <div className="task-model-row">
+            <span className="task-field-label">Model</span>
+            <div className="task-model-value">
+              <span className="task-model-name" title={task.model}>{modelName}</span>
+              {modelIsLocal ? (
+                <span className="task-model-tag local" title="Runs on a local model — prompts stay on your device">
+                  <LocalLockIcon /> Local
+                </span>
+              ) : (
+                <span className="task-model-tag cloud" title={`Runs on ${modelProvider} (cloud)`}>Cloud</span>
+              )}
+              <span className="task-model-provider">{modelProvider}</span>
+              {!modelIsKnown && (
+                <span className="task-model-tag unknown" title="This model isn't in the current model list">Unavailable</span>
+              )}
+            </div>
           </div>
           <div className="task-instructions">
             <div>
