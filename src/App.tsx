@@ -1216,7 +1216,6 @@ function AppContent() {
             conversations={conversations}
             onBack={goBack}
             canGoBack={canGoBack}
-            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
           />
         ) : selectedTask ? (
           <React.Suspense fallback={<div className="loading">Loading task…</div>}>
@@ -1224,7 +1223,6 @@ function AppContent() {
               task={selectedTask}
               onBack={goBack}
               canGoBack={canGoBack}
-              onClose={() => { setSelectedItem(null); setNoteContent(null); }}
               onDelete={async () => {
                 await handleDeleteTask(selectedTask.id);
                 setSelectedItem(null);
@@ -1253,7 +1251,6 @@ function AppContent() {
             conversations={conversations}
             onBack={goBack}
             canGoBack={canGoBack}
-            onClose={() => { setSelectedItem(null); setNoteContent(null); }}
           />
         ) : (
           <ChatInterface
