@@ -40,14 +40,25 @@ fn subagent_tools() -> Vec<ToolDefinition> {
         .collect()
 }
 
+fn ensure_spawn_allowed(ctx: &ToolContext) -> Result<(), String> {
+    if ctx.model_is_local {
+        return Err(
+            "spawn_subagent is disabled for local models to prevent private context from being sent to another model."
+                .into(),
+        );
+    }
+    if ctx.inside_subagent {
+        return Err("spawn_subagent cannot be called from within a sub-agent (no nesting).".into());
+    }
+    Ok(())
+}
+
 pub async fn execute(
     registry: Arc<ToolRegistry>,
     ctx: &ToolContext,
     input: &Value,
 ) -> Result<String, String> {
-    if ctx.inside_subagent {
-        return Err("spawn_subagent cannot be called from within a sub-agent (no nesting).".into());
-    }
+    ensure_spawn_allowed(ctx)?;
 
     let agents_raw = input_string(input, "agents").unwrap_or("");
     if agents_raw.is_empty() {
@@ -174,5 +185,31 @@ async fn run_one_agent(
     match result {
         Ok(r) => Ok((name, model, r.content)),
         Err(e) => Err((name, model, e.to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn context(model_is_local: bool, inside_subagent: bool) -> ToolContext {
+        ToolContext {
+            message_id: None,
+            conversation_id: None,
+            inside_subagent,
+            model_is_local,
+        }
+    }
+
+    #[test]
+    fn local_models_cannot_spawn_even_local_subagents() {
+        let error = ensure_spawn_allowed(&context(true, false)).unwrap_err();
+        assert!(error.contains("disabled for local models"));
+    }
+
+    #[test]
+    fn cloud_parent_can_spawn_but_nested_subagent_cannot() {
+        assert!(ensure_spawn_allowed(&context(false, false)).is_ok());
+        assert!(ensure_spawn_allowed(&context(false, true)).is_err());
     }
 }

@@ -23,7 +23,7 @@ use crate::compaction::{self, CompactionSettings, NewCompacted};
 use crate::routes::models::ModelCache;
 use crate::tool_loop::{execute_with_tools, LoopRequest};
 use crate::tools::{ToolContext, ToolRegistry};
-use crate::types::{builtin_tools, ToolCall, ToolEventSink, ToolResult};
+use crate::types::{builtin_tools, ToolCall, ToolDefinition, ToolEventSink, ToolResult};
 use crate::{
     providers::{
         McpBridge, ProviderRegistry, ProviderStreamEvent, StreamResult, Usage, WireMessage,
@@ -118,6 +118,20 @@ impl Session {
     pub fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
         self.tx.subscribe()
     }
+}
+
+/// Local models can read private mounts, so they must not be able to pass
+/// arbitrary context to another model through a sub-agent prompt. Omit the
+/// tool from their schema; `tools::subagents` also rejects direct calls.
+fn tools_for_stream(provider_supports_tools: bool, model_is_local: bool) -> Vec<ToolDefinition> {
+    if !provider_supports_tools {
+        return Vec::new();
+    }
+    let mut tools = builtin_tools();
+    if model_is_local {
+        tools.retain(|tool| tool.name != "spawn_subagent");
+    }
+    tools
 }
 
 fn append_bounded_thinking(buffer: &mut String, delta: &str) {
@@ -439,22 +453,19 @@ async fn run_stream(
         token: session.inner.lock().unwrap().mcp_token.clone(),
     });
 
+    let model_is_local = crate::local::model_is_local(&tools.config, &params.model);
     let loop_req = LoopRequest {
         provider: provider.clone(),
         model: upstream_model.clone(),
         messages,
-        tools: if provider.supports_tools(&upstream_model) {
-            builtin_tools()
-        } else {
-            Vec::new()
-        },
+        tools: tools_for_stream(provider.supports_tools(&upstream_model), model_is_local),
         delta_tx,
         cancel: cancel.clone(),
         tool_ctx: ToolContext {
             message_id: Some(session.inner.lock().unwrap().assistant_message_id.clone()),
             conversation_id: Some(format!("conversations/{}", params.conversation_id)),
             inside_subagent: false,
-            model_is_local: crate::local::model_is_local(&tools.config, &params.model),
+            model_is_local,
         },
         mcp,
     };
@@ -900,6 +911,17 @@ mod tests {
         let reg = SkillRegistry::new();
         reg.load(dir.path());
         reg
+    }
+
+    #[test]
+    fn local_model_toolset_excludes_subagents() {
+        let local = tools_for_stream(true, true);
+        assert!(!local.iter().any(|tool| tool.name == "spawn_subagent"));
+
+        let cloud = tools_for_stream(true, false);
+        assert!(cloud.iter().any(|tool| tool.name == "spawn_subagent"));
+
+        assert!(tools_for_stream(false, true).is_empty());
     }
 
     #[test]
