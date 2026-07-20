@@ -777,6 +777,7 @@ pub struct SessionOutcome {
 /// Run a streaming session and await its terminal event. Used by
 /// programmatic callers (scheduled tasks, internal jobs) that want the final
 /// result rather than an SSE stream.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_to_completion(
     registry: &SessionRegistry,
     providers: ProviderRegistry,
@@ -784,6 +785,7 @@ pub async fn run_to_completion(
     tools: Arc<ToolRegistry>,
     model_cache: Arc<ModelCache>,
     compaction: CompactionSettings,
+    self_base_url: Option<String>,
     params: StartParams,
 ) -> anyhow::Result<SessionOutcome> {
     let session = start_session(
@@ -793,7 +795,7 @@ pub async fn run_to_completion(
         tools,
         model_cache,
         compaction,
-        None,
+        self_base_url,
         params,
     )?;
     let mut rx = session.subscribe();
@@ -990,6 +992,7 @@ mod tests {
             tools,
             Arc::new(ModelCache::new()),
             CompactionSettings::default(),
+            None,
             StartParams {
                 session_id: "session".into(),
                 conversation_id: "conv".into(),

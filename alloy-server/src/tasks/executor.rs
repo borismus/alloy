@@ -110,6 +110,11 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
         skip_persist: true,
     };
 
+    // Pass the server's own URL so tool-capable providers that reach back in
+    // over HTTP (the Claude Code CLI via the MCP bridge) can use Alloy's tools
+    // — otherwise a `claude-cli/*` task runs text-only and can't web search.
+    let self_base_url = state.self_base_url.read().ok().and_then(|u| u.clone());
+
     match run_to_completion(
         &state.sessions,
         state.providers.clone(),
@@ -117,6 +122,7 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
         state.tools.clone(),
         state.model_cache.clone(),
         state.config.compaction,
+        self_base_url,
         params,
     )
     .await
