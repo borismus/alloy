@@ -197,7 +197,7 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
       if (language === 'svg') {
         return React.createElement(DiagramBlock, { kind: 'svg', code, children: codeEl });
       }
-      return React.createElement(CodeBlock, { code, children: codeEl });
+      return React.createElement(CodeBlock, { code, language, children: codeEl });
     },
   };
 }

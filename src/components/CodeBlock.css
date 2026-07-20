@@ -7,6 +7,19 @@
   background: #eef1f5;
 }
 
+.code-block-language {
+  position: absolute;
+  top: 0.85rem;
+  left: 1rem;
+  z-index: 2;
+  color: var(--text-tertiary, #7e8593);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 /* The wrapper supplies the code-block chrome. */
 .code-block .code-block-pre {
   margin: 0;
@@ -15,10 +28,14 @@
   background: transparent;
 }
 
-/* Leave room for the block-specific copy action. */
+/* Leave room for block-level controls. */
 .code-block .code-block-pre code {
   padding-right: 2.75rem;
   padding-bottom: 2.5rem;
+}
+
+.code-block.has-language .code-block-pre code {
+  padding-top: 2.75rem;
 }
 
 .copy-icon-btn {

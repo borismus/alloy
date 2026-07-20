@@ -21,25 +21,16 @@ export const DiagramBlock: React.FC<DiagramBlockProps> = ({ kind, code, children
 
   return (
     <div className="diagram-block">
-      <div className="diagram-view-toggle" role="group" aria-label="Diagram view">
-        <button
-          type="button"
-          className={view === 'code' ? 'active' : ''}
-          onClick={() => setView('code')}
-          aria-pressed={view === 'code'}
-        >
-          code
-        </button>
-        <span aria-hidden="true">/</span>
-        <button
-          type="button"
-          className={view === 'render' ? 'active' : ''}
-          onClick={() => setView('render')}
-          aria-pressed={view === 'render'}
-        >
-          render
-        </button>
-      </div>
+      <span className="diagram-language">{kind}</span>
+      <button
+        type="button"
+        className="diagram-view-toggle"
+        onClick={() => setView((current) => current === 'code' ? 'render' : 'code')}
+        aria-label={`Switch to ${view === 'code' ? 'rendered diagram' : 'source code'}`}
+      >
+        <span className={view === 'code' ? 'active' : ''}>Code</span>
+        <span className={view === 'render' ? 'active' : ''}>Render</span>
+      </button>
 
       {view === 'code' ? (
         <pre className="diagram-code">{children ?? <code>{code}</code>}</pre>

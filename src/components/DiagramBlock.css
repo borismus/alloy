@@ -7,53 +7,61 @@
   background: #eef1f5;
 }
 
+.diagram-language {
+  position: absolute;
+  top: 0.85rem;
+  left: 1rem;
+  z-index: 2;
+  color: var(--text-tertiary, #7e8593);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* One semantic button: clicking anywhere switches to the other state. */
 .diagram-view-toggle {
   position: absolute;
   top: 0.5rem;
   right: 0.55rem;
   z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.18rem 0.32rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
   border: 1px solid rgba(120, 128, 145, 0.35);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text-tertiary, #8a90a0);
+  border-radius: 7px;
+  background: rgba(218, 222, 229, 0.94);
+  color: var(--text-tertiary, #777e8c);
+  font: inherit;
   font-size: 0.7rem;
   line-height: 1;
-}
-
-.diagram-view-toggle button {
-  padding: 0.2rem 0.24rem;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
   cursor: pointer;
 }
 
-.diagram-view-toggle button:hover {
+.diagram-view-toggle span {
+  min-width: 3.15rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.diagram-view-toggle span.active {
+  background: #fff;
   color: var(--text-primary, #24292e);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(30, 35, 45, 0.15);
 }
 
-.diagram-view-toggle button.active {
-  color: var(--text-primary, #24292e);
-  font-weight: 650;
+.diagram-view-toggle:hover {
+  border-color: rgba(100, 108, 125, 0.55);
 }
 
-.diagram-view-toggle button.active::before {
-  content: '[';
-}
-
-.diagram-view-toggle button.active::after {
-  content: ']';
-}
-
-.diagram-view-toggle button:focus-visible {
-  outline: 2px solid #667eea;
-  outline-offset: 1px;
-  border-radius: 3px;
+.diagram-view-toggle:focus-visible {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 .diagram-block .diagram-code {
@@ -83,6 +91,10 @@
 
 .diagram-svg {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 14rem);
+  margin: 0 auto;
+  object-fit: contain;
 }
