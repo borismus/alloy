@@ -1,4 +1,5 @@
 .code-block {
+  position: relative;
   margin: 1rem 0;
   border: 1px solid #d8dce3;
   border-radius: 8px;
@@ -6,25 +7,7 @@
   background: #eef1f5;
 }
 
-.code-block-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.3rem 0.35rem 0.3rem 0.7rem;
-  background: color-mix(in srgb, #d8dce3 45%, transparent);
-  border-bottom: 1px solid #d8dce3;
-}
-
-.code-block-lang {
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-tertiary, #8a90a0);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
-}
-
-/* The code block provides its own <pre>; drop the markdown pre chrome. */
+/* The wrapper supplies the code-block chrome. */
 .code-block .code-block-pre {
   margin: 0;
   border: none;
@@ -32,32 +15,48 @@
   background: transparent;
 }
 
-/* Shared copy button (code blocks + diagram toolbar). */
-.copy-btn {
-  padding: 0.22rem 0.55rem;
-  border: 1px solid var(--border-color, #d8dce3);
-  border-radius: 5px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-secondary, #555);
-  font: inherit;
-  font-size: 0.72rem;
+/* Leave room for the block-specific copy action. */
+.code-block .code-block-pre code {
+  padding-right: 2.75rem;
+  padding-bottom: 2.5rem;
+}
+
+.copy-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(120, 128, 145, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-secondary, #656b78);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.copy-btn:hover {
-  background: var(--bg-hover, #f0f0f0);
-  border-color: #c8ccd1;
+.copy-icon-btn:hover {
+  background: #fff;
+  color: var(--text-primary, #24292e);
+  border-color: rgba(100, 108, 125, 0.55);
 }
 
-.copy-btn:focus-visible {
+.copy-icon-btn:focus-visible {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
-.copy-btn.copied {
+.copy-icon-btn.copied {
   color: #087a58;
   border-color: rgba(16, 185, 129, 0.4);
-  background: #dff8ee;
+  background: #eefbf6;
+}
+
+.block-copy {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 2;
 }

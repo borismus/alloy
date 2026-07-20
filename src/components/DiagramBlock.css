@@ -1,0 +1,88 @@
+.diagram-block {
+  position: relative;
+  margin: 1rem 0;
+  border: 1px solid #d8dce3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef1f5;
+}
+
+.diagram-view-toggle {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.55rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.18rem 0.32rem;
+  border: 1px solid rgba(120, 128, 145, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-tertiary, #8a90a0);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.diagram-view-toggle button {
+  padding: 0.2rem 0.24rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.diagram-view-toggle button:hover {
+  color: var(--text-primary, #24292e);
+}
+
+.diagram-view-toggle button.active {
+  color: var(--text-primary, #24292e);
+  font-weight: 650;
+}
+
+.diagram-view-toggle button.active::before {
+  content: '[';
+}
+
+.diagram-view-toggle button.active::after {
+  content: ']';
+}
+
+.diagram-view-toggle button:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+.diagram-block .diagram-code {
+  margin: 0;
+  padding: 2.75rem 2.75rem 2.75rem 1rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.diagram-block .diagram-code code {
+  display: inline;
+  padding: 0;
+  background: transparent;
+}
+
+.diagram-render {
+  min-height: 5rem;
+  padding: 2.75rem 1rem 2.75rem;
+  overflow-x: auto;
+  background: var(--bg-primary, #fff);
+}
+
+.diagram-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

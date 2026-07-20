@@ -1,7 +1,7 @@
 import React from 'react';
 import { Components } from 'react-markdown';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { CollapsibleDiagram } from '../components/CollapsibleDiagram';
+import { DiagramBlock } from '../components/DiagramBlock';
 import { CodeBlock } from '../components/CodeBlock';
 import type { ConversationInfo } from '../types';
 
@@ -177,10 +177,10 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
     code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: any }) => {
       return React.createElement('code', { className, ...props }, children);
     },
-    // Fenced blocks: route mermaid/svg to a click-to-render diagram, and give
-    // every other code block a language label + copy button. The child is the
-    // (already syntax-highlighted) `code` element; extractCodeText recovers the
-    // raw source for copying / diagram input even when it's wrapped in spans.
+    // Fenced blocks: mermaid/svg show source by default with an optional render
+    // view; every other block gets its own copy action. The child is the
+    // (already syntax-highlighted) `code` element; extractCodeText recovers raw
+    // source for copying / diagram input even when it's wrapped in spans.
     pre: ({ children }: { children?: React.ReactNode; [key: string]: any }) => {
       const codeEl = Array.isArray(children)
         ? children.find((c) => React.isValidElement(c))
@@ -192,12 +192,12 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
       const language = codeProps.className?.match(/language-(\w+)/)?.[1];
       const code = extractCodeText(codeProps.children).replace(/\n$/, '');
       if (language === 'mermaid') {
-        return React.createElement(CollapsibleDiagram, { kind: 'mermaid', code });
+        return React.createElement(DiagramBlock, { kind: 'mermaid', code, children: codeEl });
       }
       if (language === 'svg') {
-        return React.createElement(CollapsibleDiagram, { kind: 'svg', code });
+        return React.createElement(DiagramBlock, { kind: 'svg', code, children: codeEl });
       }
-      return React.createElement(CodeBlock, { code, language, children: codeEl });
+      return React.createElement(CodeBlock, { code, children: codeEl });
     },
   };
 }
