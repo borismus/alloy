@@ -210,6 +210,13 @@
   transform: translateX(2px);
 }
 
+.task-schedule-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
 /* No response state */
 .no-response {
   background: var(--bg-secondary, #f8f9fa);
@@ -247,13 +254,6 @@
   margin-bottom: 2rem;
 }
 
-.history-section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
 .task-history-section h3 {
   font-size: 0.875rem;
   font-weight: 600;
@@ -261,6 +261,53 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
+}
+
+/* Groups on either side of a section header (title+count / cost+action) */
+.section-header-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.history-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-tertiary, #999);
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+
+.btn-ask-about-inline {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--bg-primary, white);
+  color: var(--text-secondary, #555);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-ask-about-inline:hover {
+  background: var(--bg-hover, #f0f0f0);
+  border-color: #c8ccd1;
+}
+
+.disclosure-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary, #999);
+  transition: transform 0.15s ease;
+}
+
+.disclosure-chevron.open {
+  transform: rotate(90deg);
+}
+
+.disclosure-chevron.sm {
+  vertical-align: -1px;
 }
 
 .task-total-cost {
@@ -279,7 +326,7 @@
   background: var(--bg-secondary, #f8f9fa);
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 6px;
-  padding: 0.75rem;
+  padding: 0.5rem 0.7rem;
   min-width: 0;
   overflow: hidden;
 }
@@ -300,27 +347,84 @@
   border-left: 3px solid #ef4444;
 }
 
+/* One compact line: chevron · timestamp · status · summary */
 .history-entry-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.25rem;
-}
-
-.history-entry-meta {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.history-cost {
-  font-size: 0.7rem;
-  color: var(--text-tertiary, #999);
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .history-time {
+  flex-shrink: 0;
   font-size: 0.75rem;
   color: var(--text-tertiary, #999);
+}
+
+/* Quick one-line gist of the output; truncates with an ellipsis. Hidden once
+   the run is expanded (the full output shows below instead). */
+.history-summary {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #666);
+}
+
+.history-entry.expanded .history-summary {
+  display: none;
+}
+
+/* Animated fold: the expandable region transitions its grid row from 0fr→1fr
+   so it grows to its natural height with no fixed max-height guesswork. */
+.history-entry-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.24s ease;
+}
+
+.history-entry.expanded .history-entry-expand {
+  grid-template-rows: 1fr;
+}
+
+.history-entry-expand-inner {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.history-entry.expanded .history-entry-expand-inner {
+  opacity: 1;
+}
+
+.history-delivered-content {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  font-size: 0.85rem;
+  color: var(--text-primary, #333);
+  line-height: 1.55;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-entry-expand,
+  .history-entry-expand-inner,
+  .disclosure-chevron {
+    transition: none;
+  }
 }
 
 .history-result {

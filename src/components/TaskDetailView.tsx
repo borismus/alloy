@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ScheduledTask, Usage } from '../types';
+import { ScheduledTask } from '../types';
 import { vaultService } from '../services/vault';
 import { useTaskContext } from '../contexts/TaskContext';
 import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
@@ -23,23 +23,48 @@ function formatCost(cost: number): string {
   return cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2);
 }
 
-function formatUsage(usage: Usage): string {
-  const tokens = usage.inputTokens
-    + (usage.cachedInputTokens ?? 0)
-    + (usage.cacheCreationInputTokens ?? 0)
-    + usage.outputTokens;
-  const parts = usage.cost === undefined ? [] : [`$${formatCost(usage.cost)}`];
-  parts.push(`${(tokens / 1000).toFixed(1)}k tok`);
-  return parts.join(' · ');
+// js-yaml's default schema parses ISO timestamps into Date objects, so a run's
+// `timestamp` may be a Date or a string at runtime. Normalize to a stable string
+// so it works as a Map key / accordion key (Date instances never match by ===).
+function tsKey(timestamp: unknown): string {
+  return timestamp instanceof Date ? timestamp.toISOString() : String(timestamp);
 }
 
-function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleString('en-US', {
+function formatDate(timestamp: string): string {
+  return new Date(timestamp).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function resultLabel(result: string): string {
+  return result === 'completed' ? 'Completed'
+    : result === 'triggered' ? 'Triggered'
+    : result === 'skipped' ? 'Skipped' : 'Error';
+}
+
+// One-line plain-text gist of a run's output for the collapsed row: first
+// non-empty line, stripped of leading markdown markers and inline formatting.
+function oneLineSummary(text: string): string {
+  const first = text.split('\n').map(line => line.trim()).find(Boolean) ?? '';
+  return first
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^[-*+]\s+/, '')
+    .replace(/[*_`>#]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Map of delivered content (assistant messages) keyed by normalized timestamp,
+// used to render a run's full output and to pick the default-open entry.
+function deliveredMap(task: ScheduledTask): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const message of task.messages ?? []) {
+    if (message.role === 'assistant') map.set(tsKey(message.timestamp), message.content);
+  }
+  return map;
 }
 
 export function TaskDetailView({
@@ -58,7 +83,26 @@ export function TaskDetailView({
   const [isToggling, setIsToggling] = useState(false);
   const schedule = useMemo(() => describeTaskSchedule(task), [task]);
   const isChecking = activeRuns.includes(task.id) || isRunning;
-  const latestResponse = task.messages?.filter(message => message.role === 'assistant').slice(-1)[0];
+
+  const deliveredByTimestamp = useMemo(() => deliveredMap(task), [task]);
+  const history = task.history ?? [];
+  const hasDelivered = deliveredByTimestamp.size > 0;
+
+  // Default-open the newest delivered run (the "latest result"), falling back to
+  // the newest run overall. Reactive (not a mount-time snapshot) so it lands on
+  // the right entry once the task's history/messages hydrate.
+  const defaultOpenKey = useMemo<string | null>(() => {
+    for (let i = 0; i < history.length; i++) {
+      if (deliveredByTimestamp.has(tsKey(history[i].timestamp))) {
+        return `${tsKey(history[i].timestamp)}-${i}`;
+      }
+    }
+    return history.length ? `${tsKey(history[0].timestamp)}-0` : null;
+  }, [history, deliveredByTimestamp]);
+
+  // `undefined` = user hasn't touched the accordion yet → use the default.
+  const [override, setOverride] = useState<string | null | undefined>(undefined);
+  const expandedKey = override !== undefined ? override : defaultOpenKey;
 
   const totalCost = useMemo(() => {
     let cost = 0;
@@ -68,11 +112,11 @@ export function TaskDetailView({
       if (attempt.usage?.cost !== undefined) {
         cost += attempt.usage.cost;
         counted++;
-        countedTimestamps.add(attempt.timestamp);
+        countedTimestamps.add(tsKey(attempt.timestamp));
       }
     }
     for (const message of task.messages ?? []) {
-      if (message.role === 'assistant' && message.usage?.cost !== undefined && !countedTimestamps.has(message.timestamp)) {
+      if (message.role === 'assistant' && message.usage?.cost !== undefined && !countedTimestamps.has(tsKey(message.timestamp))) {
         cost += message.usage.cost;
         counted++;
       }
@@ -113,6 +157,14 @@ export function TaskDetailView({
     }
   };
 
+  // Accordion: open this run (collapsing any other), or close it if already open.
+  const toggleRunExpanded = (key: string) => {
+    setOverride(prev => {
+      const current = prev !== undefined ? prev : defaultOpenKey;
+      return current === key ? null : key;
+    });
+  };
+
   return (
     <div className="task-detail-view">
       <ItemHeader
@@ -142,27 +194,76 @@ export function TaskDetailView({
       </ItemHeader>
 
       <div className="task-detail-content">
+        {/* 1 — Run history: an accordion of every run, latest result open by default */}
+        <section className="task-history-section">
+          <div className="section-header">
+            <div className="section-header-group">
+              <h3>Run history</h3>
+              {history.length > 0 && <span className="history-count">{history.length}</span>}
+            </div>
+            <div className="section-header-group">
+              {totalCost !== undefined && <span className="task-total-cost">Total: ${formatCost(totalCost)}</span>}
+              {hasDelivered && (
+                <button className="btn-ask-about-inline" onClick={() => onAskAbout(task)}>Ask about this</button>
+              )}
+            </div>
+          </div>
+
+          {history.length > 0 ? (
+            <div className="task-history-list">
+              {history.slice(0, 50).map((attempt, index) => {
+                const key = `${tsKey(attempt.timestamp)}-${index}`;
+                const deliveredContent = deliveredByTimestamp.get(tsKey(attempt.timestamp));
+                const detail = attempt.error || attempt.reasoning;
+                // The run's "output": the delivered result if it was delivered,
+                // otherwise the skip/error reasoning.
+                const output = (deliveredContent ?? detail ?? '').trim();
+                const isExpanded = expandedKey === key;
+                return (
+                  <div key={key} className={`history-entry ${attempt.result} ${isExpanded ? 'expanded' : ''}`}>
+                    <button
+                      className="history-entry-header"
+                      onClick={() => toggleRunExpanded(key)}
+                      aria-expanded={isExpanded}
+                    >
+                      <svg
+                        className={`disclosure-chevron sm ${isExpanded ? 'open' : ''}`}
+                        width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        aria-hidden="true"
+                      >
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                      <span className="history-time">{formatDate(attempt.timestamp)}</span>
+                      <span className={`history-result ${attempt.result}`}>{resultLabel(attempt.result)}</span>
+                      <span className="history-summary">{oneLineSummary(output)}</span>
+                    </button>
+                    <div className="history-entry-expand">
+                      <div className="history-entry-expand-inner">
+                        <MarkdownContent content={output} className="history-delivered-content" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="no-response">
+              <p>No runs yet.</p>
+              <p className="no-response-hint">
+                {task.enabled ? 'The task has not run yet — use “Run now” or wait for the next scheduled run.' : 'This task is disabled.'}
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* 2 — Task details: prompt, schedule, delivery condition */}
         <section className="task-schedule-section">
           <div className="section-header">
-            <h3>Schedule</h3>
-            <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
-              {task.trigger ? 'Conditional' : 'Every run'}
-            </span>
-          </div>
-          <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''}`}>
-            <div className="task-schedule-description">{schedule.description}</div>
-            <div className="task-schedule-technical">
-              <span>{schedule.timezone}</span>
-              <span aria-hidden="true">·</span>
-              <code>{schedule.raw}</code>
-            </div>
-            {schedule.nextRun && (
-              <div className="task-next-run"><span>Next</span>{schedule.nextRun}</div>
-            )}
+            <h3>Task details</h3>
           </div>
           <div className="task-instructions">
             <div>
-              <span className="task-field-label">Task</span>
+              <span className="task-field-label">Prompt</span>
               <p>{task.prompt}</p>
             </div>
             {task.trigger && (
@@ -172,60 +273,23 @@ export function TaskDetailView({
               </div>
             )}
           </div>
-        </section>
-
-        <section className="task-latest-section">
-          <div className="section-header">
-            <h3>Latest delivered result</h3>
-            {latestResponse && <span className="latest-time">{formatDate(latestResponse.timestamp)}</span>}
+          <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''}`}>
+            <div className="task-schedule-card-header">
+              <div className="task-schedule-description">{schedule.description}</div>
+              <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
+                {task.trigger ? 'Conditional' : 'Every run'}
+              </span>
+            </div>
+            <div className="task-schedule-technical">
+              <span>{schedule.timezone}</span>
+              <span aria-hidden="true">·</span>
+              <code>{schedule.raw}</code>
+            </div>
+            {schedule.nextRun && (
+              <div className="task-next-run"><span>Next</span>{schedule.nextRun}</div>
+            )}
           </div>
-          {latestResponse ? (
-            <>
-              <MarkdownContent content={latestResponse.content} className="latest-response-content" />
-              {latestResponse.usage && <div className="task-usage-badge">{formatUsage(latestResponse.usage)}</div>}
-              <button className="btn-ask-about" onClick={() => onAskAbout(task)}>
-                Ask about this
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </button>
-            </>
-          ) : (
-            <div className="no-response">
-              <p>No delivered result yet.</p>
-              <p className="no-response-hint">
-                {task.trigger ? 'The condition has not been met.' : 'The task has not completed its first scheduled run.'}
-              </p>
-            </div>
-          )}
         </section>
-
-        {task.history && task.history.length > 0 && (
-          <section className="task-history-section">
-            <div className="history-section-header">
-              <h3>Run history</h3>
-              {totalCost !== undefined && <span className="task-total-cost">Total: ${formatCost(totalCost)}</span>}
-            </div>
-            <div className="task-history-list">
-              {task.history.slice(0, 50).map((attempt, index) => (
-                <div key={`${attempt.timestamp}-${index}`} className={`history-entry ${attempt.result}`}>
-                  <div className="history-entry-header">
-                    <span className="history-time">{formatDate(attempt.timestamp)}</span>
-                    <div className="history-entry-meta">
-                      {attempt.usage?.cost !== undefined && <span className="history-cost">${formatCost(attempt.usage.cost)}</span>}
-                      <span className={`history-result ${attempt.result}`}>
-                        {attempt.result === 'completed' ? 'Completed' :
-                         attempt.result === 'triggered' ? 'Triggered' :
-                         attempt.result === 'skipped' ? 'Skipped' : 'Error'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="history-reasoning">{attempt.error || attempt.reasoning}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
       </div>
     </div>
   );
