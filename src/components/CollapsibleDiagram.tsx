@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { MermaidDiagram } from './MermaidDiagram';
+import { CopyButton } from './CodeBlock';
 import './CollapsibleDiagram.css';
 
 type DiagramKind = 'mermaid' | 'svg';
@@ -15,34 +16,73 @@ const LABELS: Record<DiagramKind, string> = {
 };
 
 /**
- * A fenced diagram block (```mermaid / ```svg) rendered only on demand.
+ * A fenced diagram block (```mermaid / ```svg) rendered only on demand, with a
+ * toggle between the rendered diagram and its source.
  *
  * Diagrams render asynchronously and can be large, so rendering them inline
  * causes late layout shifts — jarring while a message streams or when scrolling
  * a long transcript. Keeping them collapsed until the user clicks means the
  * message body's height is stable; the async render only happens as a
- * deliberate, in-place action.
+ * deliberate action.
  */
 export const CollapsibleDiagram: React.FC<CollapsibleDiagramProps> = ({ kind, code }) => {
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<'render' | 'code'>('render');
+
+  if (!open) {
+    return (
+      <div className="diagram-block">
+        <button
+          type="button"
+          className="diagram-toggle"
+          onClick={() => setOpen(true)}
+          aria-expanded={false}
+        >
+          <span className="diagram-chevron" aria-hidden="true">›</span>
+          <span className="diagram-label">{LABELS[kind]}</span>
+          <span className="diagram-hint">Render</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className={`diagram-block ${open ? 'open' : ''}`}>
-      <button
-        type="button"
-        className="diagram-toggle"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="diagram-chevron" aria-hidden="true">›</span>
-        <span className="diagram-label">{LABELS[kind]}</span>
-        <span className="diagram-hint">{open ? 'Hide' : 'Render'}</span>
-      </button>
-      {open && (
-        <div className="diagram-body">
-          {kind === 'mermaid' ? <MermaidDiagram code={code} /> : <SvgImage code={code} />}
+    <div className="diagram-block open">
+      <div className="diagram-toolbar">
+        <div className="diagram-segmented" role="tablist">
+          <button
+            type="button"
+            className={view === 'render' ? 'active' : ''}
+            onClick={() => setView('render')}
+            role="tab"
+            aria-selected={view === 'render'}
+          >
+            Rendered
+          </button>
+          <button
+            type="button"
+            className={view === 'code' ? 'active' : ''}
+            onClick={() => setView('code')}
+            role="tab"
+            aria-selected={view === 'code'}
+          >
+            Code
+          </button>
         </div>
-      )}
+        <div className="diagram-toolbar-right">
+          <CopyButton text={code} />
+          <button type="button" className="diagram-hide" onClick={() => setOpen(false)}>
+            Hide
+          </button>
+        </div>
+      </div>
+      <div className="diagram-body">
+        {view === 'render' ? (
+          kind === 'mermaid' ? <MermaidDiagram code={code} /> : <SvgImage code={code} />
+        ) : (
+          <pre className="diagram-code"><code>{code}</code></pre>
+        )}
+      </div>
     </div>
   );
 };

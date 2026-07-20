@@ -1,0 +1,63 @@
+.code-block {
+  margin: 1rem 0;
+  border: 1px solid #d8dce3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef1f5;
+}
+
+.code-block-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.3rem 0.35rem 0.3rem 0.7rem;
+  background: color-mix(in srgb, #d8dce3 45%, transparent);
+  border-bottom: 1px solid #d8dce3;
+}
+
+.code-block-lang {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary, #8a90a0);
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+}
+
+/* The code block provides its own <pre>; drop the markdown pre chrome. */
+.code-block .code-block-pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Shared copy button (code blocks + diagram toolbar). */
+.copy-btn {
+  padding: 0.22rem 0.55rem;
+  border: 1px solid var(--border-color, #d8dce3);
+  border-radius: 5px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary, #555);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.copy-btn:hover {
+  background: var(--bg-hover, #f0f0f0);
+  border-color: #c8ccd1;
+}
+
+.copy-btn:focus-visible {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.copy-btn.copied {
+  color: #087a58;
+  border-color: rgba(16, 185, 129, 0.4);
+  background: #dff8ee;
+}

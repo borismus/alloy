@@ -2,6 +2,7 @@ import React from 'react';
 import { Components } from 'react-markdown';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { CollapsibleDiagram } from '../components/CollapsibleDiagram';
+import { CodeBlock } from '../components/CodeBlock';
 import type { ConversationInfo } from '../types';
 
 // Flatten a react-markdown code block's children back to raw source text.
@@ -171,23 +172,32 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
       if (!src) return null;
       return React.createElement('img', { src, alt, ...props });
     },
+    // Inline code passes through; fenced blocks are handled by `pre` below (a
+    // fenced block is a `code` element wrapped in `pre`).
     code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: any }) => {
-      // Mermaid / SVG blocks render async and can be large, so surface them as
-      // click-to-render blocks instead of rendering inline (avoids layout jumps
-      // while streaming or scrolling). See CollapsibleDiagram.
-      //
-      // Use extractCodeText, not String(children): `svg` is a highlight.js xml
-      // alias, so rehype-highlight wraps the source in <span>s — String() would
-      // yield garbage. Flattening the nodes recovers the raw source either way.
-      if (className?.includes('language-mermaid')) {
-        const code = extractCodeText(children).replace(/\n$/, '');
+      return React.createElement('code', { className, ...props }, children);
+    },
+    // Fenced blocks: route mermaid/svg to a click-to-render diagram, and give
+    // every other code block a language label + copy button. The child is the
+    // (already syntax-highlighted) `code` element; extractCodeText recovers the
+    // raw source for copying / diagram input even when it's wrapped in spans.
+    pre: ({ children }: { children?: React.ReactNode; [key: string]: any }) => {
+      const codeEl = Array.isArray(children)
+        ? children.find((c) => React.isValidElement(c))
+        : children;
+      if (!React.isValidElement(codeEl)) {
+        return React.createElement('pre', {}, children);
+      }
+      const codeProps = codeEl.props as { className?: string; children?: React.ReactNode };
+      const language = codeProps.className?.match(/language-(\w+)/)?.[1];
+      const code = extractCodeText(codeProps.children).replace(/\n$/, '');
+      if (language === 'mermaid') {
         return React.createElement(CollapsibleDiagram, { kind: 'mermaid', code });
       }
-      if (className?.includes('language-svg')) {
-        const code = extractCodeText(children).replace(/\n$/, '');
+      if (language === 'svg') {
         return React.createElement(CollapsibleDiagram, { kind: 'svg', code });
       }
-      return React.createElement('code', { className, ...props }, children);
+      return React.createElement(CodeBlock, { code, language, children: codeEl });
     },
   };
 }

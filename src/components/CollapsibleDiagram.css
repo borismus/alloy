@@ -50,9 +50,81 @@
   letter-spacing: 0.04em;
 }
 
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.diagram-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.diagram-segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.diagram-segmented button {
+  padding: 0.28rem 0.7rem;
+  border: none;
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary, #666);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.diagram-segmented button + button {
+  border-left: 1px solid var(--border-color, #e0e0e0);
+}
+
+.diagram-segmented button.active {
+  background: #667eea;
+  color: #fff;
+}
+
+.diagram-hide {
+  padding: 0.22rem 0.55rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 5px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary, #666);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.diagram-hide:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
 .diagram-body {
   margin-top: 0.6rem;
   overflow-x: auto;
+}
+
+.diagram-block .diagram-code {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #d8dce3;
+  border-radius: 8px;
+  background: #eef1f5;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.diagram-block .diagram-code code {
+  padding: 0;
+  background: transparent;
 }
 
 .diagram-svg {
