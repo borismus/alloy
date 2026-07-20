@@ -15,11 +15,7 @@
   min-width: 0;
 }
 
-.task-schedule-section {
-  margin-bottom: 2rem;
-}
-
-.task-schedule-section h3 {
+.task-prompt-section h3 {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-secondary, #666);
@@ -195,8 +191,55 @@
   border: 1px solid rgba(185, 28, 28, 0.25);
 }
 
+.task-config-section {
+  margin-bottom: 2rem;
+}
+
+.task-config-section .task-schedule-card {
+  margin-bottom: 0.75rem;
+}
+
+.task-prompt-section {
+  margin-bottom: 1rem;
+}
+
+.task-email-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.task-email-tag.on {
+  background: #dff8ee;
+  color: #087a58;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.task-email-tag.off {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid rgba(107, 114, 128, 0.25);
+}
+
 .task-condition {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 7px;
   background: color-mix(in srgb, #ecfdf5 45%, var(--bg-primary, #fff));
+}
+
+.task-condition p {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary, #555);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Latest Response Section - Prominent */

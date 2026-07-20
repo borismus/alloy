@@ -214,7 +214,61 @@ export function TaskDetailView({
       </ItemHeader>
 
       <div className="task-detail-content">
-        {/* 1 — Run history: an accordion of every run, latest result open by default */}
+        {/* 1 — Config summary: schedule, model, email. Above the run history. */}
+        <section className="task-config-section">
+          <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''}`}>
+            <div className="task-schedule-card-header">
+              <div className="task-schedule-description">{schedule.description}</div>
+              <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
+                {task.trigger ? 'Conditional' : 'Every run'}
+              </span>
+            </div>
+            <div className="task-schedule-technical">
+              <span>{schedule.timezone}</span>
+              <span aria-hidden="true">·</span>
+              <code>{schedule.raw}</code>
+            </div>
+            {schedule.nextRun && (
+              <div className="task-next-run"><span>Next</span>{schedule.nextRun}</div>
+            )}
+          </div>
+          <div className="task-model-row">
+            <span className="task-field-label">Model</span>
+            <div className="task-model-value">
+              <span className="task-model-name" title={task.model}>{modelName}</span>
+              {modelIsLocal ? (
+                <span className="task-model-tag local" title="Runs on a local model — prompts stay on your device">
+                  <LocalLockIcon /> Local
+                </span>
+              ) : (
+                <span className="task-model-tag cloud" title={`Runs on ${modelProvider} (cloud)`}>Cloud</span>
+              )}
+              <span className="task-model-provider">{modelProvider}</span>
+              {!modelIsKnown && (
+                <span className="task-model-tag unknown" title="This model isn't in the current model list">Unavailable</span>
+              )}
+            </div>
+          </div>
+          <div className="task-model-row">
+            <span className="task-field-label">Email</span>
+            <div className="task-model-value">
+              <span
+                className={`task-email-tag ${task.email ? 'on' : 'off'}`}
+                title={task.email ? 'Delivered results are emailed via Resend' : 'This task does not send email'}
+              >
+                {task.email ? 'On' : 'Off'}
+              </span>
+            </div>
+          </div>
+          {task.trigger && (
+            <div className="task-condition">
+              <span className="task-field-label">Deliver when</span>
+              <p>{task.trigger.condition}</p>
+            </div>
+          )}
+        </section>
+
+        {/* 2 — Run history: an accordion of every run, latest result open by default */}
         <section className="task-history-section">
           <div className="section-header">
             <div className="section-header-group">
@@ -276,55 +330,15 @@ export function TaskDetailView({
           )}
         </section>
 
-        {/* 2 — Task details: prompt, schedule, delivery condition */}
-        <section className="task-schedule-section">
+        {/* 3 — Prompt, at the very bottom. */}
+        <section className="task-prompt-section">
           <div className="section-header">
-            <h3>Task details</h3>
-          </div>
-          <div className="task-model-row">
-            <span className="task-field-label">Model</span>
-            <div className="task-model-value">
-              <span className="task-model-name" title={task.model}>{modelName}</span>
-              {modelIsLocal ? (
-                <span className="task-model-tag local" title="Runs on a local model — prompts stay on your device">
-                  <LocalLockIcon /> Local
-                </span>
-              ) : (
-                <span className="task-model-tag cloud" title={`Runs on ${modelProvider} (cloud)`}>Cloud</span>
-              )}
-              <span className="task-model-provider">{modelProvider}</span>
-              {!modelIsKnown && (
-                <span className="task-model-tag unknown" title="This model isn't in the current model list">Unavailable</span>
-              )}
-            </div>
+            <h3>Prompt</h3>
           </div>
           <div className="task-instructions">
             <div>
-              <span className="task-field-label">Prompt</span>
               <p>{task.prompt}</p>
             </div>
-            {task.trigger && (
-              <div className="task-condition">
-                <span className="task-field-label">Deliver when</span>
-                <p>{task.trigger.condition}</p>
-              </div>
-            )}
-          </div>
-          <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''}`}>
-            <div className="task-schedule-card-header">
-              <div className="task-schedule-description">{schedule.description}</div>
-              <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
-                {task.trigger ? 'Conditional' : 'Every run'}
-              </span>
-            </div>
-            <div className="task-schedule-technical">
-              <span>{schedule.timezone}</span>
-              <span aria-hidden="true">·</span>
-              <code>{schedule.raw}</code>
-            </div>
-            {schedule.nextRun && (
-              <div className="task-next-run"><span>Next</span>{schedule.nextRun}</div>
-            )}
           </div>
         </section>
       </div>
