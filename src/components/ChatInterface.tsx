@@ -210,7 +210,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   const { queue, enqueue, drainQueue, removeQueued } = useMessageQueue(conversation?.id ?? null);
 
-  const { setShouldAutoScroll, handleScroll } = useAutoScroll({
+  const { setShouldAutoScroll, handleScroll, handleWheel } = useAutoScroll({
     containerRef: messagesContainerRef,
     dependencies: [conversation?.messages, streamingContent],
   });
@@ -623,7 +623,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </>
         )}
       </ItemHeader>
-      <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll}>
+      <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll} onWheel={handleWheel}>
         {conversation.messagesLoaded === false ? (
           <div className="loading-conversation">
             <div className="thinking-indicator"><span></span><span></span><span></span></div>

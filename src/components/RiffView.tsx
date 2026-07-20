@@ -169,7 +169,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
 
   // Stick-to-bottom while the draft streams in: follow only when the user is
   // already at the bottom; leave them alone once they scroll up.
-  const { handleScroll: handleDocumentScroll } = useAutoScroll({
+  const { handleScroll: handleDocumentScroll, handleWheel: handleDocumentWheel } = useAutoScroll({
     containerRef: documentPaneRef,
     dependencies: [draftContent, artifactType],
   });
@@ -294,6 +294,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
             className={`riff-document-pane ${mermaidCode ? 'riff-draft-canvas' : ''} ${artifactType === 'table' ? 'riff-draft-table' : ''}`}
             ref={documentPaneRef}
             onScroll={handleDocumentScroll}
+            onWheel={handleDocumentWheel}
           >
             {mermaidCode ? (
               <MermaidDiagram code={mermaidCode} />

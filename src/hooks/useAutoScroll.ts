@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useRef, useState, useCallback, UIEvent } from 'react';
+import { RefObject, useEffect, useRef, useState, useCallback, UIEvent, WheelEvent } from 'react';
 
 interface UseAutoScrollOptions {
   /** The scrollable container (the element with `overflow-y: auto`). */
@@ -12,7 +12,10 @@ interface UseAutoScrollOptions {
 interface UseAutoScrollReturn {
   shouldAutoScroll: boolean;
   setShouldAutoScroll: (value: boolean) => void;
+  /** Wire to the container's `onScroll`. */
   handleScroll: (e: UIEvent<HTMLElement>) => void;
+  /** Wire to the container's `onWheel`. */
+  handleWheel: (e: WheelEvent<HTMLElement>) => void;
 }
 
 /**
@@ -24,19 +27,26 @@ interface UseAutoScrollReturn {
  *  2. The moment the user scrolls up, stop following and don't move the
  *     viewport again until they scroll back to the bottom.
  *
- * The follow decision is derived purely from the container's live scroll
- * position and stored in a ref that's updated synchronously on every scroll
- * event. A programmatic pin leaves us exactly at the bottom, so its own scroll
- * event simply re-affirms "stuck" — there's no fragile "ignore my own scroll"
- * flag, and a real user scroll-up is never mistaken for a pin (which is what
- * caused the old snap-back).
+ * Why not derive the follow decision from the scroll position alone: a fast
+ * stream re-pins to the bottom every chunk, and that pin can overwrite the
+ * user's scroll-up *before* the `scroll` handler reads the position — so the
+ * handler sees "at bottom" and never unsticks (the snap-back). Instead we
+ * unstick from the user's *intent* (the `wheel`/touch gesture), which fires
+ * regardless of where the pin lands, and only re-stick once they're genuinely
+ * back at the bottom. A synchronous ref holds the decision so the next chunk's
+ * pin effect sees it immediately.
  */
 export function useAutoScroll(options: UseAutoScrollOptions): UseAutoScrollReturn {
   const { containerRef, dependencies, threshold = 50 } = options;
   const [shouldAutoScroll, setShouldAutoScrollState] = useState(true);
-  // Synchronous mirror so the content-change effect reads the latest decision
-  // before React re-renders.
   const stickRef = useRef(true);
+  const lastTopRef = useRef(0);
+
+  const setStick = useCallback((value: boolean) => {
+    if (stickRef.current === value) return;
+    stickRef.current = value;
+    setShouldAutoScrollState(value);
+  }, []);
 
   const setShouldAutoScroll = useCallback((value: boolean) => {
     stickRef.current = value;
@@ -47,12 +57,23 @@ export function useAutoScroll(options: UseAutoScrollOptions): UseAutoScrollRetur
     (e: UIEvent<HTMLElement>) => {
       const el = e.currentTarget;
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
-      if (atBottom !== stickRef.current) {
-        stickRef.current = atBottom;
-        setShouldAutoScrollState(atBottom);
-      }
+      const movedUp = el.scrollTop < lastTopRef.current - 2;
+      lastTopRef.current = el.scrollTop;
+      // Re-stick once genuinely back at the bottom; unstick on any upward move
+      // (covers scrollbar drags / touch, which don't emit a wheel event).
+      if (atBottom) setStick(true);
+      else if (movedUp) setStick(false);
     },
-    [threshold]
+    [threshold, setStick]
+  );
+
+  const handleWheel = useCallback(
+    (e: WheelEvent<HTMLElement>) => {
+      // User intent to scroll up — definitive, and survives a racing re-pin
+      // because it doesn't depend on the resulting scroll position.
+      if (e.deltaY < 0) setStick(false);
+    },
+    [setStick]
   );
 
   useEffect(() => {
@@ -62,8 +83,9 @@ export function useAutoScroll(options: UseAutoScrollOptions): UseAutoScrollRetur
     // Pin instantly (not smooth): a smooth animation lags fast-growing stream
     // content and its intermediate positions read as "not at bottom".
     el.scrollTop = el.scrollHeight;
+    lastTopRef.current = el.scrollTop;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef, ...dependencies]);
 
-  return { shouldAutoScroll, setShouldAutoScroll, handleScroll };
+  return { shouldAutoScroll, setShouldAutoScroll, handleScroll, handleWheel };
 }
