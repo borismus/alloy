@@ -64,6 +64,15 @@
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
+.diagram-actions {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.35rem;
+}
+
 .diagram-block .diagram-code {
   margin: 0;
   padding: 2.75rem 2.75rem 2.75rem 1rem;

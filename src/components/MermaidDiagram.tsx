@@ -70,6 +70,20 @@ interface MermaidDiagramProps {
 
 let renderCounter = 0;
 
+/** Render Mermaid source to standalone SVG markup (also used for downloads). */
+export async function renderMermaidSvg(code: string): Promise<string> {
+  const id = `mermaid-${++renderCounter}`;
+  try {
+    const mermaid = await getMermaid();
+    const { svg } = await mermaid.render(id, code.trim());
+    return svg;
+  } catch (error) {
+    // Mermaid can leave its temporary render node behind after parse errors.
+    document.getElementById(`d${id}`)?.remove();
+    throw error;
+  }
+}
+
 const CROSSFADE_MS = 300;
 
 export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ code }) => {
@@ -84,15 +98,11 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ code }) => {
     if (!code.trim() || !layerARef.current || !layerBRef.current) return;
     if (code.trim() === lastRenderedCodeRef.current) return;
 
-    const id = `mermaid-${++renderCounter}`;
     let cancelled = false;
 
     (async () => {
       try {
-        const mermaid = await getMermaid();
-        if (cancelled) return;
-
-        const { svg } = await mermaid.render(id, code.trim());
+        const svg = await renderMermaidSvg(code);
         if (cancelled || !layerARef.current || !layerBRef.current) return;
 
         lastRenderedCodeRef.current = code.trim();
@@ -121,7 +131,6 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ code }) => {
       } catch (err: any) {
         if (!cancelled) {
           setError(err?.message || 'Failed to render diagram');
-          document.getElementById(`d${id}`)?.remove();
         }
       }
     })();

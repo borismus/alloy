@@ -26,7 +26,7 @@ export function CopyButton({ text, className = '' }: { text: string; className?:
   return (
     <button
       type="button"
-      className={`copy-icon-btn ${className} ${copied ? 'copied' : ''}`}
+      className={`block-action-btn ${className} ${copied ? 'copied' : ''}`}
       onClick={() => {
         navigator.clipboard?.writeText(text);
         setCopied(true);
