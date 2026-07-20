@@ -6,6 +6,7 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useTextareaProps } from '../utils/textareaProps';
+import { isLocalModel } from '../utils/models';
 import './Sidebar.css';
 
 // FLIP animation helper - stores previous positions of items
@@ -349,11 +350,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return slashIndex !== -1 ? modelString.slice(slashIndex + 1) : modelString;
   };
 
-  const isLocalModel = (modelKey: string) =>
-    availableModels.some(model => model.key === modelKey && model.local);
-
   const isLocalConversation = (item: TimelineItem) =>
-    item.type === 'conversation' && !!item.conversation && isLocalModel(item.conversation.model);
+    item.type === 'conversation' && !!item.conversation && isLocalModel(item.conversation.model, availableModels);
 
   // Filter items by type and search query
   const filteredItems = useMemo(() => {
@@ -402,7 +400,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         return (
           <>
             <span className="type-badge task">Task</span>
-            {item.task && isLocalModel(item.task.model) && (
+            {item.task && isLocalModel(item.task.model, availableModels) && (
               <span className="type-badge local" title="Uses a local model">Local</span>
             )}
           </>

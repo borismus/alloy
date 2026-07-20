@@ -138,9 +138,11 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
             continue;
         }
         // A model is "local" (on-device, privacy-preserving) when its provider
-        // endpoint is loopback. Computed once per provider and stamped on every
-        // model it contributes.
-        let local = cfg.base_url.as_deref().map(is_local_url).unwrap_or(false);
+        // endpoint is loopback/`.local`, or it's oMLX (an on-device server by
+        // definition). Computed once per provider and stamped on every model it
+        // contributes. Mirrors `local::model_is_local`.
+        let local =
+            cfg.id == "mlx" || cfg.base_url.as_deref().map(is_local_url).unwrap_or(false);
         match cfg.id.as_str() {
             "ollama" => {
                 if let Some(base) = &cfg.base_url {

@@ -1,4 +1,4 @@
-import { ProviderType } from '../types';
+import { ProviderType, ModelInfo } from '../types';
 
 export const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
@@ -48,5 +48,17 @@ export function providerLabel(providerId: string | undefined, modelKey: string):
 export function providerTag(providerId: string | undefined, modelKey: string): string {
   const id = providerId || modelKey.split('/')[0] || '';
   return PROVIDER_TAGS[id as ProviderType] || id.slice(0, 3).toUpperCase();
+}
+
+/**
+ * Whether a model runs locally (on-device / trusted hardware), for the privacy
+ * badge. Prefers the backend `local` flag on a listed model, but treats the
+ * `mlx` (oMLX) provider as local unconditionally so the badge is still right
+ * when the server is unreachable and the model isn't in `availableModels`
+ * (e.g. you're off your LAN). oMLX is an on-device server by definition.
+ */
+export function isLocalModel(modelKey: string, availableModels: ModelInfo[]): boolean {
+  if (modelKey.startsWith('mlx/')) return true;
+  return availableModels.some(m => m.key === modelKey && m.local);
 }
 

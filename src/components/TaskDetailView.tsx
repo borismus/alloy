@@ -6,7 +6,7 @@ import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { describeTaskSchedule } from '../utils/taskSchedule';
-import { providerLabel } from '../utils/models';
+import { providerLabel, isLocalModel } from '../utils/models';
 import './TaskDetailView.css';
 
 interface TaskDetailViewProps {
@@ -93,8 +93,10 @@ export function TaskDetailView({
   const modelInfo = availableModels.find(m => m.key === task.model);
   const modelName = modelInfo?.name ?? (task.model.split('/').slice(1).join('/') || task.model);
   const modelProvider = providerLabel(modelInfo?.provider, task.model);
-  const modelIsLocal = modelInfo?.local ?? false;
-  const modelIsKnown = modelInfo !== undefined;
+  const modelIsLocal = isLocalModel(task.model, availableModels);
+  // Unknown = not in the reachable list AND not a known-local provider (mlx is
+  // expected to be offline sometimes, so don't flag it Unavailable).
+  const modelIsKnown = modelInfo !== undefined || modelIsLocal;
   const { activeRuns, markRunning, markDone } = useTaskContext();
   const [isRunning, setIsRunning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

@@ -38,9 +38,16 @@ pub fn is_local_url(base_url: &str) -> bool {
 /// otherwise the default (first configured) provider — then classifies its
 /// `base_url`. The `cli_claude` kind has no `base_url`, so it is never local.
 pub fn model_is_local(config: &Config, model_id: &str) -> bool {
-    let provider = match model_id.split_once('/') {
-        Some((prefix, _)) if config.providers.iter().any(|p| p.id == prefix) => {
-            config.providers.iter().find(|p| p.id == prefix)
+    let prefix = model_id.split_once('/').map(|(p, _)| p);
+    // oMLX is an on-device server by definition; treat it as local even when
+    // its endpoint isn't loopback/`.local` or is currently unreachable. Mirrors
+    // the frontend `isLocalModel` badge rule.
+    if prefix == Some("mlx") {
+        return true;
+    }
+    let provider = match prefix {
+        Some(p) if config.providers.iter().any(|c| c.id == p) => {
+            config.providers.iter().find(|c| c.id == p)
         }
         _ => config.providers.first(),
     };
@@ -100,6 +107,19 @@ mod tests {
     }
 
     #[test]
+    fn mlx_is_always_local_even_with_routable_endpoint() {
+        // mlx pointed at a routable IP still counts as local (on-device by
+        // definition), and works even when the provider isn't configured here.
+        let cfg = config_with(vec![provider(
+            "mlx",
+            Some("http://203.0.113.7:8000/v1"),
+            ProviderKind::OpenaiCompatible,
+        )]);
+        assert!(model_is_local(&cfg, "mlx/Qwen3"));
+        assert!(model_is_local(&config_with(vec![]), "mlx/Qwen3"));
+    }
+
+    #[test]
     fn unknown_prefix_falls_back_to_default_provider() {
         // First configured provider is the default; a bare/unknown-prefix model
         // id inherits its locality.
@@ -120,6 +140,8 @@ mod tests {
 
     #[test]
     fn empty_providers_is_not_local() {
-        assert!(!model_is_local(&config_with(vec![]), "mlx/gemma4"));
+        // A non-mlx model with no providers configured can't be local. (mlx is
+        // special-cased as always-local; see the dedicated test above.)
+        assert!(!model_is_local(&config_with(vec![]), "openrouter/some-model"));
     }
 }
