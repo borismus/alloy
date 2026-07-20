@@ -5,6 +5,7 @@ import { useRiffContext } from '../contexts/RiffContext';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useDictation } from '../hooks/useDictation';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
+import { useAutoScroll } from '../hooks/useAutoScroll';
 import { useTextareaProps } from '../utils/textareaProps';
 import { MarkdownContent } from './MarkdownContent';
 import { MermaidDiagram } from './MermaidDiagram';
@@ -166,12 +167,12 @@ export const RiffView: React.FC<RiffViewProps> = ({
     return () => clearInterval(interval);
   }, [draftFilename, isUpdating, isProcessing]);
 
-  // Auto-scroll document pane to bottom when content updates (for note type)
-  useEffect(() => {
-    if (documentPaneRef.current && draftContent && artifactType === 'note') {
-      documentPaneRef.current.scrollTop = documentPaneRef.current.scrollHeight;
-    }
-  }, [draftContent, artifactType]);
+  // Stick-to-bottom while the draft streams in: follow only when the user is
+  // already at the bottom; leave them alone once they scroll up.
+  const { handleScroll: handleDocumentScroll } = useAutoScroll({
+    containerRef: documentPaneRef,
+    dependencies: [draftContent, artifactType],
+  });
 
   // Handle integrate
   const handleIntegrate = useCallback(() => {
@@ -292,6 +293,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
           <div
             className={`riff-document-pane ${mermaidCode ? 'riff-draft-canvas' : ''} ${artifactType === 'table' ? 'riff-draft-table' : ''}`}
             ref={documentPaneRef}
+            onScroll={handleDocumentScroll}
           >
             {mermaidCode ? (
               <MermaidDiagram code={mermaidCode} />

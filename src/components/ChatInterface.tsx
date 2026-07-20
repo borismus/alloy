@@ -211,7 +211,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const { queue, enqueue, drainQueue, removeQueued } = useMessageQueue(conversation?.id ?? null);
 
   const { setShouldAutoScroll, handleScroll } = useAutoScroll({
-    endRef: messagesEndRef,
+    containerRef: messagesContainerRef,
     dependencies: [conversation?.messages, streamingContent],
   });
 
