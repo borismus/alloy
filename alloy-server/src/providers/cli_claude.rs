@@ -42,7 +42,8 @@ use crate::types::{ToolCall, ToolResult};
 /// of Claude Code's own skills (which can shell out via e.g. `run-applescript`).
 /// A user's *custom* plugin tools aren't enumerable here and are left intact —
 /// they're the user's own, and the host-access vectors (Bash/Read/Write/Skill)
-/// are closed.
+/// are closed. Claude's session-local Cron and Task-management tools are also
+/// denied so they can't be mistaken for Alloy's persisted scheduled tasks.
 const DISALLOWED_NATIVE_TOOLS: &[&str] = &[
     "Bash",
     "BashOutput",
@@ -57,7 +58,14 @@ const DISALLOWED_NATIVE_TOOLS: &[&str] = &[
     "WebSearch",
     "WebFetch",
     "Task",
+    "TaskCreate",
+    "TaskGet",
+    "TaskList",
+    "TaskUpdate",
     "TodoWrite",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
     "Skill",
     "SlashCommand",
     "ExitPlanMode",
@@ -690,7 +698,21 @@ mod tests {
         // Regression guard: `Skill` must stay denied so the model uses Alloy's
         // `use_skill` over Claude Code's own skills (which can shell out). Same
         // for the host-access tools.
-        for t in ["Skill", "Bash", "Read", "Write", "Edit", "WebSearch"] {
+        for t in [
+            "Skill",
+            "Bash",
+            "Read",
+            "Write",
+            "Edit",
+            "WebSearch",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "TaskCreate",
+            "TaskGet",
+            "TaskList",
+            "TaskUpdate",
+        ] {
             assert!(
                 DISALLOWED_NATIVE_TOOLS.contains(&t),
                 "{t} must be in the native-tool denylist"
