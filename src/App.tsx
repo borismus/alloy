@@ -284,8 +284,16 @@ function AppContent() {
     // message that just started sending — isn't on disk yet. Re-append those
     // trailing in-memory user messages so the reload doesn't make them vanish
     // until the reply lands.
+    //
+    // Upsert, not just map: an externally-created file can surface as a `modify`
+    // (macOS/FSEvents often coalesces create+write into one modify), so insert
+    // it if we haven't seen this id yet rather than dropping it until restart.
     setConversations(prev =>
-      prev.map(c => c.id === id ? preserveOptimisticUserMessages(updated, c) : c)
+      prev.some(c => c.id === id)
+        ? prev.map(c => c.id === id ? preserveOptimisticUserMessages(updated, c) : c)
+        : [updated, ...prev].sort((a, b) =>
+            new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
+          )
     );
     // currentConversation is derived from conversations, so no need to update separately
     // But if it's a draft conversation, update that too
@@ -375,8 +383,15 @@ function AppContent() {
   const handleTaskModified = useCallback(async (id: string) => {
     const updated = await vaultService.loadTask(id);
     if (!updated) return;
+    // Upsert, not just map: an externally-created task file can surface as a
+    // `modify` (macOS coalesces create+write), so insert it if unseen rather
+    // than dropping it until restart.
     setTasks(prev =>
-      prev.map(t => t.id === id ? updated : t)
+      prev.some(t => t.id === id)
+        ? prev.map(t => t.id === id ? updated : t)
+        : [updated, ...prev].sort((a, b) =>
+            new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime()
+          )
     );
   }, []);
 
