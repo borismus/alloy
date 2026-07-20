@@ -1,7 +1,7 @@
 import React from 'react';
 import { Components } from 'react-markdown';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { MermaidDiagram } from '../components/MermaidDiagram';
+import { CollapsibleDiagram } from '../components/CollapsibleDiagram';
 import type { ConversationInfo } from '../types';
 
 // Helper to extract conversation ID from a path
@@ -157,10 +157,16 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
       return React.createElement('img', { src, alt, ...props });
     },
     code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: any }) => {
-      // Render mermaid code blocks as diagrams
+      // Mermaid / SVG blocks render async and can be large, so surface them as
+      // click-to-render blocks instead of rendering inline (avoids layout jumps
+      // while streaming or scrolling). See CollapsibleDiagram.
       if (className?.includes('language-mermaid')) {
         const code = String(children).replace(/\n$/, '');
-        return React.createElement(MermaidDiagram, { code });
+        return React.createElement(CollapsibleDiagram, { kind: 'mermaid', code });
+      }
+      if (className?.includes('language-svg')) {
+        const code = String(children).replace(/\n$/, '');
+        return React.createElement(CollapsibleDiagram, { kind: 'svg', code });
       }
       return React.createElement('code', { className, ...props }, children);
     },

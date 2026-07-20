@@ -1,0 +1,61 @@
+.diagram-block {
+  margin: 0.75rem 0;
+}
+
+.diagram-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 7px;
+  background: var(--bg-secondary, #f8f9fa);
+  color: var(--text-secondary, #555);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.diagram-toggle:hover {
+  background: var(--bg-hover, #f0f0f0);
+  border-color: #c8ccd1;
+}
+
+.diagram-toggle:focus-visible {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.diagram-chevron {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.diagram-block.open .diagram-chevron {
+  transform: rotate(90deg);
+}
+
+.diagram-label {
+  font-weight: 600;
+}
+
+.diagram-hint {
+  color: var(--text-tertiary, #999);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.diagram-body {
+  margin-top: 0.6rem;
+  overflow-x: auto;
+}
+
+.diagram-svg {
+  max-width: 100%;
+  height: auto;
+}
