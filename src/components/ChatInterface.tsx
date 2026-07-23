@@ -180,7 +180,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // On mobile, use mobile-specific back if provided, otherwise use onBack prop
   const handleBack = onMobileBack || onBack;
   const showBackButton = onMobileBack ? true : canGoBack;
-  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  // Scope base64 image data to the active conversation. A single unbounded map
+  // retained every image from every conversation visited for the app's entire
+  // lifetime — enough large screenshots/photos could grow WebKit into GBs.
+  const [imageState, setImageState] = useState<{
+    conversationId: string | null;
+    urls: Record<string, string>;
+  }>({ conversationId: null, urls: {} });
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -244,12 +250,15 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     return counted > 0 ? cost : undefined;
   }, [conversation?.messages]);
 
-  // getImageUrl's identity intentionally changes whenever imageUrls changes.
+  // getImageUrl's identity intentionally changes whenever imageState changes.
   // This propagates through the renderedMessages memo (which lists getImageUrl
   // in its deps) AND past the React.memo on UserMessage, so a newly-loaded
-  // image actually re-renders. imageUrls only changes when images finish
-  // loading (not on every keystroke), so this isn't a hot path.
-  const getImageUrl = useCallback((path: string) => imageUrls[path], [imageUrls]);
+  // image actually re-renders. Return nothing for stale conversation state.
+  const getImageUrl = useCallback((path: string) =>
+    imageState.conversationId === (conversation?.id ?? null)
+      ? imageState.urls[path]
+      : undefined,
+  [imageState, conversation?.id]);
 
   // Memoize the rendered messages to prevent expensive re-renders during typing
   const renderedMessages = useMemo(() => {
@@ -519,20 +528,34 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // Global Escape key handler for stopping streaming
   useGlobalEscape(handleStop, isStreaming);
 
-  // Load image URLs for displaying in messages
+  // Load image URLs for displaying in messages. Cancel stale async loads and
+  // replace (rather than merge) the cache when the conversation changes so an
+  // old conversation's base64 strings are eligible for GC immediately.
   useEffect(() => {
-    const loadImages = async () => {
-      if (!conversation) return;
+    const conversationId = conversation?.id ?? null;
+    let cancelled = false;
 
+    if (imageState.conversationId !== conversationId) {
+      setImageState({ conversationId, urls: {} });
+    }
+    if (!conversation) return () => { cancelled = true; };
+
+    const existingUrls = imageState.conversationId === conversationId
+      ? imageState.urls
+      : {};
+
+    const loadImages = async () => {
       const attachments = conversation.messages
         .flatMap(m => m.attachments || [])
         .filter(a => a.type === 'image');
 
       const newUrls: Record<string, string> = {};
       for (const attachment of attachments) {
-        if (!imageUrls[attachment.path]) {
+        if (cancelled) return;
+        if (!existingUrls[attachment.path]) {
           try {
             const { base64, mimeType } = await loadImageAsBase64(attachment.path);
+            if (cancelled) return;
             newUrls[attachment.path] = `data:${mimeType};base64,${base64}`;
           } catch (e) {
             console.error('Failed to load image:', attachment.path, e);
@@ -540,13 +563,20 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         }
       }
 
-      if (Object.keys(newUrls).length > 0) {
-        setImageUrls(prev => ({ ...prev, ...newUrls }));
+      if (!cancelled && Object.keys(newUrls).length > 0) {
+        setImageState(prev => prev.conversationId === conversationId
+          ? { conversationId, urls: { ...prev.urls, ...newUrls } }
+          : { conversationId, urls: newUrls }
+        );
       }
     };
 
     loadImages();
-  }, [conversation?.messages, loadImageAsBase64]);
+    return () => { cancelled = true; };
+    // imageState intentionally omitted: loading new URLs must not retrigger the
+    // effect; conversation/message changes provide the refresh boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation?.id, conversation?.messages, loadImageAsBase64]);
 
   if (!hasProvider) {
     return (
