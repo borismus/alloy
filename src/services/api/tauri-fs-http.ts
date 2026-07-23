@@ -5,6 +5,8 @@
  * Used in SERVER_MODE when running as a web app against a remote server.
  */
 
+import { buildWatchWebSocketUrl } from './websocketUrl';
+
 // Types matching Tauri's fs plugin
 export interface WatchEvent {
   type: WatchEventKind;
@@ -171,9 +173,14 @@ function ensureWebSocket(): Promise<WebSocket> {
 
     wsConnecting = true;
 
+    // Build an ABSOLUTE ws:// URL. In web-dev getApiBase() is '' (same-origin;
+    // Vite proxies /api), so bare concatenation would yield the relative string
+    // '/api/watch' — which not every engine's WebSocket constructor accepts,
+    // leaving the file watcher silently dead (new conversations never appear
+    // until reload). Resolve against the page origin like the SSE path does.
     const apiBase = getApiBase();
-    const wsUrl = apiBase.replace(/^http/, 'ws') + '/api/watch';
-    const socket = new WebSocket(wsUrl);
+    const pageOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const socket = new WebSocket(buildWatchWebSocketUrl(apiBase, pageOrigin));
 
     socket.onopen = () => {
       ws = socket;
