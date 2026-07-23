@@ -1,0 +1,207 @@
+.ai-edit-panel {
+  border-top: 1px solid #e0e0e0;
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: white;
+  flex-shrink: 0;
+}
+
+.ai-edit-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.ai-edit-row textarea {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-family: inherit;
+  resize: none;
+  max-height: 200px;
+  overflow-y: auto;
+  min-height: 48px;
+  scrollbar-width: thin;
+  scrollbar-color: #ccc transparent;
+}
+
+.ai-edit-row textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.ai-edit-row textarea::placeholder {
+  color: #9ca3af;
+}
+
+.ai-edit-row textarea:disabled {
+  opacity: 0.6;
+}
+
+.ai-edit-submit {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.ai-edit-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.ai-edit-submit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4), 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.ai-edit-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ai-edit-submit.stop {
+  background: #e74c3c;
+  font-size: 1rem;
+  box-shadow: none;
+}
+
+.ai-edit-submit.stop:hover {
+  background: #c0392b;
+}
+
+/* Proposal review */
+.ai-edit-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ai-edit-proposal .diff-view {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.ai-edit-nochange {
+  padding: 0.75rem 1rem;
+  border: 1px dashed #e0e0e0;
+  border-radius: 10px;
+  color: #6b7280;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.ai-edit-error {
+  padding: 0.6rem 0.85rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.ai-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.ai-edit-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ai-edit-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.ai-edit-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.ai-edit-btn-primary:hover:not(:disabled) {
+  /* Re-assert the gradient so the generic .ai-edit-btn hover (light grey) can't
+     win and leave white text unreadable. */
+  background: linear-gradient(135deg, #7480ee 0%, #8256b0 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.ai-edit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Match the chat composer's mobile hierarchy: instruction first, controls on a
+   second row. Keeping all three controls inline squeezed the textarea to 69px
+   on a 375px viewport. */
+@media (max-width: 768px) {
+  .ai-edit-panel {
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .ai-edit-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ai-edit-row textarea {
+    width: 100%;
+    flex: none;
+    order: 1;
+  }
+
+  .ai-edit-row .model-selector-container {
+    order: 2;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ai-edit-row .model-selector-button {
+    width: 100%;
+    max-width: none;
+  }
+
+  .ai-edit-submit {
+    order: 3;
+  }
+
+  /* The picker is docked to the bottom composer; open into the content area,
+     not downward behind the home indicator/software keyboard. */
+  .ai-edit-panel .model-selector-dropdown {
+    left: 0;
+    right: auto;
+    width: calc(100vw - 32px);
+    min-width: 0;
+    max-width: calc(100vw - 32px);
+    bottom: calc(100% + 4px);
+    top: auto;
+  }
+}

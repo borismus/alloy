@@ -872,6 +872,17 @@ export class VaultService {
     return await readTextFile(apiPath);
   }
 
+  /**
+   * Overwrite a note's full content via its server-relative path (correct in
+   * both Tauri and web mode). Returns false if no vault is open.
+   */
+  async writeNote(filename: string, content: string): Promise<boolean> {
+    const apiPath = await this.noteApiPath(filename);
+    if (!apiPath) return false;
+    await writeTextFile(apiPath, content);
+    return true;
+  }
+
   async deleteNote(filename: string): Promise<boolean> {
     const notePath = await this.noteApiPath(filename);
     if (!notePath) return false;

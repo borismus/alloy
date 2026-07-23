@@ -441,6 +441,21 @@ function AppContent() {
     if (path) await openInEditor(path, config?.externalEditor ?? 'obsidian');
   }, [config?.externalEditor]);
 
+  // Persist an AI-assisted note edit and refresh the in-app view. markSelfWrite
+  // suppresses the watcher's own reload so we control the update.
+  const handleSaveNoteEdit = useCallback(async (filename: string, content: string) => {
+    const absPath = await vaultService.getNoteFilePath(filename);
+    if (absPath) markSelfWrite(absPath);
+    await vaultService.writeNote(filename, content);
+    setNoteContent(content);
+    const loadedNotes = await vaultService.loadNotes();
+    setNotes(loadedNotes);
+    if (filename === 'memory.md') {
+      const loadedMemory = await vaultService.loadMemory();
+      setMemory(loadedMemory);
+    }
+  }, [markSelfWrite]);
+
   // Persist the external-editor preference (comment-preserving), optimistic.
   const handleSetExternalEditor = useCallback(async (value: ExternalEditor) => {
     const prev = config?.externalEditor;
@@ -1144,8 +1159,12 @@ function AppContent() {
               // Mobile: viewing a task
               <React.Suspense fallback={<div className="loading">Loading task…</div>}>
                 <TaskDetailView
+                  key={selectedTask.id}
                   task={selectedTask}
                   availableModels={availableModels}
+                  favoriteModels={config?.favoriteModels}
+                  onToggleFavorite={handleToggleFavorite}
+                  defaultModel={config?.defaultModel}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
                   onDelete={async () => {
@@ -1187,6 +1206,11 @@ function AppContent() {
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                   onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
                   onEdit={handleEditNote}
+                  onSaveNote={handleSaveNoteEdit}
+                  availableModels={availableModels}
+                  favoriteModels={config?.favoriteModels}
+                  onToggleFavorite={handleToggleFavorite}
+                  defaultModel={config?.defaultModel}
                   conversations={conversations}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
@@ -1277,8 +1301,12 @@ function AppContent() {
         ) : selectedTask ? (
           <React.Suspense fallback={<div className="loading">Loading task…</div>}>
             <TaskDetailView
+              key={selectedTask.id}
               task={selectedTask}
               availableModels={availableModels}
+              favoriteModels={config?.favoriteModels}
+              onToggleFavorite={handleToggleFavorite}
+              defaultModel={config?.defaultModel}
               onBack={goBack}
               canGoBack={canGoBack}
               onDelete={async () => {
@@ -1306,6 +1334,11 @@ function AppContent() {
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
             onEdit={handleEditNote}
+            onSaveNote={handleSaveNoteEdit}
+            availableModels={availableModels}
+            favoriteModels={config?.favoriteModels}
+            onToggleFavorite={handleToggleFavorite}
+            defaultModel={config?.defaultModel}
             conversations={conversations}
             onBack={goBack}
             canGoBack={canGoBack}

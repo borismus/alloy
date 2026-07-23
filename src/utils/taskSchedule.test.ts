@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ScheduledTask } from '../types';
-import { describeTaskSchedule } from './taskSchedule';
+import { describeTaskSchedule, parseTaskCron } from './taskSchedule';
 
 function task(schedule: ScheduledTask['schedule']): ScheduledTask {
   return {
@@ -34,6 +34,11 @@ describe('describeTaskSchedule', () => {
     expect(result.invalid).toBe(true);
     expect(result.description).toBe('Invalid schedule');
     expect(result.raw).toBe('bad cron');
+  });
+
+  it('rejects six-field cron even though cron-parser accepts it', () => {
+    expect(() => parseTaskCron('0 30 6 * * *', 'UTC')).toThrow('exactly five fields');
+    expect(describeTaskSchedule(task({ cron: '0 30 6 * * *', timezone: 'UTC' })).invalid).toBe(true);
   });
 
 });

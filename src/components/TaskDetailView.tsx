@@ -1,13 +1,55 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import * as yaml from 'js-yaml';
 import { ScheduledTask, ModelInfo } from '../types';
 import { vaultService } from '../services/vault';
 import { useTaskContext } from '../contexts/TaskContext';
 import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
-import { describeTaskSchedule } from '../utils/taskSchedule';
+import { AiEditPanel } from './AiEditPanel';
+import { describeTaskSchedule, parseTaskCron } from '../utils/taskSchedule';
 import { providerLabel, isLocalModel } from '../utils/models';
 import './TaskDetailView.css';
+
+// The editable config subset shown/diffed in the AI edit composer. Run history,
+// ids, timestamps and delivered messages are deliberately excluded so the model
+// can't touch them.
+function taskEditPrompt(currentConfig: string): string {
+  return `You are editing a scheduled task's configuration based on the user's instruction.
+
+CURRENT CONFIG (YAML):
+${currentConfig}
+
+Return YAML for the updated config. You may return only the fields that change — any field you omit keeps its current value.
+
+FIELDS:
+- title: short human label (string)
+- model: the model that runs the task, in "provider/model-id" form (string)
+- enabled: whether the task runs (boolean)
+- email: whether delivered results are emailed (boolean). Set false to stop emailing.
+- prompt: the instruction the task runs on each schedule (string)
+- schedule.cron: standard 5-field cron expression (string)
+- schedule.timezone: IANA timezone, e.g. "America/New_York" (string)
+- trigger.condition: optional delivery gate — results are surfaced only when this natural-language condition is met. Set "trigger: null" to remove it and deliver every run.
+
+RULES:
+- Return ONLY valid YAML — no code fences, no commentary.
+- When changing the schedule, output a valid cron expression that matches the request.`;
+}
+
+// Fields the AI composer may change, in a stable key order for a clean diff.
+function taskConfigSubset(task: ScheduledTask): Record<string, unknown> {
+  const subset: Record<string, unknown> = {
+    title: task.title,
+    model: task.model,
+    enabled: task.enabled,
+  };
+  if (task.email !== undefined) subset.email = task.email;
+  subset.prompt = task.prompt;
+  subset.schedule = { cron: task.schedule.cron, timezone: task.schedule.timezone };
+  if (task.trigger) subset.trigger = { condition: task.trigger.condition };
+  return subset;
+}
 
 interface TaskDetailViewProps {
   task: ScheduledTask;
@@ -19,6 +61,9 @@ interface TaskDetailViewProps {
   onBack?: () => void;
   canGoBack?: boolean;
   onClose?: () => void;
+  favoriteModels?: string[];
+  onToggleFavorite?: (modelKey: string) => void;
+  defaultModel?: string;
 }
 
 function formatCost(cost: number): string {
@@ -89,6 +134,9 @@ export function TaskDetailView({
   onBack,
   canGoBack = false,
   onClose,
+  favoriteModels,
+  onToggleFavorite,
+  defaultModel,
 }: TaskDetailViewProps) {
   const modelInfo = availableModels.find(m => m.key === task.model);
   const modelName = modelInfo?.name ?? (task.model.split('/').slice(1).join('/') || task.model);
@@ -176,6 +224,103 @@ export function TaskDetailView({
       setIsToggling(false);
     }
   };
+
+  // AI edit: diff the editable config subset (as YAML), then merge the confirmed
+  // values back into the fresh task, preserving history/messages/ids.
+  const getTaskConfig = useCallback(
+    () => yaml.dump(taskConfigSubset(task), { lineWidth: -1 }),
+    [task],
+  );
+  // The model may return only the fields that change; merge its (possibly
+  // partial) patch onto the current config to get the resolved full config.
+  // This is what we BOTH diff against and apply, so the two never disagree.
+  const resolveTaskConfig = useCallback((raw: string): string => {
+    const current = taskConfigSubset(task);
+    let patch: Record<string, unknown> = {};
+    try {
+      const parsed = yaml.load(raw);
+      if (parsed && typeof parsed === 'object') patch = parsed as Record<string, unknown>;
+    } catch {
+      // Unparseable output → empty patch → diff shows no change.
+    }
+
+    const curSchedule = current.schedule as { cron: string; timezone: string };
+    const patchSchedule = (patch.schedule as { cron?: unknown; timezone?: unknown }) ?? {};
+
+    // Build in canonical key order for a stable, minimal diff.
+    const merged: Record<string, unknown> = {
+      title: typeof patch.title === 'string' ? patch.title : current.title,
+      model: typeof patch.model === 'string' ? patch.model : current.model,
+      enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
+    };
+    // email: an explicit boolean sets it; `null` removes it; absent keeps current.
+    if ('email' in patch) {
+      if (typeof patch.email === 'boolean') merged.email = patch.email;
+    } else if (current.email !== undefined) {
+      merged.email = current.email;
+    }
+    merged.prompt = typeof patch.prompt === 'string' ? patch.prompt : current.prompt;
+    merged.schedule = {
+      cron: typeof patchSchedule.cron === 'string' ? patchSchedule.cron : curSchedule.cron,
+      timezone: typeof patchSchedule.timezone === 'string' ? patchSchedule.timezone : curSchedule.timezone,
+    };
+    // trigger: a condition sets it; `null`/absent-condition removes it; absent keeps current.
+    if ('trigger' in patch) {
+      const cond = (patch.trigger as { condition?: unknown } | null)?.condition;
+      if (typeof cond === 'string' && cond.trim()) merged.trigger = { condition: cond.trim() };
+    } else if (current.trigger) {
+      merged.trigger = current.trigger;
+    }
+    return yaml.dump(merged, { lineWidth: -1 });
+  }, [task]);
+
+  // Receives the already-resolved full config (see resolveTaskConfig).
+  const applyTaskEdit = useCallback(async (resolvedYaml: string) => {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = (yaml.load(resolvedYaml) as Record<string, unknown>) ?? {};
+    } catch {
+      throw new Error('The proposed config is not valid YAML.');
+    }
+    if (typeof parsed !== 'object') throw new Error('The proposed config is not valid YAML.');
+
+    const schedule = (parsed.schedule as { cron?: unknown; timezone?: unknown }) ?? {};
+    const cron = typeof schedule.cron === 'string' ? schedule.cron.trim() : '';
+    const timezone = typeof schedule.timezone === 'string' && schedule.timezone.trim()
+      ? schedule.timezone.trim()
+      : task.schedule.timezone;
+    if (!cron) throw new Error('schedule.cron is required.');
+    try {
+      parseTaskCron(cron, timezone);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Invalid schedule.';
+      throw new Error(`Invalid cron expression: "${cron}". ${detail}`);
+    }
+
+    const triggerCondition = (parsed.trigger as { condition?: unknown })?.condition;
+
+    const updated = await vaultService.updateTask(task.id, fresh => {
+      const next: ScheduledTask = {
+        ...fresh,
+        title: typeof parsed.title === 'string' ? parsed.title : fresh.title,
+        model: typeof parsed.model === 'string' ? parsed.model : fresh.model,
+        enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : fresh.enabled,
+        prompt: typeof parsed.prompt === 'string' ? parsed.prompt : fresh.prompt,
+        schedule: { cron, timezone },
+        updated: new Date().toISOString(),
+      };
+      if (typeof parsed.email === 'boolean') next.email = parsed.email;
+      else delete next.email;
+      if (typeof triggerCondition === 'string' && triggerCondition.trim()) {
+        next.trigger = { condition: triggerCondition.trim() };
+      } else {
+        delete next.trigger;
+      }
+      return next;
+    });
+    if (updated) onTaskUpdated(updated);
+  }, [task.id, task.schedule.timezone, onTaskUpdated]);
+  const canAiEdit = !!(defaultModel && availableModels.length > 0);
 
   // Accordion: open this run (collapsing any other), or close it if already open.
   const toggleRunExpanded = (key: string) => {
@@ -342,6 +487,20 @@ export function TaskDetailView({
           </div>
         </section>
       </div>
+
+      {canAiEdit && (
+        <AiEditPanel
+          placeholder="Edit this task"
+          getCurrentContent={getTaskConfig}
+          buildSystemPrompt={taskEditPrompt}
+          applyNewContent={applyTaskEdit}
+          resolveProposal={resolveTaskConfig}
+          defaultModel={defaultModel!}
+          availableModels={availableModels}
+          favoriteModels={favoriteModels}
+          onToggleFavorite={onToggleFavorite}
+        />
+      )}
     </div>
   );
 }
