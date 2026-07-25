@@ -97,7 +97,7 @@ textarea,
   justify-content: center;
   height: 100vh;
   font-size: 1.2rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .main-content {
@@ -106,7 +106,7 @@ textarea,
   flex-direction: column;
   height: 100vh;
   height: var(--app-height, 100dvh);
-  background: white;
+  background: var(--color-canvas);
   overflow-y: auto;
 }
 
@@ -128,7 +128,7 @@ textarea,
 
 .no-note-selected .empty-state {
   text-align: center;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .no-note-selected .empty-state p {
