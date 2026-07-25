@@ -154,19 +154,25 @@ function ModelResults({ value, models, favoriteModels, onSelect, onToggleFavorit
   const isFavorite = (key: string) => favoriteModels.includes(key);
   const hasFavorites = favoriteModels.length > 0;
 
-  const rows = useMemo(() => {
+  const rows = useMemo<Array<ModelInfo & { favorite: boolean }>>(() => {
+    let list: ModelInfo[];
     if (query.length === 0) {
       const favs = models.filter(m => isFavorite(m.key));
       const selected = models.find(m => m.key === value);
       // Pin the selected model on top when it isn't already a favorite, so the
       // picker never looks empty when something is selected.
-      return selected && !isFavorite(selected.key) ? [selected, ...favs] : favs;
+      list = selected && !isFavorite(selected.key) ? [selected, ...favs] : favs;
+    } else {
+      list = models
+        .map(m => ({ m, rank: rankMatch(query, m) }))
+        .filter(x => x.rank < 4)
+        .sort((a, b) => a.rank - b.rank || a.m.name.localeCompare(b.m.name))
+        .map(x => x.m);
     }
-    return models
-      .map(m => ({ m, rank: rankMatch(query, m) }))
-      .filter(x => x.rank < 4)
-      .sort((a, b) => a.rank - b.rank || a.m.name.localeCompare(b.m.name))
-      .map(x => x.m);
+    // Bake the favorite flag into each row so the row's identity changes when
+    // favorites change; otherwise React Aria caches the row by key (the model
+    // reference is stable) and the star never re-renders.
+    return list.map(m => ({ ...m, favorite: isFavorite(m.key) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, value, models, favoriteModels]);
 
@@ -192,13 +198,13 @@ function ModelResults({ value, models, favoriteModels, onSelect, onToggleFavorit
           <span
             role="button"
             tabIndex={-1}
-            className={`${styles.star} ${isFavorite(model.key) ? styles.starOn : ''}`}
-            aria-label={isFavorite(model.key) ? 'Remove from favorites' : 'Add to favorites'}
-            title={isFavorite(model.key) ? 'Remove from favorites' : 'Add to favorites'}
+            className={`${styles.star} ${model.favorite ? styles.starOn : ''}`}
+            aria-label={model.favorite ? 'Remove from favorites' : 'Add to favorites'}
+            title={model.favorite ? 'Remove from favorites' : 'Add to favorites'}
             onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(model.key); }}
           >
-            {isFavorite(model.key) ? '★' : '☆'}
+            {model.favorite ? '★' : '☆'}
           </span>
           <ProviderTag model={model} />
           <span className={styles.optionName}>{model.name}</span>
