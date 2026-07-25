@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button, Disclosure, DisclosurePanel, Heading } from 'react-aria-components';
 import { ProposedChange } from '../types';
 import { AlloyDialog } from './ui';
 import './RiffBatchApprovalModal.css';
@@ -41,11 +42,15 @@ export const RiffBatchApprovalModal: React.FC<RiffBatchApprovalModalProps> = ({
                       <span className="riff-change-path">{change.path}</span>
                     </div>
                     <p className="riff-change-description">{change.description}</p>
-                    <details className="riff-change-details">
-                      <summary>View content</summary>
-                      <pre className="riff-change-content">{change.newContent}</pre>
-                      <p className="riff-change-reasoning"><strong>Reasoning:</strong> {change.reasoning}</p>
-                    </details>
+                    <Disclosure className="riff-change-disclosure">
+                      <Heading className="riff-change-disclosure-heading">
+                        <Button slot="trigger" className="riff-change-summary">View content</Button>
+                      </Heading>
+                      <DisclosurePanel className="riff-change-panel">
+                        <pre className="riff-change-content">{change.newContent}</pre>
+                        <p className="riff-change-reasoning"><strong>Reasoning:</strong> {change.reasoning}</p>
+                      </DisclosurePanel>
+                    </Disclosure>
                   </div>
                 ))}
               </div>

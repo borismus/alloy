@@ -32,6 +32,16 @@ describe('RiffBatchApprovalModal', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('expands a change to reveal its content via a disclosure', async () => {
+    const user = userEvent.setup();
+    render(<RiffBatchApprovalModal proposedChanges={changes} isProcessing={false} onApply={vi.fn()} onCancel={vi.fn()} />);
+    const triggers = screen.getAllByRole('button', { name: 'View content' });
+    expect(triggers).toHaveLength(2);
+    expect(triggers[0].getAttribute('aria-expanded')).toBe('false');
+    await user.click(triggers[0]);
+    expect(triggers[0].getAttribute('aria-expanded')).toBe('true');
+  });
+
   it('shows the empty state with a single Done action', () => {
     render(<RiffBatchApprovalModal proposedChanges={[]} isProcessing={false} onApply={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole('heading', { name: 'Integration Complete' })).toBeTruthy();

@@ -65,18 +65,36 @@
   margin: 0 0 8px 0;
 }
 
-.riff-change-details {
+.riff-change-disclosure {
   font-size: 12px;
 }
 
-.riff-change-details summary {
+.riff-change-disclosure-heading {
+  margin: 0;
+}
+
+.riff-change-summary {
+  padding: 0;
+  background: transparent;
+  border: 0;
   cursor: pointer;
   color: var(--accent-color, #3b82f6);
   font-size: 12px;
+  font-family: inherit;
 }
 
-.riff-change-details summary:hover {
+.riff-change-summary[data-hovered] {
   text-decoration: underline;
+}
+
+.riff-change-summary[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.riff-change-panel[hidden] {
+  display: none;
 }
 
 .riff-change-content {
