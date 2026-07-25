@@ -7,20 +7,25 @@
   align-items: center;
   height: 28px;
   padding: 0 0.6rem;
-  border: 1px solid var(--border-color, #e0e0e0);
-  background: var(--bg-secondary, #f0f0f0);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   border-radius: 14px;
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary, #666);
+  color: var(--color-text-secondary);
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.ctx-chip-button:hover {
-  background: var(--bg-hover, #e8e8e8);
-  color: var(--text-primary, #333);
+.ctx-chip-button[data-hovered] {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.ctx-chip-button[data-focus-visible] {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 1px;
 }
 
 .ctx-chip-warn .ctx-chip-button {
@@ -36,19 +41,23 @@
 }
 
 .ctx-chip-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 20;
   min-width: 220px;
-  padding: 0.6rem 0.75rem;
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-popover);
+}
+
+.ctx-chip-popover[data-entering] {
+  animation: ctx-chip-appear var(--duration-fast) var(--ease-standard);
+}
+
+.ctx-chip-dialog {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  padding: 0.6rem 0.75rem;
+  outline: none;
 }
 
 .ctx-chip-row {
@@ -56,12 +65,12 @@
   justify-content: space-between;
   align-items: center;
   font-size: 0.82rem;
-  color: var(--text-secondary, #666);
+  color: var(--color-text-secondary);
   gap: 1rem;
 }
 
 .ctx-chip-row strong {
-  color: var(--text-primary, #333);
+  color: var(--color-text);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -69,16 +78,23 @@
 .ctx-chip-action {
   margin-top: 0.25rem;
   padding: 0.4rem 0.75rem;
-  border: 1px solid var(--border-color, #d0d0d0);
-  background: var(--bg-secondary, #f5f5f5);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   border-radius: 6px;
   font-size: 0.82rem;
   cursor: pointer;
-  color: var(--text-primary, #333);
+  color: var(--color-text);
 }
 
 .ctx-chip-action:hover:not(:disabled) {
-  background: var(--bg-hover, #ebebeb);
+  background: var(--color-surface-hover);
+}
+
+@keyframes ctx-chip-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
 
 .ctx-chip-action:disabled {

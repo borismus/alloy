@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Button, Dialog, DialogTrigger, Popover } from 'react-aria-components';
 import { Conversation, Message, ModelInfo } from '../types';
 import './ContextUsageChip.css';
 
@@ -41,11 +42,9 @@ export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
   availableModels,
   onCompactNow,
 }) => {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
 
-  const { used, window, level } = useMemo(() => {
+  const { used, contextWindow, level } = useMemo(() => {
     const tokens = conversation.messages
       .filter(m => m.role !== 'log')
       .reduce((sum, m) => sum + estimateMessageTokens(m), 0);
@@ -58,71 +57,61 @@ export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
       if (tokens >= threshold) lvl = 'hot';
       else if (tokens >= threshold * 0.8) lvl = 'warn';
     }
-    return { used: tokens, window: cw, level: lvl };
+    return { used: tokens, contextWindow: cw, level: lvl };
   }, [conversation.messages, conversation.model, availableModels]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (!popoverRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
+  if (!contextWindow) return null; // Unknown context window — don't render rather than mislead
 
-  if (!window) return null; // Unknown context window — don't render rather than mislead
-
-  const handleCompact = async () => {
+  const handleCompact = async (close: () => void) => {
     if (!onCompactNow || busy) return;
     setBusy(true);
     try {
       await onCompactNow();
     } finally {
       setBusy(false);
-      setOpen(false);
+      close();
     }
   };
 
   return (
-    <div className={`ctx-chip ctx-chip-${level}`} ref={popoverRef}>
-      <button
-        type="button"
-        className="ctx-chip-button"
-        onClick={() => setOpen(o => !o)}
-        title="Context usage"
-      >
-        {formatTokens(used)} / {formatTokens(window)}
-      </button>
-      {open && (
-        <div className="ctx-chip-popover" role="dialog">
-          <div className="ctx-chip-row">
-            <span>Estimated context</span>
-            <strong>{formatTokens(used)} tok</strong>
-          </div>
-          <div className="ctx-chip-row">
-            <span>Model window</span>
-            <strong>{formatTokens(window)} tok</strong>
-          </div>
-          <div className="ctx-chip-row">
-            <span>Last compacted</span>
-            <strong>
-              {conversation.lastCompactedAt ? formatRelative(conversation.lastCompactedAt) : '—'}
-            </strong>
-          </div>
-          {onCompactNow && (
-            <button
-              type="button"
-              className="ctx-chip-action"
-              onClick={handleCompact}
-              disabled={busy}
-            >
-              {busy ? 'Compacting…' : 'Compact now'}
-            </button>
-          )}
-        </div>
-      )}
+    <div className={`ctx-chip ctx-chip-${level}`}>
+      <DialogTrigger>
+        <Button className="ctx-chip-button" aria-label="Context usage">
+          {formatTokens(used)} / {formatTokens(contextWindow)}
+        </Button>
+        <Popover className="ctx-chip-popover" placement="bottom end">
+          <Dialog className="ctx-chip-dialog" aria-label="Context usage">
+            {({ close }) => (
+              <>
+                <div className="ctx-chip-row">
+                  <span>Estimated context</span>
+                  <strong>{formatTokens(used)} tok</strong>
+                </div>
+                <div className="ctx-chip-row">
+                  <span>Model window</span>
+                  <strong>{formatTokens(contextWindow)} tok</strong>
+                </div>
+                <div className="ctx-chip-row">
+                  <span>Last compacted</span>
+                  <strong>
+                    {conversation.lastCompactedAt ? formatRelative(conversation.lastCompactedAt) : '—'}
+                  </strong>
+                </div>
+                {onCompactNow && (
+                  <button
+                    type="button"
+                    className="ctx-chip-action"
+                    onClick={() => handleCompact(close)}
+                    disabled={busy}
+                  >
+                    {busy ? 'Compacting…' : 'Compact now'}
+                  </button>
+                )}
+              </>
+            )}
+          </Dialog>
+        </Popover>
+      </DialogTrigger>
     </div>
   );
 };
