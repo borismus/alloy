@@ -3,8 +3,15 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { vaultService } from '../services/vault';
 import { isTauri } from '../services/api';
+import { useTheme, type ThemePreference } from '../theme';
 import { CheckResult } from './UpdateChecker';
 import './Settings.css';
+
+const THEME_OPTIONS: { id: ThemePreference; label: string }[] = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'system', label: 'System' },
+];
 
 interface ShareStatus {
   enabled: boolean;
@@ -26,6 +33,7 @@ interface SettingsProps {
 }
 
 export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorChange }: SettingsProps) {
+  const { preference: themePreference, setPreference: setThemePreference } = useTheme();
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | CheckResult>('idle');
   const [copiedUrl, setCopiedUrl] = useState(false);
 
@@ -121,6 +129,24 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
         </div>
 
         <div className="settings-content">
+          <div className="settings-section">
+            <h3>Appearance</h3>
+            <p className="settings-description">Choose how Alloy looks. System follows your device setting.</p>
+            <div className="settings-theme-group" role="group" aria-label="Theme">
+              {THEME_OPTIONS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`settings-theme-option ${themePreference === id ? 'is-active' : ''}`}
+                  aria-pressed={themePreference === id}
+                  onClick={() => setThemePreference(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="settings-section">
             <h3>Vault</h3>
             <p className="settings-description">All conversations, notes, and settings are stored here.</p>
