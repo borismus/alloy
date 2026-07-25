@@ -234,32 +234,9 @@
   background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%);
 }
 
-.rename-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.rename-dialog {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  min-width: 320px;
-  max-width: 400px;
-}
-
-.rename-dialog h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.1rem;
-  color: #333;
+/* Body padding for AlloyDialog content (the dialog shell owns the header). */
+.dialog-body {
+  padding: 1.25rem 1.5rem;
 }
 
 .rename-input {

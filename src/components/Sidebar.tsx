@@ -7,6 +7,7 @@ import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
+import { AlloyDialog } from './ui';
 import './Sidebar.css';
 
 // FLIP animation helper - stores previous positions of items
@@ -516,45 +517,51 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       </div>
 
       {renamingId && (
-        <div className="rename-modal" onClick={cancelRename}>
-          <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Rename {renamingType === 'riff' ? 'Riff' : 'Conversation'}</h3>
-            <input
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  confirmRename();
-                } else if (e.key === 'Escape') {
-                  cancelRename();
-                }
-              }}
-              autoFocus
-              className="rename-input"
-              {...textareaProps}
-            />
-            <div className="rename-buttons">
-              <button onClick={cancelRename} className="cancel-button">Cancel</button>
-              <button onClick={confirmRename} className="confirm-button">Rename</button>
+        <AlloyDialog
+          isOpen
+          onOpenChange={(o) => { if (!o) cancelRename(); }}
+          size="compact"
+          title={`Rename ${renamingType === 'riff' ? 'Riff' : 'Conversation'}`}
+        >
+          {() => (
+            <div className="dialog-body">
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') confirmRename(); }}
+                autoFocus
+                className="rename-input"
+                {...textareaProps}
+              />
+              <div className="rename-buttons">
+                <button onClick={cancelRename} className="cancel-button">Cancel</button>
+                <button onClick={confirmRename} className="confirm-button">Rename</button>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </AlloyDialog>
       )}
 
       {deletingItem && (
-        <div className="rename-modal" onClick={cancelDelete}>
-          <div className="rename-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete {deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'task' ? 'Task' : deletingItem.type === 'riff' ? 'Riff' : 'Note'}</h3>
-            <p className="delete-warning">
-              Are you sure you want to delete this {deletingItem.type}? This action cannot be undone.
-            </p>
-            <div className="rename-buttons">
-              <button onClick={cancelDelete} className="cancel-button">Cancel</button>
-              <button onClick={confirmDelete} className="delete-button">Delete</button>
+        <AlloyDialog
+          isOpen
+          onOpenChange={(o) => { if (!o) cancelDelete(); }}
+          size="compact"
+          title={`Delete ${deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'task' ? 'Task' : deletingItem.type === 'riff' ? 'Riff' : 'Note'}`}
+        >
+          {() => (
+            <div className="dialog-body">
+              <p className="delete-warning">
+                Are you sure you want to delete this {deletingItem.type}? This action cannot be undone.
+              </p>
+              <div className="rename-buttons">
+                <button onClick={cancelDelete} className="cancel-button">Cancel</button>
+                <button onClick={confirmDelete} className="delete-button">Delete</button>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </AlloyDialog>
       )}
 
     </div>

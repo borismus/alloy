@@ -1,43 +1,5 @@
-.settings-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.settings-dialog {
-  background: #ffffff;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  border: 1px solid #e5e7eb;
-}
-
-.settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.settings-header h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
-}
+/* The dialog shell + header now come from the AlloyDialog primitive; only the
+   settings body and its sections/controls are styled here. */
 
 .close-button {
   background: none;
@@ -62,6 +24,7 @@
 .settings-content {
   overflow-y: auto;
   padding: 24px;
+  max-height: min(70vh, 640px);
 }
 
 .settings-section {
@@ -289,31 +252,9 @@
   cursor: pointer;
 }
 
-.settings-confirm-dialog {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 24px;
-  max-width: 400px;
-  width: 90%;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  border: 1px solid #e5e7eb;
-}
-
-.settings-confirm-dialog h3 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.settings-confirm-dialog p {
-  margin: 0 0 20px 0;
-  font-size: 14px;
-  color: #6b7280;
-  line-height: 1.5;
-}
-
-.settings-confirm-dialog .settings-button-group {
+/* Reset-confirm content lives in an AlloyDialog + .dialog-body; align its
+   action row to the right like the other dialog footers. */
+.dialog-body .settings-button-group {
   justify-content: flex-end;
 }
 

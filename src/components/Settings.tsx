@@ -4,6 +4,7 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { vaultService } from '../services/vault';
 import { isTauri } from '../services/api';
 import { useTheme, type ThemePreference } from '../theme';
+import { AlloyDialog } from './ui';
 import { CheckResult } from './UpdateChecker';
 import './Settings.css';
 
@@ -121,13 +122,9 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
   };
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-header">
-          <h2>Settings</h2>
-          <button onClick={onClose} className="close-button">×</button>
-        </div>
-
+    <>
+      <AlloyDialog isOpen onOpenChange={(o) => { if (!o) onClose(); }} title="Settings">
+        {() => (
         <div className="settings-content">
           <div className="settings-section">
             <h3>Appearance</h3>
@@ -274,40 +271,47 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
           </div>
 
         </div>
-      </div>
+        )}
+      </AlloyDialog>
 
       {showResetConfirm && (
-        <div className="settings-overlay" onClick={() => setShowResetConfirm(false)}>
-          <div className="settings-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Reset local app state?</h3>
-            <p>The app will reload. You'll be asked to pick a vault again.</p>
-            <ul className="confirm-list">
-              <li className="confirm-list-clear">
-                <span className="confirm-list-icon" aria-hidden>×</span>
-                <span>Selected vault, sidebar state, UI preferences</span>
-              </li>
-              <li className="confirm-list-keep">
-                <span className="confirm-list-icon" aria-hidden>✓</span>
-                <span>Conversations, notes, tasks, config (all vault files)</span>
-              </li>
-            </ul>
-            <div className="settings-button-group">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="settings-button settings-button-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleResetVault}
-                className="settings-button settings-button-danger"
-              >
-                Reset
-              </button>
+        <AlloyDialog
+          isOpen
+          onOpenChange={(o) => { if (!o) setShowResetConfirm(false); }}
+          size="compact"
+          title="Reset local app state?"
+        >
+          {() => (
+            <div className="dialog-body">
+              <p className="settings-description">The app will reload. You'll be asked to pick a vault again.</p>
+              <ul className="confirm-list">
+                <li className="confirm-list-clear">
+                  <span className="confirm-list-icon" aria-hidden>×</span>
+                  <span>Selected vault, sidebar state, UI preferences</span>
+                </li>
+                <li className="confirm-list-keep">
+                  <span className="confirm-list-icon" aria-hidden>✓</span>
+                  <span>Conversations, notes, tasks, config (all vault files)</span>
+                </li>
+              </ul>
+              <div className="settings-button-group">
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="settings-button settings-button-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetVault}
+                  className="settings-button settings-button-danger"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </AlloyDialog>
       )}
-    </div>
+    </>
   );
 }

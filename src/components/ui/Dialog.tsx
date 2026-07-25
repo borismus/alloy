@@ -15,22 +15,36 @@ export interface AlloyDialogProps {
   size?: 'compact' | 'regular';
   /** Whether clicking the overlay / pressing Escape dismisses. Default true. */
   dismissable?: boolean;
+  /**
+   * Controlled open state, for dialogs opened by parent state rather than a
+   * `DialogTrigger`. Omit both when nesting inside a `DialogTrigger`.
+   */
+  isOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
 /**
  * Alloy modal dialog, built on React Aria's ModalOverlay/Modal/Dialog. Provides
  * focus trapping, focus restoration, Escape-to-close, and background inertness.
- * On narrow viewports it renders as a bottom sheet. Pair with a `DialogTrigger`
- * (from react-aria-components) around a trigger button and this component.
+ * On narrow viewports it renders as a bottom sheet. Either nest inside a
+ * `DialogTrigger` (from react-aria-components) or drive it with isOpen/
+ * onOpenChange for parent-controlled dialogs.
  */
 export function AlloyDialog({
   title,
   children,
   size = 'regular',
   dismissable = true,
+  isOpen,
+  onOpenChange,
 }: AlloyDialogProps) {
   return (
-    <ModalOverlay className={styles.overlay} isDismissable={dismissable}>
+    <ModalOverlay
+      className={styles.overlay}
+      isDismissable={dismissable}
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+    >
       <Modal className={`${styles.modal} ${styles[size]}`}>
         <Dialog className={styles.dialog}>
           {({ close }) => (

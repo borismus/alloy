@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   DialogTrigger,
   MenuTrigger,
@@ -52,6 +53,20 @@ describe('ui primitives', () => {
     expect(screen.getByRole('button', { name: 'Open settings' })).toBeTruthy();
     // Dialog content is not mounted until the trigger opens it.
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('renders a parent-controlled dialog and closes via the close button', async () => {
+    const onOpenChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <AlloyDialog isOpen onOpenChange={onOpenChange} title="Settings">
+        {(close) => <button onClick={close}>Done</button>}
+      </AlloyDialog>,
+    );
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Close dialog' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('renders a menu trigger that is closed until pressed', () => {
