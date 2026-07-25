@@ -1,0 +1,209 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 140px;
+  max-width: 220px;
+  height: 48px;
+  padding: 0 0.5rem 0 0.75rem;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  text-align: left;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.trigger[data-hovered] {
+  border-color: var(--color-border-strong);
+}
+
+.trigger[data-focus-visible] {
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus);
+}
+
+.trigger[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.triggerLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-secondary);
+}
+
+/* Provenance chip */
+.providerTag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  color: var(--color-text-secondary);
+  background: var(--color-chip);
+  border: 1px solid var(--color-chip-border);
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.providerTagLocal {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+  border-color: rgb(16 185 129 / 28%);
+}
+
+.providerTag svg {
+  display: block;
+}
+
+/* Popover + search */
+.popover {
+  width: min(360px, calc(100vw - 24px));
+  max-height: 360px;
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-popover);
+}
+
+.popover[data-entering] {
+  animation: model-popover-appear var(--duration-fast) var(--ease-standard);
+}
+
+.search {
+  display: block;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.searchInput {
+  width: 100%;
+  height: 36px;
+  padding: 0 0.75rem;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-family: var(--font-ui);
+  font-size: 0.9375rem;
+  outline: none;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.searchInput:hover {
+  border-color: var(--color-border-strong);
+}
+
+.searchInput:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-focus);
+}
+
+/* List + rows */
+.list {
+  max-height: 300px;
+  padding: 0.35rem;
+  overflow-y: auto;
+  outline: none;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  cursor: default;
+  font-size: 0.9375rem;
+  outline: none;
+}
+
+.option[data-focused],
+.option[data-hovered] {
+  background: var(--color-surface-hover);
+}
+
+.option[data-selected] {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
+}
+
+.option .providerTag {
+  min-width: 52px;
+  justify-content: center;
+}
+
+.optionName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Favorite star — an independent mouse hit target within the row. */
+.star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: #c8cdd4;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.star:hover {
+  color: var(--color-accent-strong);
+  background: var(--color-surface-pressed);
+}
+
+.starOn {
+  color: #f59e0b;
+}
+
+.starOn:hover {
+  color: #d97706;
+}
+
+.empty {
+  padding: 1rem 0.75rem 1.25rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+@keyframes model-popover-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
