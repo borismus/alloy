@@ -64,6 +64,31 @@
   --duration-fast: 120ms;
   --duration-normal: 180ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /*
+   * Compatibility aliases. Feature CSS across the app uses these ad-hoc names
+   * with hardcoded fallbacks (the names were never actually defined). Pointing
+   * them at semantic tokens tokenizes ~130 usages at once. Because each alias
+   * value is itself a var() reference, it resolves to the dark token value
+   * under [data-theme="dark"] without needing a second definition.
+   */
+  --border-color: var(--color-border);
+  --bg-primary: var(--color-canvas);
+  --bg-secondary: var(--color-surface);
+  --bg-tertiary: var(--color-surface);
+  --bg-hover: var(--color-surface-hover);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-muted);
+  --text-muted: var(--color-text-muted);
+  --accent-color: var(--color-accent);
+  --accent-hover: var(--color-accent-strong);
+  --warning-text: var(--color-warning);
+  --warning-bg: var(--color-warning-soft);
+  --success-text: var(--color-success);
+  --success-bg: var(--color-success-soft);
+  --info-text: var(--color-accent);
+  --info-bg: var(--color-accent-soft);
 }
 
 :root[data-theme="dark"] {
