@@ -1,0 +1,56 @@
+.popover {
+  min-width: 190px;
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+}
+
+.popover[data-entering] {
+  animation: appear var(--duration-fast) var(--ease-standard);
+}
+
+.header {
+  padding: 0.6rem 0.75rem 0.45rem;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.menu {
+  padding: 0.3rem;
+  outline: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 36px;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-control);
+  cursor: default;
+  font-size: var(--text-md);
+  outline: none;
+}
+
+.item small {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.item[data-focused] {
+  background: var(--color-surface-hover);
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}

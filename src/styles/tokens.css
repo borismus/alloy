@@ -1,0 +1,106 @@
+/*
+ * Alloy design tokens.
+ *
+ * Semantic tokens consumed by the `src/components/ui/` primitives and (as the
+ * migration proceeds) feature CSS. Light values live on :root; dark values
+ * override the color tokens under [data-theme="dark"], which the ThemeProvider
+ * sets on <html>. Add new tokens here rather than hardcoding colors in
+ * component CSS so every surface adapts to the theme.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --color-canvas: #ffffff;
+  --color-surface: #f8f9fa;
+  --color-surface-raised: #ffffff;
+  --color-surface-hover: #e9ecef;
+  --color-surface-pressed: #e2e5e9;
+  --color-border: #e0e0e0;
+  --color-border-strong: #c8ccd1;
+  --color-text: #333333;
+  --color-text-secondary: #666666;
+  --color-text-muted: #999999;
+  --color-accent: #667eea;
+  --color-accent-strong: #5a67d8;
+  --color-accent-end: #764ba2;
+  --color-accent-soft: #eef0ff;
+  --color-focus: rgb(102 126 234 / 22%);
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-success: #087a58;
+  --color-success-soft: #dff8ee;
+  --color-warning: #d97706;
+  --color-warning-soft: #fff7ed;
+  --color-overlay: rgb(0 0 0 / 40%);
+
+  /* Repeated surface accents (tokenized so they adapt to theme) */
+  --color-chip: #f1f3f5;
+  --color-chip-border: #e2e5ea;
+  --color-track: #eef0f3;
+  --color-code-bg: #f3f4f6;
+  --color-added: #087a58;
+  --color-control-track: #d1d5db;
+  --color-scrollbar: #cccccc;
+
+  /* Typography */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --text-xs: 0.7rem;
+  --text-sm: 0.8rem;
+  --text-md: 0.9rem;
+  --text-lg: 1.125rem;
+
+  /* Shape and elevation */
+  --radius-sm: 4px;
+  --radius-control: 6px;
+  --radius-panel: 12px;
+  --shadow-control: 0 2px 8px rgb(102 126 234 / 30%);
+  --shadow-popover: 0 8px 24px rgb(0 0 0 / 14%);
+  --shadow-dialog: 0 20px 60px rgb(0 0 0 / 20%);
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-canvas: #16181d;
+  --color-surface: #1e2128;
+  --color-surface-raised: #23272f;
+  --color-surface-hover: #2b3039;
+  --color-surface-pressed: #313742;
+  --color-border: #333944;
+  --color-border-strong: #454c58;
+  --color-text: #e6e8ec;
+  --color-text-secondary: #a2a9b4;
+  --color-text-muted: #767d89;
+  --color-accent: #818cf8;
+  --color-accent-strong: #a5b0ff;
+  --color-accent-end: #a78bfa;
+  --color-accent-soft: rgb(129 140 248 / 16%);
+  --color-focus: rgb(129 140 248 / 40%);
+  --color-danger: #f05252;
+  --color-danger-soft: rgb(240 82 82 / 16%);
+  --color-success: #34d399;
+  --color-success-soft: rgb(16 185 129 / 16%);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgb(251 191 36 / 14%);
+  --color-overlay: rgb(0 0 0 / 60%);
+
+  --color-chip: #2b3039;
+  --color-chip-border: #3a414d;
+  --color-track: #14161b;
+  --color-code-bg: #191c22;
+  --color-added: #4ade80;
+  --color-control-track: #3a414d;
+  --color-scrollbar: #454c58;
+
+  --shadow-control: 0 2px 8px rgb(0 0 0 / 45%);
+  --shadow-popover: 0 8px 24px rgb(0 0 0 / 50%);
+  --shadow-dialog: 0 20px 60px rgb(0 0 0 / 60%);
+}

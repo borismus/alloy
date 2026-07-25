@@ -1,0 +1,67 @@
+.root {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.label {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 180px;
+  min-height: 38px;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  text-align: left;
+}
+
+.trigger[data-hovered] {
+  border-color: var(--color-border-strong);
+}
+
+.trigger[data-focus-visible] {
+  border-color: var(--color-accent);
+  outline: 3px solid var(--color-focus);
+}
+
+.popover {
+  min-width: var(--trigger-width);
+  overflow: hidden;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+}
+
+.list {
+  padding: 0.3rem;
+  outline: none;
+}
+
+.option {
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius-control);
+  cursor: default;
+  font-size: var(--text-md);
+  outline: none;
+}
+
+.option[data-focused] {
+  background: var(--color-surface-hover);
+}
+
+.option[data-selected] {
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
+}
