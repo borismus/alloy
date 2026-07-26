@@ -29,7 +29,7 @@
 }
 
 .crystallized-bg {
-  background-color: #eee;
+  background-color: var(--color-surface-hover);
   color: transparent;
 }
 
@@ -46,7 +46,7 @@
   font-size: 15px;
   line-height: 24px;
   background: transparent;
-  color: #000;
+  color: var(--color-text);
 }
 
 .append-only-textarea:disabled {

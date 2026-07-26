@@ -7,7 +7,7 @@
 /* Global thin scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #ccc transparent;
+  scrollbar-color: var(--color-scrollbar) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -20,12 +20,12 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: var(--color-scrollbar);
   border-radius: 3px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #aaa;
+  background: var(--color-border-strong);
 }
 
 html, body, #root {
