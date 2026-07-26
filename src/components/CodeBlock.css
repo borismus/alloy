@@ -1,10 +1,10 @@
 .code-block {
   position: relative;
   margin: 1rem 0;
-  border: 1px solid #d8dce3;
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   overflow: hidden;
-  background: #eef1f5;
+  background: var(--color-surface-hover);
 }
 
 .code-block-language {
@@ -54,21 +54,21 @@
 }
 
 .block-action-btn:hover {
-  background: #fff;
-  color: var(--text-primary, #24292e);
+  background: var(--color-surface-raised);
+  color: var(--text-primary, var(--color-text));
   border-color: rgba(100, 108, 125, 0.55);
 }
 
 .block-action-btn:focus-visible {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 .block-action-btn.copied {
-  color: #087a58;
+  color: var(--color-success);
   border-color: rgba(16, 185, 129, 0.4);
-  background: #eefbf6;
+  background: var(--color-success-soft);
 }
 
 .block-action-btn:disabled {

@@ -10,18 +10,18 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
-  background: #f0f7ff;
-  border: 1px solid #b3d4fc;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-soft);
   border-radius: 16px;
   font-size: 0.8rem;
-  color: #1a5fb4;
+  color: var(--color-accent-strong);
 }
 
 .skill-use-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1a5fb4;
+  color: var(--color-accent-strong);
 }
 
 .skill-use-label {

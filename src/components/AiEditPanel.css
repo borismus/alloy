@@ -1,10 +1,10 @@
 .ai-edit-panel {
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-border);
   padding: 1rem 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  background: white;
+  background: var(--color-surface-raised);
   flex-shrink: 0;
 }
 
@@ -17,7 +17,7 @@
 .ai-edit-row textarea {
   flex: 1;
   padding: 0.75rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   font-size: 1rem;
   font-family: inherit;
@@ -26,17 +26,17 @@
   overflow-y: auto;
   min-height: 48px;
   scrollbar-width: thin;
-  scrollbar-color: #ccc transparent;
+  scrollbar-color: var(--color-scrollbar) transparent;
 }
 
 .ai-edit-row textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
 .ai-edit-row textarea::placeholder {
-  color: #9ca3af;
+  color: var(--color-text-muted);
 }
 
 .ai-edit-row textarea:disabled {
@@ -47,7 +47,7 @@
   width: 48px;
   height: 48px;
   padding: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   color: white;
   border: none;
   border-radius: 12px;
@@ -77,13 +77,13 @@
 }
 
 .ai-edit-submit.stop {
-  background: #e74c3c;
+  background: var(--color-danger);
   font-size: 1rem;
   box-shadow: none;
 }
 
 .ai-edit-submit.stop:hover {
-  background: #c0392b;
+  background: var(--color-danger);
 }
 
 /* Proposal review */
@@ -100,19 +100,19 @@
 
 .ai-edit-nochange {
   padding: 0.75rem 1rem;
-  border: 1px dashed #e0e0e0;
+  border: 1px dashed var(--color-border);
   border-radius: 10px;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   font-size: 0.875rem;
   text-align: center;
 }
 
 .ai-edit-error {
   padding: 0.6rem 0.85rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--color-danger-soft);
+  border: 1px solid var(--color-danger-soft);
   border-radius: 8px;
-  color: #b91c1c;
+  color: var(--color-danger);
   font-size: 0.85rem;
 }
 
@@ -125,9 +125,9 @@
 .ai-edit-btn {
   padding: 0.5rem 1rem;
   border-radius: 8px;
-  border: 1px solid #e0e0e0;
-  background: #fff;
-  color: #374151;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -135,11 +135,11 @@
 }
 
 .ai-edit-btn:hover:not(:disabled) {
-  background: #f5f5f5;
+  background: var(--color-surface);
 }
 
 .ai-edit-btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   color: white;
   border: none;
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
@@ -148,7 +148,7 @@
 .ai-edit-btn-primary:hover:not(:disabled) {
   /* Re-assert the gradient so the generic .ai-edit-btn hover (light grey) can't
      win and leave white text unreadable. */
-  background: linear-gradient(135deg, #7480ee 0%, #8256b0 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }

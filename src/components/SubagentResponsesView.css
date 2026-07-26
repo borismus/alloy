@@ -1,6 +1,6 @@
 .subagent-container {
   margin: 0.75rem 0;
-  border: 1px solid #d0d5dd;
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -10,16 +10,16 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: #f0f2f5;
+  background: var(--color-surface);
   font-size: 0.8rem;
   font-weight: 600;
-  color: #555;
-  border-bottom: 1px solid #d0d5dd;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .subagent-icon {
   font-size: 0.9rem;
-  color: #667eea;
+  color: var(--color-accent);
 }
 
 .subagent-responses-grid {
@@ -32,7 +32,7 @@
 .subagent-responses-grid .response-summary {
   border-radius: 0;
   border: none;
-  border-right: 1px solid #e0e0e0;
+  border-right: 1px solid var(--color-border);
   margin-bottom: 0;
 }
 
@@ -64,7 +64,7 @@
 .subagent-cell-model {
   font-size: 0.75rem;
   font-weight: 400;
-  color: #888;
+  color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -74,10 +74,10 @@
 .subagent-info-panel {
   margin-top: 0.4rem;
   padding: 0.5rem;
-  background: #f8f9fa;
+  background: var(--color-surface);
   border-radius: 6px;
   font-size: 0.75rem;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--color-surface-hover);
 }
 
 .subagent-info-row {
@@ -92,13 +92,13 @@
 
 .subagent-info-label {
   font-weight: 600;
-  color: #666;
+  color: var(--color-text-secondary);
   flex-shrink: 0;
   min-width: 3.5rem;
 }
 
 .subagent-info-value {
-  color: #444;
+  color: var(--color-text);
   word-break: break-word;
 }
 
@@ -109,7 +109,7 @@
 
   .subagent-responses-grid .response-summary {
     border-right: none;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--color-border);
   }
 
   .subagent-responses-grid .response-summary:last-child {

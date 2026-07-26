@@ -2,10 +2,10 @@
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 0.8125rem;
   line-height: 1.55;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;
-  background: #fff;
+  background: var(--color-surface-raised);
 }
 
 .diff-row {
@@ -21,7 +21,7 @@
   flex-shrink: 0;
   width: 0.75rem;
   text-align: center;
-  color: #9ca3af;
+  color: var(--color-text-muted);
   user-select: none;
 }
 
@@ -31,33 +31,33 @@
 }
 
 .diff-add {
-  background: #e6ffed;
-  color: #116329;
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .diff-add .diff-sign {
-  color: #1a7f37;
+  color: var(--color-success);
 }
 
 .diff-del {
-  background: #ffeef0;
-  color: #82071e;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .diff-del .diff-sign {
-  color: #cf222e;
+  color: var(--color-danger);
 }
 
 .diff-context {
-  color: #57606a;
+  color: var(--color-text-secondary);
 }
 
 .diff-gap {
   padding: 0.25rem 0.75rem;
-  background: #f6f8fa;
-  color: #9ca3af;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
   font-size: 0.75rem;
   text-align: center;
-  border-top: 1px solid #eef1f4;
-  border-bottom: 1px solid #eef1f4;
+  border-top: 1px solid var(--color-surface-hover);
+  border-bottom: 1px solid var(--color-surface-hover);
 }

@@ -4,7 +4,7 @@
 .close-button {
   background: none;
   border: none;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   font-size: 32px;
   cursor: pointer;
   padding: 0;
@@ -18,7 +18,7 @@
 }
 
 .close-button:hover {
-  color: #111827;
+  color: var(--color-text);
 }
 
 .settings-content {
@@ -30,7 +30,7 @@
 .settings-section {
   padding-bottom: 24px;
   margin-bottom: 24px;
-  border-bottom: 1px solid #f1f3f5;
+  border-bottom: 1px solid var(--color-surface);
 }
 
 .settings-section:last-child {
@@ -43,20 +43,20 @@
   margin: 0 0 6px 0;
   font-size: 15px;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text);
 }
 
 .settings-description {
   margin: 0 0 14px 0;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 
 .settings-hint {
   margin: 8px 0 0 0;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-text-muted);
 }
 
 .settings-row {
@@ -85,7 +85,7 @@
   width: 40px;
   height: 24px;
   border-radius: 999px;
-  background: #d1d5db;
+  background: var(--color-border);
   border: none;
   padding: 0;
   cursor: pointer;
@@ -94,15 +94,15 @@
 }
 
 .toggle-switch:hover:not(:disabled) {
-  background: #b6bcc6;
+  background: var(--color-border-strong);
 }
 
 .toggle-switch.is-on {
-  background: #16a34a;
+  background: var(--color-success);
 }
 
 .toggle-switch.is-on:hover:not(:disabled) {
-  background: #15803d;
+  background: var(--color-success);
 }
 
 .toggle-switch:disabled {
@@ -132,7 +132,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 8px 8px 12px;
-  background: #f3f4f6;
+  background: var(--color-code-bg);
   border-radius: 6px;
 }
 
@@ -140,7 +140,7 @@
   flex: 1 1 auto;
   min-width: 0;
   font-size: 13px;
-  color: #374151;
+  color: var(--color-text);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   word-break: break-all;
   background: transparent;
@@ -148,9 +148,9 @@
 
 .share-url-copy {
   flex: 0 0 auto;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
   padding: 4px 10px;
   border-radius: 4px;
   font-size: 12px;
@@ -160,15 +160,15 @@
 }
 
 .share-url-copy:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: var(--color-surface);
+  border-color: var(--color-text-muted);
 }
 
 .vault-path {
   margin: 0 0 12px 0;
   font-size: 13px;
-  color: #374151;
-  background: #f3f4f6;
+  color: var(--color-text);
+  background: var(--color-code-bg);
   padding: 8px 12px;
   border-radius: 6px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -184,7 +184,7 @@
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  background: #eef0f3;
+  background: var(--color-surface);
   border-radius: 8px;
 }
 
@@ -193,7 +193,7 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
@@ -201,17 +201,17 @@
 }
 
 .settings-theme-option:hover {
-  color: #333;
+  color: var(--color-text);
 }
 
 .settings-theme-option.is-active {
-  background: #ffffff;
-  color: #333;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .settings-button {
-  background: #2563eb;
+  background: var(--color-accent-strong);
   color: white;
   border: none;
   padding: 10px 20px;
@@ -223,7 +223,7 @@
 }
 
 .settings-button:hover {
-  background: #1d4ed8;
+  background: var(--color-accent-strong);
 }
 
 .settings-button-group {
@@ -234,20 +234,20 @@
 }
 
 .settings-button-secondary {
-  background: #e5e7eb;
-  color: #374151;
+  background: var(--color-border);
+  color: var(--color-text);
 }
 
 .settings-button-secondary:hover {
-  background: #d1d5db;
+  background: var(--color-border);
 }
 
 .settings-select {
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: #ffffff;
-  color: #374151;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
   font-size: 14px;
   cursor: pointer;
 }
@@ -272,7 +272,7 @@
   align-items: flex-start;
   gap: 10px;
   font-size: 13px;
-  color: #374151;
+  color: var(--color-text);
   line-height: 1.4;
 }
 
@@ -291,32 +291,32 @@
 }
 
 .confirm-list-clear .confirm-list-icon {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .confirm-list-keep .confirm-list-icon {
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .settings-button-danger {
-  background: #dc2626;
+  background: var(--color-danger);
 }
 
 .settings-button-danger:hover {
-  background: #b91c1c;
+  background: var(--color-danger);
 }
 
 .settings-button-danger-outline {
-  background: #ffffff;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--color-surface-raised);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger-soft);
 }
 
 .settings-button-danger-outline:hover {
-  background: #fef2f2;
-  border-color: #fca5a5;
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger-soft);
 }
 
 .settings-button:disabled {
@@ -331,16 +331,16 @@
 }
 
 .update-status-current {
-  color: #059669;
-  background: #ecfdf5;
+  color: var(--color-success);
+  background: var(--color-success-soft);
 }
 
 .update-status-available {
-  color: #4f46e5;
-  background: #eef2ff;
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
 }
 
 .update-status-error {
-  color: #dc2626;
-  background: #fef2f2;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }

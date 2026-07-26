@@ -29,15 +29,15 @@
 }
 
 .ctx-chip-warn .ctx-chip-button {
-  background: #fef3c7;
-  border-color: #f5d77d;
-  color: #92400e;
+  background: var(--color-warning-soft);
+  border-color: var(--color-warning-soft);
+  color: var(--color-warning);
 }
 
 .ctx-chip-hot .ctx-chip-button {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #991b1b;
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .ctx-chip-popover {
