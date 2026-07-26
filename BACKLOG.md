@@ -21,6 +21,55 @@ consumer migrates. Validated in WebKit (Safari engine): popover placement, upwar
 positioning, focus trapping, dialog Escape, and disclosure visibility all pass.
 -->
 
+<!--
+MIGRATION STATUS (11 commits on main: 93cf6c1 .. d5a281c). All verified with
+tsc + eslint (0 errors) + 121 vitest tests (incl. real user-event interaction
+tests) + web build; interactions cross-checked in WebKit.
+
+DONE + committed:
+  step 1 tokens + ui/ primitives (Button, Dialog, SearchField, SelectField, Menu)
+  step 2 theme (light/dark/system, matchMedia, Appearance control); DEFAULT IS
+         STILL 'light' on purpose (see src/theme.tsx DEFAULT_PREFERENCE) — do not
+         flip to 'system' until step 8 tokenization is complete, or dark looks broken.
+  step 3 ModelSelector rebuilt (DialogTrigger + Popover + Autocomplete + ListBox).
+         Fixes made after review: (a) favorite star was inert because RA caches rows
+         by key — bake `favorite` into each row object; (b) re-selecting the current
+         model didn't dismiss — drive picking with ListBox onAction (NOT
+         onSelectionChange / selectionMode, which only fires onAction on dbl-click),
+         highlight current row via .optionCurrent class. Star = span role=button,
+         tabIndex -1, onPointerDown preventDefault+stopPropagation, onClick toggles.
+  step 4 all modal dialogs -> AlloyDialog (extended with isOpen/onOpenChange for
+         parent-controlled dialogs): Settings + reset, Sidebar rename/delete, riff modal.
+  step 5 ContextUsageChip -> DialogTrigger+Popover. DECISION: SlashCommandMenu and
+         right-click ContextMenu stay custom (textarea-driven keyboard / no RA
+         primitive) and are only tokenized, not rebuilt.
+  step 7 riff change review -> RA Disclosure.
+  partial step 8: legacy-var aliases in tokens.css tokenize ~130 usages app-wide;
+         App.css shell tokenized; dead useClickOutside removed (useGlobalEscape stays).
+
+REMAINING:
+  step 6 mostly covered by aliases (ItemHeader.css uses legacy vars). Optional polish:
+         swap ItemHeader back/close buttons to the ui Button; confirm composer 48px
+         rhythm. Low priority.
+  step 8 NOT DONE: the large feature stylesheets still hardcode surface/text hex
+         (ChatInterface.css, Sidebar.css, TaskDetailView.css, RiffView.css,
+         NoteViewer.css, MarkdownContent.css, VaultSetup.css). Map #333->--color-text,
+         #666->--color-text-secondary, #999->--color-text-muted, #e0e0e0->--color-border,
+         #f8f9fa->--color-surface, white/#fff->--color-canvas or surface-raised,
+         #667eea/#764ba2 gradient -> --color-accent/--color-accent-end. DO NOT blanket
+         sed (preserve gradients, syntax-highlight colors, intentionally-dark bits).
+         Needs VISUAL verification per surface in the running app (colors aren't tested).
+         Then flip theme default to 'system' and verify light + dark.
+
+LESSON: every migrated component needs a real @testing-library/user-event interaction
+test (open overlay, click, keyboard), not just a closed-trigger render test — the star
+bug and the re-select bug both slipped past render-only tests.
+
+NOTE: pre-existing uncommitted work (Ollama removal / Claude CLI changes across
+alloy-server + a few TS/docs) and .claude/settings.local.json are intentionally NOT
+committed — keep excluding them; commit UI work with partial-staged package.json.
+-->
+
 - [x] UI foundation, step 1 — add the design-system scaffolding without migrating any feature yet. Add the `react-aria-components` dependency (^1.19). Create `src/styles/tokens.css` with semantic tokens (canvas/surface/surface-raised/surface-hover, border/border-strong, text/text-secondary/text-muted, accent/accent-strong/accent-soft, danger/success/warning + soft variants, focus ring, overlay, chip/track/code-bg/added/control-track/scrollbar, radii, shadows, typography, motion, and app metrics) under `:root` (light), plus a `:root[data-theme="dark"]` block overriding the color tokens for dark. Add `src/components/ui/` primitives as thin Alloy wrappers over React Aria + CSS Modules: `Button` (variants primary/secondary/quiet/danger; sizes small/medium/icon/composer), `Dialog` (ModalOverlay+Modal+Dialog with title/close, compact+bottom-sheet-on-mobile), `SearchField`, `SelectField`, `Menu` (Popover+Menu). Do NOT rewire any feature yet; add a render test that mounts each primitive. Note the React Aria state-attribute gotchas found in the prototype: ComboBox root exposes `data-focused` (not `data-focus-within`); SearchField exposes `data-empty` (not `data-has-value`); a DisclosurePanel needs an explicit `.panel[hidden]{display:none}` rule to hide in WebKit.
 - [x] UI foundation, step 2 — theming. Add `src/theme.tsx` (ThemeProvider + useTheme) with a `light | dark | system` preference; resolve `system` via `matchMedia('(prefers-color-scheme: dark)')`, apply the result to `document.documentElement.dataset.theme`, and re-resolve on OS change while in system mode. Wrap the app in `main.tsx`. Add an Appearance section to Settings with a Light/Dark/System segmented control wired to `useTheme`. Depends on step 1. Dark mode will only be visually complete for components that already consume tokens; that is expected and finished in step 8. Verify the attribute flips and system detection works; keep existing look unchanged in light mode.
 - [x] UI foundation, step 3 — migrate `src/components/ModelSelector.tsx` to the prototype-validated picker and delete its bespoke dropdown logic. Replace the editable-combobox behavior with a trigger `Button` that opens a `Popover` containing React Aria `Autocomplete` (a `SearchField` + a `Menu` with `selectionMode="single"`), so the whole control opens/toggles on click (no text-selection on focus), the search field lives inside the popover, the chevron sits inside the trigger, and selecting closes + updates. Preserve all current behavior: dynamic model catalog, favorites toggle as an independent hit target inside each row, stale-model humanized fallback, relevance ranking, empty states, provider tags, and the local/loopback lock treatment. Style with a `ModelPicker.module.css` using tokens. Remove now-dead state/effects (open state, active index, arrow-key handling, outside-click, above/below flip) and any `useClickOutside` usage this file introduced. This slice is also the manual checkpoint: smoke-test in the real Tauri (WKWebView) shell AND web/browser mode, including upward popover placement and the on-device software keyboard, before proceeding.
