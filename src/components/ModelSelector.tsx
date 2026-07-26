@@ -9,7 +9,7 @@ import {
   ListBoxItem,
   Popover,
   SearchField,
-  type Selection,
+  type Key,
 } from 'react-aria-components';
 import { ModelInfo } from '../types';
 import { providerLabel, providerTag } from '../utils/models';
@@ -99,13 +99,11 @@ export function ModelSelector({
     || (value ? humanizeModelId(value) : '')
     || 'Select Model';
 
-  const handleSelect = (keys: Selection) => {
-    if (keys === 'all') return;
-    const key = [...keys][0];
-    if (key != null) {
-      onChange(String(key));
-      setIsOpen(false);
-    }
+  // Use onAction (fires on every row activation) rather than onSelectionChange
+  // so clicking the already-selected model still closes the picker.
+  const handlePick = (key: Key) => {
+    onChange(String(key));
+    setIsOpen(false);
   };
 
   return (
@@ -129,7 +127,7 @@ export function ModelSelector({
             value={value}
             models={models}
             favoriteModels={favoriteModels}
-            onSelect={handleSelect}
+            onPick={handlePick}
             onToggleFavorite={onToggleFavorite}
           />
         </Autocomplete>
@@ -142,13 +140,13 @@ interface ModelResultsProps {
   value: string;
   models: ModelInfo[];
   favoriteModels: string[];
-  onSelect: (keys: Selection) => void;
+  onPick: (key: Key) => void;
   onToggleFavorite?: (modelKey: string) => void;
 }
 
 // Reads the live query from the Autocomplete so the list can show favorites
 // only when empty and relevance-ranked matches while searching.
-function ModelResults({ value, models, favoriteModels, onSelect, onToggleFavorite }: ModelResultsProps) {
+function ModelResults({ value, models, favoriteModels, onPick, onToggleFavorite }: ModelResultsProps) {
   const state = useContext(AutocompleteStateContext);
   const query = (state?.inputValue ?? '').trim();
   const isFavorite = (key: string) => favoriteModels.includes(key);
@@ -181,10 +179,7 @@ function ModelResults({ value, models, favoriteModels, onSelect, onToggleFavorit
       className={styles.list}
       aria-label="Models"
       items={rows}
-      selectionMode="single"
-      selectionBehavior="replace"
-      selectedKeys={new Set([value])}
-      onSelectionChange={onSelect}
+      onAction={onPick}
       renderEmptyState={() => (
         <div className={styles.empty}>
           {query.length === 0
@@ -194,7 +189,11 @@ function ModelResults({ value, models, favoriteModels, onSelect, onToggleFavorit
       )}
     >
       {(model) => (
-        <ListBoxItem id={model.key} textValue={model.name} className={styles.option}>
+        <ListBoxItem
+          id={model.key}
+          textValue={model.name}
+          className={`${styles.option} ${model.key === value ? styles.optionCurrent : ''}`}
+        >
           <span
             role="button"
             tabIndex={-1}

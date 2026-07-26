@@ -146,7 +146,7 @@
   background: var(--color-surface-hover);
 }
 
-.option[data-selected] {
+.optionCurrent {
   color: var(--color-accent-strong);
   background: var(--color-accent-soft);
 }

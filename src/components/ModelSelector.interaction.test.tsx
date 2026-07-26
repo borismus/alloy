@@ -70,4 +70,15 @@ describe('ModelSelector interaction', () => {
     // Trigger reflects the new selection.
     expect(screen.getByRole('button', { name: 'Model: Qwen 3.6 27B' })).toBeTruthy();
   });
+
+  it('closes when the already-selected model is clicked (re-selection is not a no-op)', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Harness onChange={onChange} onToggle={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Model: Claude Opus 4.6' }));
+    // With an empty search the selected model is pinned in the list.
+    await user.click(await screen.findByRole('option', { name: /Claude Opus 4.6/ }));
+    expect(onChange).toHaveBeenCalledWith('anthropic/claude-opus-4-6');
+    expect(screen.queryByRole('searchbox', { name: 'Search models' })).toBeNull();
+  });
 });
