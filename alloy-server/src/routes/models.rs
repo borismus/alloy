@@ -23,7 +23,7 @@ const CACHE_TTL: Duration = Duration::from_secs(3600);
 pub struct ModelInfo {
     pub key: String,
     pub name: String,
-    /// Provider id this model came from (e.g. "mlx", "ollama", "openrouter").
+    /// Provider id this model came from (e.g. "mlx" or "openrouter").
     /// Lets the picker label every row unambiguously — two providers can serve
     /// a model with the same display name (e.g. "gemma4").
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -138,37 +138,19 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
             continue;
         }
         // A model is "local" (on-device, privacy-preserving) when its provider
-        // endpoint is loopback/`.local`, or it's oMLX (an on-device server by
-        // definition). Computed once per provider and stamped on every model it
-        // contributes. Mirrors `local::model_is_local`.
-        let local =
-            cfg.id == "mlx" || cfg.base_url.as_deref().map(is_local_url).unwrap_or(false);
-        match cfg.id.as_str() {
-            "ollama" => {
-                if let Some(base) = &cfg.base_url {
-                    match fetch_ollama_models(base, local).await {
-                        Ok(mut models) => all.append(&mut models),
-                        Err(e) => {
-                            any_failed = true;
-                            tracing::warn!("ollama model fetch failed: {}", e);
-                        }
-                    }
-                }
-            }
-            _ => {
-                // Anything else is treated as an OpenAI-compatible upstream
-                // (covers OpenRouter, custom routes, etc).
-                let base = cfg
-                    .base_url
-                    .clone()
-                    .unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
-                match fetch_openai_compatible_models(&base, &cfg.api_key, &cfg.id, local).await {
-                    Ok(mut models) => all.append(&mut models),
-                    Err(e) => {
-                        any_failed = true;
-                        tracing::warn!("{} model fetch failed: {}", cfg.id, e);
-                    }
-                }
+        // endpoint is loopback or `.local`. Computed once per provider and
+        // stamped on every model it contributes. Mirrors `local::model_is_local`.
+        let local = cfg.base_url.as_deref().map(is_local_url).unwrap_or(false);
+        // Every HTTP provider exposes the OpenAI-compatible `/models` endpoint.
+        let base = cfg
+            .base_url
+            .clone()
+            .unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
+        match fetch_openai_compatible_models(&base, &cfg.api_key, &cfg.id, local).await {
+            Ok(mut models) => all.append(&mut models),
+            Err(e) => {
+                any_failed = true;
+                tracing::warn!("{} model fetch failed: {}", cfg.id, e);
             }
         }
     }
@@ -276,51 +258,6 @@ async fn fetch_openai_compatible_models(
                 input_per_1m,
                 output_per_1m,
             }
-        })
-        .collect())
-}
-
-#[derive(Deserialize)]
-struct OllamaTagsResponse {
-    #[serde(default)]
-    models: Vec<OllamaTagEntry>,
-}
-
-#[derive(Deserialize)]
-struct OllamaTagEntry {
-    name: String,
-}
-
-async fn fetch_ollama_models(base_url: &str, local: bool) -> Result<Vec<ModelInfo>, String> {
-    // Ollama's tag endpoint lives at the API root (not under /v1).
-    let root = base_url.trim_end_matches("/v1").trim_end_matches('/');
-    let url = format!("{}/api/tags", root);
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!("HTTP {}", response.status()));
-    }
-    let body: OllamaTagsResponse = response.json().await.map_err(|e| e.to_string())?;
-    Ok(body
-        .models
-        .into_iter()
-        // Ollama's tag list mixes in embedding-only models (mxbai-embed-large,
-        // nomic-embed-text, ...) that 400 with "does not support chat". They're
-        // not valid chat models, so drop them before they reach the picker — or
-        // get picked as a fallback default. By convention they all contain
-        // "embed" in the tag name.
-        .filter(|m| !m.name.to_lowercase().contains("embed"))
-        .map(|m| ModelInfo {
-            key: format!("ollama/{}", m.name),
-            name: m.name,
-            provider: Some("ollama".to_string()),
-            local,
-            context_window: None,
-            input_per_1m: Some(0.0),
-            output_per_1m: Some(0.0),
         })
         .collect())
 }

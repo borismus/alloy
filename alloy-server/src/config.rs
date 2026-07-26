@@ -1,59 +1,41 @@
-//! Load and interpret `config.yaml` from the vault.
+//! Load and interpret `config.yaml` (the v1 schema) from the vault.
 //!
-//! V_next config schema supports a `providers:` block; for backward compat
-//! with today's per-key config (`OPENROUTER_API_KEY`, `OLLAMA_BASE_URL`),
-//! we auto-derive a `providers:` list when none is present.
+//! v1 is the single canonical format: camelCase keys, all model providers under
+//! a `providers:` list, no legacy flat keys. There is intentionally no migration
+//! from the pre-0.4 format — [`detect_legacy_format`] fails loudly so an old
+//! config is never silently misread as "no providers".
 
 use std::path::Path;
 
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RawConfig {
+    /// Schema version. v1 configs may set `version: 1`; it's optional but
+    /// VaultSetup writes it.
+    #[serde(default)]
+    pub version: Option<u32>,
+
     #[serde(default)]
     pub default_model: Option<String>,
-    #[serde(rename = "defaultModel", default)]
-    pub default_model_camel: Option<String>,
 
     #[serde(default)]
     pub providers: Option<Vec<ProviderConfig>>,
 
-    // Legacy flat keys we still honor for migration.
-    #[serde(rename = "OPENROUTER_API_KEY", default)]
-    pub openrouter_api_key: Option<String>,
-    #[serde(rename = "OLLAMA_BASE_URL", default)]
-    pub ollama_base_url: Option<String>,
-    /// Enable Claude models billed against your Claude Pro/Max subscription via
-    /// the Claude Code CLI. Flat toggle in the same style as the keys above.
-    #[serde(rename = "CLAUDE_SUBSCRIPTION", default)]
-    pub claude_subscription: Option<bool>,
-    /// Optional `claude setup-token` value, for unattended subscription auth.
-    #[serde(rename = "CLAUDE_CODE_OAUTH_TOKEN", default)]
-    pub claude_code_oauth_token: Option<String>,
-    /// Optional path to the `claude` binary if it isn't on PATH.
-    #[serde(rename = "CLAUDE_CODE_PATH", default)]
-    pub claude_code_path: Option<String>,
-    #[serde(rename = "ANTHROPIC_API_KEY", default)]
-    pub anthropic_api_key: Option<String>,
-    #[serde(rename = "OPENAI_API_KEY", default)]
-    pub openai_api_key: Option<String>,
-    #[serde(rename = "GEMINI_API_KEY", default)]
-    pub gemini_api_key: Option<String>,
-    #[serde(rename = "XAI_API_KEY", default)]
-    pub xai_api_key: Option<String>,
-    #[serde(rename = "SERPER_API_KEY", default)]
+    #[serde(default)]
     pub serper_api_key: Option<String>,
-    #[serde(rename = "SONIOX_API_KEY", default)]
+    #[serde(default)]
     pub soniox_api_key: Option<String>,
 
-    #[serde(rename = "shareOnNetwork", default)]
+    #[serde(default)]
     pub share_on_network: Option<bool>,
-    #[serde(rename = "sharePort", default)]
+    #[serde(default)]
     pub share_port: Option<u16>,
 
     /// External directories that local (on-device / trusted) models may read
     /// but cloud models may not — see [`PrivateDir`] and `tools::private`.
-    #[serde(rename = "privateReadOnlyDirs", default)]
+    #[serde(default)]
     pub private_read_only_dirs: Option<Vec<PrivateDir>>,
 
     /// Grouped external-service credentials (email, and later search/dictation).
@@ -66,6 +48,7 @@ pub struct RawConfig {
 
 /// `services:` block. Concern-grouped credentials for outbound integrations.
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RawServices {
     #[serde(default)]
     pub email: Option<RawEmail>,
@@ -74,6 +57,7 @@ pub struct RawServices {
 /// `services.email:` — transactional email for task notifications. Only Resend
 /// is supported today.
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RawEmail {
     /// Provider id. Must be `resend` (the only supported provider).
     #[serde(default)]
@@ -111,12 +95,13 @@ impl StringOrVec {
 /// separate Obsidian vault); local models read it via the mount, cloud models
 /// can't reach it or learn it exists.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrivateDir {
     pub alias: String,
     pub path: std::path::PathBuf,
     /// Subpaths (relative to `path`) to skip when a local model lists/searches
     /// this mount — e.g. the nested Alloy vault, so chat history isn't scanned.
-    #[serde(rename = "excludeDirs", default)]
+    #[serde(default)]
     pub exclude_dirs: Vec<String>,
     /// Human description of what this mount holds, surfaced to local models so
     /// they know it's the user's real notes (vs. the app's own `notes/`).
@@ -126,14 +111,16 @@ pub struct PrivateDir {
 
 /// Raw `compaction:` block from config.yaml.
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RawCompaction {
     #[serde(default)]
     pub enabled: Option<bool>,
-    #[serde(rename = "triggerTokens", default)]
+    #[serde(default)]
     pub trigger_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderConfig {
     pub id: String,
     pub kind: ProviderKind,
@@ -153,6 +140,14 @@ pub struct ProviderConfig {
     /// subscription without an interactive login session.
     #[serde(default)]
     pub oauth_token: Option<String>,
+    /// Explicit privacy/offline classification. `Some(true)` marks an on-device
+    /// / LAN endpoint whose prompts never leave the user's network (padlock
+    /// badge, private-dir read access, offline tolerance). When omitted, the
+    /// endpoint URL decides (loopback / `*.local` → local). Only meaningful for
+    /// the `openai_compatible` kind — CLI kinds always send prompts to the
+    /// cloud, so they are never treated as local (see `local::provider_is_local`).
+    #[serde(default)]
+    pub local: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -209,92 +204,78 @@ impl Default for Config {
     }
 }
 
+/// Legacy (pre-0.4) top-level keys. Their presence means the config predates the
+/// v1 schema; we refuse to load rather than silently drop the user's providers.
+const LEGACY_KEYS: &[&str] = &[
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
+    "XAI_API_KEY",
+    "CLAUDE_SUBSCRIPTION",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_PATH",
+    "SERPER_API_KEY",
+    "SONIOX_API_KEY",
+    "default_model",
+];
+
+/// Fail loudly if `text` is a pre-0.4 config. There is no automatic migration
+/// (0.3 → 0.4 is a deliberate breaking change); the message points at the v1
+/// shape so the user can update by hand.
+fn detect_legacy_format(text: &str) -> anyhow::Result<()> {
+    let value: serde_yaml::Value = match serde_yaml::from_str(text) {
+        Ok(v) => v,
+        Err(_) => return Ok(()), // parse errors surface later with a better message
+    };
+    if let serde_yaml::Value::Mapping(map) = value {
+        let found: Vec<&str> = LEGACY_KEYS
+            .iter()
+            .copied()
+            .filter(|k| map.contains_key(serde_yaml::Value::String((*k).to_string())))
+            .collect();
+        if !found.is_empty() {
+            anyhow::bail!(
+                "config.yaml uses the old pre-0.4 format (found: {}). Alloy 0.4 uses a \
+                 single camelCase schema with all models under a `providers:` list, e.g.:\n\
+                 \n\
+                 version: 1\n\
+                 defaultModel: openrouter/anthropic/claude-opus-4-6\n\
+                 providers:\n\
+                 \x20\x20- id: openrouter\n\
+                 \x20\x20\x20\x20kind: openai_compatible\n\
+                 \x20\x20\x20\x20baseUrl: https://openrouter.ai/api/v1\n\
+                 \x20\x20\x20\x20apiKey: sk-or-...\n\
+                 \x20\x20- id: mlx\n\
+                 \x20\x20\x20\x20kind: openai_compatible\n\
+                 \x20\x20\x20\x20baseUrl: http://your-mac.local:8000/v1\n\
+                 \x20\x20\x20\x20local: true\n\
+                 \n\
+                 Update config.yaml to this shape and restart.",
+                found.join(", ")
+            );
+        }
+    }
+    Ok(())
+}
+
 impl Config {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let raw_text = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", path.display(), e))?;
+        detect_legacy_format(&raw_text)
+            .map_err(|e| anyhow::anyhow!("{}: {}", path.display(), e))?;
         let raw: RawConfig = serde_yaml::from_str(&raw_text)
             .map_err(|e| anyhow::anyhow!("Failed to parse {}: {}", path.display(), e))?;
         Ok(Self::from_raw(raw))
     }
 
     fn from_raw(raw: RawConfig) -> Self {
-        let default_model = raw.default_model_camel.or(raw.default_model);
-
-        // Derive providers from the legacy flat keys, then merge in any explicit
-        // `providers:` entries. An explicit entry with the same id overrides the
-        // derived one; a new id is appended. This lets an existing flat-key
-        // setup add e.g. a `claude-cli` provider without having to restate
-        // openrouter/ollama in a full providers block.
-        let providers = {
-            let mut derived = Vec::new();
-            if let Some(key) = raw.openrouter_api_key {
-                if !key.is_empty() {
-                    derived.push(ProviderConfig {
-                        id: "openrouter".into(),
-                        kind: ProviderKind::OpenaiCompatible,
-                        base_url: Some("https://openrouter.ai/api/v1".into()),
-                        api_key: key,
-                        command: None,
-                        oauth_token: None,
-                    });
-                }
-            }
-            if let Some(base) = raw.ollama_base_url {
-                if !base.is_empty() {
-                    // Ollama exposes /v1/chat/completions (OpenAI-compatible).
-                    let normalized = if base.ends_with("/v1") {
-                        base
-                    } else {
-                        format!("{}/v1", base.trim_end_matches('/'))
-                    };
-                    derived.push(ProviderConfig {
-                        id: "ollama".into(),
-                        kind: ProviderKind::OpenaiCompatible,
-                        base_url: Some(normalized),
-                        api_key: "ollama".into(),
-                        command: None,
-                        oauth_token: None,
-                    });
-                }
-            }
-            if raw.claude_subscription.unwrap_or(false) {
-                derived.push(ProviderConfig {
-                    id: "claude-cli".into(),
-                    kind: ProviderKind::CliClaude,
-                    base_url: None,
-                    api_key: String::new(),
-                    command: raw.claude_code_path.clone(),
-                    oauth_token: raw.claude_code_oauth_token.clone(),
-                });
-            }
-            // Warn if old per-provider keys are set — they're ignored in V_next.
-            for (name, set) in [
-                ("ANTHROPIC_API_KEY", raw.anthropic_api_key.is_some()),
-                ("OPENAI_API_KEY", raw.openai_api_key.is_some()),
-                ("GEMINI_API_KEY", raw.gemini_api_key.is_some()),
-                ("XAI_API_KEY", raw.xai_api_key.is_some()),
-            ] {
-                if set {
-                    tracing::warn!(
-                        "{} is set but ignored in V_next — use OPENROUTER_API_KEY (or a `providers:` block) instead",
-                        name
-                    );
-                }
-            }
-            for p in raw.providers.into_iter().flatten() {
-                if let Some(slot) = derived.iter_mut().find(|e| e.id == p.id) {
-                    *slot = p;
-                } else {
-                    derived.push(p);
-                }
-            }
-            derived
-        };
+        let providers = raw.providers.unwrap_or_default();
 
         if providers.is_empty() {
             tracing::warn!(
-                "No providers configured. Set OPENROUTER_API_KEY or add a `providers:` block to config.yaml."
+                "No providers configured. Add a `providers:` block to config.yaml."
             );
         } else {
             for p in &providers {
@@ -332,7 +313,7 @@ impl Config {
         let email = resolve_email(raw.services.and_then(|s| s.email));
 
         Self {
-            default_model,
+            default_model: raw.default_model,
             providers,
             serper_api_key: raw.serper_api_key,
             soniox_api_key: raw.soniox_api_key,
@@ -417,7 +398,7 @@ fn resolve_email(raw: Option<RawEmail>) -> Option<EmailConfig> {
         }
         _ => {
             tracing::warn!(
-                "services.email: incomplete (need api_key, from, and at least one to) — email disabled"
+                "services.email: incomplete (need apiKey, from, and at least one to) — email disabled"
             );
             None
         }
@@ -433,48 +414,67 @@ mod tests {
     }
 
     #[test]
-    fn explicit_providers_merge_with_legacy_keys() {
+    fn parses_v1_providers_with_camelcase_keys() {
         let raw: RawConfig = serde_yaml::from_str(
-            "OPENROUTER_API_KEY: sk-or-test\n\
-             OLLAMA_BASE_URL: http://localhost:11434\n\
-             providers:\n  - id: claude-cli\n    kind: cli_claude\n",
+            "version: 1\n\
+             defaultModel: openrouter/anthropic/claude-opus-4-6\n\
+             providers:\n\
+             \x20\x20- id: openrouter\n\
+             \x20\x20\x20\x20kind: openai_compatible\n\
+             \x20\x20\x20\x20baseUrl: https://openrouter.ai/api/v1\n\
+             \x20\x20\x20\x20apiKey: sk-or-test\n\
+             \x20\x20- id: mlx\n\
+             \x20\x20\x20\x20kind: openai_compatible\n\
+             \x20\x20\x20\x20baseUrl: http://smus-m4.local:8000/v1\n\
+             \x20\x20\x20\x20local: true\n",
         )
         .unwrap();
         let cfg = Config::from_raw(raw);
-        // Legacy-derived providers stay; the explicit one is appended.
-        assert_eq!(ids(&cfg), vec!["openrouter", "ollama", "claude-cli"]);
-        assert_eq!(cfg.providers[2].kind, ProviderKind::CliClaude);
+        assert_eq!(ids(&cfg), vec!["openrouter", "mlx"]);
+        assert_eq!(cfg.default_model.as_deref(), Some("openrouter/anthropic/claude-opus-4-6"));
+        assert_eq!(cfg.providers[0].base_url.as_deref(), Some("https://openrouter.ai/api/v1"));
+        assert_eq!(cfg.providers[0].api_key, "sk-or-test");
+        assert_eq!(cfg.providers[0].local, None);
+        assert_eq!(cfg.providers[1].local, Some(true));
     }
 
     #[test]
-    fn claude_subscription_flag_derives_cli_provider() {
+    fn cli_claude_provider_parses() {
         let raw: RawConfig = serde_yaml::from_str(
-            "OPENROUTER_API_KEY: sk-or-test\n\
-             CLAUDE_SUBSCRIPTION: true\n\
-             CLAUDE_CODE_OAUTH_TOKEN: sk-ant-oat-xyz\n",
+            "providers:\n  - id: claude\n    kind: cli_claude\n    oauthToken: sk-ant-oat-xyz\n",
         )
         .unwrap();
         let cfg = Config::from_raw(raw);
-        assert_eq!(ids(&cfg), vec!["openrouter", "claude-cli"]);
-        let claude = &cfg.providers[1];
-        assert_eq!(claude.kind, ProviderKind::CliClaude);
-        assert_eq!(claude.oauth_token.as_deref(), Some("sk-ant-oat-xyz"));
+        assert_eq!(ids(&cfg), vec!["claude"]);
+        assert_eq!(cfg.providers[0].kind, ProviderKind::CliClaude);
+        assert_eq!(cfg.providers[0].oauth_token.as_deref(), Some("sk-ant-oat-xyz"));
     }
 
     #[test]
-    fn no_claude_provider_when_flag_absent_or_false() {
-        let raw: RawConfig =
-            serde_yaml::from_str("OPENROUTER_API_KEY: sk\nCLAUDE_SUBSCRIPTION: false\n").unwrap();
-        let cfg = Config::from_raw(raw);
-        assert_eq!(ids(&cfg), vec!["openrouter"]);
+    fn empty_config_has_no_providers() {
+        let cfg = Config::from_raw(serde_yaml::from_str("version: 1\n").unwrap());
+        assert!(cfg.providers.is_empty());
+    }
+
+    #[test]
+    fn detect_legacy_format_rejects_old_configs() {
+        assert!(detect_legacy_format("OPENROUTER_API_KEY: sk-or-test\n").is_err());
+        assert!(detect_legacy_format("CLAUDE_SUBSCRIPTION: true\n").is_err());
+        assert!(detect_legacy_format("default_model: openrouter/x\n").is_err());
+        assert!(detect_legacy_format("SONIOX_API_KEY: s\n").is_err());
+        // A clean v1 config passes.
+        assert!(detect_legacy_format(
+            "version: 1\nproviders:\n  - id: openrouter\n    kind: openai_compatible\n"
+        )
+        .is_ok());
     }
 
     #[test]
     fn email_resolves_only_when_complete_and_supported() {
-        // Complete Resend block, `to` as a scalar.
+        // Complete Resend block, `to` as a scalar, camelCase apiKey.
         let cfg = Config::from_raw(
             serde_yaml::from_str(
-                "services:\n  email:\n    provider: resend\n    api_key: re_x\n    from: Alloy <a@b.com>\n    to: you@example.com\n",
+                "services:\n  email:\n    provider: resend\n    apiKey: re_x\n    from: Alloy <a@b.com>\n    to: you@example.com\n",
             )
             .unwrap(),
         );
@@ -486,7 +486,7 @@ mod tests {
         // `to` as a list.
         let cfg = Config::from_raw(
             serde_yaml::from_str(
-                "services:\n  email:\n    provider: resend\n    api_key: re_x\n    from: a@b.com\n    to: [one@x.com, two@x.com]\n",
+                "services:\n  email:\n    provider: resend\n    apiKey: re_x\n    from: a@b.com\n    to: [one@x.com, two@x.com]\n",
             )
             .unwrap(),
         );
@@ -495,7 +495,7 @@ mod tests {
         // Missing `to` → disabled.
         let cfg = Config::from_raw(
             serde_yaml::from_str(
-                "services:\n  email:\n    provider: resend\n    api_key: re_x\n    from: a@b.com\n",
+                "services:\n  email:\n    provider: resend\n    apiKey: re_x\n    from: a@b.com\n",
             )
             .unwrap(),
         );
@@ -504,21 +504,17 @@ mod tests {
         // Unsupported provider → disabled.
         let cfg = Config::from_raw(
             serde_yaml::from_str(
-                "services:\n  email:\n    provider: sendgrid\n    api_key: sg\n    from: a@b.com\n    to: you@x.com\n",
+                "services:\n  email:\n    provider: sendgrid\n    apiKey: sg\n    from: a@b.com\n    to: you@x.com\n",
             )
             .unwrap(),
         );
         assert!(cfg.email.is_none());
-
-        // No services block → disabled.
-        assert!(Config::from_raw(serde_yaml::from_str("OPENROUTER_API_KEY: sk\n").unwrap()).email.is_none());
     }
 
     #[test]
     fn private_read_only_dirs_parse_alias_path_pairs() {
         let raw: RawConfig = serde_yaml::from_str(
-            "OPENROUTER_API_KEY: sk\n\
-             privateReadOnlyDirs:\n  - alias: notes\n    path: /Users/x/Notes\n  - alias: journal\n    path: /Users/x/Journal\n",
+            "privateReadOnlyDirs:\n  - alias: notes\n    path: /Users/x/Notes\n  - alias: journal\n    path: /Users/x/Journal\n",
         )
         .unwrap();
         let cfg = Config::from_raw(raw);
@@ -542,23 +538,12 @@ mod tests {
     }
 
     #[test]
-    fn private_read_only_dirs_default_empty() {
-        let raw: RawConfig = serde_yaml::from_str("OPENROUTER_API_KEY: sk\n").unwrap();
-        let cfg = Config::from_raw(raw);
-        assert!(cfg.private_read_only_dirs.is_empty());
-    }
-
-    #[test]
-    fn explicit_provider_overrides_derived_by_id() {
-        let raw: RawConfig = serde_yaml::from_str(
-            "OPENROUTER_API_KEY: sk-or-test\n\
-             providers:\n  - id: openrouter\n    kind: openai_compatible\n    base_url: https://example.com/v1\n    api_key: override\n",
-        )
-        .unwrap();
-        let cfg = Config::from_raw(raw);
-        assert_eq!(ids(&cfg), vec!["openrouter"]);
-        assert_eq!(cfg.providers[0].api_key, "override");
-        assert_eq!(cfg.providers[0].base_url.as_deref(), Some("https://example.com/v1"));
+    fn compaction_camelcase_trigger_tokens() {
+        let cfg = Config::from_raw(
+            serde_yaml::from_str("compaction:\n  enabled: true\n  triggerTokens: 123000\n").unwrap(),
+        );
+        assert!(cfg.compaction.enabled);
+        assert_eq!(cfg.compaction.trigger_tokens, 123000);
     }
 }
 

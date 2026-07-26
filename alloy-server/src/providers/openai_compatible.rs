@@ -1,8 +1,8 @@
 //! OpenAI-compatible streaming chat client.
 //!
 //! Talks to any provider that exposes `POST /chat/completions` with the
-//! standard OpenAI request/response/SSE shape. Tested against OpenRouter
-//! and Ollama in Phase 1.
+//! standard OpenAI request/response/SSE shape. Used by OpenRouter, oMLX,
+//! and custom compatible endpoints.
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
@@ -456,9 +456,8 @@ impl Provider for OpenAICompatibleProvider {
         }
     }
 
-    /// Heuristic: most cloud models on OpenRouter support tool calling. Ollama
-    /// support varies by model — we'd need to call /api/show. For Phase 1 we
-    /// assume yes and let upstream errors surface if a model can't handle it.
+    /// Tool support varies by model and compatible endpoint. Assume support
+    /// and let an actionable upstream error surface when a model lacks it.
     fn supports_tools(&self, _model: &str) -> bool {
         true
     }

@@ -55,8 +55,8 @@ the full app from `http://<your-host>:<sharePort>/`.
 
 ## Configuration
 
-`config.yaml` lives at the vault root and supports the V_next provider
-schema with backward-compat for the existing flat keys:
+`config.yaml` lives at the vault root and supports explicit OpenAI-compatible
+provider endpoints, plus the legacy flat OpenRouter key:
 
 ```yaml
 defaultModel: openrouter/anthropic/claude-sonnet-4.6
@@ -67,14 +67,13 @@ providers:
     kind: openai_compatible
     base_url: https://openrouter.ai/api/v1
     api_key: ${OPENROUTER_API_KEY}
-  - id: ollama
+  - id: mlx
     kind: openai_compatible
-    base_url: http://localhost:11434/v1
-    api_key: ollama
+    base_url: http://localhost:8000/v1
+    api_key: ""
 
-# Or just the legacy flat keys — providers are auto-derived
+# Or use the legacy flat key for OpenRouter
 OPENROUTER_API_KEY: sk-or-v1-...
-OLLAMA_BASE_URL: http://localhost:11434
 
 # For tools
 SERPER_API_KEY: ...     # web_search
@@ -112,7 +111,7 @@ src/
     ├── fs.rs            /api/fs/* (matches tauri-fs-http.ts surface)
     ├── path.rs          /api/path/join
     ├── stream.rs        /api/stream/* SSE
-    ├── models.rs        /api/models (live OpenRouter + Ollama)
+    ├── models.rs        /api/models (live configured-provider catalog)
     ├── watch.rs         /api/watch WebSocket file events
     └── static_files.rs  Embedded SPA assets via rust-embed (Phase 2)
 tools/

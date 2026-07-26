@@ -878,7 +878,7 @@ fn pick_title_model(conversation_model: &str) -> String {
     if let Some((prefix, _)) = conversation_model.split_once('/') {
         match prefix {
             "openrouter" => return "anthropic/claude-haiku-4-5".to_string(),
-            "ollama" => return conversation_model.to_string(),
+            "mlx" => return conversation_model.to_string(),
             // The Claude Code CLI takes a bare `--model` alias (the returned
             // string is passed straight through to `claude --model`); a
             // provider-prefixed id like "anthropic/claude-haiku-4-5" is rejected
@@ -1139,8 +1139,8 @@ mod tests {
             pick_title_model("openrouter/google/gemini-3.5-flash"),
             "anthropic/claude-haiku-4-5"
         );
-        // Ollama is local — title with the same (local) model.
-        assert_eq!(pick_title_model("ollama/llama3"), "ollama/llama3");
+        // oMLX is local — title with the same local model.
+        assert_eq!(pick_title_model("mlx/Qwen3"), "mlx/Qwen3");
         // The Claude Code CLI takes a bare alias, not a provider-prefixed id.
         assert_eq!(pick_title_model("claude-cli/opus"), "haiku");
     }

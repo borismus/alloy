@@ -1,8 +1,7 @@
 //! Provider abstraction.
 //!
-//! Phase 1 only ships the `openai_compatible` kind (used for OpenRouter,
-//! Ollama, and any other OpenAI-compatible upstream). Future kinds
-//! (Anthropic native, Gemini native) plug in as additional impls.
+//! HTTP providers use the `openai_compatible` kind (OpenRouter, oMLX, and
+//! other compatible upstreams). Claude subscription access uses `cli_claude`.
 
 pub mod cli_claude;
 pub mod openai_compatible;
@@ -288,7 +287,6 @@ pub type ProviderArc = Arc<dyn Provider>;
 const KNOWN_PROVIDER_IDS: &[&str] = &[
     "anthropic",
     "openai",
-    "ollama",
     "gemini",
     "grok",
     "openrouter",
@@ -296,7 +294,7 @@ const KNOWN_PROVIDER_IDS: &[&str] = &[
     "mlx",
 ];
 
-/// Registry mapping provider id ("openrouter", "ollama") to its client.
+/// Registry mapping provider ids (for example `openrouter` or `mlx`) to clients.
 #[derive(Clone)]
 pub struct ProviderRegistry {
     by_id: HashMap<String, ProviderArc>,
@@ -469,6 +467,7 @@ mod tests {
             api_key: "test".into(),
             command: None,
             oauth_token: None,
+            local: None,
         }])
     }
 

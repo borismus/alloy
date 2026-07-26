@@ -68,6 +68,9 @@ const DISALLOWED_NATIVE_TOOLS: &[&str] = &[
     "CronList",
     "Skill",
     "SlashCommand",
+    "AskUserQuestion",
+    "Workflow",
+    "EnterPlanMode",
     "ExitPlanMode",
 ];
 
@@ -700,6 +703,10 @@ mod tests {
         // for the host-access tools.
         for t in [
             "Skill",
+            "AskUserQuestion",
+            "Workflow",
+            "EnterPlanMode",
+            "ExitPlanMode",
             "Bash",
             "Read",
             "Write",
