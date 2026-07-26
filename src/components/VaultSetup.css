@@ -3,12 +3,12 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   padding: 2rem;
 }
 
 .vault-setup-content {
-  background: white;
+  background: var(--color-surface-raised);
   border-radius: 12px;
   padding: 3rem;
   max-width: 500px;
@@ -19,17 +19,17 @@
 .vault-setup-content h1 {
   margin: 0 0 0.5rem 0;
   font-size: 2.5rem;
-  color: #333;
+  color: var(--color-text);
 }
 
 .vault-setup-content > p {
   margin: 0 0 2rem 0;
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 1.1rem;
 }
 
 .vault-setup-description {
-  background: #f8f9fa;
+  background: var(--color-surface);
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 2rem;
@@ -38,7 +38,7 @@
 
 .vault-setup-description p {
   margin: 0 0 1rem 0;
-  color: #555;
+  color: var(--color-text-secondary);
   line-height: 1.6;
 }
 
@@ -47,7 +47,7 @@
 }
 
 .select-vault-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   color: white;
   border: none;
   padding: 1rem 2rem;
@@ -71,11 +71,11 @@
 .vault-setup-footer {
   margin-top: 2rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-border);
 }
 
 .vault-setup-footer small {
-  color: #999;
+  color: var(--color-text-muted);
 }
 
 /* Provider selection step */
@@ -87,8 +87,8 @@
 }
 
 .provider-card {
-  background: white;
-  border: 2px solid #e0e0e0;
+  background: var(--color-surface-raised);
+  border: 2px solid var(--color-border);
   border-radius: 12px;
   padding: 1.25rem;
   text-align: left;
@@ -97,25 +97,25 @@
 }
 
 .provider-card:hover {
-  border-color: #667eea;
-  background: #f8f9ff;
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .provider-name {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin-bottom: 0.25rem;
 }
 
 .provider-description {
   font-size: 0.9rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 /* Credential form step */
 .credential-form {
-  background: #f8f9fa;
+  background: var(--color-surface);
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
@@ -125,14 +125,14 @@
 .credential-form label {
   display: block;
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
   margin-bottom: 0.5rem;
 }
 
 .credential-input {
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 1rem;
   font-family: monospace;
@@ -141,7 +141,7 @@
 
 .credential-input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--color-accent);
 }
 
 .credential-help {
@@ -150,7 +150,7 @@
 }
 
 .credential-help a {
-  color: #667eea;
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -165,8 +165,8 @@
 }
 
 .back-button {
-  background: #e0e0e0;
-  color: #333;
+  background: var(--color-border);
+  color: var(--color-text);
   border: none;
   padding: 1rem 2rem;
   font-size: 1.1rem;
@@ -177,5 +177,5 @@
 }
 
 .back-button:hover {
-  background: #d0d0d0;
+  background: var(--color-border);
 }

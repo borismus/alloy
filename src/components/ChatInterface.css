@@ -313,7 +313,7 @@
 }
 
 .remove-image:hover {
-  background: #b91c1c;
+  background: var(--color-danger);
   transform: scale(1.05);
 }
 
@@ -448,14 +448,14 @@
 }
 
 .send-button.stop-button {
-  background: #e74c3c;
+  background: var(--color-danger);
   font-size: 1rem;
   min-width: 48px;
   min-height: 48px;
 }
 
 .send-button.stop-button:hover {
-  background: #c0392b;
+  background: var(--color-danger);
 }
 
 .api-key-setup {
@@ -714,8 +714,8 @@
 /* Wiki-links - internal links to notes and conversations */
 .message-content a.wiki-link,
 .response-summary-content a.wiki-link {
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
   padding: 0.125em 0.375em;
   border-radius: 4px;
   font-weight: 500;
@@ -724,12 +724,12 @@
 
 .message-content a.wiki-link:hover,
 .response-summary-content a.wiki-link:hover {
-  background: #dbeafe;
+  background: var(--color-accent-soft);
   text-decoration: none;
 }
 
 .message.user .message-content a.wiki-link {
-  color: #dbeafe;
+  color: var(--color-accent-soft);
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -802,8 +802,8 @@
   gap: 0.5rem;
   max-width: min(680px, 90%);
   text-align: left;
-  color: #b4232a;
-  background: #fdf0f0;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }
 
 .message.log.error .log-text {
@@ -822,7 +822,7 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #b4232a;
+  color: var(--color-danger);
   opacity: 0.65;
   cursor: pointer;
   transition: opacity 0.12s, background-color 0.12s, color 0.12s;
@@ -834,7 +834,7 @@
 }
 
 .log-copy-button.copied {
-  color: #1a7f37;
+  color: var(--color-success);
   opacity: 1;
 }
 
@@ -1017,7 +1017,7 @@
 }
 
 .response-summary .error-text {
-  color: #e74c3c;
+  color: var(--color-danger);
 }
 
 .response-summary .streaming-indicator {
@@ -1140,5 +1140,5 @@
 }
 
 .queued-message-remove:hover {
-  color: #e74c3c;
+  color: var(--color-danger);
 }

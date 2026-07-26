@@ -48,7 +48,7 @@
 }
 
 .markdown-content code {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--color-code-bg);
   padding: 0.2em 0.4em;
   border-radius: 4px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
@@ -59,15 +59,15 @@
   margin: 1rem 0;
   border-radius: 8px;
   overflow-x: auto;
-  background: #eef1f5;
-  border: 1px solid #d8dce3;
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border-strong);
 }
 
 .markdown-content pre code {
   display: block;
   padding: 1rem;
   background: transparent;
-  color: #24292e;
+  color: var(--color-text);
   font-size: 0.875rem;
   line-height: 1.5;
 }
@@ -93,8 +93,8 @@
 .markdown-content blockquote {
   margin: 1rem 0;
   padding-left: 1rem;
-  border-left: 3px solid #e0e0e0;
-  color: #666;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
 }
 
 .markdown-content table {
@@ -106,7 +106,7 @@
 
 .markdown-content th,
 .markdown-content td {
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   padding: 0.5rem;
   text-align: left;
   word-wrap: break-word;
@@ -114,12 +114,12 @@
 }
 
 .markdown-content th {
-  background: #f8f9fa;
+  background: var(--color-surface);
   font-weight: 600;
 }
 
 .markdown-content a {
-  color: #667eea;
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -129,8 +129,8 @@
 
 /* Wiki-links - internal links to notes and conversations */
 .markdown-content a.wiki-link {
-  color: #2563eb;
-  background: #eff6ff;
+  color: var(--color-accent-strong);
+  background: var(--color-accent-soft);
   padding: 0.125em 0.375em;
   border-radius: 4px;
   font-weight: 500;
@@ -138,13 +138,13 @@
 }
 
 .markdown-content a.wiki-link:hover {
-  background: #dbeafe;
+  background: var(--color-accent-soft);
   text-decoration: none;
 }
 
 /* Provenance markers - style them subtly as superscript links */
 .markdown-content a.provenance-link {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 0.7em;
   vertical-align: super;
   text-decoration: none;
@@ -154,13 +154,13 @@
 
 .markdown-content a.provenance-link:hover {
   opacity: 1;
-  color: #667eea;
+  color: var(--color-accent);
 }
 
 .markdown-content hr {
   margin: 1.5rem 0;
   border: none;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-border);
 }
 
 .markdown-content strong {
@@ -188,7 +188,7 @@
 }
 
 .markdown-content .mermaid-error-msg {
-  color: #dc3545;
+  color: var(--color-danger);
   font-size: 0.8rem;
   font-style: italic;
 }
