@@ -34,10 +34,17 @@ afterEach(() => {
 });
 
 describe('theme', () => {
-  it('defaults to light and applies the attribute to <html>', () => {
+  it('defaults to system and resolves to the OS scheme (light)', () => {
     render(<ThemeProvider><Harness /></ThemeProvider>);
-    expect(screen.getByTestId('pref').textContent).toBe('light');
+    expect(screen.getByTestId('pref').textContent).toBe('system');
     expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('defaults to system and resolves to dark when the OS prefers dark', () => {
+    mockMatchMedia(true);
+    render(<ThemeProvider><Harness /></ThemeProvider>);
+    expect(screen.getByTestId('pref').textContent).toBe('system');
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 
   it('switches to dark, applies the attribute, and persists the preference', () => {

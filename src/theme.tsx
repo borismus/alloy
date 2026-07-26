@@ -11,11 +11,9 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const STORAGE_KEY = 'alloy.theme';
 
-// Default to light until the UI migration finishes tokenizing every surface
-// (backlog "UI foundation, step 8"). Switching to system/dark before then would
-// leave un-migrated components with hardcoded light colors on a dark canvas.
-// The default flips to 'system' once dark mode is visually complete.
-const DEFAULT_PREFERENCE: ThemePreference = 'light';
+// Follow the OS by default now that every surface is tokenized and dark mode
+// is visually complete (backlog "UI foundation, step 8").
+const DEFAULT_PREFERENCE: ThemePreference = 'system';
 
 function readStoredPreference(): ThemePreference {
   try {
