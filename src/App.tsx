@@ -11,6 +11,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { MessageQueueProvider } from './contexts/MessageQueueContext';
 import { TaskProvider } from './contexts/TaskContext';
+import { SettingsLauncherProvider } from './contexts/SettingsLauncherContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, NoteInfo, TimelineFilter, TimelineItem, ScheduledTask } from './types';
 import { useSendMessage } from './hooks/useSendMessage';
 import { VaultSetup } from './components/VaultSetup';
@@ -525,7 +526,7 @@ function AppContent() {
   }, []);
 
   // Re-check model discovery while the app is active. This matters most for
-  // LAN providers (oMLX/Ollama): the provider may have been unreachable at
+  // LAN providers such as oMLX: the endpoint may have been unreachable at
   // startup and become available after a Wi-Fi/network change. The backend
   // caches complete discovery for an hour, but deliberately leaves partial
   // results uncached, so an unavailable provider is retried on these checks.
@@ -727,8 +728,7 @@ function AppContent() {
       gemini: 'gemini/gemini-3.5-flash',
       grok: 'grok/grok-4.3',
       openrouter: 'openrouter/anthropic/claude-sonnet-4.5',
-      ollama: '', // Ollama models are discovered dynamically
-      mlx: '', // Local MLX (oMLX) models are discovered dynamically
+      mlx: '', // oMLX models are discovered from its OpenAI-compatible endpoint
       'claude-cli': 'claude-cli/sonnet', // not selectable in setup; config-only
     };
 
@@ -739,15 +739,26 @@ function AppContent() {
       gemini: { key: 'GEMINI_API_KEY', placeholder: '...' },
       grok: { key: 'XAI_API_KEY', placeholder: 'xai-...' },
       openrouter: { key: 'OPENROUTER_API_KEY', placeholder: 'sk-or-v1-...' },
-      ollama: { key: 'OLLAMA_BASE_URL', placeholder: 'http://localhost:11434' },
     };
 
     const lines = [`defaultModel: ${defaultModels[provider]}`, ''];
-    for (const [p, info] of Object.entries(providerLines)) {
-      if (p === provider) {
-        lines.push(`${info.key}: ${credential}`);
-      } else {
-        lines.push(`# ${info.key}: ${info.placeholder}`);
+    if (provider === 'mlx') {
+      const endpoint = credential.trim().replace(/\/+$/, '');
+      const baseUrl = endpoint.endsWith('/v1') ? endpoint : `${endpoint}/v1`;
+      lines.push(
+        'providers:',
+        '  - id: mlx',
+        '    kind: openai_compatible',
+        `    base_url: ${JSON.stringify(baseUrl)}`,
+        '    api_key: ""',
+      );
+    } else {
+      for (const [p, info] of Object.entries(providerLines)) {
+        if (p === provider) {
+          lines.push(`${info.key}: ${credential}`);
+        } else {
+          lines.push(`# ${info.key}: ${info.placeholder}`);
+        }
       }
     }
     lines.push('', '# API keys for skills', '# SERPER_API_KEY: ...', '');
@@ -1100,6 +1111,7 @@ function AppContent() {
 
   return (
     <TaskProvider tasks={tasks}>
+      <SettingsLauncherProvider open={() => setShowSettings(true)}>
         <UpdateChecker />
         {memory && (
           <MemoryWarning
@@ -1378,6 +1390,7 @@ function AppContent() {
       )}
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
+      </SettingsLauncherProvider>
     </TaskProvider>
   );
 }
