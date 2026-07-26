@@ -1,0 +1,38 @@
+.group {
+  display: flex;
+  padding: 3px;
+  background: var(--color-track);
+  border-radius: 8px;
+}
+
+.segment {
+  flex: 1;
+  min-width: 0;
+  padding: 0.38rem 0.25rem;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.segment[data-hovered] {
+  color: var(--color-text);
+}
+
+.segment[data-selected] {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+.segment[data-focus-visible] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}

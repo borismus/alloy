@@ -7,7 +7,7 @@ import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
-import { AlloyDialog } from './ui';
+import { AlloyDialog, SegmentedControl } from './ui';
 import './Sidebar.css';
 
 // FLIP animation helper - stores previous positions of items
@@ -451,18 +451,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         </button>
       </div>
 
-      <div className="filter-dropdown-container">
-        <select
-          className="filter-dropdown"
+      <div className="filter-tabs-container">
+        <SegmentedControl
+          aria-label="Filter timeline by type"
           value={activeFilter}
-          onChange={(e) => onFilterChange(e.target.value as TimelineFilter)}
-        >
-          <option value="all">All</option>
-          <option value="conversations">Conversations</option>
-          <option value="notes">Notes</option>
-          <option value="tasks">Tasks</option>
-          <option value="riffs">Riffs</option>
-        </select>
+          onChange={(value) => onFilterChange(value as TimelineFilter)}
+          options={[
+            { id: 'all', label: 'All' },
+            { id: 'conversations', label: 'Chats' },
+            { id: 'notes', label: 'Notes' },
+            { id: 'tasks', label: 'Tasks' },
+            { id: 'riffs', label: 'Riffs' },
+          ]}
+        />
       </div>
 
       <div className="timeline-list" ref={containerRef}>

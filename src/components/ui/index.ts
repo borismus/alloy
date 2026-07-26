@@ -8,3 +8,5 @@ export { SelectField } from './SelectField';
 export type { SelectFieldProps, SelectOption } from './SelectField';
 export { AlloyMenu } from './Menu';
 export type { AlloyMenuProps, MenuOption } from './Menu';
+export { SegmentedControl } from './SegmentedControl';
+export type { SegmentedControlProps, SegmentOption } from './SegmentedControl';
