@@ -3,7 +3,6 @@ import { ProviderType, ModelInfo } from '../types';
 export const PROVIDER_NAMES: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
-  ollama: 'Ollama',
   gemini: 'Gemini',
   grok: 'Grok',
   openrouter: 'OpenRouter',
@@ -19,7 +18,6 @@ export const PROVIDER_NAMES: Record<ProviderType, string> = {
 export const PROVIDER_TAGS: Record<ProviderType, string> = {
   anthropic: 'ANT',
   openai: 'OAI',
-  ollama: 'OLL',
   gemini: 'GEM',
   grok: 'GROK',
   openrouter: 'OR',
@@ -52,13 +50,11 @@ export function providerTag(providerId: string | undefined, modelKey: string): s
 
 /**
  * Whether a model runs locally (on-device / trusted hardware), for the privacy
- * badge. Prefers the backend `local` flag on a listed model, but treats the
- * `mlx` (oMLX) provider as local unconditionally so the badge is still right
- * when the server is unreachable and the model isn't in `availableModels`
- * (e.g. you're off your LAN). oMLX is an on-device server by definition.
+ * badge. Locality comes from the backend's endpoint classification rather than
+ * the provider name, so a compatible endpoint on a routable host is not
+ * accidentally trusted with private data.
  */
 export function isLocalModel(modelKey: string, availableModels: ModelInfo[]): boolean {
-  if (modelKey.startsWith('mlx/')) return true;
   return availableModels.some(m => m.key === modelKey && m.local);
 }
 

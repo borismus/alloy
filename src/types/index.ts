@@ -1,6 +1,6 @@
 // Core types for Alloy
 
-export type ProviderType = 'anthropic' | 'openai' | 'ollama' | 'gemini' | 'grok' | 'openrouter' | 'claude-cli' | 'mlx';
+export type ProviderType = 'anthropic' | 'openai' | 'gemini' | 'grok' | 'openrouter' | 'claude-cli' | 'mlx';
 
 /** Minimal conversation reference for wiki-link title lookups */
 export interface ConversationInfo {
@@ -115,7 +115,7 @@ export interface ModelInfo {
   key: string;   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   name: string;  // Human-readable display name (e.g., "Sonnet 4.5")
   contextWindow?: number; // Max input tokens (e.g., 200000 for Claude, 1000000 for Gemini)
-  provider?: string;      // Provider id (e.g., "mlx", "ollama") for unambiguous labeling
+  provider?: string;      // Provider id (e.g., "mlx", "openrouter") for unambiguous labeling
   local?: boolean;        // True when served from this machine (loopback) — prompts stay on-device
 }
 
@@ -174,9 +174,26 @@ export interface Conversation {
   messagesLoaded?: boolean;
 }
 
+export interface ProviderConfig {
+  id: string;
+  kind: 'openai_compatible' | 'cli_claude';
+  baseUrl?: string;
+  apiKey?: string;
+  command?: string;
+  oauthToken?: string;
+  // On-device / on-LAN endpoint whose prompts never leave the user's network
+  // (padlock badge, private-dir access, offline tolerance). MLX-only in
+  // practice; CLI kinds are always cloud. When omitted the server infers it
+  // from the endpoint URL (loopback / *.local).
+  local?: boolean;
+}
+
+// Canonical config.yaml schema (v1). camelCase throughout; all model providers
+// live under `providers:`. No legacy per-vendor API-key flat keys.
 export interface Config {
-  defaultModel: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-opus-4-6")
-  // Favorite models shown at top of selectors (e.g., "anthropic/claude-opus-4-6")
+  version?: number;
+  defaultModel: string;  // Format: "provider/model-id" (e.g., "openrouter/anthropic/claude-opus-4-6")
+  // Favorite models shown at top of selectors.
   favoriteModels?: string[];
   // User-defined models, additive to the bundled defaults.
   // Entries whose key collides with a bundled model are ignored.
@@ -185,14 +202,12 @@ export interface Config {
   // via the obsidian:// URI; 'system' (and any non-markdown file) opens with the
   // OS default app. Defaults to 'obsidian' when unset.
   externalEditor?: 'obsidian' | 'system';
-  // Provider API keys - presence indicates provider is enabled
-  ANTHROPIC_API_KEY?: string;
-  OPENAI_API_KEY?: string;
-  OLLAMA_BASE_URL?: string;
-  GEMINI_API_KEY?: string;
-  XAI_API_KEY?: string;
-  OPENROUTER_API_KEY?: string;
-  SONIOX_API_KEY?: string;
+  // All model providers: OpenRouter (cloud), oMLX (local), Claude subscription (CLI).
+  providers?: ProviderConfig[];
+  shareOnNetwork?: boolean;
+  sharePort?: number;
+  serperApiKey?: string;
+  sonioxApiKey?: string;
 }
 
 // Per-conversation streaming state

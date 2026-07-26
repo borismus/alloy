@@ -99,7 +99,8 @@ describe('VaultService', () => {
         call => call[0] === '/test/vault/config.yaml'
       );
       expect(configCall).toBeDefined();
-      expect(configCall![1]).toContain('ANTHROPIC_API_KEY');
+      expect(configCall![1]).toContain('version: 1');
+      expect(configCall![1]).toContain('providers:');
       expect(configCall![1]).toContain('defaultModel');
     });
 
@@ -493,11 +494,11 @@ describe('spliceFavoritesBlock', () => {
   });
 
   it('prepends when no existing favoriteModels line', () => {
-    const existing = 'defaultModel: x\nOLLAMA_BASE_URL: http://h\n';
+    const existing = 'defaultModel: x\nCUSTOM_SETTING: keep\n';
     const out = spliceFavoritesBlock(existing, block);
     expect(out.startsWith(block)).toBe(true);
     expect(out).toContain('defaultModel: x');
-    expect(out).toContain('OLLAMA_BASE_URL');
+    expect(out).toContain('CUSTOM_SETTING');
   });
 
   it('replaces an indented block-list cleanly', () => {
@@ -505,13 +506,13 @@ describe('spliceFavoritesBlock', () => {
 favoriteModels:
   - old1
   - old2
-OLLAMA_BASE_URL: http://h
+CUSTOM_SETTING: keep
 `;
     const out = spliceFavoritesBlock(existing, block);
     expect(out).not.toContain('old1');
     expect(out).not.toContain('old2');
     expect(out).toContain('  - a');
-    expect(out).toContain('OLLAMA_BASE_URL');
+    expect(out).toContain('CUSTOM_SETTING');
   });
 
   it('replaces a non-indented block-list without orphaning items', () => {
@@ -523,13 +524,13 @@ favoriteModels:
 - old1
 - old2
 - old3
-OLLAMA_BASE_URL: http://h
+CUSTOM_SETTING: keep
 `;
     const out = spliceFavoritesBlock(existing, block);
     expect(out).not.toContain('old1');
     expect(out).not.toContain('old2');
     expect(out).not.toContain('old3');
-    expect(out).toContain('OLLAMA_BASE_URL');
+    expect(out).toContain('CUSTOM_SETTING');
   });
 
   it('preserves comments and unrelated keys', () => {
@@ -538,12 +539,12 @@ defaultModel: x
 favoriteModels:
   - old
 # another comment
-OLLAMA_BASE_URL: http://h
+CUSTOM_SETTING: keep
 `;
     const out = spliceFavoritesBlock(existing, block);
     expect(out).toContain('# user-written comment');
     expect(out).toContain('# another comment');
-    expect(out).toContain('OLLAMA_BASE_URL');
+    expect(out).toContain('CUSTOM_SETTING');
   });
 });
 
@@ -553,14 +554,14 @@ describe('spliceScalar', () => {
 defaultModel: x
 externalEditor: obsidian
 # keep me
-OLLAMA_BASE_URL: http://h
+CUSTOM_SETTING: keep
 `;
     const out = spliceScalar(existing, 'externalEditor', 'system');
     expect(out).toContain('externalEditor: system');
     expect(out).not.toContain('externalEditor: obsidian');
     expect(out).toContain('# my config');
     expect(out).toContain('# keep me');
-    expect(out).toContain('OLLAMA_BASE_URL: http://h');
+    expect(out).toContain('CUSTOM_SETTING: keep');
   });
 
   it('appends the key when absent, keeping existing content', () => {

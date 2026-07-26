@@ -150,8 +150,6 @@ const getAssistantName = (model: string): string => {
       return 'ChatGPT';
     case 'gemini':
       return 'Gemini';
-    case 'ollama':
-      return 'Assistant';
     default:
       return 'Assistant';
   }

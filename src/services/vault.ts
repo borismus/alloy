@@ -182,36 +182,46 @@ export class VaultService {
     // Create config.yaml if it doesn't exist
     const configPath = await join(base, 'config.yaml');
     if (!(await exists(configPath))) {
-      // Create config with commented templates for providers
-      const defaultConfigYaml = `defaultModel: anthropic/claude-sonnet-4-6
+      // Create config with commented v1 templates for providers
+      const defaultConfigYaml = `version: 1
+defaultModel: openrouter/anthropic/claude-sonnet-4-6
 
-# Uncomment and fill in to enable each provider
-# ANTHROPIC_API_KEY: sk-ant-...
-# OPENAI_API_KEY: sk-...
-# GEMINI_API_KEY: ...
-# XAI_API_KEY: xai-...
-# OPENROUTER_API_KEY: sk-or-v1-...
-# OLLAMA_BASE_URL: http://localhost:11434
+# All models are configured under providers:. Uncomment and fill in what you use.
+providers:
+  # OpenRouter — one key for Claude, GPT, Gemini, Llama, and more.
+  # - id: openrouter
+  #   kind: openai_compatible
+  #   baseUrl: https://openrouter.ai/api/v1
+  #   apiKey: sk-or-v1-...
 
-# Use your Claude Pro/Max subscription via the Claude Code CLI (text-only;
-# bills your subscription, not API credits). Requires the \`claude\` binary
-# installed and logged in to your subscription (run \`claude\` once to log in).
-# CLAUDE_SUBSCRIPTION: true
-# CLAUDE_CODE_PATH: /opt/homebrew/bin/claude   # only if \`claude\` isn't on PATH
-# CLAUDE_CODE_OAUTH_TOKEN: sk-ant-oat-...       # from \`claude setup-token\` (optional)
+  # oMLX or any local OpenAI-compatible server. local: true keeps prompts on
+  # your machine/LAN (padlock badge, may read privateReadOnlyDirs).
+  # - id: mlx
+  #   kind: openai_compatible
+  #   baseUrl: http://localhost:8000/v1
+  #   local: true
+
+  # Your Claude Pro/Max subscription via the Claude Code CLI (text-only; bills
+  # your subscription, not API credits). Requires the \`claude\` binary installed
+  # and logged in (run \`claude\` once). Runs locally but sends prompts to
+  # Anthropic — treated as cloud.
+  # - id: claude
+  #   kind: cli_claude
+  #   command: /opt/homebrew/bin/claude   # only if 'claude' isn't on PATH
+  #   oauthToken: sk-ant-oat-...           # from 'claude setup-token' (optional)
 
 # API keys for skills
-# SERPER_API_KEY: ...
+# serperApiKey: ...
 
 # Speech-to-text (Soniox) for dictation
-# SONIOX_API_KEY: ...
+# sonioxApiKey: ...
 
 # External services. Email lets scheduled tasks notify you when they run
 # (set \`email: true\` on a task). Only Resend is supported.
 # services:
 #   email:
 #     provider: resend
-#     api_key: re_...
+#     apiKey: re_...
 #     from: Alloy <alloy@your-domain.com>
 #     to: you@example.com
 `;

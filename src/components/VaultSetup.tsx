@@ -27,7 +27,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
       if (path) {
         // Check if config already has a provider configured
         const config = await vaultService.loadConfig();
-        if (config && (config.ANTHROPIC_API_KEY || config.OPENAI_API_KEY || config.OLLAMA_BASE_URL || config.GEMINI_API_KEY || config.XAI_API_KEY || config.OPENROUTER_API_KEY)) {
+        if (config && config.providers?.length) {
           // Vault already has a provider - skip wizard
           onExistingVault(path);
           return;
@@ -47,7 +47,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
 
   const handleProviderSelect = (provider: ProviderType) => {
     setSelectedProvider(provider);
-    setCredential(provider === 'ollama' ? 'http://localhost:11434' : '');
+    setCredential(provider === 'mlx' ? 'http://localhost:8000/v1' : '');
     setStep('credential');
   };
 
@@ -76,8 +76,8 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
         return 'xai-...';
       case 'openrouter':
         return 'sk-or-v1-...';
-      case 'ollama':
-        return 'http://localhost:11434';
+      case 'mlx':
+        return 'http://localhost:8000/v1';
       default:
         return '';
     }
@@ -95,8 +95,8 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
         return 'xAI API Key';
       case 'openrouter':
         return 'OpenRouter API Key';
-      case 'ollama':
-        return 'Ollama Base URL';
+      case 'mlx':
+        return 'oMLX Server URL';
       default:
         return 'Credential';
     }
@@ -109,7 +109,6 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
       case 'gemini': return 'Google Gemini';
       case 'grok': return 'xAI (Grok)';
       case 'openrouter': return 'OpenRouter';
-      case 'ollama': return 'Ollama';
       case 'claude-cli': return 'Claude (subscription)';
       case 'mlx': return 'oMLX';
     }
@@ -156,46 +155,6 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
             <div className="provider-cards">
               <button
                 className="provider-card"
-                onClick={() => handleProviderSelect('anthropic')}
-              >
-                <div className="provider-name">Anthropic</div>
-                <div className="provider-description">
-                  Claude models including Opus, Sonnet, and Haiku
-                </div>
-              </button>
-
-              <button
-                className="provider-card"
-                onClick={() => handleProviderSelect('openai')}
-              >
-                <div className="provider-name">OpenAI</div>
-                <div className="provider-description">
-                  GPT-4o, GPT-4 Turbo, o1, and more
-                </div>
-              </button>
-
-              <button
-                className="provider-card"
-                onClick={() => handleProviderSelect('gemini')}
-              >
-                <div className="provider-name">Google Gemini</div>
-                <div className="provider-description">
-                  Gemini 2.5 and 3 models
-                </div>
-              </button>
-
-              <button
-                className="provider-card"
-                onClick={() => handleProviderSelect('grok')}
-              >
-                <div className="provider-name">xAI (Grok)</div>
-                <div className="provider-description">
-                  Grok 4 models with vision support
-                </div>
-              </button>
-
-              <button
-                className="provider-card"
                 onClick={() => handleProviderSelect('openrouter')}
               >
                 <div className="provider-name">OpenRouter</div>
@@ -206,11 +165,11 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
 
               <button
                 className="provider-card"
-                onClick={() => handleProviderSelect('ollama')}
+                onClick={() => handleProviderSelect('mlx')}
               >
-                <div className="provider-name">Ollama</div>
+                <div className="provider-name">oMLX</div>
                 <div className="provider-description">
-                  Run models locally - no API key needed
+                  Connect to a local, on-device OpenAI-compatible model server
                 </div>
               </button>
             </div>
@@ -224,13 +183,13 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
         {step === 'credential' && selectedProvider && (
           <>
             <h1>Configure {getProviderDisplayName(selectedProvider)}</h1>
-            <p>Enter your {selectedProvider === 'ollama' ? 'Ollama server URL' : 'API key'}</p>
+            <p>Enter your {selectedProvider === 'mlx' ? 'oMLX server URL' : 'API key'}</p>
 
             <div className="credential-form">
               <label htmlFor="credential">{getCredentialLabel()}</label>
               <input
                 id="credential"
-                type={selectedProvider === 'ollama' ? 'text' : 'password'}
+                type={selectedProvider === 'mlx' ? 'text' : 'password'}
                 value={credential}
                 onChange={(e) => setCredential(e.target.value)}
                 placeholder={getPlaceholder()}
@@ -241,7 +200,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
                 spellCheck={false}
               />
 
-              {selectedProvider !== 'ollama' && (
+              {selectedProvider !== 'mlx' && (
                 <div className="credential-help">
                   {selectedProvider === 'anthropic' && (
                     <a href="#" onClick={(e) => { e.preventDefault(); openUrl('https://console.anthropic.com/settings/keys'); }}>

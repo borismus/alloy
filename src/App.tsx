@@ -721,47 +721,33 @@ function AppContent() {
   loadVaultRef.current = loadVault;
 
   const handleVaultSelected = async (path: string, provider: ProviderType, credential: string) => {
-    // Default models for each provider (using provider/model format)
-    const defaultModels: Record<ProviderType, string> = {
-      anthropic: 'anthropic/claude-sonnet-4-6',
-      openai: 'openai/gpt-5.4-mini',
-      gemini: 'gemini/gemini-3.5-flash',
-      grok: 'grok/grok-4.3',
-      openrouter: 'openrouter/anthropic/claude-sonnet-4.5',
-      mlx: '', // oMLX models are discovered from its OpenAI-compatible endpoint
-      'claude-cli': 'claude-cli/sonnet', // not selectable in setup; config-only
-    };
-
-    // Build config YAML with the active provider uncommented and others commented out
-    const providerLines: Record<string, { key: string; placeholder: string }> = {
-      anthropic: { key: 'ANTHROPIC_API_KEY', placeholder: 'sk-ant-...' },
-      openai: { key: 'OPENAI_API_KEY', placeholder: 'sk-...' },
-      gemini: { key: 'GEMINI_API_KEY', placeholder: '...' },
-      grok: { key: 'XAI_API_KEY', placeholder: 'xai-...' },
-      openrouter: { key: 'OPENROUTER_API_KEY', placeholder: 'sk-or-v1-...' },
-    };
-
-    const lines = [`defaultModel: ${defaultModels[provider]}`, ''];
+    // Write a v1 config with the chosen provider under `providers:`.
+    const lines: string[] = ['version: 1'];
     if (provider === 'mlx') {
       const endpoint = credential.trim().replace(/\/+$/, '');
       const baseUrl = endpoint.endsWith('/v1') ? endpoint : `${endpoint}/v1`;
       lines.push(
+        'defaultModel: ""', // oMLX models are discovered from the endpoint
+        '',
         'providers:',
         '  - id: mlx',
         '    kind: openai_compatible',
-        `    base_url: ${JSON.stringify(baseUrl)}`,
-        '    api_key: ""',
+        `    baseUrl: ${JSON.stringify(baseUrl)}`,
+        '    local: true',
       );
     } else {
-      for (const [p, info] of Object.entries(providerLines)) {
-        if (p === provider) {
-          lines.push(`${info.key}: ${credential}`);
-        } else {
-          lines.push(`# ${info.key}: ${info.placeholder}`);
-        }
-      }
+      // OpenRouter is the cloud gateway for all hosted models (Claude, GPT, Gemini, …).
+      lines.push(
+        'defaultModel: openrouter/anthropic/claude-sonnet-4.5',
+        '',
+        'providers:',
+        '  - id: openrouter',
+        '    kind: openai_compatible',
+        '    baseUrl: https://openrouter.ai/api/v1',
+        `    apiKey: ${JSON.stringify(credential.trim())}`,
+      );
     }
-    lines.push('', '# API keys for skills', '# SERPER_API_KEY: ...', '');
+    lines.push('', '# API keys for skills', '# serperApiKey: ...', '');
 
     vaultService.setVaultPath(path);
     await vaultService.saveRawConfig(lines.join('\n'));
@@ -1202,7 +1188,7 @@ function AppContent() {
                 <RiffView
                   notes={notes}
                   model={config?.defaultModel || availableModels[0]?.key || ''}
-                  sonioxApiKey={config?.SONIOX_API_KEY}
+                  sonioxApiKey={config?.sonioxApiKey}
                   onNavigateToNote={handleSelectNote}
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                   conversations={conversations}
@@ -1238,7 +1224,7 @@ function AppContent() {
               <RiffView
                 notes={notes}
                 model={config?.defaultModel || availableModels[0]?.key || ''}
-                sonioxApiKey={config?.SONIOX_API_KEY}
+                sonioxApiKey={config?.sonioxApiKey}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                 conversations={conversations}
@@ -1303,7 +1289,7 @@ function AppContent() {
           <RiffView
             notes={notes}
             model={config?.defaultModel || availableModels[0]?.key || ''}
-            sonioxApiKey={config?.SONIOX_API_KEY}
+            sonioxApiKey={config?.sonioxApiKey}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             conversations={conversations}

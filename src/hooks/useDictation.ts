@@ -81,7 +81,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
 
   const startDictation = useCallback(() => {
     if (!apiKey) {
-      setError('Soniox API key not configured. Add SONIOX_API_KEY to config.yaml.');
+      setError('Soniox API key not configured. Add sonioxApiKey to config.yaml.');
       return;
     }
 
