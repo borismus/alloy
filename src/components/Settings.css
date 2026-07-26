@@ -79,52 +79,7 @@
   margin-bottom: 0;
 }
 
-.toggle-switch {
-  flex: 0 0 auto;
-  position: relative;
-  width: 40px;
-  height: 24px;
-  border-radius: 999px;
-  background: var(--color-border);
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  transition: background-color 0.18s ease;
-  margin-top: 2px;
-}
-
-.toggle-switch:hover:not(:disabled) {
-  background: var(--color-border-strong);
-}
-
-.toggle-switch.is-on {
-  background: var(--color-success);
-}
-
-.toggle-switch.is-on:hover:not(:disabled) {
-  background: var(--color-success);
-}
-
-.toggle-switch:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.toggle-switch-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-  transition: transform 0.18s ease;
-}
-
-.toggle-switch.is-on .toggle-switch-thumb {
-  transform: translateX(16px);
-}
+/* The share toggle now uses the ui/Switch primitive. */
 
 .share-url {
   margin-top: 12px;

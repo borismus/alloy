@@ -6,7 +6,7 @@ import {
   MenuTrigger,
   Button as AriaButton,
 } from 'react-aria-components';
-import { Button, AlloyDialog, SearchField, SelectField, AlloyMenu } from './index';
+import { Button, AlloyDialog, SearchField, SelectField, AlloyMenu, Switch } from './index';
 
 afterEach(cleanup);
 
@@ -67,6 +67,14 @@ describe('ui primitives', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Close dialog' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('toggles a Switch and reports the new state', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Switch aria-label="Share on network" isSelected={false} onChange={onChange} />);
+    await user.click(screen.getByRole('switch', { name: 'Share on network' }));
+    expect(onChange).toHaveBeenCalledWith(true);
   });
 
   it('renders a menu trigger that is closed until pressed', () => {

@@ -1,0 +1,45 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.root[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.track {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  background: var(--color-control-track);
+  border-radius: 999px;
+  transition: background var(--duration-normal) var(--ease-standard);
+}
+
+.root[data-selected] .track {
+  background: var(--color-success);
+}
+
+.root[data-focus-visible] .track {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 15%);
+  transition: transform var(--duration-normal) var(--ease-standard);
+}
+
+.root[data-selected] .thumb {
+  transform: translateX(16px);
+}

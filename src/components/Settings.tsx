@@ -4,7 +4,7 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { vaultService } from '../services/vault';
 import { isTauri } from '../services/api';
 import { useTheme, type ThemePreference } from '../theme';
-import { AlloyDialog } from './ui';
+import { AlloyDialog, Switch } from './ui';
 import { CheckResult } from './UpdateChecker';
 import './Settings.css';
 
@@ -198,18 +198,12 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                     Let other devices on your LAN or Tailnet open this vault in a browser.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={shareStatus.enabled}
+                <Switch
                   aria-label="Share on network"
-                  onClick={handleToggleShare}
-                  disabled={shareBusy || !shareStatus.vault_configured}
-                  title={!shareStatus.vault_configured ? 'Pick a vault first' : undefined}
-                  className={`toggle-switch ${shareStatus.enabled ? 'is-on' : ''}`}
-                >
-                  <span className="toggle-switch-thumb" />
-                </button>
+                  isSelected={shareStatus.enabled}
+                  onChange={handleToggleShare}
+                  isDisabled={shareBusy || !shareStatus.vault_configured}
+                />
               </div>
               {!shareStatus.vault_configured && (
                 <p className="settings-hint">Pick a vault first to enable sharing.</p>

@@ -10,3 +10,5 @@ export { AlloyMenu } from './Menu';
 export type { AlloyMenuProps, MenuOption } from './Menu';
 export { SegmentedControl } from './SegmentedControl';
 export type { SegmentedControlProps, SegmentOption } from './SegmentedControl';
+export { Switch } from './Switch';
+export type { SwitchProps } from './Switch';
