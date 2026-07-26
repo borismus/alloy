@@ -1,6 +1,6 @@
 # Alloy
 
-A local-first, multi-model AI chat app. Bring your own API keys, talk to Claude, GPT, Gemini, Grok, or local models via Ollama. All conversations stored as plain text files in a folder you choose.
+A local-first, multi-model AI chat app. Bring your own API keys, talk to Claude, GPT, Gemini, Grok, or local models through an oMLX OpenAI-compatible endpoint. All conversations are stored as plain text files in a folder you choose.
 
 [Blog post](https://smus.com/alloy-local-first-ai-workbench/) · [Download for macOS](https://github.com/borismus/alloy/releases)
 
@@ -92,15 +92,14 @@ using `append_to_note`. Before answering, check `memory.md` for context.
 The `web_search` tool requires one of:
 
 - **[SearXNG](https://docs.searxng.org/)** (free, self-hosted) — Run a local instance via Docker with JSON format enabled. Set `SEARXNG_URL` in your vault's `config.yaml` (see [SEARCH.md](SEARCH.md)).
-- **[Serper](https://serper.dev/)** (paid API) — Sign up for a key and add it as `SERPER_API_KEY` in your vault's `config.yaml`.
+- **[Serper](https://serper.dev/)** (paid API) — Sign up for a key and add it as `serperApiKey` in your vault's `config.yaml`.
 
 ## Supported Providers
 
-- **Anthropic** (Claude)
-- **OpenAI** (GPT, o-series)
-- **Google Gemini**
-- **xAI** (Grok)
-- **Ollama** (local models)
+All models are configured under a single `providers:` list in `config.yaml`:
+
+- **OpenRouter** — one key for Claude, GPT, Gemini, Grok, Llama, and more (the cloud gateway)
+- **oMLX** — local, on-device models through an OpenAI-compatible endpoint (mark `local: true`; prompts stay on your machine/LAN)
 - **Claude subscription** — use your Claude Pro/Max plan instead of API credits (see below)
 
 ### Claude subscription mode
@@ -109,12 +108,14 @@ Pick Claude Opus/Sonnet/Haiku billed against your **Claude Pro/Max subscription*
 rather than per-token API credits. It works by shelling out to the Claude Code
 CLI (there is no subscription-billed HTTP API).
 
-Enable it in your vault's `config.yaml`:
+Enable it by adding a `cli_claude` provider to your vault's `config.yaml`:
 
 ```yaml
-CLAUDE_SUBSCRIPTION: true
-# CLAUDE_CODE_PATH: /opt/homebrew/bin/claude   # only if `claude` isn't on PATH
-# CLAUDE_CODE_OAUTH_TOKEN: sk-ant-oat-...       # from `claude setup-token` (optional)
+providers:
+  - id: claude
+    kind: cli_claude
+    # command: /opt/homebrew/bin/claude   # only if `claude` isn't on PATH
+    # oauthToken: sk-ant-oat-...           # from `claude setup-token` (optional)
 ```
 
 Requires the [`claude` CLI](https://claude.com/claude-code) installed and logged
@@ -143,7 +144,7 @@ See [DEV.md](DEV.md) for architecture details.
 
 - Node.js v18+
 - Rust (latest stable) — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- At least one API key, or Ollama running locally
+- At least one API key, or an oMLX server running locally
 
 ## Contributing
 

@@ -55,37 +55,37 @@ the full app from `http://<your-host>:<sharePort>/`.
 
 ## Configuration
 
-`config.yaml` lives at the vault root and supports explicit OpenAI-compatible
-provider endpoints, plus the legacy flat OpenRouter key:
+`config.yaml` lives at the vault root. All models are configured under a single
+`providers:` list (camelCase v1 schema):
 
 ```yaml
+version: 1
 defaultModel: openrouter/anthropic/claude-sonnet-4.6
 
-# Preferred (V_next): explicit providers block
 providers:
   - id: openrouter
     kind: openai_compatible
-    base_url: https://openrouter.ai/api/v1
-    api_key: ${OPENROUTER_API_KEY}
-  - id: mlx
+    baseUrl: https://openrouter.ai/api/v1
+    apiKey: sk-or-v1-...
+  - id: mlx                       # local, on-device (prompts stay on your machine/LAN)
     kind: openai_compatible
-    base_url: http://localhost:8000/v1
-    api_key: ""
-
-# Or use the legacy flat key for OpenRouter
-OPENROUTER_API_KEY: sk-or-v1-...
+    baseUrl: http://localhost:8000/v1
+    local: true
 
 # For tools
-SERPER_API_KEY: ...     # web_search
+serperApiKey: ...       # web_search
 
-# Phase 2: expose the embedded server to other devices on the network.
+# Expose the embedded server to other devices on the network.
 shareOnNetwork: false   # default off
 sharePort: 3001         # only used when shareOnNetwork is true
 ```
 
-Old per-provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) are
-ignored with a warning at startup — V_next routes everything through
-OpenRouter (or any other configured OpenAI-compat provider).
+There is no legacy flat-key format: 0.4 dropped the pre-0.4 schema (per-vendor
+`*_API_KEY` keys, snake_case). A config still using the old shape is rejected at
+startup with a message pointing at this format. All cloud models are reached via
+OpenRouter (or any configured OpenAI-compatible provider); on-device models via
+a `local: true` OpenAI-compatible endpoint; Claude subscription via a
+`cli_claude` provider.
 
 ## Layout
 

@@ -83,9 +83,13 @@ And permissions are in the `security.capabilities` section.
    ```
 
 3. **Update your key**:
-   Edit `[your-vault]/config.yaml`:
+   Edit `[your-vault]/config.yaml` — keys live on the provider entry:
    ```yaml
-   ANTHROPIC_API_KEY: sk-ant-your-key-here
+   providers:
+     - id: openrouter
+       kind: openai_compatible
+       baseUrl: https://openrouter.ai/api/v1
+       apiKey: sk-or-v1-your-key-here
    ```
 
 4. **Check your account has credits**:

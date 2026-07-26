@@ -53,7 +53,7 @@ alloy/
 
 - **Frontend**: React 19 + TypeScript + Vite
 - **Backend**: Tauri 2 (Rust)
-- **AI**: Anthropic, OpenAI, Google Gemini, xAI (Grok), Ollama
+- **AI**: Anthropic, OpenAI-compatible services including OpenRouter and oMLX, Google Gemini, xAI (Grok), Claude subscription
 - **Storage**: YAML/Markdown files (js-yaml)
 - **Styling**: Plain CSS
 
@@ -95,17 +95,24 @@ messages:
     content: Hi there!
 ```
 
-### Config (YAML)
+### Config (YAML, v1)
 ```yaml
-defaultModel: anthropic/claude-sonnet-4-6
-ANTHROPIC_API_KEY: sk-ant-...
-OPENAI_API_KEY: sk-...
-GEMINI_API_KEY: ...
-XAI_API_KEY: xai-...
-OLLAMA_BASE_URL: http://localhost:11434
+version: 1
+defaultModel: openrouter/anthropic/claude-sonnet-4-6
+
+providers:
+  - id: openrouter
+    kind: openai_compatible
+    baseUrl: https://openrouter.ai/api/v1
+    apiKey: sk-or-v1-...
+  - id: mlx                       # local, on-device
+    kind: openai_compatible
+    baseUrl: http://localhost:8000/v1
+    local: true
+
 # Optional
-SERPER_API_KEY: ...
-SONIOX_API_KEY: ...
+serperApiKey: ...
+sonioxApiKey: ...
 ```
 
 ### Memory (Markdown)
