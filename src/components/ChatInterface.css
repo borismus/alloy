@@ -11,7 +11,7 @@
   flex-direction: column;
   height: 100vh;
   height: var(--app-height, 100dvh);
-  background: white;
+  background: var(--color-canvas);
   position: relative;
   overflow: hidden;
 }
@@ -20,15 +20,15 @@
   display: flex;
   align-items: center;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid #e5e5e5;
-  background: #fafafa;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
 }
 
 .chat-nav-header .back-button {
   background: none;
   border: none;
   font-size: 1.25rem;
-  color: #666;
+  color: var(--color-text-secondary);
   cursor: pointer;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
@@ -36,8 +36,8 @@
 }
 
 .chat-nav-header .back-button:hover {
-  background: #e5e5e5;
-  color: #333;
+  background: var(--color-border);
+  color: var(--color-text);
 }
 
 /* CSS Custom Highlight API for find-in-conversation */
@@ -57,7 +57,7 @@
   position: absolute;
   inset: 0;
   background: rgba(102, 126, 234, 0.1);
-  border: 3px dashed #667eea;
+  border: 3px dashed var(--color-accent);
   border-radius: 12px;
   margin: 1rem;
   display: flex;
@@ -65,7 +65,7 @@
   justify-content: center;
   font-size: 1.25rem;
   font-weight: 600;
-  color: #667eea;
+  color: var(--color-accent);
   pointer-events: none;
   z-index: 100;
 }
@@ -85,7 +85,7 @@
 .api-key-setup {
   text-align: center;
   padding: 4rem 2rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 /* Shown while a conversation's message bodies lazy-load on open. */
@@ -100,19 +100,19 @@
 .no-provider h2,
 .api-key-setup h2 {
   margin: 0 0 1rem 0;
-  color: #333;
+  color: var(--color-text);
 }
 
 .model-info {
   text-align: center;
   padding: 1rem 0 2rem 0;
   font-size: 0.875rem;
-  color: #999;
+  color: var(--color-text-muted);
 }
 
 .model-provider {
   font-weight: 600;
-  color: #667eea;
+  color: var(--color-accent);
 }
 
 .model-separator {
@@ -121,7 +121,7 @@
 
 .model-name {
   font-family: monospace;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .message {
@@ -147,7 +147,7 @@
   font-size: 0.875rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .message.user .message-role {
@@ -163,15 +163,15 @@
 }
 
 .message.user .message-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   color: white;
   margin-left: auto;
 }
 
 .message.assistant .message-content {
-  background: #f8f9fa;
-  color: #333;
-  border: 1px solid #e0e0e0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
 }
 
 .message.streaming .message-content {
@@ -188,7 +188,7 @@
 .thinking-indicator span {
   width: 8px;
   height: 8px;
-  background: #667eea;
+  background: var(--color-accent);
   border-radius: 50%;
   animation: thinking-pulse 1.4s ease-in-out infinite;
 }
@@ -217,12 +217,12 @@
 }
 
 .input-form {
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-border);
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  background: white;
+  background: var(--color-canvas);
   flex-shrink: 0;
   touch-action: manipulation;
   /* Anchor for the slash-command autocomplete (renders above the composer). */
@@ -239,9 +239,9 @@
   width: 48px;
   height: 48px;
   padding: 0;
-  background: #f0f0f0;
-  color: #666;
-  border: 1px solid #e0e0e0;
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   font-size: 1.5rem;
   font-weight: 400;
@@ -254,14 +254,14 @@
 }
 
 .attach-button:hover:not(:disabled) {
-  background: #e5e5e5;
-  color: #333;
-  border-color: #ccc;
+  background: var(--color-border);
+  color: var(--color-text);
+  border-color: var(--color-scrollbar);
 }
 
 .attach-button:focus-visible {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
@@ -288,7 +288,7 @@
   height: 100%;
   object-fit: cover;
   border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
 }
 
 .remove-image {
@@ -331,7 +331,7 @@
   max-width: 100%;
   max-height: 400px;
   border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
 }
 
 .message.user .message-image img {
@@ -340,13 +340,13 @@
 
 .model-selector {
   padding: 0.75rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   font-size: 1rem;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
-  background: white;
+  background: var(--color-surface-raised);
   cursor: pointer;
-  color: #333;
+  color: var(--color-text);
   font-weight: 500;
   min-width: 140px;
   height: 48px;
@@ -361,19 +361,19 @@
 .model-selector:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  color: #999;
+  color: var(--color-text-muted);
 }
 
 .model-selector:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
 .input-form textarea {
   flex: 1;
   padding: 0.75rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   font-size: 1rem;
   font-family: inherit;
@@ -382,7 +382,7 @@
   overflow-y: auto;
   min-height: 48px;
   scrollbar-width: thin;
-  scrollbar-color: #ccc transparent;
+  scrollbar-color: var(--color-scrollbar) transparent;
 }
 
 .input-form textarea::-webkit-scrollbar {
@@ -394,29 +394,29 @@
 }
 
 .input-form textarea::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: var(--color-scrollbar);
   border-radius: 3px;
 }
 
 .input-form textarea::-webkit-scrollbar-thumb:hover {
-  background: #aaa;
+  background: var(--color-border-strong);
 }
 
 .input-form textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
 .input-form textarea::placeholder {
-  color: #9ca3af;
+  color: var(--color-text-muted);
 }
 
 .send-button {
   width: 48px;
   height: 48px;
   padding: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   color: white;
   border: none;
   border-radius: 12px;
@@ -466,7 +466,7 @@
 .api-key-input {
   width: 100%;
   padding: 1rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 1rem;
   margin-bottom: 1rem;
@@ -474,7 +474,7 @@
 
 .api-key-submit {
   padding: 1rem 2rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -486,7 +486,7 @@
 .api-key-note {
   margin-top: 1rem;
   font-size: 0.875rem;
-  color: #999;
+  color: var(--color-text-muted);
 }
 
 .api-key-modal {
@@ -503,7 +503,7 @@
 }
 
 .api-key-modal-content {
-  background: white;
+  background: var(--color-surface-raised);
   padding: 2rem;
   border-radius: 12px;
   max-width: 400px;
@@ -526,13 +526,13 @@
 }
 
 .api-key-modal-actions button:first-child {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
   color: white;
 }
 
 .api-key-modal-actions button:last-child {
-  background: #e0e0e0;
-  color: #333;
+  background: var(--color-border);
+  color: var(--color-text);
 }
 
 /* Shared Markdown Styles - applies to all markdown-rendered content */
@@ -605,8 +605,8 @@
   margin: 1rem 0;
   border-radius: 8px;
   overflow-x: auto;
-  background: #eef1f5;
-  border: 1px solid #d8dce3;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border-strong);
 }
 
 .message-content pre code,
@@ -614,7 +614,7 @@
   display: block;
   padding: 1rem;
   background: transparent;
-  color: #24292e;
+  color: var(--color-text);
   font-size: 0.875rem;
   line-height: 1.5;
 }
@@ -646,8 +646,8 @@
 .response-summary-content blockquote {
   margin: 1rem 0;
   padding-left: 1rem;
-  border-left: 3px solid #e0e0e0;
-  color: #666;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
 }
 
 .message.user .message-content blockquote {
@@ -667,7 +667,7 @@
 .message-content td,
 .response-summary-content th,
 .response-summary-content td {
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   padding: 0.5rem;
   text-align: left;
   word-wrap: break-word;
@@ -676,7 +676,7 @@
 
 .message-content th,
 .response-summary-content th {
-  background: #f8f9fa;
+  background: var(--color-surface);
   font-weight: 600;
 }
 
@@ -687,7 +687,7 @@
 .message.user .message-content th,
 .message.user .message-content td {
   border-color: rgba(255, 255, 255, 0.3);
-  color: #333;
+  color: var(--color-text);
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -697,7 +697,7 @@
 
 .message-content a,
 .response-summary-content a {
-  color: #667eea;
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -740,7 +740,7 @@
 /* Provenance markers - style them subtly as superscript links */
 .message-content a.provenance-link,
 .response-summary-content a.provenance-link {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 0.7em;
   vertical-align: super;
   text-decoration: none;
@@ -751,7 +751,7 @@
 .message-content a.provenance-link:hover,
 .response-summary-content a.provenance-link:hover {
   opacity: 1;
-  color: #667eea;
+  color: var(--color-accent);
 }
 
 .message.user .message-content a.provenance-link {
@@ -766,7 +766,7 @@
 .response-summary-content hr {
   margin: 1.5rem 0;
   border: none;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-border);
 }
 
 .message.user .message-content hr {
@@ -788,9 +788,9 @@
 .log-content {
   display: inline-block;
   font-size: 0.75rem;
-  color: #999;
+  color: var(--color-text-muted);
   padding: 0.25rem 0.75rem;
-  background: #f5f5f5;
+  background: var(--color-surface);
   border-radius: 12px;
 }
 
@@ -851,7 +851,7 @@
   width: 100%;
   border: none;
   background: transparent;
-  color: #999;
+  color: var(--color-text-muted);
   font-size: 0.75rem;
   cursor: pointer;
   padding: 0.25rem 0;
@@ -862,7 +862,7 @@
   content: '';
   flex: 1;
   height: 1px;
-  background: #e0e0e0;
+  background: var(--color-border);
 }
 
 .compacted-label {
@@ -880,16 +880,16 @@
 .compacted-summary {
   margin-top: 0.5rem;
   font-size: 0.85rem;
-  color: #555;
-  background: #f8f9fa;
-  border: 1px solid #e0e0e0;
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
 }
 
 .thinking-disclosure {
   margin: 0.25rem 0 0.75rem;
-  color: var(--text-tertiary, #888);
+  color: var(--text-tertiary, var(--color-text-muted));
 }
 
 .thinking-disclosure-toggle {
@@ -906,7 +906,7 @@
 }
 
 .thinking-disclosure.active .thinking-disclosure-toggle {
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, var(--color-text-secondary));
 }
 
 .thinking-disclosure-toggle:disabled {
@@ -915,7 +915,7 @@
 }
 
 .thinking-disclosure-toggle:focus-visible {
-  outline: 2px solid color-mix(in srgb, #667eea 55%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
   outline-offset: 3px;
   border-radius: 2px;
 }
@@ -938,7 +938,7 @@
   padding: 0.55rem 0.75rem;
   border-left: 2px solid color-mix(in srgb, currentColor 28%, transparent);
   background: color-mix(in srgb, currentColor 4%, transparent);
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, var(--color-text-secondary));
   font-size: 0.78rem;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -946,8 +946,8 @@
 }
 
 .response-summary {
-  background: #f8f9fa;
-  border: 1px solid #e0e0e0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 1rem;
   margin-bottom: 2rem;
@@ -956,13 +956,13 @@
 .response-summary-header {
   font-weight: 600;
   font-size: 0.85rem;
-  color: #667eea;
+  color: var(--color-accent);
   margin-bottom: 0.5rem;
 }
 
 .response-summary-content {
   font-size: 0.875rem;
-  color: #333;
+  color: var(--color-text);
   line-height: 1.6;
 }
 
@@ -976,13 +976,13 @@
 
 .response-summary .usage-badge {
   font-size: 0.7rem;
-  color: #999;
+  color: var(--color-text-muted);
 }
 
 /* Response latency, shown left of the token badge in the footer. */
 .response-summary .latency-badge {
   font-size: 0.7rem;
-  color: #999;
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -996,13 +996,13 @@
   background: none;
   border: none;
   border-radius: 4px;
-  color: #999;
+  color: var(--color-text-muted);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .copy-response-button:hover {
-  color: #667eea;
+  color: var(--color-accent);
   background: rgba(102, 126, 234, 0.1);
 }
 
@@ -1012,7 +1012,7 @@
 }
 
 .response-summary .waiting-text {
-  color: #999;
+  color: var(--color-text-muted);
   font-style: italic;
 }
 
@@ -1024,7 +1024,7 @@
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #667eea;
+  background: var(--color-accent);
   border-radius: 50%;
   margin-left: 0.5rem;
   animation: pulse 1s ease-in-out infinite;
@@ -1093,11 +1093,11 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.35rem 0.75rem;
-  background: #f5f5f5;
-  border: 1px solid #e8e8e8;
+  background: var(--color-surface);
+  border: 1px solid var(--color-surface-hover);
   border-radius: 8px;
   font-size: 0.85rem;
-  color: #666;
+  color: var(--color-text-secondary);
   gap: 0.5rem;
 }
 
@@ -1122,7 +1122,7 @@
 
 .queued-images-badge {
   font-size: 0.7rem;
-  background: #e8e8e8;
+  background: var(--color-surface-hover);
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
   white-space: nowrap;
@@ -1133,7 +1133,7 @@
   border: none;
   cursor: pointer;
   font-size: 1.1rem;
-  color: #999;
+  color: var(--color-text-muted);
   padding: 0.2rem 0.4rem;
   line-height: 1;
   flex-shrink: 0;
