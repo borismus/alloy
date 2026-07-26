@@ -5,7 +5,7 @@
 **Alloy** is a multi-model AI chat application built with Tauri 2 + React.
 
 Key features:
-- **Multi-provider**: Anthropic (Claude), OpenAI, Google Gemini, xAI (Grok), Ollama
+- **Multi-provider**: Anthropic (Claude), OpenAI-compatible services including OpenRouter and oMLX, Google Gemini, xAI (Grok), and Claude subscription access
 - **Council mode**: Query multiple models, chairman synthesizes responses
 - **Comparison mode**: See responses side-by-side
 - **Scheduled tasks**: Cron-based background prompts with optional delivery conditions

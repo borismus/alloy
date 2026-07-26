@@ -4,6 +4,29 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.0
+
+- **Breaking: new `config.yaml` format.** All models are now configured under a
+  single `providers:` list with camelCase keys; the old per-vendor `*_API_KEY`
+  flat keys are gone. Cloud models are reached through OpenRouter, on-device
+  models through an OpenAI-compatible endpoint marked `local: true` (prompts stay
+  on your machine/LAN), and your Claude Pro/Max subscription through a
+  `cli_claude` provider. There is no automatic migration — a pre-0.4 config is
+  rejected at startup with a message showing the new shape. Update your
+  `config.yaml` (keep a backup) before launching.
+- **Dark mode**, with a Light / Dark / System setting under Settings → Appearance
+  that follows your OS by default. Every surface is theme-aware.
+- **Rebuilt model picker**: click to open a popover with the search field inside,
+  full keyboard navigation, and per-row favorite stars.
+- The sidebar type filter is now a row of tabs (All / Chats / Notes / Tasks /
+  Riffs), and there's a **settings gear** in the header (Settings was previously
+  only reachable via ⌘,).
+- Removed the Ollama integration; connect a local model server (oMLX or any other)
+  as a standard OpenAI-compatible endpoint instead.
+- Under the hood: the UI now sits on an accessible component foundation (React
+  Aria) with a semantic design-token system, improving focus handling, keyboard
+  support, and consistency.
+
 ## 0.3.18
 
 - Make the sidebar easier to scan: local-model conversations carry a `Local`
@@ -51,7 +74,7 @@ of the corresponding GitHub release, so add a section here before bumping.
 - Much faster startup, especially on mobile: the conversation list now loads
   metadata only (one batched read) instead of parsing every conversation's full
   history up front. A conversation's messages load when you open it.
-- Local models (oMLX/Ollama) get far better prompt-cache reuse: the system
+- Local oMLX models get far better prompt-cache reuse: the system
   prompt no longer leads with a per-second timestamp (which changed every turn),
   so cached prefixes actually stick.
 - Assistant replies now show how long they took, next to the token count.
@@ -141,8 +164,8 @@ of the corresponding GitHub release, so add a section here before bumping.
 
 ## 0.3.4
 
-- Fix background mode failing with "does not support chat": Ollama embedding
-  models (e.g. mxbai-embed-large) are no longer offered as chat models, and a
+- Fix background mode failing with "does not support chat": embedding-only
+  local models are no longer offered as chat models, and a
   conversation left pointing at an unavailable model is healed to a valid one
   on load.
 - Fix a spurious "defaultModel isn't available" error on startup: a transient

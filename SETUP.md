@@ -4,7 +4,7 @@
 
 1. **Node.js** (v18 or later)
 2. **Rust** (latest stable version)
-3. At least one API key (Anthropic, OpenAI, Google Gemini, or xAI), or **Ollama** running locally
+3. At least one API key (Anthropic, OpenAI, Google Gemini, or xAI), or an **oMLX** OpenAI-compatible server running locally
 
 ## Installation
 
