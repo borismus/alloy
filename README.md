@@ -126,9 +126,9 @@ just like every other provider.
 
 ### Codex subscription mode
 
-Use GPT-5 / Codex models billed against your **ChatGPT/Codex subscription**
-rather than per-token API credits. It works by shelling out to the OpenAI Codex
-CLI (`codex exec`).
+Use Codex billed against your **ChatGPT/Codex subscription** rather than
+per-token API credits. It works by shelling out to the OpenAI Codex CLI
+(`codex exec`).
 
 Enable it by adding a `cli_codex` provider to your vault's `config.yaml`:
 
@@ -140,7 +140,9 @@ providers:
 ```
 
 Requires the [`codex` CLI](https://github.com/openai/codex) installed and logged
-in to your subscription (run `codex login`). Unlike Claude subscription mode,
+in to your subscription (run `codex login`). The picker shows a single **Codex**
+model that uses whatever your plan serves by default — specific model names like
+`gpt-5-codex` are rejected on ChatGPT accounts. Unlike Claude subscription mode,
 Codex is **text-only** for now — it answers prompts but does not use Alloy's
 built-in tools (web search, vault files, skills). Codex runs its own agent in a
 read-only sandbox and sends prompts to OpenAI, so it is treated as cloud (no

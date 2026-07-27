@@ -7,12 +7,20 @@
 //! Prompts go to OpenAI, so this provider is always CLOUD (never `local`, no
 //! private-dir access — enforced in `local::provider_is_local`).
 //!
-//! NOTE: the exact `codex exec` flags, auth, and `--json` event schema vary by
-//! codex version. This is a best-effort integration: the invocation is in
-//! [`CliCodexProvider::base_command`] and the output parsing in
-//! [`parse_agent_message`]; adjust both if your codex build differs.
+//! Verified against codex-cli 0.145.0 (`stored auth mode: chatgpt`):
+//!   * the prompt is fed on **stdin** (no positional arg);
+//!   * `--output-last-message <file>` writes just the final agent message;
+//!   * `--json` emits JSONL: `{"type":"item.completed","item":{"type":
+//!     "agent_message","text":...}}` for the answer and
+//!     `{"type":"turn.completed","usage":{"input_tokens":..,"output_tokens":..}}`
+//!     for token counts; failures arrive as `{"type":"error"|"turn.failed",..}`;
+//!   * a **ChatGPT account only accepts the server-default model** — passing an
+//!     unsupported `--model` (e.g. `gpt-5-codex`) fails the turn — so we omit
+//!     `--model` unless the caller explicitly picks a non-"default" model.
 
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -20,7 +28,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use crate::config::ProviderConfig;
-use crate::providers::{ChatMessage, Provider, ProviderStreamEvent, StreamRequest, StreamResult};
+use crate::providers::{
+    ChatMessage, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
+};
 
 /// Well-known absolute install locations for the `codex` binary (a Finder-
 /// launched macOS app doesn't inherit the shell PATH).
@@ -45,8 +55,24 @@ fn resolve_codex_binary(configured: Option<&str>) -> String {
     "codex".to_string()
 }
 
+/// Unique temp path for `--output-last-message` so concurrent turns don't clash.
+fn last_message_path() -> PathBuf {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!("alloy-codex-{}-{nanos}-{n}.txt", std::process::id()))
+}
+
 pub struct CliCodexProvider {
     command: String,
+}
+
+struct RunOutput {
+    text: String,
+    usage: Option<Usage>,
 }
 
 impl CliCodexProvider {
@@ -56,19 +82,21 @@ impl CliCodexProvider {
         }
     }
 
-    fn base_command(&self, model: &str) -> Command {
+    fn base_command(&self, model: &str, out_file: &Path) -> Command {
         let mut cmd = Command::new(&self.command);
-        cmd.arg("exec")
-            .arg("--model")
-            .arg(model)
-            // Read-only sandbox: the model can't write files or run networked
-            // commands — it just answers. Keeps this a text-only provider.
-            .arg("--sandbox")
+        cmd.arg("exec");
+        // A ChatGPT-account codex only accepts the server-default model; passing
+        // a model it doesn't allow fails the turn. So only send `--model` for an
+        // explicit, non-default pick (e.g. an account/plan that supports it).
+        if !model.is_empty() && model != "default" {
+            cmd.arg("--model").arg(model);
+        }
+        cmd.arg("--sandbox")
             .arg("read-only")
-            // We run from a neutral temp dir, which isn't a git repo.
             .arg("--skip-git-repo-check")
-            // Structured event stream so we can extract just the final message.
-            .arg("--json");
+            .arg("--json")
+            .arg("--output-last-message")
+            .arg(out_file);
         cmd.current_dir(std::env::temp_dir());
         let home = std::env::var("HOME").unwrap_or_default();
         let existing = std::env::var("PATH").unwrap_or_default();
@@ -85,9 +113,11 @@ impl CliCodexProvider {
         cmd
     }
 
-    /// Run `codex exec` with `prompt` on stdin and return the final agent message.
-    async fn run(&self, prompt: &str, model: &str) -> anyhow::Result<String> {
-        let mut cmd = self.base_command(model);
+    /// Run `codex exec` with `prompt` on stdin; return the final agent message
+    /// (+ token usage).
+    async fn run(&self, prompt: &str, model: &str) -> anyhow::Result<RunOutput> {
+        let out_file = last_message_path();
+        let mut cmd = self.base_command(model, &out_file);
         let mut child = cmd.spawn().map_err(|e| {
             anyhow::anyhow!(
                 "failed to launch the `codex` CLI at `{}`: {}. Install the OpenAI Codex CLI and run \
@@ -103,20 +133,44 @@ impl CliCodexProvider {
             .wait_with_output()
             .await
             .map_err(|e| anyhow::anyhow!("codex CLI wait failed: {e}"))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let events = parse_events(&stdout);
+
+        // A failed turn (e.g. an unsupported model on a ChatGPT account) surfaces
+        // as an `error` / `turn.failed` event regardless of exit code.
+        if let Some(err) = events.error {
+            let _ = std::fs::remove_file(&out_file);
+            anyhow::bail!("codex CLI error: {err}");
+        }
         if !output.status.success() {
+            let _ = std::fs::remove_file(&out_file);
             anyhow::bail!(
                 "codex CLI exited {}: {}",
                 output.status,
                 String::from_utf8_lossy(&output.stderr).trim()
             );
         }
-        let text = parse_agent_message(&String::from_utf8_lossy(&output.stdout));
+
+        // Prefer the clean --output-last-message file; fall back to the parsed
+        // agent message, then raw stdout.
+        let text = std::fs::read_to_string(&out_file)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or(events.agent_message)
+            .unwrap_or_else(|| stdout.trim().to_string());
+        let _ = std::fs::remove_file(&out_file);
+
         if text.trim().is_empty() {
             anyhow::bail!(
                 "codex CLI produced no response (is `codex login` done for a ChatGPT/Codex subscription?)"
             );
         }
-        Ok(text)
+        Ok(RunOutput {
+            text,
+            usage: events.usage,
+        })
     }
 }
 
@@ -134,13 +188,13 @@ impl Provider for CliCodexProvider {
         // Non-streaming: `codex exec` runs its own loop; we run to completion and
         // emit the final agent message as one chunk.
         let prompt = flatten_prompt(&req.messages);
-        let content = self.run(&prompt, &req.model).await?;
+        let out = self.run(&prompt, &req.model).await?;
         let _ = req
             .delta_tx
-            .send(ProviderStreamEvent::Content(content.clone()));
+            .send(ProviderStreamEvent::Content(out.text.clone()));
         Ok(StreamResult {
-            content,
-            usage: None,
+            content: out.text,
+            usage: out.usage,
             stop_reason: "end_turn".to_string(),
             tool_calls: Vec::new(),
         })
@@ -153,7 +207,7 @@ impl Provider for CliCodexProvider {
             assistant_msg.chars().take(500).collect::<String>(),
         );
         match self.run(&prompt, model).await {
-            Ok(t) => t.trim().chars().take(100).collect(),
+            Ok(out) => out.text.trim().chars().take(100).collect(),
             Err(_) => user_msg.chars().take(50).collect(),
         }
     }
@@ -170,7 +224,7 @@ impl Provider for CliCodexProvider {
         } else {
             format!("{system}\n\n{user}")
         };
-        self.run(&prompt, model).await.ok()
+        self.run(&prompt, model).await.ok().map(|o| o.text)
     }
 
     /// Text-only: Codex runs its own agent loop and can't accept Alloy's tool
@@ -198,7 +252,10 @@ fn flatten_prompt(messages: &[ChatMessage]) -> String {
     }
     // Single user turn: pass its text verbatim (no "User:" label).
     let body = if turns.len() == 1 {
-        turns[0].strip_prefix("User: ").unwrap_or(&turns[0]).to_string()
+        turns[0]
+            .strip_prefix("User: ")
+            .unwrap_or(&turns[0])
+            .to_string()
     } else {
         turns.join("\n\n")
     };
@@ -208,12 +265,18 @@ fn flatten_prompt(messages: &[ChatMessage]) -> String {
     }
 }
 
-/// Extract the final agent message from `codex exec --json` output. Defensive
-/// against schema variation: tries several known event shapes and takes the
-/// last agent message; if no line parses as JSON, returns the raw text.
-fn parse_agent_message(stdout: &str) -> String {
-    let mut last: Option<String> = None;
-    let mut any_json = false;
+#[derive(Default)]
+struct CodexEvents {
+    agent_message: Option<String>,
+    usage: Option<Usage>,
+    error: Option<String>,
+}
+
+/// Walk the `codex exec --json` JSONL once, collecting the final agent message,
+/// token usage, and the first fatal error (if any). Defensive against schema
+/// drift and non-JSON lines.
+fn parse_events(stdout: &str) -> CodexEvents {
+    let mut ev = CodexEvents::default();
     for line in stdout.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -222,22 +285,25 @@ fn parse_agent_message(stdout: &str) -> String {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        any_json = true;
         if let Some(t) = agent_text(&v) {
-            last = Some(t);
+            ev.agent_message = Some(t);
+        }
+        if let Some(u) = parse_usage(&v) {
+            ev.usage = Some(u);
+        }
+        if ev.error.is_none() {
+            if let Some(e) = parse_error(&v) {
+                ev.error = Some(e);
+            }
         }
     }
-    match last {
-        Some(t) => t,
-        None if !any_json => stdout.trim().to_string(),
-        None => String::new(),
-    }
+    ev
 }
 
 /// Pull an agent/assistant message string out of one codex JSON event, across a
 /// few plausible shapes.
 fn agent_text(v: &Value) -> Option<String> {
-    // Shape A: {"type":"item.completed","item":{"type"|"item_type":"agent_message","text":...}}
+    // Shape A (codex 0.145): {"type":"item.completed","item":{"type":"agent_message","text":...}}
     if let Some(item) = v.get("item") {
         let itype = item
             .get("type")
@@ -281,6 +347,54 @@ fn agent_text(v: &Value) -> Option<String> {
     None
 }
 
+/// Token usage from a `turn.completed` event.
+fn parse_usage(v: &Value) -> Option<Usage> {
+    if v.get("type").and_then(Value::as_str) != Some("turn.completed") {
+        return None;
+    }
+    let u = v.get("usage")?;
+    let input = u.get("input_tokens").and_then(Value::as_u64).unwrap_or(0) as u32;
+    let output = u.get("output_tokens").and_then(Value::as_u64).unwrap_or(0) as u32;
+    if input == 0 && output == 0 {
+        return None;
+    }
+    Some(Usage {
+        input_tokens: input,
+        output_tokens: output,
+        ..Default::default()
+    })
+}
+
+/// Fatal error text from an `error` or `turn.failed` event (codex nests the API
+/// error as a JSON string, so unwrap `.error.message` when present).
+fn parse_error(v: &Value) -> Option<String> {
+    match v.get("type").and_then(Value::as_str)? {
+        "error" => v
+            .get("message")
+            .and_then(Value::as_str)
+            .map(unwrap_error_message),
+        "turn.failed" => v
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
+            .map(unwrap_error_message),
+        _ => None,
+    }
+}
+
+fn unwrap_error_message(s: &str) -> String {
+    if let Ok(v) = serde_json::from_str::<Value>(s) {
+        if let Some(m) = v
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
+        {
+            return m.to_string();
+        }
+    }
+    s.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,7 +416,9 @@ mod tests {
     #[test]
     fn single_turn_passes_text_verbatim() {
         let msgs = vec![
-            ChatMessage::System { content: "be brief".into() },
+            ChatMessage::System {
+                content: "be brief".into(),
+            },
             user("what is 2+2?"),
         ];
         assert_eq!(flatten_prompt(&msgs), "be brief\n\nwhat is 2+2?");
@@ -317,20 +433,51 @@ mod tests {
         );
     }
 
+    // Real codex-cli 0.145 output for a successful turn.
     #[test]
-    fn parses_agent_message_from_item_completed() {
+    fn parses_agent_message_and_usage_from_real_output() {
         let out = format!(
-            "{}\n{}\n",
-            json!({"type":"item.started","item":{"type":"reasoning"}}),
-            json!({"type":"item.completed","item":{"type":"agent_message","text":"the answer is 4"}}),
+            "{}\n{}\n{}\n{}\n",
+            json!({"type":"thread.started","thread_id":"abc"}),
+            json!({"type":"turn.started"}),
+            json!({"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Hello there, friend!"}}),
+            json!({"type":"turn.completed","usage":{"input_tokens":15576,"cached_input_tokens":13056,"output_tokens":9,"reasoning_output_tokens":0}}),
         );
-        assert_eq!(parse_agent_message(&out), "the answer is 4");
+        let ev = parse_events(&out);
+        assert_eq!(ev.agent_message.as_deref(), Some("Hello there, friend!"));
+        assert!(ev.error.is_none());
+        let usage = ev.usage.expect("usage");
+        assert_eq!(usage.input_tokens, 15576);
+        assert_eq!(usage.output_tokens, 9);
+    }
+
+    // Real codex-cli 0.145 output when a ChatGPT account is sent an unsupported
+    // model: a metadata warning (ignored), then a fatal error + turn.failed.
+    #[test]
+    fn surfaces_unsupported_model_error() {
+        let out = format!(
+            "{}\n{}\n{}\n{}\n",
+            json!({"type":"thread.started","thread_id":"abc"}),
+            json!({"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `gpt-5-codex` not found. Defaulting to fallback metadata."}}),
+            json!({"type":"error","message":"{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5-codex' model is not supported when using Codex with a ChatGPT account.\"}}"}),
+            json!({"type":"turn.failed","error":{"message":"{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5-codex' model is not supported when using Codex with a ChatGPT account.\"}}"}}),
+        );
+        let ev = parse_events(&out);
+        assert_eq!(
+            ev.error.as_deref(),
+            Some("The 'gpt-5-codex' model is not supported when using Codex with a ChatGPT account.")
+        );
+        // The item.completed warning must not be mistaken for the answer.
+        assert!(ev.agent_message.is_none());
     }
 
     #[test]
     fn parses_agent_message_from_msg_shape() {
         let out = json!({"msg":{"type":"agent_message","message":"hello there"}}).to_string();
-        assert_eq!(parse_agent_message(&out), "hello there");
+        assert_eq!(
+            parse_events(&out).agent_message.as_deref(),
+            Some("hello there")
+        );
     }
 
     #[test]
@@ -340,12 +487,10 @@ mod tests {
             json!({"type":"agent_message","text":"partial"}),
             json!({"type":"agent_message","text":"final answer"}),
         );
-        assert_eq!(parse_agent_message(&out), "final answer");
-    }
-
-    #[test]
-    fn falls_back_to_raw_text_when_not_json() {
-        assert_eq!(parse_agent_message("just plain output\n"), "just plain output");
+        assert_eq!(
+            parse_events(&out).agent_message.as_deref(),
+            Some("final answer")
+        );
     }
 
     #[test]

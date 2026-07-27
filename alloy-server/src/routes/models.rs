@@ -123,24 +123,18 @@ fn claude_cli_models(provider_id: &str) -> Vec<ModelInfo> {
 }
 
 fn codex_cli_models(provider_id: &str) -> Vec<ModelInfo> {
-    // Codex CLI models (aliases passed to `codex exec --model`). These are a
-    // best-effort curated set; adjust to match your installed codex version.
-    [
-        ("gpt-5-codex", "GPT-5 Codex"),
-        ("gpt-5", "GPT-5"),
-        ("o4-mini", "o4-mini"),
-    ]
-    .into_iter()
-    .map(|(alias, name)| ModelInfo {
-        key: format!("{}/{}", provider_id, alias),
-        name: name.to_string(),
+    // A ChatGPT-account codex only accepts the server-default model (specific
+    // names like `gpt-5-codex` are rejected), so we offer a single "default"
+    // entry that maps to `codex exec` with no `--model`. See cli_codex.rs.
+    vec![ModelInfo {
+        key: format!("{}/default", provider_id),
+        name: "Codex".to_string(),
         provider: Some(provider_id.to_string()),
         local: false,
         context_window: Some(272_000),
         input_per_1m: Some(0.0),
         output_per_1m: Some(0.0),
-    })
-    .collect()
+    }]
 }
 
 async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {

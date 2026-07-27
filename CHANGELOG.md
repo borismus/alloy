@@ -6,11 +6,12 @@ of the corresponding GitHub release, so add a section here before bumping.
 
 ## Unreleased
 
-- **Codex subscription mode.** Use GPT-5 / Codex models billed against your
-  ChatGPT/Codex subscription by adding a `cli_codex` provider (shells out to the
-  `codex` CLI, `codex login` required). Text-only for now: it answers prompts in
-  a read-only sandbox but doesn't use Alloy's built-in tools, and prompts go to
-  OpenAI so it's treated as cloud.
+- **Codex subscription mode.** Use Codex billed against your ChatGPT/Codex
+  subscription by adding a `cli_codex` provider (shells out to the `codex` CLI,
+  `codex login` required). The picker shows a single Codex model that uses your
+  plan's default. Text-only for now: it answers prompts in a read-only sandbox
+  but doesn't use Alloy's built-in tools, and prompts go to OpenAI so it's
+  treated as cloud.
 - The reasoning ("Thinking…") disclosure and icon-button tooltips now use the
   accessible React Aria foundation, with proper keyboard and ARIA behavior.
 - Under the hood: `config.yaml` parsing is consolidated in the Rust backend (one
