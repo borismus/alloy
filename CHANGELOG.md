@@ -4,7 +4,7 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
-## Unreleased
+## 0.4.1
 
 - **Conversation-list actions on mobile.** Each item in the sidebar now has a
   “⋯” button, and you can long-press an item, to open its actions (Rename /
@@ -21,6 +21,8 @@ of the corresponding GitHub release, so add a section here before bumping.
 - Under the hood: `config.yaml` parsing is consolidated in the Rust backend (one
   source of truth), and a model's on-device "local" badge now uses the same rule
   as private-directory access so the two can't disagree.
+- Fixed the mobile composer collapsing to three rows — unusable with the
+  keyboard up — after the model-picker rebuild.
 
 ## 0.4.0
 
