@@ -20,6 +20,13 @@ pub struct RawConfig {
     #[serde(default)]
     pub default_model: Option<String>,
 
+    // SPA-facing UI fields. The Rust model layer doesn't use these, but the
+    // single config parser must surface them to the SPA via `GET /api/config`.
+    #[serde(default)]
+    pub favorite_models: Option<Vec<String>>,
+    #[serde(default)]
+    pub external_editor: Option<String>,
+
     #[serde(default)]
     pub providers: Option<Vec<ProviderConfig>>,
 

@@ -3,92 +3,7 @@ import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, 
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
 import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, ScheduledTask, TimelineItem } from '../types';
-
-/**
- * Render the `favoriteModels:` YAML block used by updateFavoriteModels. Kept
- * out of the class so it's pure and unit-testable. Always emits a trailing
- * newline so it composes cleanly with surrounding lines.
- */
-function renderFavoritesBlock(keys: string[]): string {
-  if (keys.length === 0) {
-    return 'favoriteModels: []\n';
-  }
-  const lines = keys.map(k => `  - ${k}`).join('\n');
-  return `favoriteModels:\n${lines}\n`;
-}
-
-/**
- * Replace the existing `favoriteModels:` block in raw YAML text with `block`
- * (which already includes its `favoriteModels:` header + items + trailing
- * newline). Walks line by line — regex alternation across YAML's inline-vs-
- * block-list-vs-indented-or-not styles is too fragile, and a previous
- * regex-only attempt orphaned items written with non-indented `- ...` lines.
- *
- * "End of block" = next line that looks like another top-level key
- * (`/^[A-Za-z_][\w-]*:/`) or EOF.
- */
-export function spliceFavoritesBlock(existing: string, block: string): string {
-  if (existing.trim().length === 0) return block;
-
-  const lines = existing.split('\n');
-  let startIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^favoriteModels:/.test(lines[i])) {
-      startIdx = i;
-      break;
-    }
-  }
-
-  if (startIdx === -1) {
-    // Prepend at the top — favorites live alongside defaultModel.
-    return block + existing;
-  }
-
-  // Find the end of the block: only consume subsequent lines that look like
-  // list items (indented or not). Comment-only and blank lines belong to the
-  // surrounding context — stop at the first such line. This protects inline
-  // comments the user has placed between favoriteModels and the next key.
-  let endIdx = startIdx + 1;
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (/^\s*-/.test(line)) {
-      endIdx = i + 1;
-      continue;
-    }
-    // Anything else (key, comment, blank) ends the block.
-    break;
-  }
-
-  // Splice. `block` ends with \n; drop it if the next surviving line already
-  // starts cleanly.
-  const before = lines.slice(0, startIdx).join('\n');
-  const after = lines.slice(endIdx).join('\n');
-  const beforePart = before.length > 0 ? before + '\n' : '';
-  return beforePart + block + after;
-}
-
-/**
- * Replace a top-level scalar `key: value` line in raw YAML text, preserving
- * every other line (comments, provider templates, formatting). Appends the
- * key if absent. Used for UI-toggled settings that must not clobber the user's
- * hand-written config.yaml comments (saveConfig's full yaml.dump would).
- */
-export function spliceScalar(existing: string, key: string, value: string): string {
-  const line = `${key}: ${value}`;
-  if (existing.trim().length === 0) return line + '\n';
-
-  const prefix = `${key}:`;
-  const lines = existing.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith(prefix)) {
-      lines[i] = line;
-      return lines.join('\n');
-    }
-  }
-  // Not found — append at the end.
-  const sep = existing.endsWith('\n') ? '' : '\n';
-  return existing + sep + line + '\n';
-}
+import { getApiBase } from './server-streaming';
 
 /**
  * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/task filename.
@@ -235,60 +150,45 @@ providers:
     return await join(this.vaultPath, 'skills');
   }
 
+  /**
+   * Read the resolved config from the server (`GET /api/config`). Rust is the
+   * single config parser; the SPA no longer parses config.yaml itself.
+   */
   async loadConfig(): Promise<Config | null> {
     if (!this.vaultPath) return null;
-
-    const configPath = await join(this.vaultPath, 'config.yaml');
-    if (await exists(configPath)) {
-      const content = await readTextFile(configPath);
-      const config = yaml.load(content) as Config;
-      return config;
+    try {
+      const res = await fetch(`${getApiBase()}/api/config`);
+      if (!res.ok) return null;
+      return (await res.json()) as Config | null;
+    } catch {
+      return null;
     }
-
-    return null;
-  }
-
-  async saveConfig(config: Config): Promise<void> {
-    if (!this.vaultPath) return;
-
-    const configPath = await join(this.vaultPath, 'config.yaml');
-    await writeTextFile(configPath, yaml.dump(config));
   }
 
   /**
-   * Update only the `favoriteModels:` array in config.yaml, preserving every
-   * other line (comments, provider templates, formatting). saveConfig() above
-   * does a full yaml.dump that would obliterate the user's hand-written
-   * comments — not OK for a frequently-toggled UI affordance like the star
-   * button in the model picker.
+   * Update the `favoriteModels:` list. The server does a comment-preserving
+   * splice of config.yaml.
    */
   async updateFavoriteModels(keys: string[]): Promise<void> {
     if (!this.vaultPath) return;
-
-    const configPath = await join(this.vaultPath, 'config.yaml');
-    let existing = '';
-    if (await exists(configPath)) {
-      existing = await readTextFile(configPath);
-    }
-
-    const next = spliceFavoritesBlock(existing, renderFavoritesBlock(keys));
-    await writeTextFile(configPath, next);
+    await fetch(`${getApiBase()}/api/config/favorites`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys }),
+    });
   }
 
   /**
-   * Update a single top-level scalar in config.yaml, preserving comments and
-   * other keys (unlike saveConfig's full yaml.dump). For UI-toggled settings.
+   * Update a single top-level scalar in config.yaml (e.g. externalEditor). The
+   * server does a comment-preserving splice.
    */
   async updateConfigValue(key: string, value: string): Promise<void> {
     if (!this.vaultPath) return;
-
-    const configPath = await join(this.vaultPath, 'config.yaml');
-    let existing = '';
-    if (await exists(configPath)) {
-      existing = await readTextFile(configPath);
-    }
-
-    await writeTextFile(configPath, spliceScalar(existing, key, value));
+    await fetch(`${getApiBase()}/api/config/value`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value }),
+    });
   }
 
   /**

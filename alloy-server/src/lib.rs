@@ -69,6 +69,7 @@ pub fn build_router(state: AppState) -> Router {
     let cors = CorsLayer::very_permissive();
 
     Router::new()
+        .merge(routes::config::router())
         .merge(routes::fs::router())
         .merge(routes::path::router())
         .merge(routes::watch::router())

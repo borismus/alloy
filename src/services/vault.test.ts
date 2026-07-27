@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { VaultService, spliceFavoritesBlock, spliceScalar } from './vault';
+import { VaultService } from './vault';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import * as fs from '@tauri-apps/plugin-fs';
 import * as yaml from 'js-yaml';
-import { createMockConversation, createMockConfig, createMockFileSystemEntry } from '../test/mocks';
+import { createMockConversation, createMockFileSystemEntry } from '../test/mocks';
 
 describe('VaultService', () => {
   let vaultService: VaultService;
@@ -172,48 +172,23 @@ describe('VaultService', () => {
       expect(result).toBeNull();
     });
 
-    it('should load and parse config from yaml file', async () => {
+    it('should fetch the resolved config from the server', async () => {
       vaultService.setVaultPath('/test/vault');
-      const mockConfig = createMockConfig();
-      vi.mocked(fs.exists).mockResolvedValue(true);
-      vi.mocked(fs.readTextFile).mockResolvedValue(yaml.dump(mockConfig));
-
+      const cfg = { version: 1, defaultModel: 'openrouter/x', providers: [{ id: 'openrouter', kind: 'openai_compatible' }] };
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => cfg });
+      vi.stubGlobal('fetch', fetchMock);
       const result = await vaultService.loadConfig();
-
-      expect(result).toEqual(mockConfig);
-      expect(fs.readTextFile).toHaveBeenCalledWith('//config.yaml');
+      expect(result).toEqual(cfg);
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/config'));
+      vi.unstubAllGlobals();
     });
 
-    it('should return null if config file does not exist', async () => {
+    it('should return null when the server responds non-ok', async () => {
       vaultService.setVaultPath('/test/vault');
-      vi.mocked(fs.exists).mockResolvedValue(false);
-
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
       const result = await vaultService.loadConfig();
-
       expect(result).toBeNull();
-    });
-  });
-
-  describe('saveConfig', () => {
-    it('should do nothing if vault path is not set', async () => {
-      const mockConfig = createMockConfig();
-
-      await vaultService.saveConfig(mockConfig);
-
-      expect(fs.writeTextFile).not.toHaveBeenCalled();
-    });
-
-    it('should save config to yaml file', async () => {
-      vaultService.setVaultPath('/test/vault');
-      const mockConfig = createMockConfig();
-      vi.mocked(fs.writeTextFile).mockResolvedValue();
-
-      await vaultService.saveConfig(mockConfig);
-
-      expect(fs.writeTextFile).toHaveBeenCalledWith(
-        '//config.yaml',
-        yaml.dump(mockConfig)
-      );
+      vi.unstubAllGlobals();
     });
   });
 
@@ -483,96 +458,5 @@ describe('VaultService', () => {
       // ID should stay the same
       expect(result?.id).toBe(coreId);
     });
-  });
-});
-
-describe('spliceFavoritesBlock', () => {
-  const block = 'favoriteModels:\n  - a\n  - b\n';
-
-  it('appends a block to empty input', () => {
-    expect(spliceFavoritesBlock('', block)).toBe(block);
-  });
-
-  it('prepends when no existing favoriteModels line', () => {
-    const existing = 'defaultModel: x\nCUSTOM_SETTING: keep\n';
-    const out = spliceFavoritesBlock(existing, block);
-    expect(out.startsWith(block)).toBe(true);
-    expect(out).toContain('defaultModel: x');
-    expect(out).toContain('CUSTOM_SETTING');
-  });
-
-  it('replaces an indented block-list cleanly', () => {
-    const existing = `defaultModel: x
-favoriteModels:
-  - old1
-  - old2
-CUSTOM_SETTING: keep
-`;
-    const out = spliceFavoritesBlock(existing, block);
-    expect(out).not.toContain('old1');
-    expect(out).not.toContain('old2');
-    expect(out).toContain('  - a');
-    expect(out).toContain('CUSTOM_SETTING');
-  });
-
-  it('replaces a non-indented block-list without orphaning items', () => {
-    // This was the bug: a previous regex-only approach matched only
-    // `favoriteModels:` and indented items, leaving the column-0 dashes
-    // behind as syntactically-invalid orphans.
-    const existing = `defaultModel: x
-favoriteModels:
-- old1
-- old2
-- old3
-CUSTOM_SETTING: keep
-`;
-    const out = spliceFavoritesBlock(existing, block);
-    expect(out).not.toContain('old1');
-    expect(out).not.toContain('old2');
-    expect(out).not.toContain('old3');
-    expect(out).toContain('CUSTOM_SETTING');
-  });
-
-  it('preserves comments and unrelated keys', () => {
-    const existing = `# user-written comment
-defaultModel: x
-favoriteModels:
-  - old
-# another comment
-CUSTOM_SETTING: keep
-`;
-    const out = spliceFavoritesBlock(existing, block);
-    expect(out).toContain('# user-written comment');
-    expect(out).toContain('# another comment');
-    expect(out).toContain('CUSTOM_SETTING');
-  });
-});
-
-describe('spliceScalar', () => {
-  it('replaces an existing key in place, preserving comments and other keys', () => {
-    const existing = `# my config
-defaultModel: x
-externalEditor: obsidian
-# keep me
-CUSTOM_SETTING: keep
-`;
-    const out = spliceScalar(existing, 'externalEditor', 'system');
-    expect(out).toContain('externalEditor: system');
-    expect(out).not.toContain('externalEditor: obsidian');
-    expect(out).toContain('# my config');
-    expect(out).toContain('# keep me');
-    expect(out).toContain('CUSTOM_SETTING: keep');
-  });
-
-  it('appends the key when absent, keeping existing content', () => {
-    const existing = `defaultModel: x\n# comment\n`;
-    const out = spliceScalar(existing, 'externalEditor', 'obsidian');
-    expect(out).toContain('defaultModel: x');
-    expect(out).toContain('# comment');
-    expect(out).toMatch(/externalEditor: obsidian\n$/);
-  });
-
-  it('handles empty config', () => {
-    expect(spliceScalar('', 'externalEditor', 'system')).toBe('externalEditor: system\n');
   });
 });
