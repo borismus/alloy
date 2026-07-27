@@ -85,7 +85,8 @@ There is no legacy flat-key format: 0.4 dropped the pre-0.4 schema (per-vendor
 startup with a message pointing at this format. All cloud models are reached via
 OpenRouter (or any configured OpenAI-compatible provider); on-device models via
 a `local: true` OpenAI-compatible endpoint; Claude subscription via a
-`cli_claude` provider.
+`cli_claude` provider; ChatGPT/Codex subscription via a `cli_codex` provider
+(text-only, read-only sandbox, always cloud).
 
 ## Layout
 

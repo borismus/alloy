@@ -15,7 +15,6 @@ use axum::{Json, Router, extract::State, routing::get};
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
-use crate::local::is_local_url;
 
 const CACHE_TTL: Duration = Duration::from_secs(3600);
 
@@ -123,6 +122,27 @@ fn claude_cli_models(provider_id: &str) -> Vec<ModelInfo> {
     .collect()
 }
 
+fn codex_cli_models(provider_id: &str) -> Vec<ModelInfo> {
+    // Codex CLI models (aliases passed to `codex exec --model`). These are a
+    // best-effort curated set; adjust to match your installed codex version.
+    [
+        ("gpt-5-codex", "GPT-5 Codex"),
+        ("gpt-5", "GPT-5"),
+        ("o4-mini", "o4-mini"),
+    ]
+    .into_iter()
+    .map(|(alias, name)| ModelInfo {
+        key: format!("{}/{}", provider_id, alias),
+        name: name.to_string(),
+        provider: Some(provider_id.to_string()),
+        local: false,
+        context_window: Some(272_000),
+        input_per_1m: Some(0.0),
+        output_per_1m: Some(0.0),
+    })
+    .collect()
+}
+
 async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
     if let Some(cached) = state.model_cache.get() {
         return Json(cached);
@@ -131,16 +151,20 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
     let mut all = Vec::new();
     let mut any_failed = false;
     for cfg in &state.config.providers {
-        // The Claude Code CLI has no model-list endpoint, so we contribute a
+        // The subscription CLIs have no model-list endpoint, so we contribute a
         // curated set tied to subscription billing.
         if cfg.kind == crate::config::ProviderKind::CliClaude {
             all.extend(claude_cli_models(&cfg.id));
             continue;
         }
-        // A model is "local" (on-device, privacy-preserving) when its provider
-        // endpoint is loopback or `.local`. Computed once per provider and
-        // stamped on every model it contributes. Mirrors `local::model_is_local`.
-        let local = cfg.base_url.as_deref().map(is_local_url).unwrap_or(false);
+        if cfg.kind == crate::config::ProviderKind::CliCodex {
+            all.extend(codex_cli_models(&cfg.id));
+            continue;
+        }
+        // Whether this provider's models are local (on-device, privacy-
+        // preserving). Uses the same rule as private-dir gating so the badge and
+        // the trust decision can't disagree (explicit `local` flag + endpoint).
+        let local = crate::local::provider_is_local(cfg);
         // Every HTTP provider exposes the OpenAI-compatible `/models` endpoint.
         let base = cfg
             .base_url

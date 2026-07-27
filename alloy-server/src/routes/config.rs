@@ -46,6 +46,7 @@ fn kind_str(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::OpenaiCompatible => "openai_compatible",
         ProviderKind::CliClaude => "cli_claude",
+        ProviderKind::CliCodex => "cli_codex",
     }
 }
 

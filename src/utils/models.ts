@@ -7,6 +7,7 @@ export const PROVIDER_NAMES: Record<ProviderType, string> = {
   grok: 'Grok',
   openrouter: 'OpenRouter',
   'claude-cli': 'Claude (subscription)',
+  'codex-cli': 'Codex (subscription)',
   mlx: 'oMLX',
 };
 
@@ -22,6 +23,7 @@ export const PROVIDER_TAGS: Record<ProviderType, string> = {
   grok: 'GROK',
   openrouter: 'OR',
   'claude-cli': 'ANT',
+  'codex-cli': 'OAI',
   mlx: 'MLX',
 };
 

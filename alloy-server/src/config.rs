@@ -164,6 +164,9 @@ pub enum ProviderKind {
     /// Shells out to the Claude Code CLI (`claude -p`) to use a Claude Pro/Max
     /// subscription instead of API-key billing. Text-only (no tool calling).
     CliClaude,
+    /// Shells out to the OpenAI Codex CLI (`codex exec`) to use a ChatGPT/Codex
+    /// subscription. Text-only. Prompts go to OpenAI — always cloud, never local.
+    CliCodex,
 }
 
 /// Resolved email-notification settings. `Some` only when `services.email` is

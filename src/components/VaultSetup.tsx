@@ -110,6 +110,7 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
       case 'grok': return 'xAI (Grok)';
       case 'openrouter': return 'OpenRouter';
       case 'claude-cli': return 'Claude (subscription)';
+      case 'codex-cli': return 'Codex (subscription)';
       case 'mlx': return 'oMLX';
     }
   };

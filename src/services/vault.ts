@@ -120,10 +120,18 @@ providers:
   # your subscription, not API credits). Requires the \`claude\` binary installed
   # and logged in (run \`claude\` once). Runs locally but sends prompts to
   # Anthropic — treated as cloud.
-  # - id: claude
+  # - id: claude-cli
   #   kind: cli_claude
   #   command: /opt/homebrew/bin/claude   # only if 'claude' isn't on PATH
   #   oauthToken: sk-ant-oat-...           # from 'claude setup-token' (optional)
+
+  # Your ChatGPT/Codex subscription via the OpenAI Codex CLI (text-only; bills
+  # your subscription, not API credits). Requires the \`codex\` binary installed
+  # and logged in (run \`codex login\`). Runs locally but sends prompts to
+  # OpenAI — treated as cloud.
+  # - id: codex-cli
+  #   kind: cli_codex
+  #   command: /opt/homebrew/bin/codex   # only if 'codex' isn't on PATH
 
 # API keys for skills
 # serperApiKey: ...

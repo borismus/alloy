@@ -1,6 +1,6 @@
 // Core types for Alloy
 
-export type ProviderType = 'anthropic' | 'openai' | 'gemini' | 'grok' | 'openrouter' | 'claude-cli' | 'mlx';
+export type ProviderType = 'anthropic' | 'openai' | 'gemini' | 'grok' | 'openrouter' | 'claude-cli' | 'codex-cli' | 'mlx';
 
 /** Minimal conversation reference for wiki-link title lookups */
 export interface ConversationInfo {
@@ -176,7 +176,7 @@ export interface Conversation {
 
 export interface ProviderConfig {
   id: string;
-  kind: 'openai_compatible' | 'cli_claude';
+  kind: 'openai_compatible' | 'cli_claude' | 'cli_codex';
   baseUrl?: string;
   apiKey?: string;
   command?: string;

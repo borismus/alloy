@@ -101,6 +101,7 @@ All models are configured under a single `providers:` list in `config.yaml`:
 - **OpenRouter** — one key for Claude, GPT, Gemini, Grok, Llama, and more (the cloud gateway)
 - **oMLX** — local, on-device models through an OpenAI-compatible endpoint (mark `local: true`; prompts stay on your machine/LAN)
 - **Claude subscription** — use your Claude Pro/Max plan instead of API credits (see below)
+- **Codex subscription** — use your ChatGPT/Codex plan instead of API credits (see below)
 
 ### Claude subscription mode
 
@@ -112,7 +113,7 @@ Enable it by adding a `cli_claude` provider to your vault's `config.yaml`:
 
 ```yaml
 providers:
-  - id: claude
+  - id: claude-cli
     kind: cli_claude
     # command: /opt/homebrew/bin/claude   # only if `claude` isn't on PATH
     # oauthToken: sk-ant-oat-...           # from `claude setup-token` (optional)
@@ -122,6 +123,28 @@ Requires the [`claude` CLI](https://claude.com/claude-code) installed and logged
 in to your subscription (run `claude` once to log in). These models pick up
 Alloy's built-in tools — web search, reading/writing vault files, notes, skills —
 just like every other provider.
+
+### Codex subscription mode
+
+Use GPT-5 / Codex models billed against your **ChatGPT/Codex subscription**
+rather than per-token API credits. It works by shelling out to the OpenAI Codex
+CLI (`codex exec`).
+
+Enable it by adding a `cli_codex` provider to your vault's `config.yaml`:
+
+```yaml
+providers:
+  - id: codex-cli
+    kind: cli_codex
+    # command: /opt/homebrew/bin/codex   # only if `codex` isn't on PATH
+```
+
+Requires the [`codex` CLI](https://github.com/openai/codex) installed and logged
+in to your subscription (run `codex login`). Unlike Claude subscription mode,
+Codex is **text-only** for now — it answers prompts but does not use Alloy's
+built-in tools (web search, vault files, skills). Codex runs its own agent in a
+read-only sandbox and sends prompts to OpenAI, so it is treated as cloud (no
+access to private directories).
 
 ## Development
 

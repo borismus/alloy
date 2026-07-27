@@ -4,6 +4,7 @@
 //! other compatible upstreams). Claude subscription access uses `cli_claude`.
 
 pub mod cli_claude;
+pub mod cli_codex;
 pub mod openai_compatible;
 
 use std::{collections::HashMap, sync::Arc};
@@ -319,6 +320,7 @@ impl ProviderRegistry {
                     Arc::new(openai_compatible::OpenAICompatibleProvider::new(cfg))
                 }
                 ProviderKind::CliClaude => Arc::new(cli_claude::CliClaudeProvider::new(cfg)),
+                ProviderKind::CliCodex => Arc::new(cli_codex::CliCodexProvider::new(cfg)),
             };
             if default_id.is_none() {
                 default_id = Some(cfg.id.clone());

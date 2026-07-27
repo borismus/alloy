@@ -4,6 +4,19 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## Unreleased
+
+- **Codex subscription mode.** Use GPT-5 / Codex models billed against your
+  ChatGPT/Codex subscription by adding a `cli_codex` provider (shells out to the
+  `codex` CLI, `codex login` required). Text-only for now: it answers prompts in
+  a read-only sandbox but doesn't use Alloy's built-in tools, and prompts go to
+  OpenAI so it's treated as cloud.
+- The reasoning ("Thinking…") disclosure and icon-button tooltips now use the
+  accessible React Aria foundation, with proper keyboard and ARIA behavior.
+- Under the hood: `config.yaml` parsing is consolidated in the Rust backend (one
+  source of truth), and a model's on-device "local" badge now uses the same rule
+  as private-directory access so the two can't disagree.
+
 ## 0.4.0
 
 - **Breaking: new `config.yaml` format.** All models are now configured under a
