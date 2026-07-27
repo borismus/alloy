@@ -19,9 +19,12 @@ if [[ ! -f "$ROOT/dist-web/index.html" ]]; then
   exit 1
 fi
 
-# Build the backend (incremental — near-instant when up to date) so the smoke
-# suite always exercises the current Rust code.
+# Build the backend AFTER dist-web exists. alloy-serve embeds the SPA at COMPILE
+# time (rust-embed) and won't re-bundle just because dist-web changed on disk, so
+# a binary built before `vite build` serves an empty SPA (GET / -> 404). Touch
+# the embed source to force a fresh bundle of the current dist-web every run.
 echo "smoke: building alloy-serve..." >&2
+touch "$ROOT/alloy-server/src/routes/static_files.rs"
 (cd "$ROOT/alloy-server" && cargo build --bin alloy-serve >&2)
 
 # Fresh temp copy so the app's writes (watchers, self-writes) never dirty the

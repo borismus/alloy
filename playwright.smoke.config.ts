@@ -48,7 +48,9 @@ export default defineConfig({
     command: 'bash scripts/smoke-server.sh',
     url: baseURL,
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    // Generous: smoke-server.sh may do a cold cargo build on the first CI run,
+    // before Swatinem/rust-cache is warm.
+    timeout: 600_000,
     env: { SMOKE_PORT: PORT },
   },
 });

@@ -43,10 +43,10 @@ jobs:
       - run: npm ci
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
-      # Warm the cargo cache and fail fast on a Rust error before Playwright's
-      # webServer would (scripts/smoke-server.sh rebuilds incrementally).
-      - name: Build backend
-        run: cargo build --bin alloy-serve --manifest-path alloy-server/Cargo.toml
+      # test:smoke builds dist-web first, then Playwright's webServer
+      # (scripts/smoke-server.sh) compiles alloy-serve against it (embedding the
+      # SPA) and boots. The first run does a cold cargo build, cached by
+      # rust-cache afterwards; see the webServer timeout in the smoke config.
       - name: Smoke tests
         run: npm run test:smoke
       - name: Upload Playwright report on failure
