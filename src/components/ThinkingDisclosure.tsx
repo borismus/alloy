@@ -37,7 +37,18 @@ export function ThinkingDisclosure({
     >
       <Heading className="thinking-disclosure-heading">
         <Button slot="trigger" className="thinking-disclosure-toggle">
-          {expandable && <span className="thinking-chevron" aria-hidden="true">›</span>}
+          {expandable && (
+            <svg className="thinking-chevron" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M4.5 2.5 8 6l-3.5 3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
           <span>{label}</span>
         </Button>
       </Heading>

@@ -936,9 +936,10 @@
 }
 
 .thinking-chevron {
-  display: inline-block;
-  font-size: 1rem;
-  line-height: 1;
+  display: block;
+  flex-shrink: 0;
+  width: 0.85em;
+  height: 0.85em;
   transition: transform 0.15s ease;
 }
 
