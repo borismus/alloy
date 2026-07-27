@@ -51,7 +51,10 @@
       "Bash(git --no-pager diff -- alloy-server/src/streaming.rs)",
       "Bash(git --no-pager diff -- alloy-server/src/triggers/executor.rs)",
       "mcp__playwright__browser_run_code_unsafe",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(python3 mcp_probe.py 9911)",
+      "Bash(echo \"probe pid $!\")",
+      "Bash(python3 -c ' *)"
     ]
   },
   "enableAllProjectMcpServers": true,
