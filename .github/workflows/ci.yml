@@ -26,6 +26,19 @@ jobs:
       - run: npm run lint
       - run: npm run test:run
 
+  # Backend unit tests (config parsing, cron/scheduling, tool loop, provider
+  # parsers, ...). The smoke job compiles alloy-serve but doesn't run its tests.
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: alloy-server
+      - name: Rust tests
+        run: cargo test --manifest-path alloy-server/Cargo.toml
+
   # The layer unit tests can't reach: boot the real standalone backend against a
   # seeded fixture vault and drive the app at desktop + mobile viewports.
   smoke:

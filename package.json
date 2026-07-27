@@ -40,6 +40,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:smoke": "vite build && playwright test -c playwright.smoke.config.ts",
+    "verify": "bash scripts/verify.sh",
     "playwright:install": "playwright install chromium",
     "generate-icons": "node scripts/generate-icons.js"
   },
