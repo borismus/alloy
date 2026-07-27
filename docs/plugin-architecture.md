@@ -44,18 +44,46 @@ listed in config, merging their tools into the tool loop next to the built-ins
 - **Trade-off:** process lifecycle to manage; extends *capabilities*, not UI —
   riff can't be an MCP server.
 
-### 2. Modes → a first-class `Feature` interface (the riff-as-plugin path)
+### 2. Modes → a first-class `Feature` interface (council/comparison first, then riff)
 
-Name the thing riff already does: a `Feature` registers a sidebar entry, a main
-view, optional tools, a vault convention, and an enter/exit lifecycle. Extract
-riff (then council/comparison) to *implement* it.
+Name the thing riff already does: a `Feature` registers a sidebar entry, a
+multi-model or custom input, an execution strategy, a response view, persistence,
+and an enter/exit lifecycle.
 
-- **Why:** directly delivers "riff as a plugin," and modularizing our own features
-  de-risks the API before any third party touches it; `App.tsx` stops being a
-  junk drawer of riff `useEffect`s.
+**Design the interface from council + comparison, not riff.** Both were fully
+implemented and removed in `028ada8` ("Remove comparison and council features",
+~3,267 LOC across `ComparisonChatInterface`/`ComparisonView`/`CouncilChatInterface`,
+`useComparisonStreaming`/`useCouncilStreaming`, multi-model selectors, and vault
+serialization). They were removed on the theory that sub-agents subsumed them —
+but sub-agents are the **wrong abstraction level**:
+
+- **Sub-agents = model-initiated delegation.** The parent model decides to spawn
+  one; the sub-agent's output feeds *back into the parent*, which digests it into
+  a single answer. The user never sees raw parallel model output.
+- **Council/comparison = user-initiated survey.** The *user* picks the models;
+  comparison shows every model's raw answer side-by-side (no synthesis), council
+  shows members plus an explicit **chairman** synthesis. Sub-agents structurally
+  can't do "show me what three models say," which is why they "don't work well
+  enough."
+
+**Why they're the ideal first Feature plugins:** they're *pure frontend
+compositions of the existing single-model stream primitive* — comparison = N
+parallel `/api/stream` calls rendered side-by-side; council = N member calls +
+one chairman call over their outputs. No new backend surface, no new tools, no
+privacy concerns. Two fresh cases (plus riff) is enough to shape the interface
+without over-fitting.
+
+**The revival is restore + re-plumb, not green-field.** The old code is at
+`028ada8^` (`git show 028ada8^:src/hooks/useCouncilStreaming.ts`, etc.). The one
+real change: the old hooks fanned out via the client-side `providerRegistry`,
+which is gone — rewire the fan-out through the server stream endpoint
+(`src/services/server-streaming.ts`). View, model selector, phases (`individual`
+→ `synthesis`), chairman prompt, and per-message `model`/`councilMember`/
+`chairman` tagging port largely as-is.
+
 - **Trade-off:** third-party *frontend* plugins mean loading untrusted React →
-  security/bundling hazard, so this is **internal-first** (modularize our own
-  features); external third-party modes are a later, separate step.
+  security/bundling hazard, so this is **internal-first** (our own modes as
+  plugins); external third-party modes are a later, separate step.
 
 ### 3. On-ramp → declarative capability packs (skills++)
 
@@ -86,7 +114,12 @@ layer-3 substrate + guardrails.
 
 ## Sequencing (when scheduled)
 
-1. **MCP client** for tools (capability backbone).
-2. **Extract riff into a `Feature` module** (internal dogfood of the mode API).
-3. **Declarative capability packs** (no-code on-ramp).
-4. *(optional)* **Agent-authored packs.**
+1. **Revive comparison** (simplest: parallel fan-out, side-by-side, no synthesis)
+   — restore from `028ada8^`, re-plumb to the server stream. Smallest useful slice.
+2. **Revive council** (reuses comparison's multi-model input + fan-out, adds the
+   chairman synthesis phase).
+3. **Extract the shared shape into a `Feature` interface**, then retrofit **riff**
+   (the most entangled mode) onto it — informed by the two simpler cases.
+4. **MCP client** for tools (capability backbone) — independent; can run in parallel.
+5. **Declarative capability packs** (no-code on-ramp).
+6. *(optional)* **Agent-authored packs.**
