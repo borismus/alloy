@@ -356,7 +356,10 @@ impl Provider for OpenAICompatibleProvider {
                 role: "user",
                 content: &prompt,
             }],
-            max_tokens: 50,
+            // Headroom for a reasoning model (e.g. Qwen on mlx) to finish its
+            // <think> block and still emit the title; sanitize_title strips the
+            // thinking afterward.
+            max_tokens: 200,
         })
         .unwrap();
 
@@ -390,14 +393,9 @@ impl Provider for OpenAICompatibleProvider {
             .and_then(|c| c.get("message"))
             .and_then(|m| m.get("content"))
             .and_then(|c| c.as_str())
-            .unwrap_or("")
-            .trim();
+            .unwrap_or("");
 
-        if text.is_empty() {
-            fallback_title(user_msg)
-        } else {
-            text.chars().take(100).collect()
-        }
+        sanitize_title(text, user_msg)
     }
 
     async fn complete_once(
@@ -471,6 +469,71 @@ fn bracketed_stream_error(text: &str) -> Option<String> {
 
 fn fallback_title(user_msg: &str) -> String {
     user_msg.chars().take(50).collect()
+}
+
+/// Clean an LLM-generated title. Reasoning models (e.g. Qwen on mlx) frequently
+/// emit their chain-of-thought instead of a title — inside `<think>…</think>` or
+/// as plain narration ("Here's a thinking process: 1. Analyze user input…").
+/// Strip think blocks, and if what remains still reads like reasoning rather
+/// than a title, fall back to deriving one from the user's message.
+fn sanitize_title(raw: &str, user_msg: &str) -> String {
+    let stripped = strip_think_blocks(raw);
+    let first_line = stripped
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .trim_matches(|c: char| c == '"' || c == '\'' || c == '*' || c == '#')
+        .trim();
+
+    let nonblank_lines = stripped.lines().filter(|l| !l.trim().is_empty()).count();
+    let lower = stripped.to_lowercase();
+    let reads_like_reasoning = first_line.is_empty()
+        || first_line.chars().count() > 80
+        || first_line.ends_with(':')
+        || nonblank_lines > 2
+        || [
+            "thinking process",
+            "analyze user",
+            "the user is asking",
+            "the user wants",
+            "here's a",
+            "here is a",
+            "let me ",
+            "first, i",
+            "okay, so",
+            "step 1",
+        ]
+        .iter()
+        .any(|m| lower.contains(m));
+
+    if reads_like_reasoning {
+        fallback_title(user_msg)
+    } else {
+        first_line.chars().take(100).collect()
+    }
+}
+
+/// Remove `<think>…</think>` / `<thinking>…</thinking>` spans, including an
+/// unclosed trailing block (which a token limit can produce). Case-sensitive on
+/// the original string so byte indices stay valid for non-ASCII content.
+fn strip_think_blocks(s: &str) -> String {
+    let mut out = s.to_string();
+    for (open, close) in [("<think>", "</think>"), ("<thinking>", "</thinking>")] {
+        while let Some(start) = out.find(open) {
+            match out[start + open.len()..].find(close) {
+                Some(rel) => {
+                    let end = start + open.len() + rel + close.len();
+                    out.replace_range(start..end, "");
+                }
+                None => {
+                    out.truncate(start);
+                    break;
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Flatten an error and its `source()` chain into one line. `reqwest` hides the
@@ -580,6 +643,36 @@ fn apply_anthropic_caching(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitize_title_rejects_leaked_reasoning_narration() {
+        // The real Qwen-on-mlx output that produced a garbage title.
+        let raw = "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - User asks: \"Hey what have I written abo";
+        assert_eq!(
+            sanitize_title(raw, "what have I written about hearth"),
+            "what have I written about hearth",
+        );
+    }
+
+    #[test]
+    fn sanitize_title_strips_think_blocks_and_keeps_the_title() {
+        let raw = "<think>The user wants a title. Let me summarize.</think>\nHearth architecture chat";
+        assert_eq!(sanitize_title(raw, "fallback"), "Hearth architecture chat");
+    }
+
+    #[test]
+    fn sanitize_title_drops_unclosed_think_block() {
+        let raw = "<think>Okay, so the user is asking about"; // token limit cut it off
+        assert_eq!(sanitize_title(raw, "my question here"), "my question here");
+    }
+
+    #[test]
+    fn sanitize_title_keeps_a_clean_title_and_unquotes_it() {
+        assert_eq!(
+            sanitize_title("\"Weekly Spending Review\"", "fallback"),
+            "Weekly Spending Review",
+        );
+    }
 
     #[test]
     fn parses_stream_errors_from_omlx_and_openai_shapes() {
