@@ -80,6 +80,9 @@ alloy/
   model list is curated with no network calls. Each run copies the fixture to a
   temp dir, so the checked-in fixture is never dirtied.
 
+CI (`.github/workflows/ci.yml`) runs typecheck + lint + unit tests and the smoke
+suite on every pull request and push to `main`.
+
 ## Dual Runtime Modes
 
 The app runs in two modes:
