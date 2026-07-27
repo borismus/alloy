@@ -260,14 +260,16 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           rows={1}
           {...textareaProps}
         />
-        <ModelSelector
-          value={model}
-          onChange={onModelChange}
-          disabled={false}
-          models={availableModels}
-          favoriteModels={favoriteModels}
-          onToggleFavorite={onToggleFavorite}
-        />
+        <div className="model-selector-container">
+          <ModelSelector
+            value={model}
+            onChange={onModelChange}
+            disabled={false}
+            models={availableModels}
+            favoriteModels={favoriteModels}
+            onToggleFavorite={onToggleFavorite}
+          />
+        </div>
         {isStreaming && !input.trim() && pendingImages.length === 0 ? (
           <AlloyTooltip content="Stop generating">
             <button

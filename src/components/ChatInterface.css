@@ -235,6 +235,15 @@
   align-items: flex-end;
 }
 
+/* Wraps the model picker so the composer can lay it out as a flex item; the
+   picker itself is a React Aria Button with a hashed module class the global
+   composer rules can't target directly. */
+.model-selector-container {
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+}
+
 .attach-button {
   width: 48px;
   height: 48px;
@@ -1074,16 +1083,18 @@
   .input-form .input-row .model-selector-container {
     order: 3;
     flex: 1;
+    min-width: 0;
+  }
+
+  /* Let the picker fill the row alongside attach/send instead of its default
+     140–220px content width. */
+  .input-form .input-row .model-selector-container > button {
+    flex: 1;
+    max-width: none;
   }
 
   .input-form .input-row .send-button {
     order: 4;
-  }
-
-  /* Force dropdown to open upward on mobile */
-  .input-form .model-selector-dropdown {
-    bottom: calc(100% + 4px);
-    top: auto;
   }
 }
 
