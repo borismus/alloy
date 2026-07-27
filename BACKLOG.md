@@ -96,3 +96,38 @@ committed — keep excluding them; commit UI work with partial-staged package.js
 - [x] UI polish — add a `ui/Switch` primitive (React Aria `Switch`) and migrate the Settings “Share on network” toggle to it (done).
 - [x] UI polish — migrate ThinkingDisclosure to a React Aria `Disclosure` (done; keyboard/ARIA, `[data-expanded]` chevron, `[hidden]` panel rule; interaction-tested).
 - [x] UI polish — add a `ui/Tooltip` (React Aria `Tooltip` + `TooltipTrigger` + `Focusable`) and apply it to the header settings/close buttons and the composer attach/send buttons (done; tokenized, interaction-tested). Follow-up if wanted: extend to the header back/forward buttons (dynamic/disabled) and the model picker.
+
+<!-- FUTURE EPIC: plugin architecture (imagined for a future release; not scheduled).
+  Goal: return Alloy to an extensible, plugin-oriented app. Recommended LAYERED model,
+  three plugin types for three needs:
+
+  1. CAPABILITIES — MCP client. Alloy already SERVES MCP (alloy-server/src/routes/mcp.rs);
+     make it CONSUME external MCP servers listed in config, merging their tools into the
+     tool loop next to the built-ins (dynamic branch in alloy-server/src/tools/mod.rs's
+     hardcoded match). Standards-aligned (Claude Desktop/Cursor/Zed), the whole MCP
+     ecosystem becomes Alloy plugins, and it restores dynamic tool extensibility WITHOUT
+     giving up the Rust backend (servers are separate processes). This is the backbone.
+
+  2. MODES — a first-class `Feature` interface, dogfooded by extracting riff. Riff is
+     already a de-facto feature plugin, just unnamed: RiffService + RiffProvider context +
+     RiffView + RiffBatchApprovalModal + `riffs/` vault convention + ~20 hook points in
+     App.tsx. Name it: a Feature registers a sidebar entry, a main view, optional tools, a
+     vault convention, and enter/exit lifecycle. Extract riff (then council/comparison) to
+     IMPLEMENT it. INTERNAL-first (modularize our own features; de-risk the API); external
+     third-party frontend plugins are a later, separate step (loading untrusted React =
+     security/bundling hazard).
+
+  3. ON-RAMP — declarative capability packs (skills++). A `vault/plugins/<name>/` folder
+     with a manifest bundling instructions (skill), scheduled tasks, prompt templates, and
+     HTTP/OpenAPI-described tools — no code, hot-loaded via the existing vault watcher,
+     shareable as plain files (fits the vault-as-files ethos). Ceiling: can't express
+     riff's interactive UI (that's what #2 is for).
+
+  Deliberately NOT WASM plugins yet — MCP delivers sandboxed external tools far cheaper;
+  revisit only if MCP's limits are hit. Also considered: agent-authored plugins (Alloy
+  scaffolds its own declarative packs via write_file + create_scheduled_task) — depends
+  on the #3 substrate + guardrails.
+
+  Sequencing when scheduled: (a) MCP client for tools, (b) extract riff into a Feature
+  module (internal), (c) declarative packs, (d) optional agent-authored packs.
+-->
