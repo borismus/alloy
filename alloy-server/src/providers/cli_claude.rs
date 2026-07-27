@@ -77,6 +77,12 @@ const DISALLOWED_NATIVE_TOOLS: &[&str] = &[
 /// Bound on Claude Code's internal agent loop, so a misbehaving turn can't spin.
 const MAX_AGENT_TURNS: &str = "20";
 
+/// Extended-thinking budget (tokens). Claude Code only surfaces `thinking`
+/// blocks when `MAX_THINKING_TOKENS` is set; without it, the reasoning
+/// disclosure never has content. Sonnet/Opus think when a prompt warrants it and
+/// skip it for trivial ones; Haiku ignores this safely. "think hard" level.
+const CLAUDE_THINKING_BUDGET: &str = "10000";
+
 /// Well-known absolute install locations for the `claude` binary, searched when
 /// it isn't explicitly configured. A macOS app launched from Finder/Dock does
 /// NOT inherit the user's shell PATH (it gets `/usr/bin:/bin:/usr/sbin:/sbin`),
@@ -219,6 +225,9 @@ impl Provider for CliClaudeProvider {
         let (system, user_text, images) = flatten_conversation(&req.messages);
 
         let mut cmd = self.base_command(&req.model);
+        // Enable extended thinking so the reasoning disclosure has content. Only
+        // on the streaming path (chat/tasks/subagents), not title/one-shot calls.
+        cmd.env("MAX_THINKING_TOKENS", CLAUDE_THINKING_BUDGET);
         cmd.arg("--input-format")
             .arg("stream-json")
             .arg("--output-format")
