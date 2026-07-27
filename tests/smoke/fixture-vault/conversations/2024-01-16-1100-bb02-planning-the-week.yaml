@@ -1,0 +1,16 @@
+id: 2024-01-16-1100-bb02
+title: Planning the week
+model: claude-cli/sonnet
+created: 2024-01-16T11:00:00.000Z
+updated: 2024-01-16T11:12:00.000Z
+messages:
+- id: msg-0001
+  role: user
+  timestamp: 2024-01-16T11:00:10.000Z
+  content: Help me draft a plan for the week.
+- id: msg-0002
+  role: assistant
+  timestamp: 2024-01-16T11:00:30.000Z
+  content: |-
+    Sure — here's a simple structure: pick one main outcome per day, protect a
+    two-hour focus block each morning, and review on Friday.

@@ -63,6 +63,23 @@ alloy/
 2. **Rust changes**: Requires rebuild (Tauri watches and rebuilds)
 3. **Config changes**: May require restart
 
+## Testing
+
+- `npm run test:run` — unit tests (Vitest, `*.test.ts(x)` alongside source).
+- `cd alloy-server && cargo test` — Rust backend tests.
+- `npm run test:e2e` — Playwright against `npm run dev` (uses your `.env` vault).
+- `npm run test:smoke` — **seeded-vault smoke suite**. Builds `dist-web`, then
+  boots the standalone `alloy-serve` against a fresh copy of
+  `tests/smoke/fixture-vault/` (via `scripts/smoke-server.sh`) and runs
+  `tests/smoke/` at desktop **and** mobile-emulated viewports
+  (`playwright.smoke.config.ts`). Single origin — the backend serves both the
+  embedded SPA and `/api`, exactly like the shared/standalone app a phone hits.
+  This is the layer unit tests can't reach: does the app render with data, and
+  does the mobile layout hold (e.g. the composer stays two rows). No API keys or
+  personal vault needed; the fixture uses a subscription-CLI provider so the
+  model list is curated with no network calls. Each run copies the fixture to a
+  temp dir, so the checked-in fixture is never dirtied.
+
 ## Dual Runtime Modes
 
 The app runs in two modes:

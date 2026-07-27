@@ -1,0 +1,12 @@
+id: 2024-01-10-0900-cc03
+created: 2024-01-10T09:00:00.000Z
+updated: 2024-01-10T09:00:00.000Z
+title: Daily standup prompt
+model: claude-cli/sonnet
+enabled: true
+email: false
+prompt: |-
+  Summarize what changed in the vault yesterday and suggest one focus for today.
+schedule:
+  cron: 0 9 * * *
+  timezone: America/Los_Angeles

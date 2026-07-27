@@ -1,0 +1,16 @@
+id: 2024-01-15-1000-aa01
+title: Welcome to Alloy
+model: claude-cli/sonnet
+created: 2024-01-15T10:00:00.000Z
+updated: 2024-01-15T10:05:00.000Z
+messages:
+- id: msg-0001
+  role: user
+  timestamp: 2024-01-15T10:00:10.000Z
+  content: What can Alloy do?
+- id: msg-0002
+  role: assistant
+  timestamp: 2024-01-15T10:00:20.000Z
+  content: |-
+    Alloy is a multi-model chat app: council mode, comparison mode, scheduled
+    tasks, skills, and vault storage as plain YAML and Markdown.
