@@ -12,3 +12,5 @@ export { SegmentedControl } from './SegmentedControl';
 export type { SegmentedControlProps, SegmentOption } from './SegmentedControl';
 export { Switch } from './Switch';
 export type { SwitchProps } from './Switch';
+export { AlloyTooltip } from './Tooltip';
+export type { AlloyTooltipProps } from './Tooltip';

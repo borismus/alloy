@@ -6,7 +6,7 @@ import {
   MenuTrigger,
   Button as AriaButton,
 } from 'react-aria-components';
-import { Button, AlloyDialog, SearchField, SelectField, AlloyMenu, Switch } from './index';
+import { Button, AlloyDialog, SearchField, SelectField, AlloyMenu, Switch, AlloyTooltip } from './index';
 
 afterEach(cleanup);
 
@@ -67,6 +67,19 @@ describe('ui primitives', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Close dialog' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('wraps a focusable control in a tooltip without breaking its click or name', async () => {
+    const onPress = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <AlloyTooltip content="Go back">
+        <button onClick={onPress} aria-label="Back">‹</button>
+      </AlloyTooltip>,
+    );
+    const button = screen.getByRole('button', { name: 'Back' });
+    await user.click(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it('toggles a Switch and reports the new state', async () => {

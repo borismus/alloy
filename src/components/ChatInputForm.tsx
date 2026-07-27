@@ -4,6 +4,7 @@ import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
+import { AlloyTooltip } from './ui';
 import { SlashCommandMenu, SlashCommandItem } from './SlashCommandMenu';
 import { skillRegistry } from '../services/skills';
 import { slashQuery } from '../utils/slashCommand';
@@ -236,14 +237,16 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           onChange={handleFileSelect}
           style={{ display: 'none' }}
         />
-        <button
-          type="button"
-          className="attach-button"
-          onClick={handleAttachClick}
-          aria-label="Attach image"
-        >
-          +
-        </button>
+        <AlloyTooltip content="Attach image">
+          <button
+            type="button"
+            className="attach-button"
+            onClick={handleAttachClick}
+            aria-label="Attach image"
+          >
+            +
+          </button>
+        </AlloyTooltip>
         <textarea
           ref={textareaRef}
           value={input}
@@ -266,23 +269,27 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           onToggleFavorite={onToggleFavorite}
         />
         {isStreaming && !input.trim() && pendingImages.length === 0 ? (
-          <button
-            type="button"
-            onClick={onStop}
-            className="send-button stop-button"
-            aria-label="Stop generating"
-          >
-            ■
-          </button>
+          <AlloyTooltip content="Stop generating">
+            <button
+              type="button"
+              onClick={onStop}
+              className="send-button stop-button"
+              aria-label="Stop generating"
+            >
+              ■
+            </button>
+          </AlloyTooltip>
         ) : (
-          <button
-            type="submit"
-            disabled={!input.trim() && pendingImages.length === 0}
-            className="send-button"
-            aria-label={isStreaming ? 'Queue message' : 'Send message'}
-          >
-            ↑
-          </button>
+          <AlloyTooltip content={isStreaming ? 'Queue message' : 'Send message'}>
+            <button
+              type="submit"
+              disabled={!input.trim() && pendingImages.length === 0}
+              className="send-button"
+              aria-label={isStreaming ? 'Queue message' : 'Send message'}
+            >
+              ↑
+            </button>
+          </AlloyTooltip>
         )}
       </div>
     </form>
