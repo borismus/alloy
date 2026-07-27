@@ -154,12 +154,54 @@
 
 /* Timeline Items */
 .timeline-item {
+  position: relative;
   padding: 0.75rem;
   margin-bottom: 0.5rem;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
   border: 1px solid transparent;
+  /* Suppress the iOS long-press text-selection callout so the gesture is free
+     to open the context menu. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.item-menu-btn {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.timeline-item:hover .item-menu-btn,
+.item-menu-btn:focus-visible {
+  opacity: 1;
+}
+
+.item-menu-btn:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+/* Touch devices have no hover: keep the affordance permanently visible. */
+@media (hover: none) {
+  .item-menu-btn {
+    opacity: 1;
+  }
 }
 
 .timeline-item:hover {
@@ -176,6 +218,8 @@
   color: var(--color-text);
   margin-bottom: 0.5rem;
   line-height: 1.4;
+  /* Leave room for the absolutely-positioned actions button. */
+  padding-right: 1.75rem;
 }
 
 .item-meta {

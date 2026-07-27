@@ -6,6 +6,10 @@ of the corresponding GitHub release, so add a section here before bumping.
 
 ## Unreleased
 
+- **Conversation-list actions on mobile.** Each item in the sidebar now has a
+  “⋯” button, and you can long-press an item, to open its actions (Rename /
+  Delete / Reveal / Edit) — previously reachable only by right-click, which
+  touch devices (especially iOS) can't do.
 - **Codex subscription mode.** Use Codex billed against your ChatGPT/Codex
   subscription by adding a `cli_codex` provider (shells out to the `codex` CLI,
   `codex login` required). The picker shows a single Codex model that uses your

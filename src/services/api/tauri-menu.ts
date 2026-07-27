@@ -34,6 +34,20 @@ if (typeof window !== 'undefined') {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
   });
+
+  // Touch devices never fire the mouse/contextmenu events above until release,
+  // so track the touch point for long-press and tap-to-open (mobile) menus.
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      const t = e.touches[0];
+      if (t) {
+        lastMouseX = t.clientX;
+        lastMouseY = t.clientY;
+      }
+    },
+    { passive: true },
+  );
 }
 
 class MenuItem {

@@ -5,6 +5,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
+import { useLongPress } from '../hooks/useLongPress';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
 import { AlloyDialog, SegmentedControl } from './ui';
@@ -227,9 +228,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     setDeletingItem(null);
   };
 
-  const handleContextMenu = async (e: React.MouseEvent, item: TimelineItem) => {
-    e.preventDefault();
-
+  const openItemMenu = async (item: TimelineItem) => {
     let filePath: string | null = null;
 
     if (item.type === 'conversation') {
@@ -294,6 +293,16 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       console.error('Failed to show context menu:', error);
     }
   };
+
+  const handleContextMenu = (e: React.MouseEvent, item: TimelineItem) => {
+    e.preventDefault();
+    void openItemMenu(item);
+  };
+
+  // Touch: long-press a row (mobile) opens the same menu right-click does.
+  const { getHandlers: getRowLongPress, didLongPress } = useLongPress<TimelineItem>((item) => {
+    void openItemMenu(item);
+  });
 
   const handleFabClick = async () => {
     try {
@@ -485,9 +494,32 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               className={`timeline-item ${item.type} ${
                 item.id === selectedItemId ? 'active' : ''
               }${streamingConversationIds.includes(item.id) ? ' streaming' : ''}`}
-              onClick={() => handleSelectItem(item)}
+              onClick={() => {
+                // A long-press already opened the menu; don't also select.
+                if (didLongPress.current) {
+                  didLongPress.current = false;
+                  return;
+                }
+                handleSelectItem(item);
+              }}
               onContextMenu={(e) => handleContextMenu(e, item)}
+              {...getRowLongPress(item)}
             >
+              <button
+                type="button"
+                className="item-menu-btn"
+                aria-label="More actions"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void openItemMenu(item);
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="5" cy="12" r="1.8" />
+                  <circle cx="12" cy="12" r="1.8" />
+                  <circle cx="19" cy="12" r="1.8" />
+                </svg>
+              </button>
               <div className="item-preview">
                 {streamingConversationIds.includes(item.id) && (
                   <span className="streaming-indicator" title="Streaming...">●</span>
