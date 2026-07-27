@@ -100,8 +100,8 @@ committed — keep excluding them; commit UI work with partial-staged package.js
 ## Future epics (not scheduled — no `- [ ]`, so the runner skips them)
 
 - **Plugin architecture** — return Alloy to an extensible, plugin-oriented app.
-  Layered model: an **MCP client** for capabilities (consume external MCP servers,
-  merging their tools into the tool loop), a first-class **`Feature` interface**
-  for modes (dogfooded by extracting riff), and **declarative capability packs**
-  (skills++) as the no-code on-ramp. Full design, rationale, trade-offs, non-goals,
-  and sequencing in [docs/plugin-architecture.md](docs/plugin-architecture.md).
+  Core model: **Resource → Workspace → Host capabilities**. Dogfood the extension
+  API with first-party Notes, Tasks, Comparison, Council, Riff, and eventually
+  Chat modules; add an **MCP client** for external capabilities and declarative
+  vault packs as the no-code on-ramp. Full design, boundaries, trust model, and
+  sequencing in [docs/plugin-architecture.md](docs/plugin-architecture.md).

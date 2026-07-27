@@ -63,8 +63,10 @@ Active tasks live in [BACKLOG.md](../BACKLOG.md). Larger, not-yet-scheduled
 directions:
 
 - **Plugin architecture** — returning Alloy to an extensible, plugin-oriented app
-  (MCP client for capabilities, a `Feature` interface for modes, declarative
-  capability packs). See [docs/plugin-architecture.md](docs/plugin-architecture.md).
+  around **Resource → Workspace → Host capabilities**, dogfooded by first-party
+  Notes, Tasks, Comparison, Council, Riff, and Chat extensions; external tools
+  arrive through an MCP client and declarative vault packs. See
+  [docs/plugin-architecture.md](docs/plugin-architecture.md).
 
 One-off design decisions are recorded in [docs/design-decisions.md](docs/design-decisions.md).
 

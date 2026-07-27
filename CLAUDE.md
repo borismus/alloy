@@ -6,8 +6,9 @@
 
 Key features:
 - **Multi-provider**: Anthropic (Claude), OpenAI-compatible services including OpenRouter and oMLX, Google Gemini, xAI (Grok), and Claude subscription access
-- **Council mode**: Query multiple models, chairman synthesizes responses
-- **Comparison mode**: See responses side-by-side
+- **Comparison/Council studies (planned)**: Previously shipped multi-model modes,
+  intended to return as durable one-shot workspace extensions (parallel responses;
+  Council adds chairman synthesis)
 - **Scheduled tasks**: Cron-based background prompts with optional delivery conditions
 - **Skills**: Markdown-defined capabilities with tool access
 - **Riff mode**: Draft-based note integration
