@@ -9,6 +9,7 @@ const models: ModelInfo[] = [
   { key: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'anthropic' },
   { key: 'openrouter/anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'openrouter' },
   { key: 'mlx/qwen3.6-27b', name: 'Qwen 3.6 27B', provider: 'mlx', local: true },
+  { key: 'codex-cli/gpt-5.6-sol', name: 'GPT-5.6-Sol', provider: 'codex-cli' },
 ];
 
 function Harness({ onChange, onToggle }: { onChange: (k: string) => void; onToggle: (k: string) => void }) {
@@ -54,6 +55,15 @@ describe('ModelSelector interaction', () => {
     // Star flips to "remove" and the popover stays open.
     expect(await screen.findByRole('button', { name: 'Remove from favorites' })).toBeTruthy();
     expect(screen.getByRole('searchbox', { name: 'Search models' })).toBeTruthy();
+  });
+
+  it('finds models by provider name', async () => {
+    const user = userEvent.setup();
+    render(<Harness onChange={vi.fn()} onToggle={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: /^Model:/ }));
+    const search = await screen.findByRole('searchbox', { name: 'Search models' });
+    await user.type(search, 'openai');
+    expect(await screen.findByRole('option', { name: /GPT-5.6-Sol/ })).toBeTruthy();
   });
 
   it('selects a model and closes when a row is clicked', async () => {

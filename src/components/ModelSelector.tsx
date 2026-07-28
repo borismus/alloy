@@ -60,18 +60,21 @@ function humanizeModelId(key: string): string {
 }
 
 /**
- * Pre-sorting key: 0 = exact, 1 = name prefix, 2 = name substring, 3 = key
- * substring, 4 = no match (filtered out elsewhere). Lower wins.
+ * Pre-sorting key: 0 = exact, 1 = name prefix, 2 = name substring,
+ * 3 = provider name/tag, 4 = key substring, 5 = no match. Lower wins.
  */
 function rankMatch(query: string, model: ModelInfo): number {
   const q = query.toLowerCase();
   const name = model.name.toLowerCase();
   const key = model.key.toLowerCase();
-  if (name === q || key === q) return 0;
+  const provider = providerLabel(model.provider, model.key).toLowerCase();
+  const tag = providerTag(model.provider, model.key).toLowerCase();
+  if (name === q || key === q || provider === q || tag === q) return 0;
   if (name.startsWith(q)) return 1;
   if (name.includes(q)) return 2;
-  if (key.includes(q)) return 3;
-  return 4;
+  if (provider.includes(q) || tag.includes(q)) return 3;
+  if (key.includes(q)) return 4;
+  return 5;
 }
 
 interface ModelSelectorProps {
@@ -163,7 +166,7 @@ function ModelResults({ value, models, favoriteModels, onPick, onToggleFavorite 
     } else {
       list = models
         .map(m => ({ m, rank: rankMatch(query, m) }))
-        .filter(x => x.rank < 4)
+        .filter(x => x.rank < 5)
         .sort((a, b) => a.rank - b.rank || a.m.name.localeCompare(b.m.name))
         .map(x => x.m);
     }
