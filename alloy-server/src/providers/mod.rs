@@ -185,6 +185,18 @@ async fn resolve_images(vault: Option<&Vault>, attachments: &[WireAttachment]) -
     out
 }
 
+/// Model metadata discovered by a provider adapter. The `/api/models` route
+/// adds the configured provider id and privacy/pricing metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveredModel {
+    /// Upstream model id or CLI alias passed back to this provider.
+    pub id: String,
+    pub name: String,
+    pub context_window: Option<u64>,
+    /// Whether the upstream currently chooses this model when no model is given.
+    pub is_default: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct Usage {
     #[serde(rename = "inputTokens")]

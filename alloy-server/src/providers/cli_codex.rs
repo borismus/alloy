@@ -14,22 +14,23 @@
 //!     "agent_message","text":...}}` for the answer and
 //!     `{"type":"turn.completed","usage":{"input_tokens":..,"output_tokens":..}}`
 //!     for token counts; failures arrive as `{"type":"error"|"turn.failed",..}`;
-//!   * a **ChatGPT account only accepts the server-default model** — passing an
-//!     unsupported `--model` (e.g. `gpt-5-codex`) fails the turn — so we omit
-//!     `--model` unless the caller explicitly picks a non-"default" model.
+//!   * the app-server `model/list` method returns the authenticated account's
+//!     current catalog, including exact ids and the account default.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::Value;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::Command;
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    ChatMessage, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
+    ChatMessage, DiscoveredModel, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 
 /// Well-known absolute install locations for the `codex` binary (a Finder-
@@ -75,6 +76,21 @@ struct RunOutput {
     usage: Option<Usage>,
 }
 
+#[derive(Deserialize)]
+struct CodexModelList {
+    data: Vec<CodexModelEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexModelEntry {
+    id: String,
+    model: String,
+    display_name: String,
+    hidden: bool,
+    is_default: bool,
+}
+
 impl CliCodexProvider {
     pub fn new(cfg: &ProviderConfig) -> Self {
         Self {
@@ -82,12 +98,99 @@ impl CliCodexProvider {
         }
     }
 
-    fn base_command(&self, model: &str, out_file: &Path) -> Command {
+    /// Ask Codex's app-server for the authenticated account's live model
+    /// catalog. This is a metadata-only RPC and does not start an inference turn.
+    pub(crate) async fn discover_models(&self) -> Result<Vec<DiscoveredModel>, String> {
+        let mut cmd = self.command();
+        cmd.arg("app-server")
+            .arg("--stdio")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("failed to launch `{}` app-server: {e}", self.command))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Codex app-server stdin unavailable".to_string())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Codex app-server stdout unavailable".to_string())?;
+        let mut lines = BufReader::new(stdout).lines();
+
+        let exchange = async {
+            write_rpc(
+                &mut stdin,
+                &serde_json::json!({
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"clientInfo": {"name": "alloy", "version": env!("CARGO_PKG_VERSION")}}
+                }),
+            )
+            .await?;
+            ensure_rpc_success(read_rpc_response(&mut lines, 1).await?)?;
+            write_rpc(
+                &mut stdin,
+                &serde_json::json!({"method": "initialized", "params": {}}),
+            )
+            .await?;
+            write_rpc(
+                &mut stdin,
+                &serde_json::json!({
+                    "id": 2,
+                    "method": "config/read",
+                    "params": {"includeLayers": false}
+                }),
+            )
+            .await?;
+            let configured_model =
+                parse_configured_model(&read_rpc_response(&mut lines, 2).await?)?;
+            write_rpc(
+                &mut stdin,
+                &serde_json::json!({
+                    "id": 3,
+                    "method": "model/list",
+                    "params": {"includeHidden": false, "limit": 100}
+                }),
+            )
+            .await?;
+            parse_model_list_response(
+                &read_rpc_response(&mut lines, 3).await?,
+                configured_model.as_deref(),
+            )
+        };
+        let discovered = match tokio::time::timeout(Duration::from_secs(20), exchange).await {
+            Ok(result) => result,
+            Err(_) => Err("Codex `model/list` timed out".to_string()),
+        };
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+        discovered
+    }
+
+    fn command(&self) -> Command {
         let mut cmd = Command::new(&self.command);
+        cmd.current_dir(std::env::temp_dir());
+        let home = std::env::var("HOME").unwrap_or_default();
+        let existing = std::env::var("PATH").unwrap_or_default();
+        cmd.env(
+            "PATH",
+            format!("/opt/homebrew/bin:/usr/local/bin:{home}/.local/bin:{existing}"),
+        );
+        // Force subscription billing: an API key would switch codex to API
+        // billing, so scrub it for discovery as well as inference.
+        cmd.env_remove("OPENAI_API_KEY");
+        cmd
+    }
+
+    fn base_command(&self, model: &str, out_file: &Path) -> Command {
+        let mut cmd = self.command();
         cmd.arg("exec");
-        // A ChatGPT-account codex only accepts the server-default model; passing
-        // a model it doesn't allow fails the turn. So only send `--model` for an
-        // explicit, non-default pick (e.g. an account/plan that supports it).
+        // "default" preserves Codex's account/config-selected model. Exact ids
+        // returned by discovery are passed through with `--model`.
         if !model.is_empty() && model != "default" {
             cmd.arg("--model").arg(model);
         }
@@ -97,16 +200,6 @@ impl CliCodexProvider {
             .arg("--json")
             .arg("--output-last-message")
             .arg(out_file);
-        cmd.current_dir(std::env::temp_dir());
-        let home = std::env::var("HOME").unwrap_or_default();
-        let existing = std::env::var("PATH").unwrap_or_default();
-        cmd.env(
-            "PATH",
-            format!("/opt/homebrew/bin:/usr/local/bin:{home}/.local/bin:{existing}"),
-        );
-        // Force subscription billing: an API key would switch codex to API
-        // billing, so scrub it (mirrors cli_claude scrubbing ANTHROPIC_API_KEY).
-        cmd.env_remove("OPENAI_API_KEY");
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -231,6 +324,96 @@ impl Provider for CliCodexProvider {
     /// definitions, so the tool loop must not attach tools for this provider.
     fn supports_tools(&self, _model: &str) -> bool {
         false
+    }
+}
+
+async fn write_rpc(stdin: &mut tokio::process::ChildStdin, message: &Value) -> Result<(), String> {
+    stdin
+        .write_all(format!("{message}\n").as_bytes())
+        .await
+        .map_err(|e| format!("Codex app-server write failed: {e}"))?;
+    stdin
+        .flush()
+        .await
+        .map_err(|e| format!("Codex app-server write failed: {e}"))
+}
+
+async fn read_rpc_response<R: AsyncBufRead + Unpin>(
+    lines: &mut Lines<R>,
+    id: u64,
+) -> Result<Value, String> {
+    while let Some(line) = lines
+        .next_line()
+        .await
+        .map_err(|e| format!("Codex app-server read failed: {e}"))?
+    {
+        let Ok(message) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if message.get("id").and_then(Value::as_u64) == Some(id) {
+            return Ok(message);
+        }
+    }
+    Err(format!("Codex app-server closed before RPC {id} completed"))
+}
+
+fn ensure_rpc_success(response: Value) -> Result<Value, String> {
+    if let Some(error) = response.get("error") {
+        Err(format!("Codex app-server error: {error}"))
+    } else if response.get("result").is_some() {
+        Ok(response)
+    } else {
+        Err("Codex app-server response had no result".to_string())
+    }
+}
+
+fn parse_configured_model(response: &Value) -> Result<Option<String>, String> {
+    ensure_rpc_success(response.clone())?;
+    Ok(response
+        .pointer("/result/config/model")
+        .and_then(Value::as_str)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string))
+}
+
+fn parse_model_list_response(
+    response: &Value,
+    configured_model: Option<&str>,
+) -> Result<Vec<DiscoveredModel>, String> {
+    ensure_rpc_success(response.clone())?;
+    let list = serde_json::from_value::<CodexModelList>(
+        response
+            .get("result")
+            .cloned()
+            .ok_or_else(|| "Codex `model/list` response had no result".to_string())?,
+    )
+    .map_err(|e| format!("could not parse Codex `model/list` response: {e}"))?;
+    let models = list
+        .data
+        .into_iter()
+        .filter(|entry| !entry.hidden)
+        .map(|entry| {
+            let is_default = configured_model
+                .map(|configured| configured == entry.model)
+                .unwrap_or(entry.is_default);
+            DiscoveredModel {
+                id: if entry.model.is_empty() {
+                    entry.id
+                } else {
+                    entry.model
+                },
+                name: entry.display_name,
+                // The app-server catalog does not currently expose this field.
+                // The active Codex catalog uses a 272k context window.
+                context_window: Some(272_000),
+                is_default,
+            }
+        })
+        .collect::<Vec<_>>();
+    if models.is_empty() {
+        Err("Codex `model/list` returned no selectable models".to_string())
+    } else {
+        Ok(models)
     }
 }
 
@@ -491,6 +674,39 @@ mod tests {
             parse_events(&out).agent_message.as_deref(),
             Some("final answer")
         );
+    }
+
+    #[test]
+    fn parses_visible_app_server_models_and_default() {
+        let response = json!({
+            "id": 2,
+            "result": {"data": [
+                {"id":"gpt-best","model":"gpt-best","displayName":"GPT Best","hidden":false,"isDefault":true},
+                {"id":"hidden","model":"hidden","displayName":"Hidden","hidden":true,"isDefault":false},
+                {"id":"gpt-fast","model":"gpt-fast","displayName":"GPT Fast","hidden":false,"isDefault":false}
+            ], "nextCursor": null}
+        });
+        let models = parse_model_list_response(&response, None).expect("catalog");
+        assert_eq!(
+            models,
+            vec![
+                DiscoveredModel {
+                    id: "gpt-best".into(),
+                    name: "GPT Best".into(),
+                    context_window: Some(272_000),
+                    is_default: true,
+                },
+                DiscoveredModel {
+                    id: "gpt-fast".into(),
+                    name: "GPT Fast".into(),
+                    context_window: Some(272_000),
+                    is_default: false,
+                },
+            ]
+        );
+        let configured = parse_model_list_response(&response, Some("gpt-fast")).expect("catalog");
+        assert!(!configured[0].is_default);
+        assert!(configured[1].is_default);
     }
 
     #[test]

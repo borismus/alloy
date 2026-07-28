@@ -90,8 +90,9 @@ One-off design decisions are recorded in [docs/design-decisions.md](docs/design-
   This is the layer unit tests can't reach: does the app render with data, and
   does the mobile layout hold (e.g. the composer stays two rows). No API keys or
   personal vault needed; the fixture uses a subscription-CLI provider so the
-  model list is curated with no network calls. Each run copies the fixture to a
-  temp dir, so the checked-in fixture is never dirtied.
+  backend falls back to a curated Claude list when the CLI is unavailable in CI.
+  Each run copies the fixture to a temp dir, so the checked-in fixture is never
+  dirtied.
 
 CI (`.github/workflows/ci.yml`) runs typecheck + lint + unit tests and the smoke
 suite on every pull request and push to `main`.

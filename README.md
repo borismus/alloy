@@ -107,9 +107,12 @@ badge and private-directory access; omission is treated as cloud.
 
 ### Claude subscription mode
 
-Pick Claude Opus/Sonnet/Haiku billed against your **Claude Pro/Max subscription**
-rather than per-token API credits. It works by shelling out to the Claude Code
-CLI (there is no subscription-billed HTTP API).
+Pick the models currently advertised by Claude Code, billed against your
+**Claude Pro/Max subscription** rather than per-token API credits. Alloy reads
+the same account- and policy-filtered model catalog as Claude Code's `/model`
+picker through its structured control protocol. This includes resolved model
+names and context variants such as 1M. It works by shelling out to the Claude
+Code CLI (there is no subscription-billed HTTP API).
 
 Enable it by adding a Claude CLI adapter to your vault's `config.yaml`:
 
@@ -144,11 +147,13 @@ providers:
 ```
 
 Requires the [`codex` CLI](https://github.com/openai/codex) installed and logged
-in to your subscription (run `codex login`). The picker shows a single **Codex**
-model that uses whatever your plan serves by default — specific model names like
-`gpt-5-codex` are rejected on ChatGPT accounts. Unlike Claude subscription mode,
-Codex is **text-only** for now — it answers prompts but does not use Alloy's
-built-in tools (web search, vault files, skills). Codex runs its own agent in a
+in to your subscription (run `codex login`). Alloy reads the authenticated Codex
+model catalog, shows each exact model available to the account, and passes that
+selection to `codex exec --model`. A separate **Codex (default: _model_)**
+option shows and keeps Codex's current account/config-selected default. Unlike
+Claude subscription mode, Codex is **text-only** for now — it answers prompts
+but does not use Alloy's built-in tools (web search, vault files, skills). Codex
+runs its own agent in a
 read-only sandbox and sends prompts to OpenAI, so it is treated as cloud (no
 access to private directories).
 

@@ -11,10 +11,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 
-use crate::{AppState, config::{CliAdapter, ProviderKind}};
+use crate::{
+    config::{CliAdapter, ProviderKind},
+    providers::{cli_claude::CliClaudeProvider, cli_codex::CliCodexProvider, DiscoveredModel},
+    AppState,
+};
 
 const CACHE_TTL: Duration = Duration::from_secs(3600);
 
@@ -98,43 +102,54 @@ impl ModelCache {
     }
 }
 
-/// Curated Claude models for a `kind: cli`, `adapter: claude` provider. Uses the CLI's `--model`
-/// aliases (always resolve to the latest snapshot). Pricing is `0.0` because the
-/// calls bill against the user's subscription, not per-token API credits.
-fn claude_cli_models(provider_id: &str) -> Vec<ModelInfo> {
-    // Names drop the "(subscription)" suffix — the picker's "ANT" tag already
-    // conveys the Anthropic-subscription route.
-    [
-        ("opus", "Claude Opus"),
-        ("sonnet", "Claude Sonnet"),
-        ("haiku", "Claude Haiku"),
-    ]
-    .into_iter()
-    .map(|(alias, name)| ModelInfo {
-        key: format!("{}/{}", provider_id, alias),
-        name: name.to_string(),
+fn cli_model_info(provider_id: &str, model: DiscoveredModel) -> ModelInfo {
+    ModelInfo {
+        key: format!("{}/{}", provider_id, model.id),
+        name: model.name,
         provider: Some(provider_id.to_string()),
         local: false,
-        context_window: Some(200_000),
+        context_window: model.context_window,
+        // Subscription calls do not consume per-token API credits.
         input_per_1m: Some(0.0),
         output_per_1m: Some(0.0),
+    }
+}
+
+fn fallback_claude_models(provider_id: &str) -> Vec<ModelInfo> {
+    [
+        ("opus", "Claude Opus (latest)"),
+        ("sonnet", "Claude Sonnet (latest)"),
+        ("haiku", "Claude Haiku (latest)"),
+    ]
+    .into_iter()
+    .map(|(id, name)| {
+        cli_model_info(
+            provider_id,
+            DiscoveredModel {
+                id: id.to_string(),
+                name: name.to_string(),
+                context_window: Some(200_000),
+                is_default: false,
+            },
+        )
     })
     .collect()
 }
 
-fn codex_cli_models(provider_id: &str) -> Vec<ModelInfo> {
-    // A ChatGPT-account codex only accepts the server-default model (specific
-    // names like `gpt-5-codex` are rejected), so we offer a single "default"
-    // entry that maps to `codex exec` with no `--model`. See cli_codex.rs.
-    vec![ModelInfo {
-        key: format!("{}/default", provider_id),
-        name: "Codex".to_string(),
-        provider: Some(provider_id.to_string()),
-        local: false,
-        context_window: Some(272_000),
-        input_per_1m: Some(0.0),
-        output_per_1m: Some(0.0),
-    }]
+fn codex_default_model(provider_id: &str, resolved: Option<&DiscoveredModel>) -> ModelInfo {
+    cli_model_info(
+        provider_id,
+        DiscoveredModel {
+            id: "default".to_string(),
+            name: resolved
+                .map(|model| format!("Codex (default: {})", model.name))
+                .unwrap_or_else(|| "Codex (default)".to_string()),
+            context_window: resolved
+                .and_then(|model| model.context_window)
+                .or(Some(272_000)),
+            is_default: true,
+        },
+    )
 }
 
 async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
@@ -145,12 +160,47 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
     let mut all = Vec::new();
     let mut any_failed = false;
     for cfg in &state.config.providers {
-        // The subscription CLIs have no model-list endpoint, so each adapter
-        // contributes its curated subscription-billed model set.
         if cfg.kind == ProviderKind::Cli {
             match cfg.adapter {
-                Some(CliAdapter::Claude) => all.extend(claude_cli_models(&cfg.id)),
-                Some(CliAdapter::Codex) => all.extend(codex_cli_models(&cfg.id)),
+                Some(CliAdapter::Claude) => {
+                    let provider = CliClaudeProvider::new(cfg);
+                    match provider.discover_models().await {
+                        Ok(models) => all.extend(
+                            models
+                                .into_iter()
+                                .map(|model| cli_model_info(&cfg.id, model)),
+                        ),
+                        Err(error) => {
+                            any_failed = true;
+                            tracing::warn!("{} Claude model discovery failed: {}", cfg.id, error);
+                            all.extend(fallback_claude_models(&cfg.id));
+                        }
+                    }
+                }
+                Some(CliAdapter::Codex) => {
+                    let provider = CliCodexProvider::new(cfg);
+                    match provider.discover_models().await {
+                        Ok(models) => {
+                            // Preserve the rolling account/config-selected route
+                            // in addition to exact models, including old favorites
+                            // that use `<provider>/default`.
+                            all.push(codex_default_model(
+                                &cfg.id,
+                                models.iter().find(|model| model.is_default),
+                            ));
+                            all.extend(
+                                models
+                                    .into_iter()
+                                    .map(|model| cli_model_info(&cfg.id, model)),
+                            );
+                        }
+                        Err(error) => {
+                            any_failed = true;
+                            tracing::warn!("{} Codex model discovery failed: {}", cfg.id, error);
+                            all.push(codex_default_model(&cfg.id, None));
+                        }
+                    }
+                }
                 None => {
                     any_failed = true;
                     tracing::warn!("CLI provider '{}' has no adapter", cfg.id);
@@ -308,21 +358,29 @@ mod tests {
 
     #[test]
     fn cli_adapter_models_keep_configured_provider_ids() {
-        let claude = claude_cli_models("work-claude");
-        assert_eq!(
-            claude.iter().map(|m| m.key.as_str()).collect::<Vec<_>>(),
-            vec![
-                "work-claude/opus",
-                "work-claude/sonnet",
-                "work-claude/haiku",
-            ]
+        let claude = cli_model_info(
+            "work-claude",
+            DiscoveredModel {
+                id: "sonnet".into(),
+                name: "Claude Sonnet 5".into(),
+                context_window: Some(200_000),
+                is_default: false,
+            },
         );
-        assert!(claude.iter().all(|m| !m.local));
+        assert_eq!(claude.key, "work-claude/sonnet");
+        assert_eq!(claude.name, "Claude Sonnet 5");
+        assert!(!claude.local);
 
-        let codex = codex_cli_models("codex-cli");
-        assert_eq!(codex.len(), 1);
-        assert_eq!(codex[0].key, "codex-cli/default");
-        assert!(!codex[0].local);
+        let default = DiscoveredModel {
+            id: "gpt-best".into(),
+            name: "GPT Best".into(),
+            context_window: Some(272_000),
+            is_default: true,
+        };
+        let codex = codex_default_model("codex-cli", Some(&default));
+        assert_eq!(codex.key, "codex-cli/default");
+        assert_eq!(codex.name, "Codex (default: GPT Best)");
+        assert!(!codex.local);
     }
 
     #[test]

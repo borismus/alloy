@@ -1,9 +1,8 @@
 version: 2
 defaultModel: claude-cli/sonnet
 
-# A subscription-CLI provider gives the model picker a curated, no-network model
-# list (Opus / Sonnet / Haiku), so smoke tests never make an API call or invoke
-# the `claude` binary — they only exercise the UI.
+# CI has no Claude CLI, so model discovery falls back to the built-in aliases.
+# This keeps smoke tests credential-free while exercising the same API/UI path.
 providers:
   - id: claude-cli
     kind: cli

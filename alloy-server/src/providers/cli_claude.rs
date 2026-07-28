@@ -20,15 +20,18 @@
 //! `CLAUDE_CODE_OAUTH_TOKEN`; otherwise we rely on the host's `claude` login.
 
 use std::process::Stdio;
+use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    ChatMessage, ImageData, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
+    ChatMessage, DiscoveredModel, ImageData, Provider, ProviderStreamEvent, StreamRequest,
+    StreamResult, Usage,
 };
 use crate::types::{ToolCall, ToolResult};
 
@@ -120,6 +123,17 @@ pub struct CliClaudeProvider {
     oauth_token: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeModelOption {
+    value: String,
+    #[serde(default)]
+    resolved_model: Option<String>,
+    display_name: String,
+    #[serde(default)]
+    disabled: bool,
+}
+
 impl CliClaudeProvider {
     pub fn new(cfg: &ProviderConfig) -> Self {
         Self {
@@ -128,22 +142,89 @@ impl CliClaudeProvider {
         }
     }
 
-    /// Base command shared by streaming and one-shot calls: print mode, no MCP,
-    /// neutral settings, subscription auth. The caller adds tool flags (an empty
-    /// set for one-shot completions, the allow-list for streaming chat).
-    fn base_command(&self, model: &str) -> Command {
-        let mut cmd = Command::new(&self.command);
+    /// Ask Claude Code for the same account- and policy-filtered catalog used by
+    /// its interactive `/model` picker. `list_models` is a metadata-only control
+    /// request in the stream/SDK protocol; it does not start an inference turn.
+    pub(crate) async fn discover_models(&self) -> Result<Vec<DiscoveredModel>, String> {
+        const REQUEST_ID: &str = "alloy-list-models";
+        let mut cmd = self.command();
         cmd.arg("-p")
-            .arg("--model")
-            .arg(model)
-            .arg("--permission-mode")
-            .arg("default")
-            // Ignore the user's own MCP servers; each caller supplies its own
-            // `--mcp-config` (none for one-shots, Alloy's bridge for streaming).
+            .arg("--safe-mode")
+            .arg("--input-format")
+            .arg("stream-json")
+            .arg("--output-format")
+            .arg("stream-json")
+            .arg("--verbose")
+            .arg("--tools")
+            .arg("")
+            .arg("--mcp-config")
+            .arg(r#"{"mcpServers":{}}"#)
             .arg("--strict-mcp-config")
-            // Only load ~/.claude settings, not project/local ones.
-            .arg("--setting-sources")
-            .arg("user");
+            .arg("--no-session-persistence")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("failed to launch `{}`: {e}", self.command))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "Claude CLI discovery stdin unavailable".to_string())?;
+        stdin
+            .write_all(
+                format!(
+                    "{}\n",
+                    json!({
+                        "type": "control_request",
+                        "request_id": REQUEST_ID,
+                        "request": {"subtype": "list_models"}
+                    })
+                )
+                .as_bytes(),
+            )
+            .await
+            .map_err(|e| format!("Claude CLI discovery input failed: {e}"))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|e| format!("Claude CLI discovery input failed: {e}"))?;
+
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Claude CLI discovery stdout unavailable".to_string())?;
+        let mut lines = BufReader::new(stdout).lines();
+        let response = tokio::time::timeout(Duration::from_secs(8), async {
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Ok(event) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
+                if event.get("type").and_then(Value::as_str) == Some("control_response")
+                    && event
+                        .pointer("/response/request_id")
+                        .and_then(Value::as_str)
+                        == Some(REQUEST_ID)
+                {
+                    return Some(event);
+                }
+            }
+            None
+        })
+        .await;
+
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+        match response {
+            Ok(Some(event)) => parse_model_control_response(&event),
+            Ok(None) => Err("Claude CLI closed before model discovery completed".to_string()),
+            Err(_) => Err("Claude CLI model discovery timed out".to_string()),
+        }
+    }
+
+    fn command(&self) -> Command {
+        let mut cmd = Command::new(&self.command);
         // Run from a neutral dir so the child can't pick up a project CLAUDE.md
         // / .claude (e.g. Alloy's own repo) as implicit context. Streaming
         // overrides this to the vault so read tools resolve there.
@@ -164,7 +245,26 @@ impl CliClaudeProvider {
         if let Some(token) = &self.oauth_token {
             cmd.env("CLAUDE_CODE_OAUTH_TOKEN", token);
         }
-        cmd.stdin(Stdio::piped())
+        cmd
+    }
+
+    /// Base command shared by streaming and one-shot calls: print mode, no MCP,
+    /// neutral settings, subscription auth. The caller adds tool flags (an empty
+    /// set for one-shot completions, the allow-list for streaming chat).
+    fn base_command(&self, model: &str) -> Command {
+        let mut cmd = self.command();
+        cmd.arg("-p")
+            .arg("--model")
+            .arg(model)
+            .arg("--permission-mode")
+            .arg("default")
+            // Ignore the user's own MCP servers; each caller supplies its own
+            // `--mcp-config` (none for one-shots, Alloy's bridge for streaming).
+            .arg("--strict-mcp-config")
+            // Only load ~/.claude settings, not project/local ones.
+            .arg("--setting-sources")
+            .arg("user")
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         cmd
@@ -217,6 +317,133 @@ impl CliClaudeProvider {
             .trim();
         (!text.is_empty()).then(|| text.to_string())
     }
+}
+
+fn parse_model_control_response(event: &Value) -> Result<Vec<DiscoveredModel>, String> {
+    if event.pointer("/response/subtype").and_then(Value::as_str) != Some("success") {
+        let error = event
+            .pointer("/response/error")
+            .and_then(Value::as_str)
+            .unwrap_or("Claude CLI model discovery failed");
+        return Err(error.to_string());
+    }
+    let raw_models = event
+        .pointer("/response/response/models")
+        .cloned()
+        .ok_or_else(|| "Claude CLI model response had no catalog".to_string())?;
+    let options = serde_json::from_value::<Vec<ClaudeModelOption>>(raw_models)
+        .map_err(|e| format!("could not parse Claude CLI model catalog: {e}"))?;
+    let mut models = options
+        .into_iter()
+        .filter(|option| !option.disabled && !option.value.is_empty())
+        .map(|option| {
+            let resolved = option.resolved_model.as_deref().unwrap_or(&option.value);
+            let context_millions = if option.value.contains("[2m]") || resolved.contains("[2m]") {
+                Some(2_u64)
+            } else if option.value.contains("[1m]") || resolved.contains("[1m]") {
+                Some(1_u64)
+            } else {
+                None
+            };
+            let is_default = option.value == "default";
+            let canonical = resolved
+                .strip_suffix("[1m]")
+                .or_else(|| resolved.strip_suffix("[2m]"))
+                .unwrap_or(resolved);
+            let mut name = if canonical.starts_with("claude-") {
+                claude_model_display_name(canonical)
+            } else {
+                option.display_name
+            };
+            if is_default {
+                name.push_str(" · default");
+            }
+            if let Some(millions) = context_millions {
+                name.push_str(&format!(" · {millions}M"));
+            }
+            DiscoveredModel {
+                id: option.value,
+                name,
+                context_window: Some(context_millions.map(|m| m * 1_000_000).unwrap_or(200_000)),
+                is_default,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Configs created before live discovery used these rolling aliases. Keep an
+    // alias when the catalog still offers that family only as a context variant
+    // (for example `opus[1m]`), so existing defaults/favorites remain valid.
+    for alias in ["opus", "sonnet", "haiku"] {
+        if models.iter().any(|model| model.id == alias) {
+            continue;
+        }
+        let variant_prefix = format!("{alias}[");
+        if let Some(source) = models
+            .iter()
+            .find(|model| model.id.starts_with(&variant_prefix))
+            .cloned()
+        {
+            models.push(DiscoveredModel {
+                id: alias.to_string(),
+                name: format!(
+                    "{} · latest",
+                    source.name.replace(" · default", "").replace(" · 1M", "")
+                ),
+                context_window: Some(200_000),
+                is_default: false,
+            });
+        }
+    }
+
+    if models.is_empty() {
+        Err("Claude CLI returned no selectable models".to_string())
+    } else {
+        Ok(models)
+    }
+}
+
+fn claude_model_display_name(model: &str) -> String {
+    let Some(rest) = model.strip_prefix("claude-") else {
+        return model.to_string();
+    };
+    let parts = rest.split('-').collect::<Vec<_>>();
+    let Some(family) = parts.first() else {
+        return model.to_string();
+    };
+    let mut name = format!(
+        "Claude {}",
+        family
+            .chars()
+            .next()
+            .map(|first| first.to_uppercase().collect::<String>() + &family[1..])
+            .unwrap_or_default()
+    );
+    if let Some(major) = parts
+        .get(1)
+        .filter(|part| part.chars().all(|c| c.is_ascii_digit()))
+    {
+        name.push(' ');
+        name.push_str(major);
+        if let Some(minor) = parts
+            .get(2)
+            .filter(|part| part.len() <= 2 && part.chars().all(|c| c.is_ascii_digit()))
+        {
+            name.push('.');
+            name.push_str(minor);
+        }
+    }
+    if let Some(date) = parts
+        .iter()
+        .find(|part| part.len() == 8 && part.chars().all(|c| c.is_ascii_digit()))
+    {
+        name.push_str(&format!(
+            " ({}-{}-{})",
+            &date[0..4],
+            &date[4..6],
+            &date[6..8]
+        ));
+    }
+    name
 }
 
 #[async_trait]
@@ -734,6 +961,68 @@ mod tests {
                 "{t} must be in the native-tool denylist"
             );
         }
+    }
+
+    #[test]
+    fn parses_selectable_models_from_control_response() {
+        let event = json!({
+            "type": "control_response",
+            "response": {
+                "subtype": "success",
+                "request_id": "alloy-list-models",
+                "response": {"models": [
+                    {"value":"default","resolvedModel":"claude-opus-4-8[1m]","displayName":"Default (recommended)","description":"Opus 4.8 with 1M context"},
+                    {"value":"opus[1m]","resolvedModel":"claude-opus-4-8[1m]","displayName":"Opus","description":"Opus 4.8 with 1M context"},
+                    {"value":"sonnet","resolvedModel":"claude-sonnet-5","displayName":"Sonnet","description":"Sonnet 5"},
+                    {"value":"blocked","resolvedModel":"claude-blocked-1","displayName":"Blocked","description":"Unavailable","disabled":true}
+                ]}
+            }
+        });
+        assert_eq!(
+            parse_model_control_response(&event).expect("catalog"),
+            vec![
+                DiscoveredModel {
+                    id: "default".into(),
+                    name: "Claude Opus 4.8 · default · 1M".into(),
+                    context_window: Some(1_000_000),
+                    is_default: true,
+                },
+                DiscoveredModel {
+                    id: "opus[1m]".into(),
+                    name: "Claude Opus 4.8 · 1M".into(),
+                    context_window: Some(1_000_000),
+                    is_default: false,
+                },
+                DiscoveredModel {
+                    id: "sonnet".into(),
+                    name: "Claude Sonnet 5".into(),
+                    context_window: Some(200_000),
+                    is_default: false,
+                },
+                DiscoveredModel {
+                    id: "opus".into(),
+                    name: "Claude Opus 4.8 · latest".into(),
+                    context_window: Some(200_000),
+                    is_default: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn formats_resolved_claude_model_names() {
+        assert_eq!(
+            claude_model_display_name("claude-opus-4-8"),
+            "Claude Opus 4.8"
+        );
+        assert_eq!(
+            claude_model_display_name("claude-sonnet-5"),
+            "Claude Sonnet 5"
+        );
+        assert_eq!(
+            claude_model_display_name("claude-haiku-4-5-20251001"),
+            "Claude Haiku 4.5 (2025-10-01)"
+        );
     }
 
     #[test]
