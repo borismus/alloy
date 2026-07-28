@@ -56,10 +56,10 @@ the full app from `http://<your-host>:<sharePort>/`.
 ## Configuration
 
 `config.yaml` lives at the vault root. All models are configured under a single
-`providers:` list (camelCase v1 schema):
+`providers:` list (camelCase v2 schema):
 
 ```yaml
-version: 1
+version: 2
 defaultModel: openrouter/anthropic/claude-sonnet-4.6
 
 providers:
@@ -67,10 +67,16 @@ providers:
     kind: openai_compatible
     baseUrl: https://openrouter.ai/api/v1
     apiKey: sk-or-v1-...
-  - id: mlx                       # local, on-device (prompts stay on your machine/LAN)
+  - id: mlx                       # explicitly trusted local endpoint
     kind: openai_compatible
     baseUrl: http://localhost:8000/v1
     local: true
+  - id: claude-cli
+    kind: cli
+    adapter: claude
+  - id: codex-cli
+    kind: cli
+    adapter: codex
 
 # For tools
 serperApiKey: ...       # web_search
@@ -81,12 +87,13 @@ sharePort: 3001         # only used when shareOnNetwork is true
 ```
 
 There is no legacy flat-key format: 0.4 dropped the pre-0.4 schema (per-vendor
-`*_API_KEY` keys, snake_case). A config still using the old shape is rejected at
-startup with a message pointing at this format. All cloud models are reached via
-OpenRouter (or any configured OpenAI-compatible provider); on-device models via
-a `local: true` OpenAI-compatible endpoint; Claude subscription via a
-`cli_claude` provider; ChatGPT/Codex subscription via a `cli_codex` provider
-(text-only, read-only sandbox, always cloud).
+`*_API_KEY` keys, snake_case), and config v2 replaces the old `cli_claude` /
+`cli_codex` kinds with `kind: cli` plus `adapter: claude | codex`. Obsolete
+configs are rejected at startup with migration guidance. All cloud models are
+reached via OpenRouter (or any configured OpenAI-compatible provider); on-device
+models only via an explicitly trusted `local: true` OpenAI-compatible endpoint
+(omission is cloud); subscription access via
+CLI adapters (always cloud; Codex is text-only and uses a read-only sandbox).
 
 ## Layout
 

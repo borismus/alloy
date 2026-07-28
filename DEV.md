@@ -128,9 +128,9 @@ messages:
     content: Hi there!
 ```
 
-### Config (YAML, v1)
+### Config (YAML, v2)
 ```yaml
-version: 1
+version: 2
 defaultModel: openrouter/anthropic/claude-sonnet-4-6
 
 providers:
@@ -142,6 +142,12 @@ providers:
     kind: openai_compatible
     baseUrl: http://localhost:8000/v1
     local: true
+  - id: claude-cli                # Claude subscription
+    kind: cli
+    adapter: claude
+  - id: codex-cli                 # ChatGPT/Codex subscription
+    kind: cli
+    adapter: codex
 
 # Optional
 serperApiKey: ...

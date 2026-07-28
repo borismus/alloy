@@ -1,14 +1,13 @@
 //! Local-vs-cloud model classification.
 //!
-//! "Local" means the model runs on the user's own or otherwise trusted
-//! hardware and its prompts never leave the user's network — a loopback
-//! endpoint, a `*.local` LAN box, or any endpoint explicitly marked
-//! `local: true` in config.yaml. This powers the model picker's "Local" privacy
-//! badge (`GET /api/models`) and gates read access to the private note
-//! directories (see `tools::private`).
+//! "Local" means the user explicitly trusts that the model runs on their own
+//! hardware and prompts never leave their network. Config v2 requires
+//! `local: true`; URL shape alone never grants trust. The endpoint must also be
+//! loopback/private-LAN so a mistaken flag cannot expose private notes to a
+//! public service. This powers the model picker badge and private-dir access.
 //!
-//! CLI providers (`cli_claude`, and later `cli_codex`) run a local *process* but
-//! send prompts to the *cloud* (Anthropic / OpenAI), so they are never local.
+//! CLI providers (`kind: cli`, adapter `claude` or `codex`) run a local process
+//! but send prompts to the cloud, so they are never local.
 
 use crate::config::{Config, ProviderConfig, ProviderKind};
 
@@ -62,30 +61,33 @@ fn is_private_network_url(base_url: &str) -> bool {
             .is_some_and(|n| (16..=31).contains(&n))
 }
 
-/// Whether a single provider is local (on-device / on the user's network).
+/// Whether a single provider is explicitly trusted as local.
 ///
-/// - CLI kinds are never local (local process, cloud data).
-/// - `local: true` is honored, except on a clearly public URL (warns, treats as cloud).
-/// - `local: false` is cloud.
-/// - Omitted: the endpoint decides (loopback / `*.local`).
+/// - CLI adapters are never local (local process, cloud data).
+/// - Only `local: true` can grant trust; false or omitted is cloud.
+/// - The explicit flag is still refused without a private-network `baseUrl`, so
+///   a typo cannot mark the default public OpenRouter endpoint as local.
 pub fn provider_is_local(p: &ProviderConfig) -> bool {
-    if p.kind != ProviderKind::OpenaiCompatible {
+    if p.kind != ProviderKind::OpenaiCompatible || p.local != Some(true) {
         return false;
     }
-    match p.local {
-        Some(true) => match p.base_url.as_deref() {
-            Some(url) if !is_private_network_url(url) => {
-                tracing::warn!(
-                    "provider '{}' is marked local: true but has a public baseUrl ({}) — treating as cloud",
-                    p.id,
-                    url
-                );
-                false
-            }
-            _ => true,
-        },
-        Some(false) => false,
-        None => p.base_url.as_deref().map(is_local_url).unwrap_or(false),
+    match p.base_url.as_deref() {
+        Some(url) if is_private_network_url(url) => true,
+        Some(url) => {
+            tracing::warn!(
+                "provider '{}' is marked local: true but has a public baseUrl ({}) — treating as cloud",
+                p.id,
+                url
+            );
+            false
+        }
+        None => {
+            tracing::warn!(
+                "provider '{}' is marked local: true but has no baseUrl — treating as cloud",
+                p.id
+            );
+            false
+        }
     }
 }
 
@@ -109,7 +111,7 @@ pub fn model_is_local(config: &Config, model_id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ProviderConfig, ProviderKind};
+    use crate::config::{CliAdapter, ProviderConfig, ProviderKind};
 
     #[test]
     fn local_url_detects_loopback_and_dot_local_only() {
@@ -143,6 +145,7 @@ mod tests {
         ProviderConfig {
             id: id.into(),
             kind,
+            adapter: (kind == ProviderKind::Cli).then_some(CliAdapter::Claude),
             base_url: base_url.map(str::to_string),
             api_key: String::new(),
             command: None,
@@ -159,19 +162,21 @@ mod tests {
     }
 
     #[test]
-    fn model_is_local_classifies_by_provider_base_url() {
+    fn model_is_local_requires_explicit_trust() {
         let cfg = config_with(vec![
-            provider("mlx", Some("http://smus-m4.local:8000/v1"), ProviderKind::OpenaiCompatible, None),
+            provider("mlx", Some("http://smus-m4.local:8000/v1"), ProviderKind::OpenaiCompatible, Some(true)),
+            provider("untrusted-localhost", Some("http://localhost:8000/v1"), ProviderKind::OpenaiCompatible, None),
             provider("openrouter", Some("https://openrouter.ai/api/v1"), ProviderKind::OpenaiCompatible, None),
-            provider("claude-cli", None, ProviderKind::CliClaude, None),
+            provider("claude-cli", None, ProviderKind::Cli, None),
         ]);
         assert!(model_is_local(&cfg, "mlx/gemma4"));
+        assert!(!model_is_local(&cfg, "untrusted-localhost/model"));
         assert!(!model_is_local(&cfg, "openrouter/anthropic/claude-sonnet-5"));
         assert!(!model_is_local(&cfg, "claude-cli/opus"));
     }
 
     #[test]
-    fn explicit_local_flag_trusts_lan_ip() {
+    fn explicit_local_flag_trusts_private_network_endpoint() {
         // A LAN IP is cloud by URL heuristic, but an explicit local: true is honored.
         let cfg = config_with(vec![provider(
             "mlx",
@@ -195,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_local_false_forces_cloud() {
+    fn omitted_or_explicit_false_is_cloud() {
         let cfg = config_with(vec![provider(
             "mlx",
             Some("http://localhost:8000/v1"),
@@ -203,14 +208,33 @@ mod tests {
             Some(false),
         )]);
         assert!(!model_is_local(&cfg, "mlx/x"));
+
+        let omitted = config_with(vec![provider(
+            "mlx",
+            Some("http://localhost:8000/v1"),
+            ProviderKind::OpenaiCompatible,
+            None,
+        )]);
+        assert!(!model_is_local(&omitted, "mlx/x"));
     }
 
     #[test]
-    fn cli_kinds_are_never_local_even_if_flagged() {
+    fn explicit_local_true_without_endpoint_is_refused() {
+        let cfg = config_with(vec![provider(
+            "openrouter",
+            None,
+            ProviderKind::OpenaiCompatible,
+            Some(true),
+        )]);
+        assert!(!model_is_local(&cfg, "openrouter/x"));
+    }
+
+    #[test]
+    fn cli_adapters_are_never_local_even_if_flagged() {
         let cfg = config_with(vec![provider(
             "claude",
             None,
-            ProviderKind::CliClaude,
+            ProviderKind::Cli,
             Some(true),
         )]);
         assert!(!model_is_local(&cfg, "claude/opus"));
@@ -222,7 +246,7 @@ mod tests {
             "mlx",
             Some("http://localhost:8000/v1"),
             ProviderKind::OpenaiCompatible,
-            None,
+            Some(true),
         )]);
         assert!(model_is_local(&local_default, "some-bare-model"));
 

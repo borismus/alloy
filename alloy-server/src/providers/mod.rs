@@ -1,7 +1,8 @@
 //! Provider abstraction.
 //!
 //! HTTP providers use the `openai_compatible` kind (OpenRouter, oMLX, and
-//! other compatible upstreams). Claude subscription access uses `cli_claude`.
+//! other compatible upstreams). Subscription CLIs use `kind: cli` with a
+//! Claude or Codex adapter.
 
 pub mod cli_claude;
 pub mod cli_codex;
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
-use crate::config::{ProviderConfig, ProviderKind};
+use crate::config::{CliAdapter, ProviderConfig, ProviderKind};
 use crate::types::{ToolCall, ToolDefinition, ToolEventSink};
 use crate::vault::Vault;
 
@@ -292,6 +293,7 @@ const KNOWN_PROVIDER_IDS: &[&str] = &[
     "grok",
     "openrouter",
     "claude-cli",
+    "codex-cli",
     "mlx",
 ];
 
@@ -319,8 +321,16 @@ impl ProviderRegistry {
                 ProviderKind::OpenaiCompatible => {
                     Arc::new(openai_compatible::OpenAICompatibleProvider::new(cfg))
                 }
-                ProviderKind::CliClaude => Arc::new(cli_claude::CliClaudeProvider::new(cfg)),
-                ProviderKind::CliCodex => Arc::new(cli_codex::CliCodexProvider::new(cfg)),
+                ProviderKind::Cli => match cfg.adapter {
+                    Some(CliAdapter::Claude) => Arc::new(cli_claude::CliClaudeProvider::new(cfg)),
+                    Some(CliAdapter::Codex) => Arc::new(cli_codex::CliCodexProvider::new(cfg)),
+                    None => {
+                        // Config::load rejects this; keep programmatic/test-built
+                        // registries defensive rather than panicking.
+                        tracing::error!("CLI provider '{}' has no adapter; skipping", cfg.id);
+                        continue;
+                    }
+                },
             };
             if default_id.is_none() {
                 default_id = Some(cfg.id.clone());
@@ -465,6 +475,7 @@ mod tests {
         ProviderRegistry::from_configs(&[ProviderConfig {
             id: "openrouter".into(),
             kind: ProviderKind::OpenaiCompatible,
+            adapter: None,
             base_url: Some("https://openrouter.ai/api/v1".into()),
             api_key: "test".into(),
             command: None,

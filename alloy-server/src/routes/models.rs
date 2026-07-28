@@ -14,7 +14,7 @@ use std::{
 use axum::{Json, Router, extract::State, routing::get};
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
+use crate::{AppState, config::{CliAdapter, ProviderKind}};
 
 const CACHE_TTL: Duration = Duration::from_secs(3600);
 
@@ -27,8 +27,8 @@ pub struct ModelInfo {
     /// a model with the same display name (e.g. "gemma4").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
-    /// True when the provider endpoint is loopback (127.0.0.1/localhost), i.e.
-    /// the model runs on this machine and prompts never leave the device.
+    /// True only when the provider is explicitly `local: true` and its endpoint
+    /// is private-network, meaning the user trusts prompts to stay on-device/LAN.
     /// Drives the "Local" privacy badge in the picker.
     #[serde(default, skip_serializing_if = "is_false")]
     pub local: bool,
@@ -98,7 +98,7 @@ impl ModelCache {
     }
 }
 
-/// Curated Claude models for a `cli_claude` provider. Uses the CLI's `--model`
+/// Curated Claude models for a `kind: cli`, `adapter: claude` provider. Uses the CLI's `--model`
 /// aliases (always resolve to the latest snapshot). Pricing is `0.0` because the
 /// calls bill against the user's subscription, not per-token API credits.
 fn claude_cli_models(provider_id: &str) -> Vec<ModelInfo> {
@@ -145,14 +145,17 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
     let mut all = Vec::new();
     let mut any_failed = false;
     for cfg in &state.config.providers {
-        // The subscription CLIs have no model-list endpoint, so we contribute a
-        // curated set tied to subscription billing.
-        if cfg.kind == crate::config::ProviderKind::CliClaude {
-            all.extend(claude_cli_models(&cfg.id));
-            continue;
-        }
-        if cfg.kind == crate::config::ProviderKind::CliCodex {
-            all.extend(codex_cli_models(&cfg.id));
+        // The subscription CLIs have no model-list endpoint, so each adapter
+        // contributes its curated subscription-billed model set.
+        if cfg.kind == ProviderKind::Cli {
+            match cfg.adapter {
+                Some(CliAdapter::Claude) => all.extend(claude_cli_models(&cfg.id)),
+                Some(CliAdapter::Codex) => all.extend(codex_cli_models(&cfg.id)),
+                None => {
+                    any_failed = true;
+                    tracing::warn!("CLI provider '{}' has no adapter", cfg.id);
+                }
+            }
             continue;
         }
         // Whether this provider's models are local (on-device, privacy-
@@ -302,6 +305,25 @@ fn short_id(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_adapter_models_keep_configured_provider_ids() {
+        let claude = claude_cli_models("work-claude");
+        assert_eq!(
+            claude.iter().map(|m| m.key.as_str()).collect::<Vec<_>>(),
+            vec![
+                "work-claude/opus",
+                "work-claude/sonnet",
+                "work-claude/haiku",
+            ]
+        );
+        assert!(claude.iter().all(|m| !m.local));
+
+        let codex = codex_cli_models("codex-cli");
+        assert_eq!(codex.len(), 1);
+        assert_eq!(codex[0].key, "codex-cli/default");
+        assert!(!codex[0].local);
+    }
 
     #[test]
     fn strips_vendor_prefix() {

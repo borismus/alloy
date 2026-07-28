@@ -1,9 +1,9 @@
-//! Load and interpret `config.yaml` (the v1 schema) from the vault.
+//! Load and interpret `config.yaml` (the v2 schema) from the vault.
 //!
-//! v1 is the single canonical format: camelCase keys, all model providers under
-//! a `providers:` list, no legacy flat keys. There is intentionally no migration
-//! from the pre-0.4 format — [`detect_legacy_format`] fails loudly so an old
-//! config is never silently misread as "no providers".
+//! v2 keeps the v1 camelCase, providers-only shape but unifies subscription CLI
+//! providers as `kind: cli` plus `adapter: claude | codex`. There is intentionally
+//! no automatic migration: old flat-key configs, v1 configs, and old CLI kinds
+//! fail loudly with actionable guidance.
 
 use std::path::Path;
 
@@ -12,8 +12,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RawConfig {
-    /// Schema version. v1 configs may set `version: 1`; it's optional but
-    /// VaultSetup writes it.
+    /// Schema version. v2 requires `version: 2`.
     #[serde(default)]
     pub version: Option<u32>,
 
@@ -131,28 +130,28 @@ pub struct RawCompaction {
 pub struct ProviderConfig {
     pub id: String,
     pub kind: ProviderKind,
+    /// Required for `kind: cli`; forbidden for `openai_compatible`.
+    #[serde(default)]
+    pub adapter: Option<CliAdapter>,
     #[serde(default)]
     pub base_url: Option<String>,
-    /// API key for HTTP providers. Not needed for the `cli_claude` kind (it
-    /// authenticates via the host's Claude Code login), so it defaults to empty.
+    /// API key for HTTP providers. CLI adapters authenticate through their host
+    /// CLI login, so this defaults to empty.
     #[serde(default)]
     pub api_key: String,
-    /// Path to the `claude` binary for the `cli_claude` kind. Defaults to
-    /// `claude` on PATH; override when the alloy-server process doesn't inherit
-    /// the user's interactive shell PATH (e.g. the Tauri-embedded server).
+    /// Optional executable override for a CLI adapter. Each adapter otherwise
+    /// resolves its conventional binary (`claude` or `codex`) from known install
+    /// locations and PATH.
     #[serde(default)]
     pub command: Option<String>,
-    /// Optional `claude setup-token` value for the `cli_claude` kind. When set,
-    /// it's injected as `CLAUDE_CODE_OAUTH_TOKEN` so the server bills the Claude
-    /// subscription without an interactive login session.
+    /// Optional `claude setup-token` value. Valid only with `adapter: claude`;
+    /// injected as `CLAUDE_CODE_OAUTH_TOKEN` for subscription billing.
     #[serde(default)]
     pub oauth_token: Option<String>,
-    /// Explicit privacy/offline classification. `Some(true)` marks an on-device
-    /// / LAN endpoint whose prompts never leave the user's network (padlock
-    /// badge, private-dir read access, offline tolerance). When omitted, the
-    /// endpoint URL decides (loopback / `*.local` → local). Only meaningful for
-    /// the `openai_compatible` kind — CLI kinds always send prompts to the
-    /// cloud, so they are never treated as local (see `local::provider_is_local`).
+    /// Explicit privacy/offline trust boundary. Only `local: true` marks an
+    /// on-device / private-LAN endpoint as local (padlock badge, private-dir
+    /// access, offline tolerance); false or omitted is cloud. Valid only for
+    /// `openai_compatible`; CLI adapters always send prompts to the cloud.
     #[serde(default)]
     pub local: Option<bool>,
 }
@@ -161,12 +160,14 @@ pub struct ProviderConfig {
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     OpenaiCompatible,
-    /// Shells out to the Claude Code CLI (`claude -p`) to use a Claude Pro/Max
-    /// subscription instead of API-key billing. Text-only (no tool calling).
-    CliClaude,
-    /// Shells out to the OpenAI Codex CLI (`codex exec`) to use a ChatGPT/Codex
-    /// subscription. Text-only. Prompts go to OpenAI — always cloud, never local.
-    CliCodex,
+    Cli,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CliAdapter {
+    Claude,
+    Codex,
 }
 
 /// Resolved email-notification settings. `Some` only when `services.email` is
@@ -230,9 +231,8 @@ const LEGACY_KEYS: &[&str] = &[
     "default_model",
 ];
 
-/// Fail loudly if `text` is a pre-0.4 config. There is no automatic migration
-/// (0.3 → 0.4 is a deliberate breaking change); the message points at the v1
-/// shape so the user can update by hand.
+/// Fail loudly if `text` is a pre-0.4 config. There is no automatic migration;
+/// the message points at the current v2 shape so the user can update by hand.
 fn detect_legacy_format(text: &str) -> anyhow::Result<()> {
     let value: serde_yaml::Value = match serde_yaml::from_str(text) {
         Ok(v) => v,
@@ -246,10 +246,10 @@ fn detect_legacy_format(text: &str) -> anyhow::Result<()> {
             .collect();
         if !found.is_empty() {
             anyhow::bail!(
-                "config.yaml uses the old pre-0.4 format (found: {}). Alloy 0.4 uses a \
+                "config.yaml uses the old pre-0.4 format (found: {}). Current Alloy uses a \
                  single camelCase schema with all models under a `providers:` list, e.g.:\n\
                  \n\
-                 version: 1\n\
+                 version: 2\n\
                  defaultModel: openrouter/anthropic/claude-opus-4-6\n\
                  providers:\n\
                  \x20\x20- id: openrouter\n\
@@ -269,13 +269,97 @@ fn detect_legacy_format(text: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Parse and validate the single canonical config schema. Shared by startup and
+/// `/api/config` so the backend never has two definitions of a valid config.
+pub(crate) fn parse_raw_config(text: &str) -> anyhow::Result<RawConfig> {
+    detect_legacy_format(text)?;
+
+    // Inspect the untyped YAML first so removed v1 CLI kinds get a useful error
+    // instead of Serde's generic "unknown variant" diagnostic.
+    let value: serde_yaml::Value = serde_yaml::from_str(text)?;
+    let map = value
+        .as_mapping()
+        .ok_or_else(|| anyhow::anyhow!("config.yaml must be a YAML mapping"))?;
+    if let Some(providers) = map
+        .get(serde_yaml::Value::String("providers".into()))
+        .and_then(serde_yaml::Value::as_sequence)
+    {
+        for provider in providers {
+            let Some(provider) = provider.as_mapping() else { continue };
+            let kind = provider
+                .get(serde_yaml::Value::String("kind".into()))
+                .and_then(serde_yaml::Value::as_str);
+            let replacement = match kind {
+                Some("cli_claude") => Some("claude"),
+                Some("cli_codex") => Some("codex"),
+                _ => None,
+            };
+            if let Some(adapter) = replacement {
+                anyhow::bail!(
+                    "config.yaml uses removed config v1 provider kind '{}'. Alloy config v2 uses:\n\
+                     version: 2\n\
+                     providers:\n\
+                     \x20\x20- id: {}-cli\n\
+                     \x20\x20\x20\x20kind: cli\n\
+                     \x20\x20\x20\x20adapter: {}\n\
+                     Update config.yaml and restart.",
+                    kind.unwrap(),
+                    adapter,
+                    adapter,
+                );
+            }
+        }
+    }
+
+    let version = map
+        .get(serde_yaml::Value::String("version".into()))
+        .and_then(serde_yaml::Value::as_u64);
+    if version != Some(2) {
+        match version {
+            Some(v) => anyhow::bail!(
+                "config.yaml has version: {v}; Alloy requires config version: 2. Update the version and replace CLI provider kinds with `kind: cli` plus `adapter: claude | codex`, then restart."
+            ),
+            None => anyhow::bail!(
+                "config.yaml is missing `version: 2`. Add it at the top and use `kind: cli` plus `adapter: claude | codex` for subscription CLI providers, then restart."
+            ),
+        }
+    }
+
+    let raw: RawConfig = serde_yaml::from_value(value)?;
+    for provider in raw.providers.as_deref().unwrap_or_default() {
+        match provider.kind {
+            ProviderKind::OpenaiCompatible if provider.adapter.is_some() => anyhow::bail!(
+                "provider '{}': `adapter` is valid only with `kind: cli`",
+                provider.id
+            ),
+            ProviderKind::Cli if provider.adapter.is_none() => anyhow::bail!(
+                "provider '{}': `kind: cli` requires `adapter: claude` or `adapter: codex`",
+                provider.id
+            ),
+            ProviderKind::Cli if provider.local.is_some() => anyhow::bail!(
+                "provider '{}': `local` is valid only with `kind: openai_compatible`; CLI adapters are always cloud",
+                provider.id
+            ),
+            ProviderKind::Cli
+                if provider.adapter == Some(CliAdapter::Codex)
+                    && provider.oauth_token.as_deref().is_some_and(|s| !s.trim().is_empty()) =>
+            {
+                anyhow::bail!(
+                    "provider '{}': `oauthToken` is supported only by `adapter: claude`",
+                    provider.id
+                )
+            }
+            _ => {}
+        }
+    }
+    Ok(raw)
+}
+
 impl Config {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let raw_text = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", path.display(), e))?;
-        detect_legacy_format(&raw_text)
-            .map_err(|e| anyhow::anyhow!("{}: {}", path.display(), e))?;
-        let raw: RawConfig = serde_yaml::from_str(&raw_text)
+        let raw = parse_raw_config(&raw_text)
             .map_err(|e| anyhow::anyhow!("Failed to parse {}: {}", path.display(), e))?;
         Ok(Self::from_raw(raw))
     }
@@ -424,9 +508,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_v1_providers_with_camelcase_keys() {
-        let raw: RawConfig = serde_yaml::from_str(
-            "version: 1\n\
+    fn parses_v2_providers_with_camelcase_keys() {
+        let raw = parse_raw_config(
+            "version: 2\n\
              defaultModel: openrouter/anthropic/claude-opus-4-6\n\
              providers:\n\
              \x20\x20- id: openrouter\n\
@@ -449,34 +533,63 @@ mod tests {
     }
 
     #[test]
-    fn cli_claude_provider_parses() {
-        let raw: RawConfig = serde_yaml::from_str(
-            "providers:\n  - id: claude\n    kind: cli_claude\n    oauthToken: sk-ant-oat-xyz\n",
+    fn cli_adapters_parse() {
+        let raw = parse_raw_config(
+            "version: 2\nproviders:\n  - id: claude-cli\n    kind: cli\n    adapter: claude\n    oauthToken: sk-ant-oat-xyz\n  - id: codex-cli\n    kind: cli\n    adapter: codex\n",
         )
         .unwrap();
         let cfg = Config::from_raw(raw);
-        assert_eq!(ids(&cfg), vec!["claude"]);
-        assert_eq!(cfg.providers[0].kind, ProviderKind::CliClaude);
+        assert_eq!(ids(&cfg), vec!["claude-cli", "codex-cli"]);
+        assert_eq!(cfg.providers[0].kind, ProviderKind::Cli);
+        assert_eq!(cfg.providers[0].adapter, Some(CliAdapter::Claude));
         assert_eq!(cfg.providers[0].oauth_token.as_deref(), Some("sk-ant-oat-xyz"));
+        assert_eq!(cfg.providers[1].adapter, Some(CliAdapter::Codex));
     }
 
     #[test]
-    fn empty_config_has_no_providers() {
-        let cfg = Config::from_raw(serde_yaml::from_str("version: 1\n").unwrap());
+    fn empty_v2_config_has_no_providers() {
+        let raw = parse_raw_config("version: 2\n").unwrap();
+        let cfg = Config::from_raw(raw);
         assert!(cfg.providers.is_empty());
     }
 
     #[test]
-    fn detect_legacy_format_rejects_old_configs() {
+    fn rejects_old_config_formats_and_invalid_cli_shapes() {
         assert!(detect_legacy_format("OPENROUTER_API_KEY: sk-or-test\n").is_err());
         assert!(detect_legacy_format("CLAUDE_SUBSCRIPTION: true\n").is_err());
         assert!(detect_legacy_format("default_model: openrouter/x\n").is_err());
         assert!(detect_legacy_format("SONIOX_API_KEY: s\n").is_err());
-        // A clean v1 config passes.
-        assert!(detect_legacy_format(
-            "version: 1\nproviders:\n  - id: openrouter\n    kind: openai_compatible\n"
+
+        let old_claude = parse_raw_config(
+            "version: 1\nproviders:\n  - id: claude-cli\n    kind: cli_claude\n",
         )
-        .is_ok());
+        .unwrap_err()
+        .to_string();
+        assert!(old_claude.contains("kind: cli"));
+        assert!(old_claude.contains("adapter: claude"));
+        assert!(parse_raw_config("version: 1\nproviders: []\n").is_err());
+        assert!(parse_raw_config("providers: []\n").is_err());
+        assert!(parse_raw_config(
+            "version: 2\nproviders:\n  - id: broken\n    kind: cli\n"
+        )
+        .is_err());
+        assert!(parse_raw_config(
+            "version: 2\nproviders:\n  - id: broken\n    kind: openai_compatible\n    adapter: claude\n"
+        )
+        .is_err());
+        assert!(parse_raw_config(
+            "version: 2\nproviders:\n  - id: broken\n    kind: cli\n    adapter: codex\n    oauthToken: nope\n"
+        )
+        .is_err());
+        assert!(parse_raw_config(
+            "version: 2\nproviders:\n  - id: broken\n    kind: cli\n    adapter: claude\n    local: true\n"
+        )
+        .is_err());
+
+        // A clean v2 config passes both legacy detection and full parsing.
+        let clean = "version: 2\nproviders:\n  - id: openrouter\n    kind: openai_compatible\n";
+        assert!(detect_legacy_format(clean).is_ok());
+        assert!(parse_raw_config(clean).is_ok());
     }
 
     #[test]

@@ -99,9 +99,12 @@ describe('VaultService', () => {
         call => call[0] === '/test/vault/config.yaml'
       );
       expect(configCall).toBeDefined();
-      expect(configCall![1]).toContain('version: 1');
+      expect(configCall![1]).toContain('version: 2');
       expect(configCall![1]).toContain('providers:');
       expect(configCall![1]).toContain('defaultModel');
+      expect(configCall![1]).toContain('kind: cli');
+      expect(configCall![1]).toContain('adapter: claude');
+      expect(configCall![1]).toContain('adapter: codex');
     });
 
     it('uses server-relative paths (not the absolute vault path) once a vault is bound', async () => {
@@ -174,7 +177,7 @@ describe('VaultService', () => {
 
     it('should fetch the resolved config from the server', async () => {
       vaultService.setVaultPath('/test/vault');
-      const cfg = { version: 1, defaultModel: 'openrouter/x', providers: [{ id: 'openrouter', kind: 'openai_compatible' }] };
+      const cfg = { version: 2, defaultModel: 'openrouter/x', providers: [{ id: 'openrouter', kind: 'openai_compatible' }] };
       const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => cfg });
       vi.stubGlobal('fetch', fetchMock);
       const result = await vaultService.loadConfig();

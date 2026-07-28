@@ -96,7 +96,9 @@ The `web_search` tool requires one of:
 
 ## Supported Providers
 
-All models are configured under a single `providers:` list in `config.yaml`:
+All models are configured under a single `providers:` list in config v2
+(`version: 2`). Local trust is explicit: only `local: true` grants the Local
+badge and private-directory access; omission is treated as cloud.
 
 - **OpenRouter** — one key for Claude, GPT, Gemini, Grok, Llama, and more (the cloud gateway)
 - **oMLX** — local, on-device models through an OpenAI-compatible endpoint (mark `local: true`; prompts stay on your machine/LAN)
@@ -109,13 +111,14 @@ Pick Claude Opus/Sonnet/Haiku billed against your **Claude Pro/Max subscription*
 rather than per-token API credits. It works by shelling out to the Claude Code
 CLI (there is no subscription-billed HTTP API).
 
-Enable it by adding a `cli_claude` provider to your vault's `config.yaml`:
+Enable it by adding a Claude CLI adapter to your vault's `config.yaml`:
 
 ```yaml
 providers:
   - id: claude-cli
-    kind: cli_claude
-    # command: /opt/homebrew/bin/claude   # only if `claude` isn't on PATH
+    kind: cli
+    adapter: claude
+    # command: /opt/homebrew/bin/claude   # only if auto-discovery fails
     # oauthToken: sk-ant-oat-...           # from `claude setup-token` (optional)
 ```
 
@@ -130,13 +133,14 @@ Use Codex billed against your **ChatGPT/Codex subscription** rather than
 per-token API credits. It works by shelling out to the OpenAI Codex CLI
 (`codex exec`).
 
-Enable it by adding a `cli_codex` provider to your vault's `config.yaml`:
+Enable it by adding a Codex CLI adapter to your vault's `config.yaml`:
 
 ```yaml
 providers:
   - id: codex-cli
-    kind: cli_codex
-    # command: /opt/homebrew/bin/codex   # only if `codex` isn't on PATH
+    kind: cli
+    adapter: codex
+    # command: /opt/homebrew/bin/codex   # only if auto-discovery fails
 ```
 
 Requires the [`codex` CLI](https://github.com/openai/codex) installed and logged

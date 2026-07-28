@@ -97,8 +97,8 @@ export class VaultService {
     // Create config.yaml if it doesn't exist
     const configPath = await join(base, 'config.yaml');
     if (!(await exists(configPath))) {
-      // Create config with commented v1 templates for providers
-      const defaultConfigYaml = `version: 1
+      // Create config with commented v2 templates for providers
+      const defaultConfigYaml = `version: 2
 defaultModel: openrouter/anthropic/claude-sonnet-4-6
 
 # All models are configured under providers:. Uncomment and fill in what you use.
@@ -121,8 +121,9 @@ providers:
   # and logged in (run \`claude\` once). Runs locally but sends prompts to
   # Anthropic — treated as cloud.
   # - id: claude-cli
-  #   kind: cli_claude
-  #   command: /opt/homebrew/bin/claude   # only if 'claude' isn't on PATH
+  #   kind: cli
+  #   adapter: claude
+  #   command: /opt/homebrew/bin/claude   # only if auto-discovery fails
   #   oauthToken: sk-ant-oat-...           # from 'claude setup-token' (optional)
 
   # Your ChatGPT/Codex subscription via the OpenAI Codex CLI (text-only; bills
@@ -130,8 +131,9 @@ providers:
   # and logged in (run \`codex login\`). Runs locally but sends prompts to
   # OpenAI — treated as cloud.
   # - id: codex-cli
-  #   kind: cli_codex
-  #   command: /opt/homebrew/bin/codex   # only if 'codex' isn't on PATH
+  #   kind: cli
+  #   adapter: codex
+  #   command: /opt/homebrew/bin/codex   # only if auto-discovery fails
 
 # API keys for skills
 # serperApiKey: ...

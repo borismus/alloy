@@ -176,19 +176,21 @@ export interface Conversation {
 
 export interface ProviderConfig {
   id: string;
-  kind: 'openai_compatible' | 'cli_claude' | 'cli_codex';
+  kind: 'openai_compatible' | 'cli';
+  /** Required when kind is `cli`; omitted for HTTP providers. */
+  adapter?: 'claude' | 'codex';
   baseUrl?: string;
   apiKey?: string;
   command?: string;
   oauthToken?: string;
-  // On-device / on-LAN endpoint whose prompts never leave the user's network
-  // (padlock badge, private-dir access, offline tolerance). MLX-only in
-  // practice; CLI kinds are always cloud. When omitted the server infers it
-  // from the endpoint URL (loopback / *.local).
+  // Explicit trust boundary for an on-device / private-LAN endpoint whose
+  // prompts never leave the user's network (padlock badge, private-dir access,
+  // offline tolerance). Only `true` grants local status; false/omitted is cloud.
+  // Valid only for openai_compatible; CLI adapters are always cloud.
   local?: boolean;
 }
 
-// Canonical config.yaml schema (v1). camelCase throughout; all model providers
+// Canonical config.yaml schema (v2). camelCase throughout; all model providers
 // live under `providers:`. No legacy per-vendor API-key flat keys.
 export interface Config {
   version?: number;

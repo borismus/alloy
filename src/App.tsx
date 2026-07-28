@@ -721,8 +721,8 @@ function AppContent() {
   loadVaultRef.current = loadVault;
 
   const handleVaultSelected = async (path: string, provider: ProviderType, credential: string) => {
-    // Write a v1 config with the chosen provider under `providers:`.
-    const lines: string[] = ['version: 1'];
+    // Write a v2 config with the chosen provider under `providers:`.
+    const lines: string[] = ['version: 2'];
     if (provider === 'mlx') {
       const endpoint = credential.trim().replace(/\/+$/, '');
       const baseUrl = endpoint.endsWith('/v1') ? endpoint : `${endpoint}/v1`;

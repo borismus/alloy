@@ -8,7 +8,7 @@
 use axum::{Json, Router, extract::State, routing::{get, put}};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{ProviderKind, RawConfig};
+use crate::config::{CliAdapter, ProviderKind, parse_raw_config};
 use crate::{AppState, error::AppError, local};
 
 pub fn router() -> Router<AppState> {
@@ -23,6 +23,8 @@ pub fn router() -> Router<AppState> {
 struct ClientProvider {
     id: String,
     kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    adapter: Option<&'static str>,
     /// Resolved locality (via `local::provider_is_local`) so the SPA doesn't
     /// re-derive it.
     local: bool,
@@ -45,8 +47,15 @@ struct ClientConfig {
 fn kind_str(kind: ProviderKind) -> &'static str {
     match kind {
         ProviderKind::OpenaiCompatible => "openai_compatible",
-        ProviderKind::CliClaude => "cli_claude",
-        ProviderKind::CliCodex => "cli_codex",
+        ProviderKind::Cli => "cli",
+    }
+}
+
+fn adapter_str(adapter: Option<CliAdapter>) -> Option<&'static str> {
+    match adapter {
+        Some(CliAdapter::Claude) => Some("claude"),
+        Some(CliAdapter::Codex) => Some("codex"),
+        None => None,
     }
 }
 
@@ -58,10 +67,10 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
     let text = tokio::fs::read_to_string(&path)
         .await
         .map_err(|e| AppError::Internal(format!("read config.yaml: {e}")))?;
-    // A legacy or unparseable config → None, so the SPA shows onboarding rather
-    // than a broken half-state. (The Rust model layer's `Config::load` fails
-    // loudly on legacy configs at startup; this endpoint stays lenient.)
-    let raw: RawConfig = match serde_yaml::from_str(&text) {
+    // An obsolete or unparseable config → None, so the SPA shows onboarding
+    // rather than a broken half-state. Startup uses the same parser and reports
+    // its detailed migration error before this endpoint can be served.
+    let raw = match parse_raw_config(&text) {
         Ok(raw) => raw,
         Err(_) => return Ok(Json(None)),
     };
@@ -72,6 +81,7 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
         .map(|p| ClientProvider {
             id: p.id.clone(),
             kind: kind_str(p.kind),
+            adapter: adapter_str(p.adapter),
             local: local::provider_is_local(p),
         })
         .collect();
@@ -185,6 +195,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn serializes_v2_provider_kind_and_adapters() {
+        assert_eq!(kind_str(ProviderKind::OpenaiCompatible), "openai_compatible");
+        assert_eq!(kind_str(ProviderKind::Cli), "cli");
+        assert_eq!(adapter_str(Some(CliAdapter::Claude)), Some("claude"));
+        assert_eq!(adapter_str(Some(CliAdapter::Codex)), Some("codex"));
+        assert_eq!(adapter_str(None), None);
+    }
+
+    #[test]
     fn renders_favorites_block() {
         assert_eq!(render_favorites_block(&[]), "favoriteModels: []\n");
         assert_eq!(
@@ -195,7 +214,7 @@ mod tests {
 
     #[test]
     fn splices_favorites_preserving_surrounding_lines() {
-        let existing = "version: 1\nfavoriteModels:\n  - old/one\ndefaultModel: x\n# a comment\n";
+        let existing = "version: 2\nfavoriteModels:\n  - old/one\ndefaultModel: x\n# a comment\n";
         let next = splice_favorites_block(&existing, &render_favorites_block(&["new/a".into()]));
         assert!(next.contains("favoriteModels:\n  - new/a\n"));
         assert!(next.contains("defaultModel: x"));
@@ -205,7 +224,7 @@ mod tests {
 
     #[test]
     fn prepends_favorites_when_absent() {
-        let existing = "version: 1\ndefaultModel: x\n";
+        let existing = "version: 2\ndefaultModel: x\n";
         let next = splice_favorites_block(&existing, &render_favorites_block(&["a/b".into()]));
         assert!(next.starts_with("favoriteModels:\n  - a/b\n"));
         assert!(next.contains("defaultModel: x"));
@@ -213,14 +232,14 @@ mod tests {
 
     #[test]
     fn splices_scalar_in_place_and_appends() {
-        let existing = "version: 1\nexternalEditor: obsidian\n# keep me\n";
+        let existing = "version: 2\nexternalEditor: obsidian\n# keep me\n";
         let next = splice_scalar(existing, "externalEditor", "system");
         assert!(next.contains("externalEditor: system"));
         assert!(next.contains("# keep me"));
         assert!(!next.contains("externalEditor: obsidian"));
 
-        let appended = splice_scalar("version: 1\n", "externalEditor", "system");
-        assert!(appended.contains("version: 1"));
+        let appended = splice_scalar("version: 2\n", "externalEditor", "system");
+        assert!(appended.contains("version: 2"));
         assert!(appended.contains("externalEditor: system"));
     }
 }

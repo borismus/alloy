@@ -13,7 +13,7 @@ export const createMockConversation = (overrides?: Partial<Conversation>): Conve
 });
 
 export const createMockConfig = (overrides?: Partial<Config>): Config => ({
-  version: 1,
+  version: 2,
   defaultModel: 'openrouter/anthropic/claude-sonnet-4-6',
   providers: [
     { id: 'openrouter', kind: 'openai_compatible', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'sk-test-key' },
