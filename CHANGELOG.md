@@ -4,6 +4,27 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.2
+
+- **Breaking: `config.yaml` version 2.** Subscription providers now use the
+  unified `{ kind: cli, adapter: claude | codex }` shape. The old `cli_claude`
+  and `cli_codex` kinds fail with migration guidance. Local trust is also
+  explicit: only `local: true` on a private-network OpenAI-compatible endpoint
+  grants the Local badge and private-directory access; CLI adapters are always
+  cloud.
+- **Live subscription model discovery.** Claude uses the structured catalog
+  behind its `/model` picker, including account/policy filtering, resolved model
+  names, and 1M context variants. Codex uses its authenticated app-server model
+  catalog, identifies the current default, and exposes exact selectable models.
+- Model search now includes provider names and badges, so searches such as
+  `openai` find Codex subscription models and `anthropic` find Claude models.
+- Claude subscription responses now expose extended thinking when the model uses
+  it. Also fixed thinking-chevron alignment and prevented reasoning narration
+  from leaking into generated conversation titles.
+- Added a reproducible desktop/mobile seeded-vault Playwright smoke suite,
+  independent Rust checks in CI, and a single `npm run verify` gate covering
+  typecheck, lint, unit tests, Rust tests, and the production web build.
+
 ## 0.4.1
 
 - **Conversation-list actions on mobile.** Each item in the sidebar now has a
