@@ -8,7 +8,6 @@ import rehypeKatex from 'rehype-katex';
 import { processWikiLinks, createMarkdownComponents } from '../utils/wikiLinks';
 import type { ConversationInfo } from '../types';
 import './MarkdownContent.css';
-import 'highlight.js/styles/github.css';
 
 const remarkPlugins = [remarkGfm, remarkMath, remarkBreaks];
 const rehypePlugins = [rehypeHighlight, rehypeKatex];

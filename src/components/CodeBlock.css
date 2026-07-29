@@ -4,7 +4,7 @@
   border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--color-surface-hover);
+  background: var(--color-code-bg);
 }
 
 .code-block-language {
@@ -12,7 +12,7 @@
   top: 0.85rem;
   left: 1rem;
   z-index: 2;
-  color: var(--text-tertiary, #7e8593);
+  color: var(--color-syntax-comment);
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
   font-size: 0.68rem;
   font-weight: 600;
@@ -45,16 +45,16 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid rgba(120, 128, 145, 0.35);
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--text-secondary, #656b78);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .block-action-btn:hover {
-  background: var(--color-surface-raised);
+  background: var(--color-surface-pressed);
   color: var(--text-primary, var(--color-text));
   border-color: rgba(100, 108, 125, 0.55);
 }

@@ -14,3 +14,9 @@ messages:
   content: |-
     Alloy is a multi-model chat app: council mode, comparison mode, scheduled
     tasks, skills, and vault storage as plain YAML and Markdown.
+
+    ```yaml
+    # Example configuration
+    version: 2
+    providers: []
+    ```

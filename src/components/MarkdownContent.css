@@ -72,6 +72,100 @@
   line-height: 1.5;
 }
 
+/* Syntax highlighting uses semantic tokens so the same markup remains legible
+   in both themes. These selectors mirror highlight.js's token groups. */
+.markdown-content .hljs {
+  color: var(--color-syntax-text);
+  background: transparent;
+}
+
+.markdown-content .hljs-doctag,
+.markdown-content .hljs-keyword,
+.markdown-content .hljs-meta .hljs-keyword,
+.markdown-content .hljs-template-tag,
+.markdown-content .hljs-template-variable,
+.markdown-content .hljs-type,
+.markdown-content .hljs-variable.language_ {
+  color: var(--color-syntax-keyword);
+}
+
+.markdown-content .hljs-title,
+.markdown-content .hljs-title.class_,
+.markdown-content .hljs-title.class_.inherited__,
+.markdown-content .hljs-title.function_ {
+  color: var(--color-syntax-entity);
+}
+
+.markdown-content .hljs-attr,
+.markdown-content .hljs-attribute,
+.markdown-content .hljs-literal,
+.markdown-content .hljs-meta,
+.markdown-content .hljs-number,
+.markdown-content .hljs-operator,
+.markdown-content .hljs-variable,
+.markdown-content .hljs-selector-attr,
+.markdown-content .hljs-selector-class,
+.markdown-content .hljs-selector-id {
+  color: var(--color-syntax-constant);
+}
+
+.markdown-content .hljs-regexp,
+.markdown-content .hljs-string,
+.markdown-content .hljs-meta .hljs-string {
+  color: var(--color-syntax-string);
+}
+
+.markdown-content .hljs-built_in,
+.markdown-content .hljs-symbol {
+  color: var(--color-syntax-variable);
+}
+
+.markdown-content .hljs-comment,
+.markdown-content .hljs-code,
+.markdown-content .hljs-formula {
+  color: var(--color-syntax-comment);
+}
+
+.markdown-content .hljs-name,
+.markdown-content .hljs-quote,
+.markdown-content .hljs-selector-tag,
+.markdown-content .hljs-selector-pseudo {
+  color: var(--color-syntax-tag);
+}
+
+.markdown-content .hljs-subst,
+.markdown-content .hljs-emphasis,
+.markdown-content .hljs-strong {
+  color: var(--color-syntax-text);
+}
+
+.markdown-content .hljs-section {
+  color: var(--color-syntax-heading);
+  font-weight: 700;
+}
+
+.markdown-content .hljs-bullet {
+  color: var(--color-syntax-bullet);
+}
+
+.markdown-content .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-content .hljs-strong {
+  font-weight: 700;
+}
+
+.markdown-content .hljs-addition {
+  color: var(--color-syntax-addition);
+  background: var(--color-syntax-addition-bg);
+}
+
+.markdown-content .hljs-deletion {
+  color: var(--color-syntax-deletion);
+  background: var(--color-syntax-deletion-bg);
+}
+
 .markdown-content ul,
 .markdown-content ol {
   margin: 0.5rem 0;
