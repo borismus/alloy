@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.3
+
+- Fixed unreadable syntax highlighting in dark-mode Markdown code blocks by
+  replacing the light-only highlight.js palette with theme-aware semantic
+  colors. Code surfaces, language labels, and copy controls now adapt to dark
+  mode as well.
+- Added desktop and mobile smoke coverage that enforces WCAG AA contrast for
+  representative syntax tokens in dark mode.
+
 ## 0.4.2
 
 - **Breaking: `config.yaml` version 2.** Subscription providers now use the
