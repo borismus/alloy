@@ -541,7 +541,17 @@ function AppContent() {
       try {
         const discovered = await fetchAvailableModelList();
         if (!disposed) {
-          setAvailableModels(current => modelListsMatch(current, discovered) ? current : discovered);
+          setAvailableModels(current => {
+            // An empty catalog means discovery failed for every provider (the
+            // endpoint answers 200 with []), not that the user removed their
+            // providers. Keep the last known-good list rather than blanking the
+            // model picker on a transient failure.
+            if (discovered.length === 0 && current.length > 0) {
+              console.warn('[App] /api/models returned an empty catalog; keeping the previous models');
+              return current;
+            }
+            return modelListsMatch(current, discovered) ? current : discovered;
+          });
         }
       } catch (error) {
         console.warn('[App] periodic /api/models fetch failed (non-fatal):', error);
@@ -649,26 +659,32 @@ function AppContent() {
         // Pull the live model list from the embedded alloy-server. This is
         // the only source of truth for available models in the all-server
         // architecture; the SPA no longer bundles per-provider lists.
-        let loadedModels: ModelInfo[] = [];
-        try {
-          loadedModels = await fetchAvailableModelList();
-        } catch (e) {
-          console.warn('[App] /api/models fetch failed (non-fatal):', e);
-        }
-        setAvailableModels(loadedModels);
+        //
+        // Deliberately NOT awaited: discovery spawns CLI subprocesses and
+        // probes remote endpoints, so it can take seconds (much longer when a
+        // configured endpoint is unreachable and has to hit its connect
+        // timeout). Awaiting it here used to gate the entire first paint — on a
+        // real vault that was ~6.6s of the ~7.0s startup, with all vault I/O
+        // finishing in the remaining ~0.3s. The picker fills in when discovery
+        // lands; until then the config-declared model is used.
+        void fetchAvailableModelList()
+          .then(loadedModels => {
+            setAvailableModels(loadedModels);
 
-        // Warn loudly when defaultModel can't be honored. Without this the SPA
-        // silently substitutes availableModels[0] in `getDefaultModel`.
-        if (
-          loadedConfig.defaultModel &&
-          loadedModels.length > 0 &&
-          !loadedModels.some(m => m.key === loadedConfig.defaultModel)
-        ) {
-          showToast(
-            `defaultModel "${loadedConfig.defaultModel}" isn't available — edit config.yaml or pick another model.`,
-            'error',
-          );
-        }
+            // Warn loudly when defaultModel can't be honored. Without this the
+            // SPA silently substitutes availableModels[0] in `getDefaultModel`.
+            if (
+              loadedConfig.defaultModel &&
+              loadedModels.length > 0 &&
+              !loadedModels.some(m => m.key === loadedConfig.defaultModel)
+            ) {
+              showToast(
+                `defaultModel "${loadedConfig.defaultModel}" isn't available — edit config.yaml or pick another model.`,
+                'error',
+              );
+            }
+          })
+          .catch(e => console.warn('[App] /api/models fetch failed (non-fatal):', e));
 
         // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
@@ -757,7 +773,26 @@ function AppContent() {
   // Helper to get a default model for new conversations. Only returns a key
   // that actually exists in availableModels, so the picker always shows a
   // selected model rather than falling back to "Select Model".
+  // Whether the vault declares any model provider. Deliberately derived from
+  // config.yaml rather than from the live catalog: discovery is asynchronous
+  // and can transiently fail or return nothing (unreachable endpoints, a CLI
+  // that failed to spawn), and using the catalog here made a momentary blip
+  // replace the whole chat UI with "No Provider Configured".
+  const hasProvider = (config?.providers?.length ?? 0) > 0 || availableModels.length > 0;
+
   const getDefaultModel = (): string | null => {
+    // Model discovery no longer blocks startup, so the catalog can still be
+    // in flight here. Validating against an empty catalog would reject the
+    // user's own configured model and report "no provider configured", so fall
+    // back to what config.yaml declares until the live list arrives.
+    if (availableModels.length === 0) {
+      const configuredFavorites = config?.favoriteModels ?? [];
+      if (configuredFavorites.length > 0) {
+        return configuredFavorites[Math.floor(Math.random() * configuredFavorites.length)];
+      }
+      return config?.defaultModel ?? null;
+    }
+
     const validKeys = new Set(availableModels.map(m => m.key));
     const isValid = (key: string | undefined | null): key is string =>
       !!key && validKeys.has(key);
@@ -1240,7 +1275,7 @@ function AppContent() {
                 onSaveImage={handleSaveImage}
                 loadImageAsBase64={handleLoadImageAsBase64}
                 onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
-                hasProvider={availableModels.length > 0}
+                hasProvider={hasProvider}
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
                 favoriteModels={config?.favoriteModels}
@@ -1349,7 +1384,7 @@ function AppContent() {
             onSaveImage={handleSaveImage}
             loadImageAsBase64={handleLoadImageAsBase64}
             onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
-            hasProvider={availableModels.length > 0}
+            hasProvider={hasProvider}
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}

@@ -30,6 +30,45 @@ test('opens a conversation and shows the composer and model picker', async ({ pa
   await expect(page.getByRole('option').filter({ hasText: /Claude/ }).first()).toBeVisible();
 });
 
+test('a failed model discovery does not claim the vault has no provider', async ({ page }) => {
+  // Regression: `hasProvider` used to be derived from the live catalog, so a
+  // transient discovery failure (the endpoint answers 200 with []) replaced the
+  // whole chat UI with "No Provider Configured" even though config.yaml
+  // declares providers. Discovery is also no longer awaited before first paint,
+  // so this state is reachable on every cold start.
+  await page.route('**/api/models', route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  );
+  await page.reload();
+
+  await expect(page.locator('.timeline-item').first()).toBeVisible();
+  await page.getByText('Welcome to Alloy').click();
+
+  await expect(page.locator('.no-provider')).toHaveCount(0);
+  await expect(page.locator('.input-row textarea')).toBeVisible();
+});
+
+test('an empty catalog refresh does not wipe already-loaded models', async ({ page }) => {
+  // Regression: the periodic refresh (fires on focus/visibilitychange, i.e.
+  // constantly on mobile) overwrote a good catalog with an empty one, blanking
+  // the picker until reload.
+  await page.getByText('Welcome to Alloy').click();
+  const picker = page.locator('.model-selector-container button');
+  await expect(picker).toBeVisible();
+  const labelBefore = await picker.textContent();
+
+  await page.route('**/api/models', route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForTimeout(500);
+
+  await expect(page.locator('.no-provider')).toHaveCount(0);
+  await expect(picker).toHaveText(labelBefore ?? '');
+  await picker.click();
+  await expect(page.getByRole('option').filter({ hasText: /Claude/ }).first()).toBeVisible();
+});
+
 test('dark mode keeps syntax-highlighted code legible', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('alloy.theme', 'dark'));
   await page.reload();
