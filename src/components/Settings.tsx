@@ -6,6 +6,7 @@ import { isTauri } from '../services/api';
 import { useTheme, type ThemePreference } from '../theme';
 import { AlloyDialog, Switch } from './ui';
 import { CheckResult } from './UpdateChecker';
+import packageInfo from '../../package.json';
 import './Settings.css';
 
 const THEME_OPTIONS: { id: ThemePreference; label: string }[] = [
@@ -225,7 +226,9 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
 
           <div className="settings-section">
             <h3>Updates</h3>
-            <p className="settings-description">Check for new versions of Alloy.</p>
+            <p className="settings-description">
+              Current version: <span className="settings-version">{packageInfo.version}</span>
+            </p>
             <div className="settings-button-group">
               <button
                 onClick={handleCheckForUpdates}

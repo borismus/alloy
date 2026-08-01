@@ -53,6 +53,12 @@
   line-height: 1.5;
 }
 
+.settings-version {
+  color: var(--color-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .settings-hint {
   margin: 8px 0 0 0;
   font-size: 12px;
