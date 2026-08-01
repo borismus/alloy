@@ -4,6 +4,22 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.4
+
+- **Much faster startup, especially on mobile.** Model discovery no longer
+  blocks the first paint. On a large vault this cut time-to-usable from ~7s to
+  ~0.5s; the model picker fills in on its own a moment later.
+- **Model discovery results are cached even when a provider is down.**
+  Previously a single unreachable provider (a sleeping local MLX box, say)
+  disabled caching entirely, so every launch and every app-switch re-spawned the
+  Claude and Codex CLIs and waited on connect timeouts. Partial results are now
+  cached for a minute, so an offline provider still recovers quickly.
+- **A hiccup in model discovery no longer claims the vault has no provider.**
+  Whether providers exist is read from `config.yaml` rather than inferred from
+  the live model list, and a transient empty result no longer blanks the model
+  picker.
+- Settings now shows the running Alloy version.
+
 ## 0.4.3
 
 - Fixed unreadable syntax highlighting in dark-mode Markdown code blocks by
