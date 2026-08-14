@@ -109,22 +109,49 @@ const MAX_IMAGE_DIM: u32 = 1568;
 /// else — small images, GIFs (avoid flattening animation), non-images, or any
 /// decode/encode failure — is returned unchanged. Image processing must never
 /// fail a write.
+///
+/// EXIF orientation is baked into the pixels before resizing. Phone cameras
+/// store portrait shots as landscape pixels plus an `Orientation` tag that
+/// viewers apply on display; re-encoding drops that tag, so without this the
+/// stored image keeps landscape pixels with no correction left and renders
+/// sideways everywhere — including for vision models, which silently degraded
+/// image understanding, not just display. Images small enough to skip the
+/// resize are returned byte-identical and keep their original EXIF.
 fn maybe_downscale_image(bytes: Vec<u8>) -> Vec<u8> {
-    use image::ImageFormat;
+    use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 
     let format = match image::guess_format(&bytes) {
         Ok(f @ (ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP)) => f,
         _ => return bytes, // unknown, GIF, or non-image → store as-is
     };
 
-    let img = match image::load_from_memory(&bytes) {
-        Ok(img) => img,
-        Err(_) => return bytes,
+    // Decode through a decoder rather than `load_from_memory` so the EXIF
+    // orientation can be read before the pixels are detached from their
+    // metadata. Borrows of `bytes` end with this block so it can still be
+    // returned unchanged on any failure path below.
+    let decoded = (|| {
+        let reader = ImageReader::new(std::io::Cursor::new(bytes.as_slice()))
+            .with_guessed_format()
+            .ok()?;
+        let mut decoder = reader.into_decoder().ok()?;
+        // A missing/!unreadable tag simply means "no transform".
+        let orientation = decoder.orientation().ok()?;
+        let img = DynamicImage::from_decoder(decoder).ok()?;
+        Some((orientation, img))
+    })();
+
+    let (orientation, mut img) = match decoded {
+        Some(v) => v,
+        None => return bytes,
     };
 
+    // `max(w, h)` is invariant under the 90-degree rotations orientation can
+    // apply, so this threshold is the same before or after the transform.
     if img.width().max(img.height()) <= MAX_IMAGE_DIM {
-        return bytes; // already within bounds
+        return bytes; // already within bounds; original keeps its EXIF
     }
+
+    img.apply_orientation(orientation);
 
     let resized = img.resize(MAX_IMAGE_DIM, MAX_IMAGE_DIM, image::imageops::FilterType::Lanczos3);
     let mut out = std::io::Cursor::new(Vec::new());
@@ -360,6 +387,97 @@ mod tests {
 
     fn solid(w: u32, h: u32) -> DynamicImage {
         DynamicImage::ImageRgb8(RgbImage::from_pixel(w, h, image::Rgb([120, 80, 200])))
+    }
+
+    /// Left half red, right half blue — asymmetric so a rotation is detectable
+    /// by sampling pixels, not just by comparing dimensions.
+    fn split_lr(w: u32, h: u32) -> DynamicImage {
+        let mut img = RgbImage::new(w, h);
+        for (x, _y, px) in img.enumerate_pixels_mut() {
+            *px = if x < w / 2 {
+                image::Rgb([255, 0, 0])
+            } else {
+                image::Rgb([0, 0, 255])
+            };
+        }
+        DynamicImage::ImageRgb8(img)
+    }
+
+    /// Splice an EXIF APP1 segment carrying `orientation` into a JPEG, right
+    /// after SOI. The `image` crate can decode EXIF but not write it, so a
+    /// realistic camera JPEG has to be built by hand here.
+    fn with_exif_orientation(jpeg: &[u8], orientation: u16) -> Vec<u8> {
+        // TIFF header (little-endian) + one IFD entry: tag 0x0112 (Orientation),
+        // type 3 (SHORT), count 1, value `orientation`.
+        let mut tiff: Vec<u8> = Vec::new();
+        tiff.extend_from_slice(b"II\x2a\x00"); // little-endian magic
+        tiff.extend_from_slice(&8u32.to_le_bytes()); // offset to IFD0
+        tiff.extend_from_slice(&1u16.to_le_bytes()); // entry count
+        tiff.extend_from_slice(&0x0112u16.to_le_bytes()); // Orientation tag
+        tiff.extend_from_slice(&3u16.to_le_bytes()); // SHORT
+        tiff.extend_from_slice(&1u32.to_le_bytes()); // count
+        tiff.extend_from_slice(&orientation.to_le_bytes());
+        tiff.extend_from_slice(&[0, 0]); // pad value field to 4 bytes
+        tiff.extend_from_slice(&0u32.to_le_bytes()); // no next IFD
+
+        let mut payload: Vec<u8> = Vec::new();
+        payload.extend_from_slice(b"Exif\x00\x00");
+        payload.extend_from_slice(&tiff);
+
+        let mut out: Vec<u8> = Vec::new();
+        out.extend_from_slice(&jpeg[..2]); // SOI
+        out.extend_from_slice(&[0xFF, 0xE1]); // APP1
+        out.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
+        out.extend_from_slice(&payload);
+        out.extend_from_slice(&jpeg[2..]);
+        out
+    }
+
+    #[test]
+    fn bakes_exif_orientation_into_downscaled_pixels() {
+        // A portrait phone photo: landscape pixels + Orientation=6 (rotate 90
+        // CW on display). Regression — re-encoding drops EXIF, so without
+        // applying it first the stored image stayed landscape and rendered
+        // sideways for both the UI and vision models.
+        let landscape = encode(&split_lr(4000, 3000), ImageFormat::Jpeg);
+        let tagged = with_exif_orientation(&landscape, 6);
+
+        let out = maybe_downscale_image(tagged);
+        let decoded = image::load_from_memory(&out).unwrap();
+
+        assert!(
+            decoded.height() > decoded.width(),
+            "orientation must be baked in: expected portrait, got {}x{}",
+            decoded.width(),
+            decoded.height()
+        );
+        assert_eq!(decoded.width().max(decoded.height()), MAX_IMAGE_DIM);
+
+        // Rotating "red on the left" 90 CW puts red on TOP.
+        let rgb = decoded.to_rgb8();
+        let top = rgb.get_pixel(rgb.width() / 2, rgb.height() / 8);
+        let bottom = rgb.get_pixel(rgb.width() / 2, rgb.height() * 7 / 8);
+        assert!(top[0] > 200 && top[2] < 60, "top should be red, got {top:?}");
+        assert!(bottom[2] > 200 && bottom[0] < 60, "bottom should be blue, got {bottom:?}");
+    }
+
+    #[test]
+    fn untagged_large_image_keeps_its_geometry() {
+        // No EXIF → no transform. Guards against applying a bogus rotation.
+        let landscape = encode(&split_lr(4000, 3000), ImageFormat::Jpeg);
+        let out = maybe_downscale_image(landscape);
+        let decoded = image::load_from_memory(&out).unwrap();
+        assert!(decoded.width() > decoded.height(), "should stay landscape");
+        assert_eq!(decoded.width(), MAX_IMAGE_DIM);
+    }
+
+    #[test]
+    fn small_tagged_image_is_untouched_and_keeps_exif() {
+        // Below the resize threshold we return the original bytes, so the EXIF
+        // survives and viewers/models auto-orient it themselves.
+        let small = encode(&split_lr(800, 600), ImageFormat::Jpeg);
+        let tagged = with_exif_orientation(&small, 6);
+        assert_eq!(maybe_downscale_image(tagged.clone()), tagged);
     }
 
     #[test]
