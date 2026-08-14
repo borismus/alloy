@@ -106,6 +106,28 @@ committed — keep excluding them; commit UI work with partial-staged package.js
 - [x] UI polish — migrate ThinkingDisclosure to a React Aria `Disclosure` (done; keyboard/ARIA, `[data-expanded]` chevron, `[hidden]` panel rule; interaction-tested).
 - [x] UI polish — add a `ui/Tooltip` (React Aria `Tooltip` + `TooltipTrigger` + `Focusable`) and apply it to the header settings/close buttons and the composer attach/send buttons (done; tokenized, interaction-tested). Follow-up if wanted: extend to the header back/forward buttons (dynamic/disabled) and the model picker.
 
+## Definition of done — mobile reliability push
+
+Every item needs BOTH an automated check (committed with the fix, runs in CI) and a
+manual on-device pass. Neither alone counts as done. Where the automated check is a
+structural PROXY rather than a true reproduction, it says so — those rely on the manual
+pass for real confidence, and the proxy exists to stop silent regression later.
+
+| # | Item | Automated (committed + CI) | Manual (real iPhone) |
+|---|------|----------------------------|----------------------|
+| 1 | Watcher resync | Smoke: write a conversation while the backend is bounced -> it appears after reconnect without reload. Unit: merge keeps `messages`/`messagesLoaded` for the open conversation and re-invalidates only when `updated` changed. Unit: `ensureWebSocket()` rejects (never hangs) when a connect fails while another caller waits. | Open a conversation, lock the phone 2+ min, let a scheduled task or desktop edit land, unlock -> change appears within seconds AND the conversation you were reading still has its messages. |
+| 2 | EXIF rotation | Rust: orientation-tagged fixture through `maybe_downscale_image` -> output geometry is portrait and pixel probe matches the oriented image. Rust: images at/below `MAX_IMAGE_DIM` still pass through byte-identical. | Take a PORTRAIT photo -> upright in composer thumbnail, upright in the sent bubble, and the model describes it upright. Repeat once in landscape. |
+| 3 | Text-only image drops | Rust: `supports_images()` false for codex, true for claude. Smoke: with a text-only model selected the attach control is disabled/warns before send; with a vision model it attaches. | Select codex-cli, try to attach -> blocked or clearly warned BEFORE sending. Switch to claude-cli -> attaches and is understood. |
+| 4 | Portrait -> landscape scrolling | PROXY (Playwright cannot reproduce iOS viewport metrics): swap viewport w/h + dispatch `orientationchange` -> transcript stays scrollable (`scrollHeight > clientHeight`, `scrollTop` changes), composer visible, no zero-height panes. | Scroll mid-conversation, rotate to landscape -> scrolling works, no dead zones, composer reachable; rotate back -> still fine. Repeat with the keyboard open. |
+| 5 | Link half-dismissed state | PROXY (no in-app-browser overlay in Playwright): unit test that returning focus (`pageshow`/`focus`/`visibilitychange`) re-measures the visual viewport and resets `--app-height`/`--app-top` to current values. | Tap an external link, return to Alloy -> normal state, no X-out needed. Test BOTH Safari and added-to-home-screen. |
+| 6 | Remember last conversation | Smoke: select a conversation, reload -> same conversation restored with messages. Unit: persisted selection survives a simulated long gap (no short TTL eviction). | Open a conversation, background Alloy 30+ min (long enough for iOS to evict the tab), reopen -> same conversation, sensible scroll position. |
+| 7 | flux-highlights on codex-cli | Rust: `flatten_prompt` with a System message containing skill text -> the skill text is present in the flattened prompt (proves delivery). Then a cause-specific test once diagnosed. | Run `/flux-highlights` on a real highlights note under codex-cli -> output matches the skill's one-line format, and matches claude-cli's shape. |
+| 8 | Startup speed (believed fixed, v0.4.4) | Smoke: with `/api/models` artificially delayed, the first timeline item still renders (deterministic: proves discovery is off the critical path, no timing flake). | Cold launch on cellular -> usable in about a second, sidebar populated. |
+| 9 | Model picker rendering (believed fixed, v0.4.4) | Existing smoke: empty catalog on boot and on refresh must not blank the picker or show "No Provider Configured". Add: open the picker at mobile viewport immediately after cold start -> renders with rows. | Open the picker 5x including right after launch and right after foregrounding -> always renders correctly, never empty or half-drawn. |
+
+If 8 or 9 fail the manual pass, they are NOT the bug that was fixed in v0.4.4 — re-file
+as a new item with the observed symptom rather than reopening the old one.
+
 ## Future epics (not scheduled — no `- [ ]`, so the runner skips them)
 
 - **Plugin architecture** — return Alloy to an extensible, plugin-oriented app.
