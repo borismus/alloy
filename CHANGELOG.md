@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.5
+
+- **Camera photos are no longer stored rotated 90°.** Phones store portrait
+  shots as landscape pixels plus an EXIF orientation tag that viewers apply on
+  display. Alloy's image downscaler ignored that tag and then dropped it when
+  re-encoding, so any photo larger than 1568px was saved sideways — in the
+  composer, in the message, and for vision models, which were quietly reading a
+  rotated image. The rotation is now baked into the pixels before resizing.
+  Smaller images are still stored untouched, with their EXIF intact.
+
 ## 0.4.4
 
 - **Much faster startup, especially on mobile.** Model discovery no longer
