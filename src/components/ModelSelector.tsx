@@ -12,6 +12,7 @@ import {
   type Key,
 } from 'react-aria-components';
 import { ModelInfo } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { providerLabel, providerTag } from '../utils/models';
 import styles from './ModelSelector.module.css';
 
@@ -96,6 +97,12 @@ export function ModelSelector({
   onToggleFavorite,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  // Focusing the search field on open pops the iOS software keyboard, which
+  // resizes the visual viewport and moves the composer several hundred px — the
+  // popover is positioned against the pre-keyboard layout and ends up stranded
+  // underneath the keyboard, showing only the search box. Mobile users pick from
+  // favorites far more often than they type, so leave focus to an explicit tap.
+  const isMobile = useIsMobile();
 
   const selectedModel = models.find(m => m.key === value);
   const selectedLabel = selectedModel?.name
@@ -123,7 +130,7 @@ export function ModelSelector({
             and ranking are done in ModelResults so the list can show favorites
             only when empty, so disable Autocomplete's own filter. */}
         <Autocomplete filter={() => true}>
-          <SearchField className={styles.search} aria-label="Search models" autoFocus>
+          <SearchField className={styles.search} aria-label="Search models" autoFocus={!isMobile}>
             <Input className={styles.searchInput} placeholder="Search models…" autoCorrect="off" autoCapitalize="off" spellCheck={false} />
           </SearchField>
           <ModelResults

@@ -124,6 +124,31 @@ test('resyncs vault changes missed while the watcher was disconnected', async ({
   await expect(page.getByText(title)).toBeVisible();
 });
 
+test('model picker does not raise the keyboard on open (mobile)', async ({ page }, testInfo) => {
+  // Regression: autofocusing the search field popped the iOS software keyboard,
+  // which resized the visual viewport and moved the composer several hundred px.
+  // React Aria had already positioned the popover against the pre-keyboard
+  // layout, stranding it under the keyboard with only the search box visible.
+  // Focus is the observable proxy for "keyboard would open" — a headless browser
+  // has no software keyboard, so the viewport race itself cannot be reproduced.
+  await page.getByText('Welcome to Alloy').click();
+  await page.locator('.model-selector-container button').click();
+
+  const search = page.getByRole('searchbox', { name: 'Search models' });
+  await expect(search).toBeVisible();
+
+  const focused = await search.evaluate((el) => el === document.activeElement);
+  if (testInfo.project.name === 'mobile') {
+    expect(focused, 'search must not autofocus on mobile').toBe(false);
+    // Typing still works once the field is explicitly tapped.
+    await search.click();
+    await search.fill('claude');
+    await expect(page.getByRole('option').first()).toBeVisible();
+  } else {
+    expect(focused, 'desktop keeps type-to-search').toBe(true);
+  }
+});
+
 test('dark mode keeps syntax-highlighted code legible', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('alloy.theme', 'dark'));
   await page.reload();
