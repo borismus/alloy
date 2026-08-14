@@ -1,5 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { watch, WatchEvent, WatchEventKind, exists } from '@tauri-apps/plugin-fs';
+// Imported from the shim directly rather than through the '@tauri-apps/plugin-fs'
+// alias: this is an Alloy-specific signal with no counterpart in the real Tauri
+// plugin, so the upstream types don't declare it. Both names resolve to this
+// same module in every build (see the alias in vite.config.ts).
+import { onWatchReconnect } from '../services/api/tauri-fs-http';
 import { extractCoreId } from '../services/vault';
 
 export interface VaultWatcherCallbacks {
@@ -14,6 +19,13 @@ export interface VaultWatcherCallbacks {
   onTaskAdded?: (id: string) => void;
   onTaskRemoved?: (id: string) => void;
   onTaskModified?: (id: string) => void;
+  /**
+   * Re-read the vault because live events may have been missed. The watcher
+   * only receives events while connected, and nothing is replayed for the gap,
+   * so a dropped socket silently loses every change made while it was down.
+   * Fires on reconnect and on returning to the foreground.
+   */
+  onResync?: () => void;
 }
 
 export interface UseVaultWatcherOptions {
@@ -28,6 +40,9 @@ export interface UseVaultWatcherResult {
 }
 
 const SELF_WRITE_WINDOW_MS = 2000;
+
+/** Coalesce window for resync triggers that tend to arrive together. */
+const RESYNC_DEBOUNCE_MS = 250;
 
 type EventType = 'create' | 'modify' | 'remove' | 'rename' | 'other';
 
@@ -230,9 +245,37 @@ export function useVaultWatcher(
 
     startWatching();
 
+    // Catch up on anything missed while disconnected. Two triggers, because
+    // neither alone is sufficient on mobile: `onWatchReconnect` covers a socket
+    // that closed and came back, while foregrounding covers iOS leaving a
+    // half-open socket that reports OPEN with no data flowing, where `onclose`
+    // never fires and no reconnect is ever attempted.
+    let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+    const requestResync = () => {
+      if (!isMounted) return;
+      // Coalesce: foregrounding often fires visibility + focus together, and a
+      // reconnect can land in the same tick.
+      if (resyncTimer) clearTimeout(resyncTimer);
+      resyncTimer = setTimeout(() => {
+        resyncTimer = null;
+        if (isMounted) callbacksRef.current.onResync?.();
+      }, RESYNC_DEBOUNCE_MS);
+    };
+
+    const unsubscribeReconnect = onWatchReconnect?.(requestResync);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') requestResync();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', requestResync);
+
     return () => {
       isMounted = false;
       isWatchingRef.current = false;
+      if (resyncTimer) clearTimeout(resyncTimer);
+      unsubscribeReconnect?.();
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', requestResync);
       if (unwatchFn) {
         unwatchFn();
       }

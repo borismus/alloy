@@ -122,6 +122,29 @@ function modelListsMatch(a: ModelInfo[], b: ModelInfo[]): boolean {
 }
 
 /**
+ * Merge freshly-read metadata summaries into the in-memory list after a resync.
+ *
+ * Summaries carry `messages: []` / `messagesLoaded: false`, so assigning them
+ * wholesale would blank whichever conversation is currently open — and the lazy
+ * re-load effect is keyed on `conversations.length`, which a resync usually
+ * doesn't change, so nothing would fetch the messages back. Keep already-loaded
+ * bodies, and drop them only when `updated` shows the file changed on disk (the
+ * open conversation is re-hydrated explicitly by the caller in that case).
+ */
+export function mergeConversationSummaries(
+  current: Conversation[],
+  summaries: Conversation[],
+): Conversation[] {
+  const byId = new Map(current.map(c => [c.id, c]));
+  return summaries.map(summary => {
+    const existing = byId.get(summary.id);
+    if (!existing || existing.messagesLoaded === false) return summary;
+    if (existing.updated !== summary.updated) return summary; // changed on disk
+    return { ...summary, messages: existing.messages, messagesLoaded: true };
+  });
+}
+
+/**
  * Merge a disk-loaded conversation with the in-memory copy, re-appending any
  * trailing in-memory USER messages whose ids aren't on disk yet. Guards against
  * a watcher reload wiping an optimistic (queued) user message that hasn't been
@@ -158,6 +181,9 @@ function AppContent() {
   // Navigation state (selectedItem, back/forward, sessionStorage persistence)
   const { selectedItem, setSelectedItem, navigateTo, goBack: goBackRaw, canGoBack } = useNavigation();
   const goBack = useCallback(() => goBackRaw(setNoteContent, () => setDraftConversation(null)), [goBackRaw]);
+  // Mirror for stale-free reads inside stable callbacks (e.g. the vault resync).
+  const selectedItemRef = useRef(selectedItem);
+  selectedItemRef.current = selectedItem;
 
   // Cached note content (loaded on demand when note is selected)
   const [noteContent, setNoteContent] = useState<string | null>(null);
@@ -414,12 +440,52 @@ function AppContent() {
     );
   }, []);
 
+  // Re-read the vault after a watcher gap. Live events are not replayed, so a
+  // dropped socket (routine on mobile: screen lock, app switch) silently loses
+  // every change made while it was down until a manual reload.
+  const handleResync = useCallback(async () => {
+    // The loaders already no-op when no vault path is set, so no guard needed.
+    try {
+      const [summaries, loadedTasks, loadedNotes] = await Promise.all([
+        vaultService.loadConversationSummaries(),
+        vaultService.loadTasks(),
+        vaultService.loadNotes(),
+      ]);
+
+      const openId = selectedItemRef.current?.type === 'conversation'
+        ? selectedItemRef.current.id
+        : null;
+      const previous = conversationsRef.current;
+      const wasHydrated = openId
+        ? previous.find(c => c.id === openId)?.messagesLoaded !== false
+        : false;
+
+      setConversations(mergeConversationSummaries(previous, summaries));
+      setTasks(loadedTasks);
+      setNotes(loadedNotes);
+
+      // If the open conversation changed on disk during the gap, the merge drops
+      // its stale bodies. Re-hydrate explicitly: the lazy-load effect keys on
+      // `conversations.length`, which a resync usually leaves unchanged.
+      if (openId && wasHydrated) {
+        const fresh = summaries.find(c => c.id === openId);
+        const stale = previous.find(c => c.id === openId);
+        if (fresh && stale && fresh.updated !== stale.updated) {
+          await handleConversationModified(openId);
+        }
+      }
+    } catch (error) {
+      console.warn('[App] vault resync failed (non-fatal):', error);
+    }
+  }, [handleConversationModified]);
+
   const { markSelfWrite } = useVaultWatcher(
     {
       vaultPath,
       enabled: !!vaultPath,
     },
     {
+      onResync: handleResync,
       onConversationAdded: handleConversationAdded,
       onConversationRemoved: handleConversationRemoved,
       onConversationModified: handleConversationModified,

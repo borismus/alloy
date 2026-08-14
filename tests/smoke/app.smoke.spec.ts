@@ -69,6 +69,61 @@ test('an empty catalog refresh does not wipe already-loaded models', async ({ pa
   await expect(page.getByRole('option').filter({ hasText: /Claude/ }).first()).toBeVisible();
 });
 
+test('resyncs vault changes missed while the watcher was disconnected', async ({ page }, testInfo) => {
+  // Regression: the watcher reconnects but never re-reads the vault, so every
+  // change made during the gap was lost until a manual reload. Mobile hits this
+  // constantly (screen lock / app switch kills the socket).
+  // Track sockets so the test can tear one down the way iOS does. Test-local:
+  // no production hook, and it must be installed before the app connects.
+  await page.addInitScript(() => {
+    const Native = window.WebSocket;
+    (window as unknown as { __sockets: WebSocket[] }).__sockets = [];
+    class TrackedWebSocket extends Native {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        (window as unknown as { __sockets: WebSocket[] }).__sockets.push(this);
+      }
+    }
+    window.WebSocket = TrackedWebSocket as unknown as typeof WebSocket;
+  });
+  await page.reload();
+  await expect(page.locator('.timeline-item').first()).toBeVisible();
+
+  const before = await page.locator('.timeline-item').count();
+
+  // Drop the socket, then change the vault while it's down. Closing from the
+  // page side mirrors the OS tearing it down, and unlike stopping the server it
+  // leaves /api writable so the fixture can still be modified.
+  await page.evaluate(() =>
+    (window as unknown as { __sockets: WebSocket[] }).__sockets.forEach(s => s.close())
+  );
+
+  // Unique per project: desktop and mobile run sequentially against the SAME
+  // server and vault copy, so a shared filename would already exist on the
+  // second run and the count would not change.
+  const id = `2024-05-05-1200-ww${testInfo.project.name === 'mobile' ? '02' : '01'}`;
+  const title = `missed while offline ${testInfo.project.name}`;
+  await page.request.post('/api/fs/writeTextFile', {
+    data: {
+      path: `/conversations/${id}-missed-while-offline.yaml`,
+      content: [
+        `id: ${id}`,
+        `title: ${title}`,
+        'model: claude-cli/sonnet',
+        'created: 2024-05-05T12:00:00.000Z',
+        'updated: 2024-05-05T12:00:00.000Z',
+        'messages: []',
+        '',
+      ].join('\n'),
+    },
+  });
+
+  // No focus event on purpose: this asserts the RECONNECT trigger specifically.
+  // The client retries ~3s after close, then resyncs.
+  await expect(page.locator('.timeline-item')).toHaveCount(before + 1, { timeout: 20_000 });
+  await expect(page.getByText(title)).toBeVisible();
+});
+
 test('dark mode keeps syntax-highlighted code legible', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('alloy.theme', 'dark'));
   await page.reload();

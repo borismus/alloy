@@ -153,6 +153,44 @@ let wsConnecting = false;
 let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const watchers = new Map<string, Set<WatchCallback>>();
 
+// Callers waiting on an in-flight connect. Settled together when it opens or
+// fails, so a failed attempt can't strand them (see `ensureWebSocket`).
+let pendingWaiters: Array<{ resolve: (s: WebSocket) => void; reject: (e: Error) => void }> = [];
+
+function settleWaiters(socket: WebSocket | null, error?: Error) {
+  const waiters = pendingWaiters;
+  pendingWaiters = [];
+  for (const w of waiters) {
+    if (socket) w.resolve(socket);
+    else w.reject(error ?? new Error('WebSocket connection failed'));
+  }
+}
+
+// Fires when the socket comes back AFTER a previous connection was lost. The
+// server pushes live events only; anything that changed while we were gone is
+// never replayed, so subscribers use this to re-read the vault and catch up.
+// A first-ever connect is NOT a reconnect and does not fire.
+type ReconnectCallback = () => void;
+const reconnectCallbacks = new Set<ReconnectCallback>();
+let hasConnectedBefore = false;
+
+export function onWatchReconnect(callback: ReconnectCallback): () => void {
+  reconnectCallbacks.add(callback);
+  return () => {
+    reconnectCallbacks.delete(callback);
+  };
+}
+
+function notifyReconnect() {
+  for (const cb of reconnectCallbacks) {
+    try {
+      cb();
+    } catch (err) {
+      console.error('[WS] Reconnect callback error:', err);
+    }
+  }
+}
+
 function ensureWebSocket(): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -161,13 +199,11 @@ function ensureWebSocket(): Promise<WebSocket> {
     }
 
     if (wsConnecting) {
-      // Wait for existing connection attempt
-      const checkInterval = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          clearInterval(checkInterval);
-          resolve(ws);
-        }
-      }, 100);
+      // Queue against the in-flight attempt. Previously this polled on a 100ms
+      // interval that was only cleared on success: if the attempt FAILED the
+      // interval ran forever and the promise never settled, so `watch()` hung
+      // and the watcher was never registered at all.
+      pendingWaiters.push({ resolve, reject });
       return;
     }
 
@@ -185,7 +221,13 @@ function ensureWebSocket(): Promise<WebSocket> {
     socket.onopen = () => {
       ws = socket;
       wsConnecting = false;
+      const isReconnect = hasConnectedBefore;
+      hasConnectedBefore = true;
       resolve(socket);
+      settleWaiters(socket);
+      // Announce after settling so subscribers registered by a queued `watch()`
+      // call are in place before the catch-up fires.
+      if (isReconnect) notifyReconnect();
     };
 
     socket.onmessage = (event) => {
@@ -217,7 +259,11 @@ function ensureWebSocket(): Promise<WebSocket> {
 
     socket.onclose = () => {
       ws = null;
+      const wasConnecting = wsConnecting;
       wsConnecting = false;
+      // A close during connect (server refused/closed without an error event)
+      // must also release queued callers rather than leaving them hanging.
+      if (wasConnecting) settleWaiters(null, new Error('WebSocket closed before opening'));
 
       // Attempt to reconnect if we have watchers
       if (watchers.size > 0 && !wsReconnectTimer) {
@@ -231,7 +277,9 @@ function ensureWebSocket(): Promise<WebSocket> {
     socket.onerror = (err) => {
       console.error('[WS] WebSocket error:', err);
       wsConnecting = false;
-      reject(new Error('WebSocket connection failed'));
+      const error = new Error('WebSocket connection failed');
+      reject(error);
+      settleWaiters(null, error);
     };
   });
 }
