@@ -171,7 +171,10 @@ function AppContent() {
   // keep the saved vaultPath in localStorage so a retry / page reload works
   // the moment the backend comes back, instead of dumping the user to vault
   // setup like a fresh install.
-  const [initError, setInitError] = useState<string | null>(null);
+  // Startup failure surfaced instead of the setup screen. Carries its own title
+  // because these are not all "backend unreachable" — a vault that can't be
+  // opened needs to say so, and say why.
+  const [initError, setInitError] = useState<{ title: string; detail: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
@@ -577,12 +580,19 @@ function AppContent() {
           // /api fetch failed (likely ECONNREFUSED via vite proxy because the
           // embedded server isn't on :3001). Don't clear vaultPath — the user
           // didn't pick a bad vault, the backend is just down.
-          setInitError(
-            'Could not reach the Alloy backend. If this is a dev session, make sure `tauri dev` is running; ' +
-            'if you opened the app from another device via Tailscale, the desktop needs "Share on Network" enabled.'
-          );
+          setInitError({
+            title: 'Backend unreachable',
+            detail:
+              'Could not reach the Alloy backend. If this is a dev session, make sure `tauri dev` is running; ' +
+              'if you opened the app from another device via Tailscale, the desktop needs "Share on Network" enabled.',
+          });
         } else {
-          localStorage.removeItem('vaultPath');
+          // Keep the saved vault: this failure says nothing about whether the
+          // path is still good.
+          setInitError({
+            title: "Alloy couldn't start",
+            detail: error instanceof Error ? error.message : String(error),
+          });
         }
         setIsLoading(false);
       }
@@ -787,12 +797,26 @@ function AppContent() {
     } catch (error) {
       console.error('Error loading vault:', error);
       if (isBackendUnreachable(error)) {
-        setInitError(
-          'Could not reach the Alloy backend. If this is a dev session, make sure `tauri dev` is running; ' +
-          'if you opened the app from another device via Tailscale, the desktop needs "Share on Network" enabled.'
-        );
+        setInitError({
+          title: 'Backend unreachable',
+          detail:
+            'Could not reach the Alloy backend. If this is a dev session, make sure `tauri dev` is running; ' +
+            'if you opened the app from another device via Tailscale, the desktop needs "Share on Network" enabled.',
+        });
       } else {
-        localStorage.removeItem('vaultPath');
+        // Keep the saved vault path. This used to erase it, so a transient
+        // failure (folder not mounted yet after a restart, permissions, an
+        // unparseable config) permanently forgot the vault and dropped the user
+        // on the setup screen with no explanation. Show the real reason instead
+        // and let them retry — the path is still valid, the read just failed.
+        setInitError({
+          title: "Couldn't open your vault",
+          detail:
+            `${path}\n\n${error instanceof Error ? error.message : String(error)}\n\n` +
+            'Your vault is still saved. If it lives in a synced folder it may not be ready yet after a ' +
+            'restart — retry in a moment. If this keeps happening, check that Alloy has permission to ' +
+            'read the folder.',
+        });
       }
     } finally {
       setIsLoading(false);
@@ -1107,8 +1131,8 @@ function AppContent() {
   if (initError) {
     return (
       <div className="loading" style={{ flexDirection: 'column', gap: 16, padding: 32, textAlign: 'center' }}>
-        <div style={{ fontWeight: 600 }}>Backend unreachable</div>
-        <div style={{ maxWidth: 480, opacity: 0.85 }}>{initError}</div>
+        <div style={{ fontWeight: 600 }}>{initError.title}</div>
+        <div style={{ maxWidth: 480, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{initError.detail}</div>
         <button onClick={() => window.location.reload()}>Retry</button>
       </div>
     );

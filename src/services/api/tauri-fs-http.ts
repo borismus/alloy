@@ -216,7 +216,30 @@ function ensureWebSocket(): Promise<WebSocket> {
     // until reload). Resolve against the page origin like the SSE path does.
     const apiBase = getApiBase();
     const pageOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
-    const socket = new WebSocket(buildWatchWebSocketUrl(apiBase, pageOrigin));
+    const wsUrl = buildWatchWebSocketUrl(apiBase, pageOrigin);
+    if (!wsUrl) {
+      // No usable address yet (embedded server not bound). Fail cleanly rather
+      // than constructing an invalid WebSocket, and reset the connecting flag so
+      // a later attempt — once the vault is bound — isn't blocked forever.
+      wsConnecting = false;
+      const error = new Error('No WebSocket URL available (server not bound yet)');
+      reject(error);
+      settleWaiters(null, error);
+      return;
+    }
+
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(wsUrl);
+    } catch (e) {
+      // A synchronous throw here used to leave `wsConnecting` true forever, so
+      // every later watch() queued behind a connect that could never complete.
+      wsConnecting = false;
+      const error = e instanceof Error ? e : new Error(String(e));
+      reject(error);
+      settleWaiters(null, error);
+      return;
+    }
 
     socket.onopen = () => {
       ws = socket;

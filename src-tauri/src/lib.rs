@@ -30,10 +30,20 @@ async fn set_vault_path(
     server: State<'_, Arc<EmbeddedServer>>,
     path: String,
 ) -> Result<String, String> {
-    server
-        .set_vault(PathBuf::from(path))
-        .await
-        .map_err(|e| e.to_string())
+    let vault = PathBuf::from(&path);
+    match server.set_vault(vault).await {
+        Ok(url) => {
+            tracing::info!("vault bound: {path}");
+            Ok(url)
+        }
+        Err(e) => {
+            // The SPA surfaces this verbatim, so it must say WHY (missing
+            // folder, permission denied, unparseable config) rather than just
+            // failing and leaving the app to guess.
+            tracing::error!("failed to bind vault {path}: {e}");
+            Err(e.to_string())
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -117,7 +127,26 @@ fn hostname() -> Option<String> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Install a tracing subscriber for the desktop build.
+///
+/// Without this the embedded server's `tracing::info!/warn!/error!` calls go
+/// nowhere, so a failure to bind the vault produced no diagnostic anywhere —
+/// not on stdout, not in a file, not in the UI. Defaults to `info`; override
+/// with `ALLOY_LOG` (e.g. `ALLOY_LOG=debug`). Launch the binary directly
+/// (`/Applications/Alloy.app/Contents/MacOS/Alloy`) to read it.
+fn init_logging() {
+    let filter = tracing_subscriber::EnvFilter::try_from_env("ALLOY_LOG")
+        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
+        .unwrap_or_default();
+    // `try_init` so a second call (tests, repeated init) can't panic.
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
 pub fn run() {
+    init_logging();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

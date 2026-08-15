@@ -64,8 +64,15 @@ export async function setEmbeddedVaultPath(path: string): Promise<string | null>
     window.__ALLOY_API_BASE__ = url;
     return url;
   } catch (e) {
+    // Deliberately rethrown. Returning null here made the caller carry on as if
+    // the vault were bound: the API base stayed unset, every /api call fell back
+    // to a relative URL against `tauri://localhost` and failed, the empty config
+    // was read as "no vault", and the saved vault path was erased — turning one
+    // recoverable failure (folder not mounted yet, bad permissions, unparseable
+    // config) into a wiped setup with a misleading error.
     console.error('[tauri-bootstrap] set_vault_path failed:', e);
-    return null;
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`Could not open the vault at ${path}: ${detail}`);
   }
 }
 
