@@ -4,6 +4,21 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.7
+
+- **Fixed Alloy forgetting your vault after a restart.** If the vault couldn't be
+  opened at startup — a synced folder not mounted yet, a permissions problem, an
+  unparseable config — Alloy erased the saved path and dropped you on the setup
+  screen with a cryptic "The string did not match the expected pattern". It now
+  keeps the vault, says what actually went wrong, and offers a retry.
+- **The desktop app now logs.** It never installed a log subscriber, so failures
+  in the embedded server produced no output anywhere, on stdout or otherwise.
+  Launch the binary directly to read it; set `ALLOY_LOG=debug` for more.
+- **New: install updates automatically** (Settings → Updates). Off by default and
+  per-machine, so an always-on Mac sharing Alloy on the network can update itself
+  without screen sharing in, while your laptop stays untouched. Updates only ever
+  install at startup, never mid-session.
+
 ## 0.4.6
 
 - **Codex can now use Alloy's tools.** The `codex-cli` provider reaches the same
