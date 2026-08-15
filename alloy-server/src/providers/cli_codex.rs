@@ -30,7 +30,8 @@ use tokio::process::Command;
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    ChatMessage, DiscoveredModel, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
+    ChatMessage, DiscoveredModel, McpBridge, Provider, ProviderStreamEvent, StreamRequest,
+    StreamResult, Usage,
 };
 
 /// Well-known absolute install locations for the `codex` binary (a Finder-
@@ -186,7 +187,7 @@ impl CliCodexProvider {
         cmd
     }
 
-    fn base_command(&self, model: &str, out_file: &Path) -> Command {
+    fn base_command(&self, model: &str, out_file: &Path, mcp: Option<&McpBridge>) -> Command {
         let mut cmd = self.command();
         cmd.arg("exec");
         // "default" preserves Codex's account/config-selected model. Exact ids
@@ -194,12 +195,42 @@ impl CliCodexProvider {
         if !model.is_empty() && model != "default" {
             cmd.arg("--model").arg(model);
         }
-        cmd.arg("--sandbox")
-            .arg("read-only")
-            .arg("--skip-git-repo-check")
+        cmd.arg("--skip-git-repo-check")
             .arg("--json")
             .arg("--output-last-message")
             .arg(out_file);
+        // Give Codex Alloy's built-in tools over the same MCP-over-HTTP bridge
+        // the claude-cli provider uses, so both subscription providers dispatch
+        // through the identical `ToolRegistry::execute` (same vault scoping and
+        // side effects). `-c` values are parsed as TOML, hence the quoting; the
+        // URL is loopback with uuid-shaped ids, so it needs no escaping.
+        if let Some(mcp) = mcp {
+            cmd.arg("-c").arg(format!(
+                r#"mcp_servers.alloy.url="{}/api/mcp?session={}&token={}""#,
+                mcp.base_url, mcp.session_id, mcp.token
+            ));
+            // Codex gates MCP tool calls behind an approval prompt. Under plain
+            // `exec` there is nobody to answer it, so every call is auto-
+            // cancelled and the model reports "the request was canceled" — it
+            // connects and lists tools but never invokes one. `--approve-for-me`
+            // routes approvals through Codex's own automatic review. Applied
+            // ONLY alongside the bridge: a text-only turn keeps the stricter
+            // default. Deliberately NOT
+            // `--dangerously-bypass-approvals-and-sandbox`, which would also
+            // unsandbox Codex's own shell tools.
+            //
+            // `--approve-for-me` is mutually exclusive with `--sandbox` (the CLI
+            // rejects both: "cannot be used with"), and implies workspace-write.
+            // That is contained here because `command()` runs Codex from
+            // `std::env::temp_dir()`, never the vault or a project checkout, so
+            // its native tools can only touch scratch space — the vault is
+            // reachable solely through Alloy's MCP tools, which enforce their own
+            // scoping.
+            cmd.arg("--approve-for-me");
+        } else {
+            // No tools this turn: keep the strictest sandbox.
+            cmd.arg("--sandbox").arg("read-only");
+        }
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -208,9 +239,14 @@ impl CliCodexProvider {
 
     /// Run `codex exec` with `prompt` on stdin; return the final agent message
     /// (+ token usage).
-    async fn run(&self, prompt: &str, model: &str) -> anyhow::Result<RunOutput> {
+    async fn run(
+        &self,
+        prompt: &str,
+        model: &str,
+        mcp: Option<&McpBridge>,
+    ) -> anyhow::Result<RunOutput> {
         let out_file = last_message_path();
-        let mut cmd = self.base_command(model, &out_file);
+        let mut cmd = self.base_command(model, &out_file, mcp);
         let mut child = cmd.spawn().map_err(|e| {
             anyhow::anyhow!(
                 "failed to launch the `codex` CLI at `{}`: {}. Install the OpenAI Codex CLI and run \
@@ -281,7 +317,7 @@ impl Provider for CliCodexProvider {
         // Non-streaming: `codex exec` runs its own loop; we run to completion and
         // emit the final agent message as one chunk.
         let prompt = flatten_prompt(&req.messages);
-        let out = self.run(&prompt, &req.model).await?;
+        let out = self.run(&prompt, &req.model, req.mcp.as_ref()).await?;
         let _ = req
             .delta_tx
             .send(ProviderStreamEvent::Content(out.text.clone()));
@@ -299,7 +335,9 @@ impl Provider for CliCodexProvider {
             user_msg.chars().take(500).collect::<String>(),
             assistant_msg.chars().take(500).collect::<String>(),
         );
-        match self.run(&prompt, model).await {
+        // No MCP bridge: titling is a pure text summarization, and giving it
+        // vault tools would let a title request take side effects.
+        match self.run(&prompt, model, None).await {
             Ok(out) => out.text.trim().chars().take(100).collect(),
             Err(_) => user_msg.chars().take(50).collect(),
         }
@@ -317,11 +355,14 @@ impl Provider for CliCodexProvider {
         } else {
             format!("{system}\n\n{user}")
         };
-        self.run(&prompt, model).await.ok().map(|o| o.text)
+        self.run(&prompt, model, None).await.ok().map(|o| o.text)
     }
 
-    /// Text-only: Codex runs its own agent loop and can't accept Alloy's tool
-    /// definitions, so the tool loop must not attach tools for this provider.
+    /// Codex runs its own agent loop and can't accept Alloy's `ToolDefinition`s
+    /// in-band, so the tool loop must not attach them. It still reaches full
+    /// tool parity: `base_command` hands it Alloy's MCP bridge, exactly as the
+    /// claude-cli provider does, and those calls dispatch through the same
+    /// `ToolRegistry::execute`.
     fn supports_tools(&self, _model: &str) -> bool {
         false
     }
@@ -589,6 +630,61 @@ fn unwrap_error_message(s: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn provider() -> CliCodexProvider {
+        CliCodexProvider::new(&crate::config::ProviderConfig {
+            id: "codex-cli".into(),
+            kind: crate::config::ProviderKind::Cli,
+            adapter: Some(crate::config::CliAdapter::Codex),
+            base_url: None,
+            api_key: String::new(),
+            command: None,
+            oauth_token: None,
+            local: None,
+        })
+    }
+
+    fn args_for(mcp: Option<&McpBridge>) -> Vec<String> {
+        let cmd = provider().base_command("default", Path::new("/tmp/out.txt"), mcp);
+        cmd.as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn attaches_the_alloy_mcp_bridge_when_one_is_supplied() {
+        let bridge = McpBridge {
+            base_url: "http://127.0.0.1:4321".into(),
+            session_id: "sess-1".into(),
+            token: "tok-2".into(),
+        };
+        let args = args_for(Some(&bridge));
+        assert!(
+            args.iter().any(|a| a
+                == r#"mcp_servers.alloy.url="http://127.0.0.1:4321/api/mcp?session=sess-1&token=tok-2""#),
+            "missing MCP config: {args:?}"
+        );
+        // Codex gates MCP tool calls behind approval; under plain `exec` there
+        // is nobody to answer, so calls are auto-cancelled and it lists tools
+        // but never invokes one.
+        assert!(args.iter().any(|a| a == "--approve-for-me"), "{args:?}");
+        // Mutually exclusive with --approve-for-me: the CLI errors out if both
+        // are passed ("cannot be used with").
+        assert!(!args.iter().any(|a| a == "--sandbox"), "{args:?}");
+    }
+
+    #[test]
+    fn keeps_the_read_only_sandbox_when_there_are_no_tools() {
+        let args = args_for(None);
+        assert!(args.iter().any(|a| a == "--sandbox"), "{args:?}");
+        assert!(args.iter().any(|a| a == "read-only"), "{args:?}");
+        assert!(!args.iter().any(|a| a == "--approve-for-me"), "{args:?}");
+        assert!(
+            !args.iter().any(|a| a.starts_with("mcp_servers")),
+            "{args:?}"
+        );
+    }
 
     fn user(content: &str) -> ChatMessage {
         ChatMessage::User {
