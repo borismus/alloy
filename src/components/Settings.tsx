@@ -6,6 +6,7 @@ import { isTauri } from '../services/api';
 import { useTheme, type ThemePreference } from '../theme';
 import { AlloyDialog, Switch } from './ui';
 import { CheckResult } from './UpdateChecker';
+import { getAutoUpdate, setAutoUpdate } from '../services/autoUpdate';
 import packageInfo from '../../package.json';
 import './Settings.css';
 
@@ -37,6 +38,7 @@ interface SettingsProps {
 export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorChange }: SettingsProps) {
   const { preference: themePreference, setPreference: setThemePreference } = useTheme();
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | CheckResult>('idle');
+  const [autoUpdate, setAutoUpdateState] = useState(getAutoUpdate);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   const handleCheckForUpdates = async () => {
@@ -229,6 +231,27 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
             <p className="settings-description">
               Current version: <span className="settings-version">{packageInfo.version}</span>
             </p>
+            {isTauri() && (
+              <>
+                <div className="settings-row">
+                  <div className="settings-row-text">
+                    <p className="settings-description">
+                      Install updates automatically on launch
+                    </p>
+                  </div>
+                  <Switch
+                    aria-label="Install updates automatically"
+                    isSelected={autoUpdate}
+                    onChange={(v) => { setAutoUpdateState(v); setAutoUpdate(v); }}
+                  />
+                </div>
+                <p className="settings-hint">
+                  Applies to this machine only, not your other devices. Useful for an
+                  always-on Mac that shares Alloy on the network; updates install at
+                  startup, never mid-session.
+                </p>
+              </>
+            )}
             <div className="settings-button-group">
               <button
                 onClick={handleCheckForUpdates}

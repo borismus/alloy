@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { getAutoUpdate } from '../services/autoUpdate';
 import './UpdateChecker.css';
 
 // Export for use in Settings
@@ -15,34 +16,52 @@ export function UpdateChecker() {
   const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   useEffect(() => {
-    // Check for updates on mount (silent)
-    checkForUpdates(false);
+    // Check for updates on mount (silent). When this machine opts into
+    // automatic updates, install right here instead of waiting for someone to
+    // click the banner — the whole point is an always-on box that nobody is
+    // sitting in front of. Only ever on this startup check: auto-relaunching
+    // mid-session would interrupt whatever is on screen.
+    findUpdate(false)
+      .catch((err) => {
+        console.error('[Updater] Failed to check for updates:', err);
+        return null;
+      })
+      .then((found) => {
+        if (found && getAutoUpdate()) {
+          console.info(`[Updater] auto-installing ${found.version}`);
+          void downloadAndInstall(found);
+        }
+      });
 
-    // Expose for manual checks from Settings
-    (window as any).checkForUpdates = () => checkForUpdates(true);
+    // Expose for manual checks from Settings, which wants the CheckResult shape.
+    (window as any).checkForUpdates = () => checkForUpdates();
   }, []);
 
-  const checkForUpdates = async (manual = false): Promise<CheckResult> => {
+  // Returns the Update itself so the auto-install path can act on it
+  // immediately, without waiting a render for the `update` state to land.
+  const findUpdate = async (manual: boolean): Promise<Update | null> => {
     if (manual) {
       setDismissed(false); // Reset dismissed state on manual check
     }
+    const available = await check();
+    if (available) setUpdate(available);
+    return available ?? null;
+  };
+
+  /** Settings-facing wrapper: never throws, reports outcome as a CheckResult. */
+  const checkForUpdates = async (): Promise<CheckResult> => {
     try {
-      const available = await check();
-      if (available) {
-        setUpdate(available);
-        return { available: true, version: available.version };
-      } else {
-        return { available: false };
-      }
+      const available = await findUpdate(true);
+      return available ? { available: true, version: available.version } : { available: false };
     } catch (err) {
       console.error('[Updater] Failed to check for updates:', err);
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      return { error: errorMsg };
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   };
 
-  const downloadAndInstall = async () => {
-    if (!update) return;
+  const downloadAndInstall = async (target: Update | null = update) => {
+    if (!target) return;
+    const update = target;
 
     setDownloading(true);
     setProgress(0);
@@ -156,7 +175,7 @@ export function UpdateChecker() {
             <>
               <button
                 className="update-button update-button-primary"
-                onClick={downloadAndInstall}
+                onClick={() => downloadAndInstall()}
               >
                 Update Now
               </button>
