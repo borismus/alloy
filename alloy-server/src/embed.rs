@@ -58,6 +58,18 @@ struct EmbeddedInner {
 pub enum EmbedError {
     #[error("server bind failed: {0}")]
     Bind(#[from] std::io::Error),
+    /// The share port is held by something else. Its own variant because this is
+    /// an ordinary, actionable situation — usually a second copy of Alloy, or
+    /// one that outlived its window — and it must not read as a broken vault.
+    #[error(
+        "Port {port} is already in use, so Alloy can't share on the network.\n\n\
+         Another copy of Alloy is probably still running — note that closing its \
+         window does not quit it, and an update relaunch can briefly leave the old \
+         process holding the port.\n\n\
+         Quit the other copy (or run `lsof -nP -i :{port}` to see what holds it) and \
+         retry, or turn off Share on Network to run on a private port instead."
+    )]
+    SharedPortInUse { port: u16 },
     #[error("config error: {0}")]
     Config(String),
 }
@@ -177,6 +189,14 @@ impl EmbeddedServer {
                     primary_addr, e, port
                 );
                 bind_with_reuse("127.0.0.1:0").await?
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                // Sharing requires the configured port (external clients need a
+                // stable URL), so there is no fallback here — but say so plainly
+                // instead of surfacing a bare bind error that looks like vault
+                // corruption to everything upstream.
+                tracing::error!("{} is already in use; cannot start shared server", primary_addr);
+                return Err(EmbedError::SharedPortInUse { port });
             }
             Err(e) => return Err(EmbedError::Bind(e)),
         };
@@ -364,4 +384,44 @@ pub async fn bootstrap_for_tauri(
         tracing::info!("embedded server started without a vault; awaiting set_vault");
     }
     Ok(server)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_port_conflict_explains_itself_instead_of_blaming_the_vault() {
+        // Regression: a busy share port surfaced as a bare bind error, which
+        // every layer above reported as a vault problem — the app wiped the
+        // saved vault path and showed the setup screen. An occupied port is an
+        // ordinary condition (a second copy of Alloy, or one that outlived its
+        // window) and must say so.
+        let err = EmbedError::SharedPortInUse { port: 3001 };
+        let msg = err.to_string();
+        assert!(msg.contains("3001"), "must name the port: {msg}");
+        assert!(msg.contains("already in use"), "{msg}");
+        assert!(
+            msg.contains("Another copy of Alloy"),
+            "must point at the likely cause: {msg}"
+        );
+        assert!(
+            msg.contains("Share on Network"),
+            "must offer the way out: {msg}"
+        );
+        assert!(
+            !msg.to_lowercase().contains("vault"),
+            "must not implicate the vault: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn binding_a_taken_port_reports_addr_in_use() {
+        // Confirms the ErrorKind the bind arm matches on is what the OS
+        // actually returns, so the friendly variant is reachable in practice.
+        let held = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = held.local_addr().unwrap();
+        let err = bind_with_reuse(&addr.to_string()).await.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse, "got {err:?}");
+    }
 }

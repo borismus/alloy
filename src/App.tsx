@@ -809,13 +809,17 @@ function AppContent() {
         // unparseable config) permanently forgot the vault and dropped the user
         // on the setup screen with no explanation. Show the real reason instead
         // and let them retry — the path is still valid, the read just failed.
+        // Neutral title: this catches more than vault problems (a busy share
+        // port, for one), and leading with "couldn't open your vault" sent us
+        // chasing the wrong cause once already. Let the underlying message —
+        // which is written to be actionable — speak first.
         setInitError({
-          title: "Couldn't open your vault",
+          title: "Alloy couldn't start",
           detail:
-            `${path}\n\n${error instanceof Error ? error.message : String(error)}\n\n` +
-            'Your vault is still saved. If it lives in a synced folder it may not be ready yet after a ' +
-            'restart — retry in a moment. If this keeps happening, check that Alloy has permission to ' +
-            'read the folder.',
+            `${error instanceof Error ? error.message : String(error)}\n\n` +
+            `Vault: ${path}\n` +
+            'It is still saved, so nothing is lost. If it lives in a synced folder it may not be ' +
+            'ready yet after a restart — retry in a moment.',
         });
       }
     } finally {

@@ -71,8 +71,10 @@ export async function setEmbeddedVaultPath(path: string): Promise<string | null>
     // recoverable failure (folder not mounted yet, bad permissions, unparseable
     // config) into a wiped setup with a misleading error.
     console.error('[tauri-bootstrap] set_vault_path failed:', e);
-    const detail = e instanceof Error ? e.message : String(e);
-    throw new Error(`Could not open the vault at ${path}: ${detail}`);
+    // Rethrown verbatim: the Rust side already explains the cause (missing
+    // folder, permissions, unparseable config, share port in use) and prefixing
+    // it with "could not open the vault" would misattribute the non-vault ones.
+    throw e instanceof Error ? e : new Error(String(e));
   }
 }
 
