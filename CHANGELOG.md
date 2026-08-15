@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.8
+
+- **Clear error when Alloy's network port is busy.** Sharing on the network needs
+  a fixed port, so if another copy of Alloy still holds it — closing the window
+  doesn't quit the app, and an update relaunch can leave the old process running
+  — startup failed and was misreported as a broken vault, wiping your saved
+  vault path. It now names the port, explains the likely cause, and tells you how
+  to fix it.
+
 ## 0.4.7
 
 - **Fixed Alloy forgetting your vault after a restart.** If the vault couldn't be
