@@ -4,6 +4,24 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.6
+
+- **Codex can now use Alloy's tools.** The `codex-cli` provider reaches the same
+  tool parity as Claude — reading notes, searching the vault, and everything else
+  — over the MCP bridge both subscription providers now share.
+- **The app no longer silently goes stale.** The file watcher only received
+  events while connected and nothing was replayed for the gap, so anything that
+  changed while the connection was down (routine on mobile: screen lock, app
+  switch) was lost until a manual reload. Alloy now catches up on reconnect and
+  when you return to it.
+- **The model picker no longer hides behind the keyboard on mobile.** Opening it
+  raised the software keyboard, which moved the composer out from under the
+  already-positioned popover, leaving just the search box visible.
+- **Images can no longer be attached to models that can't read them.** Codex is
+  text-only, so attachments were dropped in silence and it answered as though
+  nothing had been sent. Attaching is now blocked up front, with a warning if the
+  model is switched while images are pending.
+
 ## 0.4.5
 
 - **Camera photos are no longer stored rotated 90°.** Phones store portrait
