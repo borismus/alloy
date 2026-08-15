@@ -117,6 +117,10 @@ export interface ModelInfo {
   contextWindow?: number; // Max input tokens (e.g., 200000 for Claude, 1000000 for Gemini)
   provider?: string;      // Provider id (e.g., "mlx", "openrouter") for unambiguous labeling
   local?: boolean;        // True when served from this machine (loopback) — prompts stay on-device
+  // False only for providers that cannot accept images at all (e.g. codex exec,
+  // which takes a single text prompt). Absent means supported — the backend
+  // omits it when true, so don't test truthiness, test `=== false`.
+  supportsImages?: boolean;
 }
 
 export interface TaskSchedule {

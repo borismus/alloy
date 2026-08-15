@@ -289,6 +289,15 @@ pub trait Provider: Send + Sync {
     fn supports_tools(&self, _model: &str) -> bool {
         true
     }
+
+    /// Can this provider+model accept image attachments? Surfaced through
+    /// `/api/models` so the composer can refuse an attachment up front instead
+    /// of dropping it silently mid-request — a text-only provider otherwise
+    /// answers the bare text as if no image had been sent. Default is
+    /// optimistic (yes); concrete impls override.
+    fn supports_images(&self, _model: &str) -> bool {
+        true
+    }
 }
 
 pub type ProviderArc = Arc<dyn Provider>;

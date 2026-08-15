@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config::{CliAdapter, ProviderKind},
-    providers::{cli_claude::CliClaudeProvider, cli_codex::CliCodexProvider, DiscoveredModel},
+    providers::{
+        cli_claude::CliClaudeProvider, cli_codex::CliCodexProvider, DiscoveredModel, Provider,
+    },
     AppState,
 };
 
@@ -45,6 +47,11 @@ pub struct ModelInfo {
     /// Drives the "Local" privacy badge in the picker.
     #[serde(default, skip_serializing_if = "is_false")]
     pub local: bool,
+    /// False only for providers that cannot accept image attachments at all
+    /// (currently `codex exec`, which takes a single text prompt). Omitted from
+    /// the wire when true so existing consumers treat absence as "supported".
+    #[serde(rename = "supportsImages", skip_serializing_if = "Option::is_none")]
+    pub supports_images: Option<bool>,
     #[serde(rename = "contextWindow", skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
     /// USD per million input tokens (when known). Sourced from OpenRouter's
@@ -119,6 +126,7 @@ fn cli_model_info(provider_id: &str, model: DiscoveredModel) -> ModelInfo {
         name: model.name,
         provider: Some(provider_id.to_string()),
         local: false,
+        supports_images: None,
         context_window: model.context_window,
         // Subscription calls do not consume per-token API credits.
         input_per_1m: Some(0.0),
@@ -189,6 +197,7 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
                     }
                 }
                 Some(CliAdapter::Codex) => {
+                    let codex_start = all.len();
                     let provider = CliCodexProvider::new(cfg);
                     match provider.discover_models().await {
                         Ok(models) => {
@@ -209,6 +218,14 @@ async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
                             any_failed = true;
                             tracing::warn!("{} Codex model discovery failed: {}", cfg.id, error);
                             all.push(codex_default_model(&cfg.id, None));
+                        }
+                    }
+                    // Mark the whole batch (exact models + the `default` route):
+                    // `codex exec` takes one text prompt and drops images.
+                    let text_only = !provider.supports_images("");
+                    if text_only {
+                        for model in &mut all[codex_start..] {
+                            model.supports_images = Some(false);
                         }
                     }
                 }
@@ -340,6 +357,9 @@ async fn fetch_openai_compatible_models(
                 name: display,
                 provider: Some(provider_id.to_string()),
                 local,
+                // OpenAI-compatible /models says nothing about image support,
+                // so stay optimistic rather than guess per model.
+                supports_images: None,
                 context_window: m.context_length,
                 input_per_1m,
                 output_per_1m,
@@ -404,10 +424,43 @@ mod tests {
             name: key.into(),
             provider: None,
             local: false,
+            supports_images: None,
             context_window: None,
             input_per_1m: None,
             output_per_1m: None,
         }
+    }
+
+    #[test]
+    fn codex_reports_no_image_support_and_claude_stays_optimistic() {
+        use crate::config::{CliAdapter, ProviderConfig, ProviderKind};
+        let cfg = |adapter| ProviderConfig {
+            id: "p".into(),
+            kind: ProviderKind::Cli,
+            adapter: Some(adapter),
+            base_url: None,
+            api_key: String::new(),
+            command: None,
+            oauth_token: None,
+            local: None,
+        };
+        // codex exec takes one text prompt; images are dropped in flatten_prompt.
+        assert!(!CliCodexProvider::new(&cfg(CliAdapter::Codex)).supports_images(""));
+        // Claude's stream-json protocol carries base64 image blocks (verified
+        // end to end against the real CLI).
+        assert!(CliClaudeProvider::new(&cfg(CliAdapter::Claude)).supports_images(""));
+    }
+
+    #[test]
+    fn supports_images_is_omitted_from_the_wire_when_true() {
+        // Absence must keep meaning "supported" for existing consumers.
+        let json = serde_json::to_string(&model("a/b")).unwrap();
+        assert!(!json.contains("supportsImages"), "got {json}");
+
+        let mut text_only = model("codex-cli/x");
+        text_only.supports_images = Some(false);
+        let json = serde_json::to_string(&text_only).unwrap();
+        assert!(json.contains("\"supportsImages\":false"), "got {json}");
     }
 
     #[test]

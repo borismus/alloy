@@ -46,6 +46,14 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
 }, ref) => {
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+
+  // Some providers can't accept images at all (codex exec takes a single text
+  // prompt). They used to drop the attachment silently and answer the bare
+  // text, so the model would insist no image had been sent. Absence means
+  // supported — only an explicit `false` blocks.
+  const selectedModelInfo = availableModels.find(m => m.key === model);
+  const modelAcceptsImages = selectedModelInfo?.supportsImages !== false;
+  const modelLabel = selectedModelInfo?.name ?? 'This model';
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaProps = useTextareaProps();
@@ -88,6 +96,8 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
+    // Let the paste fall through as text rather than silently swallowing it.
+    if (!modelAcceptsImages) return;
 
     const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
 
@@ -212,6 +222,11 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           onHover={setSlashActiveIndex}
         />
       )}
+      {pendingImages.length > 0 && !modelAcceptsImages && (
+        <p className="attachment-warning" role="status">
+          {modelLabel} can&apos;t accept images — {pendingImages.length === 1 ? 'this attachment' : 'these attachments'} will be ignored. Switch models to send {pendingImages.length === 1 ? 'it' : 'them'}.
+        </p>
+      )}
       {pendingImages.length > 0 && (
         <div className="pending-images">
           {pendingImages.map((img, idx) => (
@@ -237,12 +252,15 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           onChange={handleFileSelect}
           style={{ display: 'none' }}
         />
-        <AlloyTooltip content="Attach image">
+        <AlloyTooltip
+          content={modelAcceptsImages ? 'Attach image' : `${modelLabel} can't accept images`}
+        >
           <button
             type="button"
             className="attach-button"
             onClick={handleAttachClick}
-            aria-label="Attach image"
+            aria-label={modelAcceptsImages ? 'Attach image' : `${modelLabel} can't accept images`}
+            disabled={!modelAcceptsImages}
           >
             +
           </button>

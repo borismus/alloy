@@ -279,6 +279,19 @@
   cursor: not-allowed;
 }
 
+/* Shown when images are attached but the selected model can't accept them.
+   Without this the attachment was dropped silently and the model answered the
+   bare text, which reads as a broken upload. */
+.attachment-warning {
+  margin: 0 0 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-control);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
 /* Pending images preview */
 .pending-images {
   display: flex;

@@ -325,6 +325,13 @@ impl Provider for CliCodexProvider {
     fn supports_tools(&self, _model: &str) -> bool {
         false
     }
+
+    /// `codex exec` takes a single text prompt on stdin; `flatten_prompt` drops
+    /// images entirely. Report that up front so the composer can block the
+    /// attachment rather than let the model answer as if none was sent.
+    fn supports_images(&self, _model: &str) -> bool {
+        false
+    }
 }
 
 async fn write_rpc(stdin: &mut tokio::process::ChildStdin, message: &Value) -> Result<(), String> {
