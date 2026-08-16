@@ -4,6 +4,20 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.9
+
+- **Phones now use the mobile layout in landscape.** A phone turned sideways is
+  wider than the old breakpoint, so it was being served the desktop layout on a
+  viewport half the usual height. Large tablets and resized desktop windows are
+  unaffected.
+- **Fixed the composer taking over the screen in landscape.** Its height limit
+  was a fixed size that happened to be about half a sideways phone screen, and an
+  empty composer could stay stuck at the height it had before you rotated.
+- **Fixed scrolling breaking after rotating the device.** Alloy measured the
+  screen once, as the rotation began, and iOS reports its final size only after
+  the animation finishes — so the app could keep sizing itself to the previous
+  orientation.
+
 ## 0.4.8
 
 - **Clear error when Alloy's network port is busy.** Sharing on the network needs
