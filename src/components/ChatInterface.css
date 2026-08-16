@@ -400,7 +400,12 @@
   font-size: 1rem;
   font-family: inherit;
   resize: none;
-  max-height: 200px;
+  /* Cap by viewport height, not a fixed 200px. A phone in landscape is ~874px
+     wide — above the 768px mobile breakpoint — so it gets these desktop rules on
+     a viewport only ~400px tall, where a flat 200px cap ate half the screen and
+     left the transcript a sliver. --app-height is the real visual viewport (set
+     by useVisualViewport); dvh is the fallback before it lands. */
+  max-height: min(200px, calc(var(--app-height, 100dvh) * 0.35));
   overflow-y: auto;
   min-height: 48px;
   scrollbar-width: thin;
