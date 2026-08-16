@@ -1078,7 +1078,10 @@
 }
 
 /* Mobile input form layout */
-@media (max-width: 768px) {
+/* Mobile layout: narrow viewports, OR short touch viewports — a phone in
+   landscape is ~874px wide, above any width-only breakpoint, but is still a
+   phone. Keep in sync with MOBILE_MEDIA_QUERY in src/hooks/useIsMobile.ts. */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
   .input-form {
     padding: 12px 16px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));

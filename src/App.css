@@ -40,7 +40,10 @@ html, body, #root {
 }
 
 /* Hide scrollbars on mobile while keeping scroll */
-@media (max-width: 768px) {
+/* Mobile layout: narrow viewports, OR short touch viewports — a phone in
+   landscape is ~874px wide, above any width-only breakpoint, but is still a
+   phone. Keep in sync with MOBILE_MEDIA_QUERY in src/hooks/useIsMobile.ts. */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
   * {
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE/Edge */

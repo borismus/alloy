@@ -102,7 +102,10 @@
   word-break: break-word;
 }
 
-@media (max-width: 768px) {
+/* Mobile layout: narrow viewports, OR short touch viewports — a phone in
+   landscape is ~874px wide, above any width-only breakpoint, but is still a
+   phone. Keep in sync with MOBILE_MEDIA_QUERY in src/hooks/useIsMobile.ts. */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
   .subagent-responses-grid {
     grid-template-columns: 1fr;
   }

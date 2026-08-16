@@ -161,7 +161,10 @@
 /* Match the chat composer's mobile hierarchy: instruction first, controls on a
    second row. Keeping all three controls inline squeezed the textarea to 69px
    on a 375px viewport. */
-@media (max-width: 768px) {
+/* Mobile layout: narrow viewports, OR short touch viewports — a phone in
+   landscape is ~874px wide, above any width-only breakpoint, but is still a
+   phone. Keep in sync with MOBILE_MEDIA_QUERY in src/hooks/useIsMobile.ts. */
+@media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
   .ai-edit-panel {
     padding: 12px 16px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
