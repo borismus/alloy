@@ -4,6 +4,20 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.10
+
+- **Fixed the app appearing to refresh itself on desktop.** Alloy re-checks the
+  vault whenever its window regains focus; that check rebuilt the sidebar every
+  time, even when nothing had changed. It now leaves things alone unless
+  something actually changed.
+- **Alloy reopens the conversation you were last reading.** Your place was stored
+  in a way that iOS discards when it evicts a backgrounded tab, and that a
+  desktop restart clears — so it was lost exactly when it mattered.
+- **Fixed links that open native apps leaving a stray blank tab.** Tapping an
+  Apple Music (or similar) link handed off to the app from a popup tab rather
+  than from Alloy, stranding it behind the app. Middle-click and
+  modifier-click on links work again too.
+
 ## 0.4.9
 
 - **Phones now use the mobile layout in landscape.** A phone turned sideways is
