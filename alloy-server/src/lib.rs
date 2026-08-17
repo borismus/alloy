@@ -75,6 +75,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::watch::router())
         .merge(routes::stream::router())
         .merge(routes::models::router())
+        .merge(routes::search::router())
         .merge(routes::tasks::router())
         .merge(routes::mcp::router())
         // SPA static assets are a FALLBACK — they only run for paths with

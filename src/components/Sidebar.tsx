@@ -6,6 +6,7 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useLongPress } from '../hooks/useLongPress';
+import { searchVault } from '../services/vaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
 import { AlloyDialog, SegmentedControl } from './ui';
@@ -155,6 +156,27 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     const timer = setTimeout(() => setSearchQuery(searchInput), 200);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // Ids matched by the server's full-text scan. Client-side filtering can only
+  // see what's already loaded, and conversations hold no message bodies until
+  // opened, so without this a search never matched conversation text.
+  const [serverMatchIds, setServerMatchIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setServerMatchIds(new Set());
+      return;
+    }
+    const controller = new AbortController();
+    searchVault(searchQuery, controller.signal)
+      .then(hits => setServerMatchIds(new Set(hits.map(h => h.id))))
+      .catch(err => {
+        // An aborted request is the expected outcome while typing.
+        if ((err as Error)?.name !== 'AbortError') {
+          console.warn('[Sidebar] vault search failed (falling back to local matching):', err);
+        }
+      });
+    return () => controller.abort();
+  }, [searchQuery]);
 
   useImperativeHandle(ref, () => ({
     focusSearch: () => {
@@ -391,12 +413,17 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           if (hasMatchingMessage) return true;
         }
 
+        // Server-side full-text hit (conversation transcripts, note bodies).
+        if (serverMatchIds.has(item.id)) return true;
+
         if (!matchesTitle && !matchesId && !matchesPreview && !matchesContent) return false;
       }
 
       return true;
     });
-  }, [timelineItems, activeFilter, searchQuery]);
+    // serverMatchIds arrives asynchronously after the query is set, so it must
+    // be a dependency — otherwise the list keeps the pre-search result.
+  }, [timelineItems, activeFilter, searchQuery, serverMatchIds]);
 
   const getTypeBadge = (item: TimelineItem) => {
     switch (item.type) {

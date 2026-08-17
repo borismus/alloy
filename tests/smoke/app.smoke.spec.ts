@@ -164,6 +164,21 @@ test('restores the open conversation after the tab session ends', async ({ page 
   await expect(page.getByText('What can Alloy do?')).toBeVisible();
 });
 
+test('search finds text inside conversation bodies', async ({ page }) => {
+  // Regression: the sidebar filter searched `conversation.messages`, but
+  // conversations load as metadata-only summaries with messages: [], so the
+  // full-text branch matched nothing until a conversation had been opened.
+  // The scan now runs server-side against the vault files.
+  const search = page.locator('input[placeholder*="Search"]');
+
+  // 'configuration' appears only in the seeded conversation's code block.
+  await search.fill('configuration');
+  await expect(page.getByText('Welcome to Alloy')).toBeVisible();
+
+  await search.fill('zzznotpresentanywhere');
+  await expect(page.locator('.timeline-item')).toHaveCount(0);
+});
+
 test('dark mode keeps syntax-highlighted code legible', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('alloy.theme', 'dark'));
   await page.reload();

@@ -3,6 +3,7 @@ pub mod fs;
 pub mod mcp;
 pub mod models;
 pub mod path;
+pub mod search;
 pub mod static_files;
 pub mod stream;
 pub mod tasks;

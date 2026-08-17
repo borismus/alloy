@@ -297,7 +297,7 @@ fn find_matches(content: &str, query_lower: &str) -> Vec<MatchInfo> {
 
 /// Extract a `...context needle context...` snippet around a match at byte `idx`
 /// (of length `match_len`) within `line`, snapped to char boundaries.
-fn snippet_around(line: &str, idx: usize, match_len: usize) -> String {
+pub(crate) fn snippet_around(line: &str, idx: usize, match_len: usize) -> String {
     let start = idx.saturating_sub(SNIPPET_CONTEXT);
     let end = (idx + match_len + SNIPPET_CONTEXT).min(line.len());
     let s = nearest_char_boundary(line, start, false);
@@ -351,7 +351,7 @@ fn fuzzy_match(
 /// Snap a byte offset to a char boundary in `s`. `forward=true` moves
 /// right; `false` moves left. Keeps `find_matches` panic-free on multi-byte
 /// content.
-fn nearest_char_boundary(s: &str, mut idx: usize, forward: bool) -> usize {
+pub(crate) fn nearest_char_boundary(s: &str, mut idx: usize, forward: bool) -> usize {
     if idx >= s.len() {
         return s.len();
     }
