@@ -6,7 +6,7 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useLongPress } from '../hooks/useLongPress';
-import { searchVault } from '../services/vaultSearch';
+import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
 import { AlloyDialog, SegmentedControl } from './ui';
@@ -157,26 +157,15 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // Ids matched by the server's full-text scan. Client-side filtering can only
-  // see what's already loaded, and conversations hold no message bodies until
-  // opened, so without this a search never matched conversation text.
-  const [serverMatchIds, setServerMatchIds] = useState<Set<string>>(() => new Set());
+  // Client-side filtering can only see timeline metadata. The hook scans note,
+  // riff, and conversation bodies server-side, retains snippets for display,
+  // and prevents responses from an older query leaking into a newer one.
+  const { matches: serverMatches, loading: searchLoading, error: searchError } = useVaultSearch(searchQuery);
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setServerMatchIds(new Set());
-      return;
+    if (searchError) {
+      console.warn('[Sidebar] vault search failed (falling back to local matching):', searchError);
     }
-    const controller = new AbortController();
-    searchVault(searchQuery, controller.signal)
-      .then(hits => setServerMatchIds(new Set(hits.map(h => h.id))))
-      .catch(err => {
-        // An aborted request is the expected outcome while typing.
-        if ((err as Error)?.name !== 'AbortError') {
-          console.warn('[Sidebar] vault search failed (falling back to local matching):', err);
-        }
-      });
-    return () => controller.abort();
-  }, [searchQuery]);
+  }, [searchError]);
 
   useImperativeHandle(ref, () => ({
     focusSearch: () => {
@@ -415,17 +404,23 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           if (hasMatchingMessage) return true;
         }
 
-        // Server-side full-text hit (conversation transcripts, note bodies).
-        if (serverMatchIds.has(item.id)) return true;
+        // Server-side full-text hit (conversation transcripts, note/riff bodies).
+        if (item.type !== 'task' && serverMatches.has(vaultSearchHitKey(item.type, item.id))) return true;
 
         if (!matchesTitle && !matchesId && !matchesPreview && !matchesContent) return false;
       }
 
       return true;
     });
-    // serverMatchIds arrives asynchronously after the query is set, so it must
+    // serverMatches arrives asynchronously after the query is set, so it must
     // be a dependency — otherwise the list keeps the pre-search result.
-  }, [timelineItems, activeFilter, searchQuery, serverMatchIds]);
+  }, [timelineItems, activeFilter, searchQuery, serverMatches]);
+
+  const renderSearchSnippet = (item: TimelineItem) => {
+    if (!searchQuery.trim() || item.type === 'task') return null;
+    const match = serverMatches.get(vaultSearchHitKey(item.type, item.id));
+    return match ? <div className="item-search-snippet">{match.snippet}</div> : null;
+  };
 
   const getTypeBadge = (item: TimelineItem) => {
     switch (item.type) {
@@ -512,8 +507,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="no-conversations">
-            <p>No results found</p>
-            <p className="hint">Try a different search or filter</p>
+            <p>{searchLoading ? 'Searching…' : 'No results found'}</p>
+            {!searchLoading && <p className="hint">Try a different search or filter</p>}
           </div>
         ) : (
           filteredItems.map((item) => (
@@ -560,6 +555,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 {getTypeBadge(item)}
                 {item.title}
               </div>
+              {renderSearchSnippet(item)}
               <div className="item-meta">
                 <span className="item-date">{formatDate(item.lastUpdated)}</span>
                 {item.type === 'conversation' && item.conversation && (

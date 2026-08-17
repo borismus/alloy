@@ -7,24 +7,24 @@
 //! either — a real vault is ~200MB across a couple of thousand conversations,
 //! and loading it would undo the startup work.
 //!
-//! So the scan happens here, next to the files. Notes keep their client-side
-//! matching (their bodies are already loaded), and these results are merged in.
+//! So the scan happens here, next to the files, and only matching ids/snippets
+//! are returned. Note bodies are likewise no longer loaded by the client.
 
-use axum::{Router, extract::{Query, State}, routing::get, Json};
+use axum::{
+    extract::{Query, State},
+    routing::get,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::Path;
 use tokio::io::AsyncReadExt;
 
-use crate::{AppState, tools::search::{nearest_char_boundary, snippet_around}};
+use crate::{
+    tools::search::{nearest_char_boundary, snippet_around},
+    AppState,
+};
 
-/// Cap on returned hits. The sidebar shows a list, not a corpus.
-const MAX_RESULTS: usize = 50;
-/// Stop scanning after this many matches. Results are sorted by recency before
-/// truncating to [`MAX_RESULTS`], so this needs enough candidates for that sort
-/// to be meaningful while still bounding a broad query — returning the first 50
-/// in filesystem order would surface arbitrary old conversations.
-const MAX_SCAN_HITS: usize = 300;
 /// Per-file read cap. Long conversations are matched on their first chunk rather
 /// than paying to scan a multi-megabyte transcript on every keystroke.
 const MAX_FILE_BYTES: usize = 512 * 1024;
@@ -60,25 +60,25 @@ async fn search(State(state): State<AppState>, Query(q): Query<SearchQuery>) -> 
         return Json(json!({ "results": [] }));
     }
 
-    let root = state.vault.root().to_path_buf();
-    let mut hits: Vec<SearchHit> = Vec::new();
+    let hits = search_vault(state.vault.root(), &query).await;
+    Json(json!({ "results": hits }))
+}
 
+async fn search_vault(root: &Path, query: &str) -> Vec<SearchHit> {
+    let mut hits = Vec::new();
+    // Do not stop after an arbitrary global number of conversation hits: that
+    // used to prevent notes and riffs from being searched at all for broad
+    // queries. The timeline is already sorted and decides what is visible, so
+    // return every matching id and let it preserve the correct ordering.
     for (dir, kind) in [
         ("conversations", "conversation"),
         ("notes", "note"),
-        ("riffs", "note"),
+        ("riffs", "riff"),
     ] {
-        if hits.len() >= MAX_SCAN_HITS {
-            break;
-        }
-        scan_dir(&root.join(dir), dir, kind, &query, &mut hits).await;
+        scan_dir(&root.join(dir), dir, kind, query, &mut hits).await;
     }
-
-    // Most-recent first, matching how the sidebar orders everything else.
     hits.sort_by(|a, b| b.modified.cmp(&a.modified));
-    hits.truncate(MAX_RESULTS);
-
-    Json(json!({ "results": hits }))
+    hits
 }
 
 async fn scan_dir(dir: &Path, rel_dir: &str, kind: &str, query: &str, hits: &mut Vec<SearchHit>) {
@@ -87,9 +87,6 @@ async fn scan_dir(dir: &Path, rel_dir: &str, kind: &str, query: &str, hits: &mut
     };
 
     while let Ok(Some(entry)) = entries.next_entry().await {
-        if hits.len() >= MAX_SCAN_HITS {
-            return;
-        }
         let name = entry.file_name().to_string_lossy().into_owned();
         // Conversations also have generated .md previews; skip them so a match
         // isn't reported twice for the same conversation.
@@ -105,16 +102,30 @@ async fn scan_dir(dir: &Path, rel_dir: &str, kind: &str, query: &str, hits: &mut
         let Some(content) = read_capped(&entry.path()).await else {
             continue;
         };
-        let Some(snippet) = first_match_snippet(&content, query) else {
+        // Conversation metadata (role, timestamp, model, title) isn't message
+        // text. Search only content scalars so a query such as "user" doesn't
+        // match every user-role record and the returned snippet is meaningful.
+        let snippet = if kind == "conversation" {
+            first_conversation_content_match(&content, query)
+        } else {
+            first_match_snippet(&content, query)
+        };
+        let Some(snippet) = snippet else {
             continue;
         };
 
         let (id, title) = if kind == "conversation" {
             let stem = name.trim_end_matches(".yaml").to_string();
-            (yaml_field(&content, "id").unwrap_or_else(|| stem.clone()),
-             yaml_field(&content, "title").unwrap_or(stem))
+            (
+                yaml_field(&content, "id").unwrap_or_else(|| stem.clone()),
+                yaml_field(&content, "title").unwrap_or(stem),
+            )
         } else {
-            let path = if rel_dir == "riffs" { format!("riffs/{name}") } else { name.clone() };
+            let path = if rel_dir == "riffs" {
+                format!("riffs/{name}")
+            } else {
+                name.clone()
+            };
             (path, name.trim_end_matches(".md").to_string())
         };
 
@@ -123,7 +134,13 @@ async fn scan_dir(dir: &Path, rel_dir: &str, kind: &str, query: &str, hits: &mut
             .await
             .and_then(|m| m.modified())
             .unwrap_or(std::time::UNIX_EPOCH);
-        hits.push(SearchHit { kind: kind.to_string(), id, title, snippet, modified });
+        hits.push(SearchHit {
+            kind: kind.to_string(),
+            id,
+            title,
+            snippet,
+            modified,
+        });
     }
 }
 
@@ -137,18 +154,68 @@ async fn read_capped(path: &Path) -> Option<String> {
     Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
-/// First line containing `query` (already lowercased), as a context snippet.
-fn first_match_snippet(content: &str, query: &str) -> Option<String> {
+/// Find a query only inside conversation message `content` values, excluding
+/// YAML metadata such as `role: user` and returning a clean human snippet rather
+/// than serialization syntax such as `content: |-`.
+fn first_conversation_content_match(content: &str, query: &str) -> Option<String> {
+    let mut in_messages = false;
+    let mut block_indent: Option<usize> = None;
+
     for line in content.lines() {
-        let lower = line.to_lowercase();
-        if let Some(idx) = lower.find(query) {
-            // `idx` indexes the lowercased line; map it back to a safe boundary
-            // in the original, since lowercasing can change byte lengths.
-            let safe = nearest_char_boundary(line, idx.min(line.len()), false);
-            return Some(snippet_around(line, safe, query.len()));
+        if !in_messages {
+            if line.trim() == "messages:" {
+                in_messages = true;
+            }
+            continue;
+        }
+
+        let indent = line.len() - line.trim_start().len();
+        if let Some(content_indent) = block_indent {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if indent > content_indent {
+                if let Some(snippet) = match_snippet(line.trim(), query) {
+                    return Some(snippet);
+                }
+                continue;
+            }
+            block_indent = None;
+        }
+
+        let trimmed = line.trim_start();
+        // Compact YAML may put the first field directly on the sequence marker
+        // (`- content: text`) while normal persisted messages use an indented
+        // `content:` field after `- id:`.
+        let field = trimmed.strip_prefix("- ").unwrap_or(trimmed);
+        let Some(value) = field.strip_prefix("content:") else {
+            continue;
+        };
+        let value = value.trim();
+        if value.starts_with('|') || value.starts_with('>') {
+            block_indent = Some(indent);
+            continue;
+        }
+        let display = value.trim_matches('"').trim_matches('\'');
+        if let Some(snippet) = match_snippet(display, query) {
+            return Some(snippet);
         }
     }
     None
+}
+
+/// First line containing `query` (already lowercased), as a context snippet.
+fn first_match_snippet(content: &str, query: &str) -> Option<String> {
+    content.lines().find_map(|line| match_snippet(line, query))
+}
+
+fn match_snippet(line: &str, query: &str) -> Option<String> {
+    let lower = line.to_lowercase();
+    let idx = lower.find(query)?;
+    // `idx` indexes the lowercased line; map it back to a safe boundary in the
+    // original, since lowercasing can change byte lengths.
+    let safe = nearest_char_boundary(line, idx.min(line.len()), false);
+    Some(snippet_around(line, safe, query.len()))
 }
 
 /// Pull a top-level scalar out of a conversation's YAML header without parsing
@@ -176,8 +243,14 @@ mod tests {
     #[test]
     fn reads_header_fields_without_parsing_the_body() {
         let yaml = "id: 2024-01-15-1000-aa01\ntitle: Welcome to Alloy\nmodel: x\nmessages:\n- content: title: not this\n";
-        assert_eq!(yaml_field(yaml, "id").as_deref(), Some("2024-01-15-1000-aa01"));
-        assert_eq!(yaml_field(yaml, "title").as_deref(), Some("Welcome to Alloy"));
+        assert_eq!(
+            yaml_field(yaml, "id").as_deref(),
+            Some("2024-01-15-1000-aa01")
+        );
+        assert_eq!(
+            yaml_field(yaml, "title").as_deref(),
+            Some("Welcome to Alloy")
+        );
     }
 
     #[test]
@@ -189,7 +262,8 @@ mod tests {
 
     #[test]
     fn matches_case_insensitively_and_returns_context() {
-        let snippet = first_match_snippet("The Cost of Context is high", "cost of context").unwrap();
+        let snippet =
+            first_match_snippet("The Cost of Context is high", "cost of context").unwrap();
         assert!(snippet.contains("Cost of Context"), "got {snippet}");
     }
 
@@ -202,7 +276,18 @@ mod tests {
     /// rather than just the string helpers.
     async fn scan(dir: &Path, kind: &str, query: &str) -> Vec<SearchHit> {
         let mut hits = Vec::new();
-        scan_dir(dir, if kind == "conversation" { "conversations" } else { "notes" }, kind, query, &mut hits).await;
+        scan_dir(
+            dir,
+            if kind == "conversation" {
+                "conversations"
+            } else {
+                "notes"
+            },
+            kind,
+            query,
+            &mut hits,
+        )
+        .await;
         hits
     }
 
@@ -235,7 +320,46 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "2024-03-03-0900-dd04");
         assert_eq!(hits[0].title, "Trip notes");
-        assert!(hits[0].snippet.contains("funicular"), "got {}", hits[0].snippet);
+        assert!(
+            hits[0].snippet.contains("funicular"),
+            "got {}",
+            hits[0].snippet
+        );
+    }
+
+    #[test]
+    fn conversation_search_ignores_metadata_and_cleans_yaml_syntax() {
+        let yaml = "id: user-guide\ntitle: User guide\nmessages:\n- role: user\n  content: direct needle text\n- role: assistant\n  content: |-\n    block needle text\n";
+        assert!(first_conversation_content_match(yaml, "user").is_none());
+        assert_eq!(
+            first_conversation_content_match(yaml, "direct").as_deref(),
+            Some("direct needle text")
+        );
+        assert_eq!(
+            first_conversation_content_match(yaml, "block").as_deref(),
+            Some("block needle text")
+        );
+    }
+
+    #[tokio::test]
+    async fn broad_conversation_matches_do_not_starve_notes() {
+        let v = temp_vault("note-starvation");
+        // Regression: a global 300-hit early exit scanned conversations first,
+        // then skipped notes and riffs entirely.
+        for i in 0..300 {
+            std::fs::write(
+                v.0.join(format!("conversations/c{i}.yaml")),
+                format!("id: c{i}\ntitle: C {i}\nmessages:\n- content: common needle\n"),
+            )
+            .unwrap();
+        }
+        std::fs::write(v.0.join("notes/Important.md"), "common needle in a note").unwrap();
+
+        let hits = search_vault(&v.0, "common needle").await;
+        assert_eq!(hits.len(), 301);
+        assert!(hits
+            .iter()
+            .any(|hit| hit.kind == "note" && hit.id == "Important.md"));
     }
 
     #[tokio::test]
@@ -243,27 +367,57 @@ mod tests {
         // conversations/ also holds .md previews; matching both would report the
         // same conversation twice.
         let v = temp_vault("dupes");
-        std::fs::write(v.0.join("conversations/c.yaml"), "id: c\ntitle: C\nmessages:\n- content: funicular\n").unwrap();
+        std::fs::write(
+            v.0.join("conversations/c.yaml"),
+            "id: c\ntitle: C\nmessages:\n- content: funicular\n",
+        )
+        .unwrap();
         std::fs::write(v.0.join("conversations/c.md"), "funicular").unwrap();
 
-        assert_eq!(scan(&v.0.join("conversations"), "conversation", "funicular").await.len(), 1);
+        assert_eq!(
+            scan(&v.0.join("conversations"), "conversation", "funicular")
+                .await
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
     async fn returns_notes_by_path_so_the_sidebar_can_match_them() {
         let v = temp_vault("notes");
-        std::fs::write(v.0.join("notes/Project ideas.md"), "a thought about funicular railways").unwrap();
+        std::fs::write(
+            v.0.join("notes/Project ideas.md"),
+            "a thought about funicular railways",
+        )
+        .unwrap();
 
         let hits = scan(&v.0.join("notes"), "note", "funicular").await;
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].id, "Project ideas.md", "id must match NoteInfo.filename");
+        assert_eq!(
+            hits[0].id, "Project ideas.md",
+            "id must match NoteInfo.filename"
+        );
+    }
+
+    #[tokio::test]
+    async fn labels_riffs_separately_from_notes() {
+        let v = temp_vault("riffs");
+        std::fs::create_dir_all(v.0.join("riffs")).unwrap();
+        std::fs::write(v.0.join("riffs/Draft.md"), "a funicular draft").unwrap();
+
+        let hits = search_vault(&v.0, "funicular").await;
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].kind, "riff");
+        assert_eq!(hits[0].id, "riffs/Draft.md");
     }
 
     #[tokio::test]
     async fn a_missing_directory_is_not_an_error() {
         // A vault with no riffs/ yet must not fail the whole search.
         let v = temp_vault("missing");
-        assert!(scan(&v.0.join("riffs"), "note", "anything").await.is_empty());
+        assert!(scan(&v.0.join("riffs"), "note", "anything")
+            .await
+            .is_empty());
     }
 
     #[test]

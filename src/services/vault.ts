@@ -342,7 +342,10 @@ providers:
         try {
           const filePath = await join(conversationsPath, entry.name!);
           const content = await readTextFile(filePath);
-          const conversation = yaml.load(content) as Conversation;
+          // JSON_SCHEMA keeps unquoted ISO timestamps as strings. The default
+          // schema turns each parse into a new Date object, so unchanged
+          // `updated` values compare unequal by identity during focus resync.
+          const conversation = yaml.load(content, { schema: yaml.JSON_SCHEMA }) as Conversation;
           this.migrateConversationFormat(conversation);
           return conversation;
         } catch (error) {
@@ -386,7 +389,9 @@ providers:
       const headerBlock = content.split(/^messages:/m)[0];
       let meta: Partial<Conversation> = {};
       try {
-        meta = (yaml.load(headerBlock) as Partial<Conversation>) ?? {};
+        // Keep timestamps as strings so this summary can be compared with a
+        // separately parsed full conversation by value, not Date identity.
+        meta = (yaml.load(headerBlock, { schema: yaml.JSON_SCHEMA }) as Partial<Conversation>) ?? {};
       } catch {
         meta = {};
       }
@@ -436,7 +441,7 @@ providers:
 
     if (filePath && await exists(filePath)) {
       const content = await readTextFile(filePath);
-      const conversation = yaml.load(content) as Conversation;
+      const conversation = yaml.load(content, { schema: yaml.JSON_SCHEMA }) as Conversation;
       // Migrate old provider/model fields if needed.
       this.migrateConversationFormat(conversation);
       return conversation;

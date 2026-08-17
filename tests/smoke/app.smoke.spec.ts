@@ -69,6 +69,39 @@ test('an empty catalog refresh does not wipe already-loaded models', async ({ pa
   await expect(page.getByRole('option').filter({ hasText: /Claude/ }).first()).toBeVisible();
 });
 
+test('focus does not reload the conversation or lose scroll position', async ({ page }) => {
+  // Real vault timestamps are unquoted YAML scalars. With js-yaml's default
+  // schema, separately parsing the summary and full conversation made equal
+  // timestamps into unequal Date objects, so every focus forced a reload.
+  await page.getByText('Focus scroll regression', { exact: true }).click();
+  await expect(page.getByText('Paragraph 20:', { exact: false })).toBeAttached();
+  await expect(page.locator('.loading-conversation')).toHaveCount(0);
+
+  const before = await page.locator('.messages-container').evaluate(el => {
+    const container = el as HTMLElement;
+    container.scrollTop = Math.floor((container.scrollHeight - container.clientHeight) / 2);
+    container.dispatchEvent(new Event('scroll'));
+    (window as unknown as { __sawFocusReload?: boolean }).__sawFocusReload = false;
+    new MutationObserver(() => {
+      if (document.querySelector('.loading-conversation')) {
+        (window as unknown as { __sawFocusReload?: boolean }).__sawFocusReload = true;
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+    return container.scrollTop;
+  });
+  expect(before).toBeGreaterThan(0);
+
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForTimeout(1_000); // 250ms resync debounce + vault reads
+
+  const state = await page.locator('.messages-container').evaluate(el => ({
+    scrollTop: (el as HTMLElement).scrollTop,
+    sawReload: (window as unknown as { __sawFocusReload?: boolean }).__sawFocusReload,
+  }));
+  expect(state.sawReload).toBe(false);
+  expect(state.scrollTop).toBe(before);
+});
+
 test('resyncs vault changes missed while the watcher was disconnected', async ({ page }, testInfo) => {
   // Regression: the watcher reconnects but never re-reads the vault, so every
   // change made during the gap was lost until a manual reload. Mobile hits this
@@ -174,6 +207,8 @@ test('search finds text inside conversation bodies', async ({ page }) => {
   // 'configuration' appears only in the seeded conversation's code block.
   await search.fill('configuration');
   await expect(page.getByText('Welcome to Alloy')).toBeVisible();
+  // The API's context is rendered, not discarded after reducing results to ids.
+  await expect(page.getByText('# Example configuration')).toBeVisible();
 
   await search.fill('zzznotpresentanywhere');
   await expect(page.locator('.timeline-item')).toHaveCount(0);

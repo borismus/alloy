@@ -1,0 +1,55 @@
+id: 2024-01-14-0900-dd01
+title: Focus scroll regression
+model: claude-cli/sonnet
+created: 2024-01-14T09:00:00.000Z
+updated: 2024-01-14T09:05:00.000Z
+messages:
+- id: msg-focus-user
+  role: user
+  timestamp: 2024-01-14T09:00:10.000Z
+  content: Explain why focus should preserve my reading position.
+- id: msg-focus-assistant
+  role: assistant
+  timestamp: 2024-01-14T09:00:20.000Z
+  content: |-
+    Focus should not alter the conversation being read.
+
+    Paragraph 01: The reader paused halfway through the archive and marked the place carefully.
+
+    Paragraph 02: Returning to the window should leave the page exactly where the reader stopped.
+
+    Paragraph 03: A metadata refresh must not replace content that has not changed on disk.
+
+    Paragraph 04: Identical timestamps parsed twice must still compare as identical values.
+
+    Paragraph 05: YAML's default timestamp conversion creates separate Date objects on each parse.
+
+    Paragraph 06: Object identity is not a valid comparison for two equal timestamp values.
+
+    Paragraph 07: Misclassifying the conversation drops its messages to a temporary summary.
+
+    Paragraph 08: The scroll container then contracts before the full messages return.
+
+    Paragraph 09: Once the content returns, automatic following can pin the reader to the bottom.
+
+    Paragraph 10: Parsing timestamps as strings keeps the summary and full object comparable.
+
+    Paragraph 11: The reader continued through another section of intentionally repetitive prose.
+
+    Paragraph 12: Each paragraph makes the transcript tall enough for a meaningful scroll assertion.
+
+    Paragraph 13: Browser automation records the exact scroll offset before focus is dispatched.
+
+    Paragraph 14: It also watches for the temporary loading state that exposes a reload path.
+
+    Paragraph 15: Neither the loading indicator nor a scroll jump should occur for an unchanged file.
+
+    Paragraph 16: The same rule applies to desktop focus and mobile foreground recovery.
+
+    Paragraph 17: Recovery remains important when events were missed during a disconnected interval.
+
+    Paragraph 18: Correct recovery compares normalized scalar timestamps rather than object identity.
+
+    Paragraph 19: The final paragraphs continue only to ensure the content exceeds the viewport.
+
+    Paragraph 20: The reader's place survives a harmless trip to another application.

@@ -313,6 +313,30 @@ describe('VaultService', () => {
       expect(fs.readTextFile).toHaveBeenCalledWith('//conversations/conv-123.yaml');
     });
 
+    it('keeps unquoted YAML timestamps as strings for value comparison', async () => {
+      vaultService.setVaultPath('/test/vault');
+      vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([
+        createMockFileSystemEntry('conv-123.yaml'),
+      ]);
+      // Real vault files use unquoted ISO values. js-yaml's default schema
+      // converts these to a fresh Date on each parse, making `!==` report a
+      // change on every focus even when the timestamp text is identical.
+      vi.mocked(fs.readTextFile).mockResolvedValue(`
+id: conv-123
+created: 2024-01-01T10:00:00.000Z
+updated: 2024-01-01T10:05:00.000Z
+model: claude-cli/sonnet
+messages: []
+`);
+
+      const result = await vaultService.loadConversation('conv-123');
+
+      expect(result?.created).toBe('2024-01-01T10:00:00.000Z');
+      expect(result?.updated).toBe('2024-01-01T10:05:00.000Z');
+      expect(typeof result?.updated).toBe('string');
+    });
+
     it('should return null if conversation file does not exist', async () => {
       vaultService.setVaultPath('/test/vault');
       vi.mocked(fs.exists).mockResolvedValue(false);

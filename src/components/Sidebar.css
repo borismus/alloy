@@ -222,6 +222,18 @@
   padding-right: 1.75rem;
 }
 
+.item-search-snippet {
+  display: -webkit-box;
+  margin: -0.2rem 0 0.5rem;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .item-meta {
   display: flex;
   justify-content: space-between;

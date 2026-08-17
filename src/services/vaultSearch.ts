@@ -3,17 +3,15 @@ import { getEmbeddedApiBase } from './tauri-bootstrap';
 /**
  * Full-text search across the vault, run server-side.
  *
- * The sidebar filter can only match what the client already holds. Notes are
- * fully loaded so they search fine, but conversations arrive as metadata-only
- * summaries with `messages: []` — so searching message text silently matched
- * nothing until a conversation had been opened. Shipping every transcript to
- * the client isn't an option (a real vault is ~200MB), so the scan happens next
- * to the files and only matches come back.
+ * The sidebar filter can only match what the client already holds. Notes and
+ * conversation bodies are deliberately loaded on demand, not shipped with the
+ * timeline metadata. The scan therefore happens next to the files and only
+ * matches come back.
  */
 
 export interface VaultSearchHit {
   /** Mirrors the timeline item kinds. */
-  type: 'conversation' | 'note';
+  type: 'conversation' | 'note' | 'riff';
   /** Conversation id, or vault-relative path for a note/riff. */
   id: string;
   title: string;
