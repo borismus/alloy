@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.11
+
+- **Search now finds text inside conversations, notes, and riffs.** Full-text
+  search runs against the vault on the server instead of depending on which
+  documents happen to be loaded in the client. Previously, conversation body
+  matches usually appeared only after opening that conversation.
+- **Reduced startup data transfer.** Alloy no longer loads every note body just
+  to support sidebar search; note contents continue to load on demand when a
+  note is opened.
+
 ## 0.4.10
 
 - **Fixed the app appearing to refresh itself on desktop.** Alloy re-checks the
