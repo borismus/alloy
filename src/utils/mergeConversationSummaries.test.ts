@@ -79,3 +79,42 @@ describe('mergeConversationSummaries', () => {
     expect(mergeConversationSummaries(current, summaries)[0].messagesLoaded).toBe(false);
   });
 });
+
+describe('resync idempotence', () => {
+  it('returns the SAME array when nothing changed', () => {
+    // The resync runs on every window focus and almost always finds nothing new.
+    // Returning a fresh array rebuilt the timeline and re-rendered the whole
+    // sidebar, which looked like the app spontaneously refreshing.
+    const current = [conv({ id: 'a' }), conv({ id: 'b', messages: [msg], messagesLoaded: true })];
+    const summaries = [summary({ id: 'a' }), summary({ id: 'b' })];
+
+    expect(mergeConversationSummaries(current, summaries)).toBe(current);
+  });
+
+  it('returns a new array when something actually changed', () => {
+    const current = [conv({ id: 'a', title: 'Old' })];
+    const summaries = [summary({ id: 'a', title: 'New' })];
+
+    const merged = mergeConversationSummaries(current, summaries);
+    expect(merged).not.toBe(current);
+    expect(merged[0].title).toBe('New');
+  });
+
+  it('returns a new array when a conversation appears or disappears', () => {
+    const current = [conv({ id: 'a' })];
+    expect(mergeConversationSummaries(current, [summary({ id: 'a' }), summary({ id: 'b' })]))
+      .not.toBe(current);
+    expect(mergeConversationSummaries(current, [])).not.toBe(current);
+  });
+
+  it('keeps per-item identity for untouched conversations', () => {
+    // Row-level memoization depends on this, not just the array identity.
+    const stable = conv({ id: 'a', messages: [msg], messagesLoaded: true });
+    const merged = mergeConversationSummaries(
+      [stable, conv({ id: 'b' })],
+      [summary({ id: 'a' }), summary({ id: 'b', title: 'Renamed' })],
+    );
+    expect(merged[0]).toBe(stable);
+    expect(merged[1].title).toBe('Renamed');
+  });
+});

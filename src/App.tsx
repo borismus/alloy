@@ -136,13 +136,50 @@ export function mergeConversationSummaries(
   summaries: Conversation[],
 ): Conversation[] {
   const byId = new Map(current.map(c => [c.id, c]));
-  return summaries.map(summary => {
+  const merged = summaries.map(summary => {
     const existing = byId.get(summary.id);
     if (!existing || existing.messagesLoaded === false) return summary;
     if (existing.updated !== summary.updated) return summary; // changed on disk
+    // Reuse the existing object when nothing meaningful differs, so React and
+    // any memoized rows can skip it. A resync usually finds NOTHING changed, and
+    // it runs on every window focus.
+    if (
+      existing.title === summary.title &&
+      existing.model === summary.model &&
+      existing.created === summary.created
+    ) {
+      return existing;
+    }
     return { ...summary, messages: existing.messages, messagesLoaded: true };
   });
+  // Preserve the array identity too when every entry is unchanged, so the
+  // downstream timeline effect doesn't rebuild.
+  return merged.length === current.length && merged.every((c, i) => c === current[i])
+    ? current
+    : merged;
 }
+
+/**
+ * Keep `current` when the freshly-read list is equivalent, comparing only the
+ * fields that would change what's rendered. A resync fires on every focus and
+ * almost always finds nothing new; replacing the array regardless rebuilt the
+ * timeline and re-rendered every sidebar row, which reads as the app randomly
+ * refreshing itself.
+ */
+function keepIfUnchanged<T>(current: T[], next: T[], signature: (item: T) => string): T[] {
+  if (current.length !== next.length) return next;
+  for (let i = 0; i < current.length; i++) {
+    if (signature(current[i]) !== signature(next[i])) return next;
+  }
+  return current;
+}
+
+const taskSignature = (t: ScheduledTask) =>
+  `${t.id}|${t.updated}|${t.enabled}|${t.lastRunAt ?? ''}|${t.lastDeliveredAt ?? ''}`;
+
+// `lastModified` covers body edits; the rest are the fields the sidebar renders.
+const noteSignature = (n: NoteInfo) =>
+  `${n.filename}|${n.lastModified}|${n.isIntegrated ?? ''}|${n.title ?? ''}`;
 
 /**
  * Merge a disk-loaded conversation with the in-memory copy, re-appending any
@@ -463,9 +500,13 @@ function AppContent() {
         ? previous.find(c => c.id === openId)?.messagesLoaded !== false
         : false;
 
-      setConversations(mergeConversationSummaries(previous, summaries));
-      setTasks(loadedTasks);
-      setNotes(loadedNotes);
+      // Each of these keeps the existing array when nothing changed. Without
+      // that, a focus-triggered resync replaced all three, rebuilt the timeline
+      // and re-rendered the whole sidebar — a visible refresh every time the
+      // window regained focus.
+      setConversations(prev => mergeConversationSummaries(prev, summaries));
+      setTasks(prev => keepIfUnchanged(prev, loadedTasks, taskSignature));
+      setNotes(prev => keepIfUnchanged(prev, loadedNotes, noteSignature));
 
       // If the open conversation changed on disk during the gap, the merge drops
       // its stale bodies. Re-hydrate explicitly: the lazy-load effect keys on
