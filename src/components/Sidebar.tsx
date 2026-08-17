@@ -402,7 +402,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         const matchesTitle = item.title.toLowerCase().includes(query);
         const matchesId = item.id.toLowerCase().includes(query);
         const matchesPreview = item.preview?.toLowerCase().includes(query);
-        // For notes/riffs, also search the note body text
+        // Note and riff bodies are no longer shipped to the client; /api/search
+        // covers them (see serverMatchIds below). Riffs still carry a small
+        // frontmatter snippet, so keep matching whatever content is present.
         const matchesContent = item.note?.content?.toLowerCase().includes(query);
 
         // For conversations, also search message content

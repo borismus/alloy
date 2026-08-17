@@ -876,14 +876,16 @@ providers:
       return notes; // Return just memory.md if notes dir is empty
     }
 
-    // Batch-read all note bodies in one HTTP request (mtime + content), so the
-    // sidebar can full-text search note bodies. The byte cap is generous enough
-    // to cover real notes in full; longer notes are searchable up to the cap.
+    // Names and mtimes only. Bodies used to be pulled down in full (a 1MB cap
+    // per note) purely so the sidebar could search them client-side; that search
+    // now runs server-side via /api/search, so shipping every note body on every
+    // load is wasted payload and parse time. Note text is still read on demand
+    // when a note is opened.
     const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
     const noteHeaders: Record<string, { content: string; mtime: number }> =
-      await readDirHeaders(notesPath, '.md', 1_000_000);
-    for (const [name, { content, mtime }] of Object.entries(noteHeaders)) {
-      notes.push({ filename: name, lastModified: mtime, hasSkillContent: false, content });
+      await readDirHeaders(notesPath, '.md', 0);
+    for (const [name, { mtime }] of Object.entries(noteHeaders)) {
+      notes.push({ filename: name, lastModified: mtime, hasSkillContent: false });
     }
 
     // Load riff notes from riffs/ directory — batch-read all headers in one HTTP request.

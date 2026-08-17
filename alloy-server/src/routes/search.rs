@@ -198,6 +198,74 @@ mod tests {
         assert!(first_match_snippet("nothing relevant here", "kanji").is_none());
     }
 
+    /// Scan a throwaway vault end to end, exercising the real directory walk
+    /// rather than just the string helpers.
+    async fn scan(dir: &Path, kind: &str, query: &str) -> Vec<SearchHit> {
+        let mut hits = Vec::new();
+        scan_dir(dir, if kind == "conversation" { "conversations" } else { "notes" }, kind, query, &mut hits).await;
+        hits
+    }
+
+    struct TempVault(std::path::PathBuf);
+    impl Drop for TempVault {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    fn temp_vault(name: &str) -> TempVault {
+        let dir = std::env::temp_dir().join(format!("alloy-search-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("conversations")).unwrap();
+        std::fs::create_dir_all(dir.join("notes")).unwrap();
+        TempVault(dir)
+    }
+
+    #[tokio::test]
+    async fn finds_text_inside_a_conversation_body() {
+        // The whole point: this text appears nowhere in the title or filename,
+        // which is all the client could match on.
+        let v = temp_vault("body");
+        std::fs::write(
+            v.0.join("conversations/2024-03-03-0900-dd04-trip.yaml"),
+            "id: 2024-03-03-0900-dd04\ntitle: Trip notes\nmessages:\n- content: the funicular was closed\n",
+        )
+        .unwrap();
+
+        let hits = scan(&v.0.join("conversations"), "conversation", "funicular").await;
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "2024-03-03-0900-dd04");
+        assert_eq!(hits[0].title, "Trip notes");
+        assert!(hits[0].snippet.contains("funicular"), "got {}", hits[0].snippet);
+    }
+
+    #[tokio::test]
+    async fn ignores_generated_markdown_previews_beside_conversations() {
+        // conversations/ also holds .md previews; matching both would report the
+        // same conversation twice.
+        let v = temp_vault("dupes");
+        std::fs::write(v.0.join("conversations/c.yaml"), "id: c\ntitle: C\nmessages:\n- content: funicular\n").unwrap();
+        std::fs::write(v.0.join("conversations/c.md"), "funicular").unwrap();
+
+        assert_eq!(scan(&v.0.join("conversations"), "conversation", "funicular").await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn returns_notes_by_path_so_the_sidebar_can_match_them() {
+        let v = temp_vault("notes");
+        std::fs::write(v.0.join("notes/Project ideas.md"), "a thought about funicular railways").unwrap();
+
+        let hits = scan(&v.0.join("notes"), "note", "funicular").await;
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "Project ideas.md", "id must match NoteInfo.filename");
+    }
+
+    #[tokio::test]
+    async fn a_missing_directory_is_not_an_error() {
+        // A vault with no riffs/ yet must not fail the whole search.
+        let v = temp_vault("missing");
+        assert!(scan(&v.0.join("riffs"), "note", "anything").await.is_empty());
+    }
+
     #[test]
     fn handles_multibyte_content_without_panicking() {
         // Lowercasing can change byte lengths, so the match index has to be
