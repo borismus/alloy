@@ -69,6 +69,13 @@ async fn handle(
                 return rpc_error(id, -32001, "unauthorized: bad session or token");
             };
             let params = req.get("params").cloned().unwrap_or(Value::Null);
+            // Log which tool a subscription CLI actually invoked. Without this
+            // the bridge is a black box: a model that silently declines to call
+            // a tool looks identical to one whose call failed.
+            tracing::info!(
+                "mcp tool call: {}",
+                params.get("name").and_then(|n| n.as_str()).unwrap_or("<unnamed>")
+            );
             rpc_ok(id, execute_tool_call(&state.tools, &params, &ctx).await)
         }
         _ => rpc_error(id, -32601, "method not found"),
