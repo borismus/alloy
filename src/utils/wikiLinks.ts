@@ -1,6 +1,7 @@
 import React from 'react';
 import { Components } from 'react-markdown';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { isTauri } from '../services/api';
 import { DiagramBlock } from '../components/DiagramBlock';
 import { CodeBlock } from '../components/CodeBlock';
 import type { ConversationInfo } from '../types';
@@ -151,7 +152,28 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
         }, children);
       }
 
-      // Handle regular external links
+      // Handle regular external links.
+      //
+      // In the desktop shell we must intercept: an unhandled navigation would
+      // load the page INSIDE the webview, replacing Alloy. `openUrl` hands it to
+      // the system browser instead.
+      //
+      // In a browser, do NOT intercept. Cancelling the click and calling
+      // window.open turns a native anchor activation into a programmatic popup,
+      // which iOS opens as a separate tab. For a universal link
+      // (music.apple.com, maps.apple.com, ...) it then hands off to the native
+      // app FROM that tab, stranding it — you come back to Alloy sitting behind a
+      // blank tab you have to close by hand. A plain target=_blank anchor is
+      // handled by Safari itself and hands off cleanly. It also restores
+      // middle-click and modifier-click, which the old onAuxClick swallowed.
+      if (!isTauri()) {
+        return React.createElement('a', {
+          href: href,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        }, children);
+      }
+
       return React.createElement('a', {
         href: href,
         onClick: (e: React.MouseEvent) => {
