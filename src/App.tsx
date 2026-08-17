@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
+import { loadSelectedItem } from './services/selectionStorage';
 import { skillRegistry } from './services/skills';
 import { riffService } from './services/riff';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
@@ -218,7 +219,7 @@ function AppContent() {
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
 
-  // Navigation state (selectedItem, back/forward, sessionStorage persistence)
+  // Navigation state (selectedItem, back/forward, persisted selection)
   const { selectedItem, setSelectedItem, navigateTo, goBack: goBackRaw, canGoBack } = useNavigation();
   const goBack = useCallback(() => goBackRaw(setNoteContent, () => setDraftConversation(null)), [goBackRaw]);
   // Mirror for stale-free reads inside stable callbacks (e.g. the vault resync).
@@ -248,14 +249,11 @@ function AppContent() {
   // Mobile navigation state
   const isMobile = useIsMobile();
   type MobileView = 'list' | 'conversation';
-  const [mobileView, setMobileView] = useState<MobileView>(() => {
-    // Restore mobile view on reload (mobile Safari discards pages when backgrounded)
-    try {
-      const saved = sessionStorage.getItem('selectedItem');
-      if (saved && JSON.parse(saved)) return 'conversation';
-    } catch { /* ignore */ }
-    return 'list';
-  });
+  const [mobileView, setMobileView] = useState<MobileView>(() =>
+    // Restore the mobile view alongside the selection itself. Both read the same
+    // persisted value, so they can't disagree about what was open.
+    loadSelectedItem() ? 'conversation' : 'list'
+  );
 
   // Check if selected note is a draft (for mobile riff mode)
   const isViewingDraft = selectedNote?.filename.startsWith('riffs/') &&

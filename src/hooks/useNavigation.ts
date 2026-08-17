@@ -1,22 +1,15 @@
 import { useState, useCallback } from 'react';
 import { readTextFile } from '@tauri-apps/plugin-fs';
 import { vaultService } from '../services/vault';
+import { loadSelectedItem, saveSelectedItem } from '../services/selectionStorage';
 import { SelectedItem } from '../types';
 
 export function useNavigation() {
-  const [selectedItem, setSelectedItemRaw] = useState<SelectedItem>(() => {
-    try {
-      const saved = sessionStorage.getItem('selectedItem');
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
+  const [selectedItem, setSelectedItemRaw] = useState<SelectedItem>(loadSelectedItem);
 
   const setSelectedItem = useCallback((item: SelectedItem) => {
     setSelectedItemRaw(item);
-    try {
-      if (item) sessionStorage.setItem('selectedItem', JSON.stringify(item));
-      else sessionStorage.removeItem('selectedItem');
-    } catch { /* ignore */ }
+    saveSelectedItem(item);
   }, []);
 
   const [previousItem, setPreviousItem] = useState<SelectedItem>(null);

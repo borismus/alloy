@@ -149,6 +149,21 @@ test('model picker does not raise the keyboard on open (mobile)', async ({ page 
   }
 });
 
+test('restores the open conversation after the tab session ends', async ({ page }) => {
+  // Regression: the selection lived in sessionStorage, which is discarded when
+  // the tab session ends — exactly what iOS does to a backgrounded tab and what
+  // a desktop app restart looks like. So it was lost precisely when restoring it
+  // mattered. A plain reload keeps sessionStorage, which is why this never
+  // showed up in normal testing.
+  await page.getByText('Welcome to Alloy').click();
+  await expect(page.getByText('What can Alloy do?')).toBeVisible();
+
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload();
+
+  await expect(page.getByText('What can Alloy do?')).toBeVisible();
+});
+
 test('dark mode keeps syntax-highlighted code legible', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('alloy.theme', 'dark'));
   await page.reload();
