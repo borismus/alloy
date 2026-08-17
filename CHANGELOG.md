@@ -4,6 +4,13 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.13
+
+- **Release infrastructure maintenance.** Alloy's GitHub Actions now run on
+  Node 24-compatible action versions. This release validates the complete
+  build, signing, notarization, publication, and updater pipeline; there are no
+  application behavior changes from 0.4.12.
+
 ## 0.4.12
 
 - **Fixed conversations reloading and jumping to the bottom when Alloy regains
