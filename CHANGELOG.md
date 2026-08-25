@@ -4,6 +4,26 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.14
+
+- **Codex subscription mode now has full interactive parity.** Responses stream
+  token-by-token, Stop cancels active turns while preserving partial output,
+  image attachments are sent as data URLs, and Codex can use Alloy's scoped
+  tools through MCP. Native Codex command, file-change, dynamic-tool, and web
+  activity also appears in the conversation.
+- **Fixed missing and malformed tool pills.** Tool calls render as soon as they
+  begin and persist after reload. Codex web-search pills update in place when the
+  CLI supplies the real query, instead of showing duplicate `Searched ""`
+  indicators.
+- **Fixed run-together Codex prose.** Commentary and final-answer app-server
+  messages now retain a paragraph boundary instead of being persisted as text
+  such as `input.That confirms`.
+- **Sidebar search stays responsive on large vaults.** Typing no longer
+  reconciles thousands of timeline rows before the existing search debounce.
+- Shared item-header and composer controls now use the same accessible React Aria
+  button foundation across chats, notes, tasks, and riffs, without an intentional
+  visual redesign.
+
 ## 0.4.13
 
 - **Release infrastructure maintenance.** Alloy's GitHub Actions now run on
