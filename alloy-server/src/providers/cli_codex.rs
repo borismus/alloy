@@ -1658,7 +1658,6 @@ echo '{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnI
 echo '{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"msg-1","delta":" world"}}'
 echo '{"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"inputTokens":12,"outputTokens":2}}}}'
 echo '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","error":null,"items":[{"type":"agentMessage","text":"Hello world"}]}}}'
-sleep 30
 "#;
         let (provider, _dir) = scripted_provider(script);
         let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
@@ -1697,7 +1696,6 @@ echo '{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnI
 read interrupt
 echo '{"id":4,"result":{}}'
 echo '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","error":null,"items":[]}}}'
-sleep 30
 "#;
         let (provider, _dir) = scripted_provider(script);
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
