@@ -12,6 +12,67 @@ import { isLocalModel } from '../utils/models';
 import { AlloyDialog, SegmentedControl } from './ui';
 import './Sidebar.css';
 
+interface SidebarSearchControlProps {
+  onQueryChange: (query: string) => void;
+  onNew: () => void;
+}
+
+/**
+ * Keep the live controlled value out of Sidebar itself. The sidebar can render
+ * thousands of timeline rows; storing each keystroke in that parent caused all
+ * of them to be reconciled before the search debounce had even expired.
+ */
+const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlProps>(
+  function SidebarSearchControl({ onQueryChange, onNew }, ref) {
+    const textareaProps = useTextareaProps();
+    const [value, setValue] = useState('');
+
+    useEffect(() => {
+      if (!value.trim()) {
+        onQueryChange('');
+        return;
+      }
+      const timer = window.setTimeout(() => onQueryChange(value), 200);
+      return () => window.clearTimeout(timer);
+    }, [value, onQueryChange]);
+
+    const clear = () => {
+      setValue('');
+      // Clearing should restore the timeline immediately rather than waiting
+      // for an effect scheduled after this render.
+      onQueryChange('');
+    };
+
+    return (
+      <div className="search-box" data-tauri-drag-region>
+        <div className="search-input-wrapper">
+          <input
+            ref={ref}
+            type="text"
+            placeholder="Search..."
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            className="search-input"
+            {...textareaProps}
+          />
+          {value && (
+            <button
+              onClick={clear}
+              className="clear-search-button"
+              title="Clear search"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <button onClick={onNew} className="new-button" title="New">
+          +
+        </button>
+      </div>
+    );
+  },
+);
+
 // FLIP animation helper - stores previous positions of items
 function useFLIPAnimation(items: TimelineItem[]) {
   const positionsRef = useRef<Map<string, DOMRect>>(new Map());
@@ -139,23 +200,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const textareaProps = useTextareaProps();
   const { deliveredResults, dismissDeliveredResult } = useTaskContext();
   const deliveredTaskIds = deliveredResults.map(result => result.taskId);
-  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingType, setRenamingType] = useState<'conversation' | 'riff' | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'task' | 'riff'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Debounce search query to avoid scanning all message text on every keystroke
-  useEffect(() => {
-    if (!searchInput.trim()) {
-      setSearchQuery('');
-      return;
-    }
-    const timer = setTimeout(() => setSearchQuery(searchInput), 200);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
 
   // Client-side filtering can only see timeline metadata. The hook scans note,
   // riff, and conversation bodies server-side, retains snippets for display,
@@ -458,31 +508,11 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           <h2>Alloy</h2>
         </div>
       )}
-      <div className="search-box" data-tauri-drag-region>
-        <div className="search-input-wrapper">
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="search-input"
-            {...textareaProps}
-          />
-          {searchInput && (
-            <button
-              onClick={() => setSearchInput('')}
-              className="clear-search-button"
-              title="Clear search"
-            >
-              ×
-            </button>
-          )}
-        </div>
-        <button onClick={handleFabClick} className="new-button" title="New">
-          +
-        </button>
-      </div>
+      <SidebarSearchControl
+        ref={searchInputRef}
+        onQueryChange={setSearchQuery}
+        onNew={handleFabClick}
+      />
 
       <div className="filter-tabs-container">
         <SegmentedControl
