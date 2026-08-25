@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useEffect } from 'react';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { AiEditPanel } from './AiEditPanel';
+import { Button } from './ui';
 import type { ConversationInfo, ModelInfo } from '../types';
 import { parseFrontmatter } from '../utils/frontmatter';
 import './NoteViewer.css';
@@ -101,13 +102,14 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
         onClose={onClose}
       >
         {filename && onEdit && (
-          <button
-            className="edit-note-btn"
-            onClick={() => onEdit(filename)}
+          <Button
+            variant="surface"
+            size="small"
+            onPress={() => onEdit(filename)}
             title="Open this note in your external editor"
           >
             Edit
-          </button>
+          </Button>
         )}
       </ItemHeader>
       {isUnintegrated && onIntegrate && (

@@ -569,65 +569,6 @@
   word-break: break-word;
 }
 
-/* Button styles */
-.btn-small {
-  padding: 0.4rem 0.75rem;
-  border-radius: 4px;
-  border: 1px solid var(--border-color, var(--color-border));
-  background: var(--bg-primary, white);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-  color: var(--text-primary, var(--color-text));
-}
-
-.btn-small:hover {
-  background: var(--bg-hover, var(--color-surface-hover));
-  border-color: var(--color-border-strong);
-}
-
-.btn-small:focus-visible {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-}
-
-.btn-small:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-small.btn-accent {
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: white;
-  border-color: transparent;
-}
-
-.btn-small.btn-accent:hover {
-  opacity: 0.9;
-}
-
-.btn-small.btn-accent:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-small.btn-muted {
-  background: var(--bg-secondary, var(--color-surface-hover));
-  color: var(--text-secondary, var(--color-text-secondary));
-}
-
-.btn-small.btn-danger {
-  background: var(--color-danger);
-  color: white;
-  border-color: transparent;
-}
-
-.btn-small.btn-danger:hover {
-  background: var(--color-danger);
-}
-
 /* Mobile styles */
 /* Mobile layout: narrow viewports, OR short touch viewports — a phone in
    landscape is ~874px wide, above any width-only breakpoint, but is still a

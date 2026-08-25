@@ -7,9 +7,11 @@ import type { ModelInfo } from '../types';
 const VISION: ModelInfo = { key: 'anthropic/claude', name: 'Claude Sonnet 5', provider: 'anthropic' };
 // The backend omits `supportsImages` when true, so only an explicit false blocks.
 const TEXT_ONLY: ModelInfo = {
-  key: 'codex-cli/gpt-5.6-sol',
-  name: 'GPT-5.6-Sol',
-  provider: 'codex-cli',
+  // Synthetic capability fixture: both subscription CLI adapters now support
+  // images, but the composer must remain safe for any future text-only model.
+  key: 'test-text/model',
+  name: 'Text-only test model',
+  provider: 'test-text',
   supportsImages: false,
 };
 
@@ -66,6 +68,14 @@ describe('image attachment gating', () => {
     expect((attachButton() as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('uses the same shared 48px control size for attach and send', () => {
+    renderForm(VISION.key);
+    const attachClasses = new Set(attachButton().className.split(' '));
+    const sendClasses = screen.getByRole('button', { name: 'Send message' }).className.split(' ');
+    // Root + composer classes are shared; only their visual variants differ.
+    expect(sendClasses.filter(className => attachClasses.has(className)).length).toBeGreaterThanOrEqual(2);
+  });
+
   it('warns instead of silently dropping images already attached', () => {
     // Reachable by attaching on a vision model then switching to a text-only
     // one, which previously sent the text alone with no indication.
@@ -93,6 +103,6 @@ describe('image attachment gating', () => {
 
     const warning = screen.getByRole('status');
     expect(warning.textContent).toContain("can't accept images");
-    expect(warning.textContent).toContain('GPT-5.6-Sol');
+    expect(warning.textContent).toContain('Text-only test model');
   });
 });

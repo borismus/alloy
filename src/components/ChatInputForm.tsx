@@ -4,7 +4,7 @@ import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
-import { AlloyTooltip } from './ui';
+import { AlloyTooltip, Button } from './ui';
 import { SlashCommandMenu, SlashCommandItem } from './SlashCommandMenu';
 import { skillRegistry } from '../services/skills';
 import { slashQuery } from '../utils/slashCommand';
@@ -255,15 +255,17 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
         <AlloyTooltip
           content={modelAcceptsImages ? 'Attach image' : `${modelLabel} can't accept images`}
         >
-          <button
+          <Button
             type="button"
-            className="attach-button"
-            onClick={handleAttachClick}
+            variant="secondary"
+            size="composer"
+            data-composer-control="attach"
+            onPress={handleAttachClick}
             aria-label={modelAcceptsImages ? 'Attach image' : `${modelLabel} can't accept images`}
-            disabled={!modelAcceptsImages}
+            isDisabled={!modelAcceptsImages}
           >
             +
-          </button>
+          </Button>
         </AlloyTooltip>
         <textarea
           ref={textareaRef}
@@ -290,25 +292,29 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
         </div>
         {isStreaming && !input.trim() && pendingImages.length === 0 ? (
           <AlloyTooltip content="Stop generating">
-            <button
+            <Button
               type="button"
-              onClick={onStop}
-              className="send-button stop-button"
+              variant="danger"
+              size="composer"
+              data-composer-control="send"
+              onPress={onStop}
               aria-label="Stop generating"
             >
               ■
-            </button>
+            </Button>
           </AlloyTooltip>
         ) : (
           <AlloyTooltip content={isStreaming ? 'Queue message' : 'Send message'}>
-            <button
+            <Button
               type="submit"
-              disabled={!input.trim() && pendingImages.length === 0}
-              className="send-button"
+              variant="primary"
+              size="composer"
+              data-composer-control="send"
+              isDisabled={!input.trim() && pendingImages.length === 0}
               aria-label={isStreaming ? 'Queue message' : 'Send message'}
             >
               ↑
-            </button>
+            </Button>
           </AlloyTooltip>
         )}
       </div>

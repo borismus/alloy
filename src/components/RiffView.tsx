@@ -11,6 +11,7 @@ import { MarkdownContent } from './MarkdownContent';
 import { MermaidDiagram } from './MermaidDiagram';
 import { ItemHeader } from './ItemHeader';
 import { InterventionCard } from './InterventionCard';
+import { Button } from './ui';
 import type { ConversationInfo } from '../types';
 import { parseFrontmatter } from '../utils/frontmatter';
 import './RiffView.css';
@@ -275,14 +276,15 @@ export const RiffView: React.FC<RiffViewProps> = ({
       >
         {draftFilename && (
           <>
-            <button
-              className="btn-small btn-accent"
-              onClick={handleIntegrate}
-              disabled={isProcessing}
+            <Button
+              variant="primary"
+              size="small"
+              onPress={handleIntegrate}
+              isDisabled={isProcessing}
               title="Integrate draft into notes"
             >
               Integrate
-            </button>
+            </Button>
           </>
         )}
       </ItemHeader>
@@ -383,11 +385,15 @@ export const RiffView: React.FC<RiffViewProps> = ({
             {...textareaProps}
           />
           {sonioxApiKey && (
-            <button
+            <Button
               type="button"
-              className={`riff-mic-button ${isRecording ? 'recording' : ''}`}
-              onClick={handleToggleDictation}
-              disabled={isProcessing || isDictationBusy}
+              variant={isRecording ? 'danger' : 'secondary'}
+              size="composer"
+              data-composer-control="mic"
+              data-recording={isRecording || undefined}
+              onPress={handleToggleDictation}
+              isDisabled={isProcessing || isDictationBusy}
+              aria-label={isRecording ? 'Stop dictation' : 'Start dictation'}
               title={isRecording ? 'Stop dictation' : 'Start dictation'}
             >
               {isRecording ? (
@@ -402,16 +408,19 @@ export const RiffView: React.FC<RiffViewProps> = ({
                   <line x1="8" y1="21" x2="16" y2="21" />
                 </svg>
               )}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="submit"
-            className="send-button"
-            disabled={!inputText.trim() || isProcessing}
+            variant="primary"
+            size="composer"
+            data-composer-control="send"
+            isDisabled={!inputText.trim() || isProcessing}
+            aria-label="Send"
             title="Send (Enter)"
           >
             {isUpdating ? '...' : '\u2191'}
-          </button>
+          </Button>
         </div>
       </form>
       {dictationError && (

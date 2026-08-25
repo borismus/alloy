@@ -16,30 +16,6 @@
   overflow: hidden;
 }
 
-.chat-nav-header {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
-}
-
-.chat-nav-header .back-button {
-  background: none;
-  border: none;
-  font-size: 1.25rem;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.chat-nav-header .back-button:hover {
-  background: var(--color-border);
-  color: var(--color-text);
-}
-
 /* CSS Custom Highlight API for find-in-conversation */
 ::highlight(search) {
   background-color: #fef08a;
@@ -244,41 +220,6 @@
   min-width: 0;
 }
 
-.attach-button {
-  width: 48px;
-  height: 48px;
-  padding: 0;
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  font-size: 1.5rem;
-  font-weight: 400;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.attach-button:hover:not(:disabled) {
-  background: var(--color-border);
-  color: var(--color-text);
-  border-color: var(--color-scrollbar);
-}
-
-.attach-button:focus-visible {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-}
-
-.attach-button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
 /* Shown when images are attached but the selected model can't accept them.
    Without this the attachment was dropped silently and the model answered the
    bare text, which reads as a broken upload. */
@@ -437,52 +378,6 @@
 
 .input-form textarea::placeholder {
   color: var(--color-text-muted);
-}
-
-.send-button {
-  width: 48px;
-  height: 48px;
-  padding: 0;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 1.5rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-}
-
-.send-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.send-button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4), 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.send-button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.send-button.stop-button {
-  background: var(--color-danger);
-  font-size: 1rem;
-  min-width: 48px;
-  min-height: 48px;
-}
-
-.send-button.stop-button:hover {
-  background: var(--color-danger);
 }
 
 .api-key-setup {
@@ -1098,7 +993,7 @@
     order: 1;
   }
 
-  .input-form .input-row .attach-button {
+  .input-form .input-row [data-composer-control="attach"] {
     order: 2;
   }
 
@@ -1115,7 +1010,7 @@
     max-width: none;
   }
 
-  .input-form .input-row .send-button {
+  .input-form .input-row [data-composer-control="send"] {
     order: 4;
   }
 }

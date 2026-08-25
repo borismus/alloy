@@ -34,38 +34,6 @@
   cursor: not-allowed;
 }
 
-/* Button styles */
-.riff-view .btn-small {
-  padding: 0.4rem 0.75rem;
-  border-radius: 4px;
-  border: 1px solid var(--border-color, var(--color-border));
-  background: var(--bg-primary, white);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-  color: var(--text-primary, var(--color-text));
-}
-
-.riff-view .btn-small:hover {
-  background: var(--bg-hover, var(--color-surface-hover));
-}
-
-.riff-view .btn-small:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.riff-view .btn-small.btn-accent {
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: white;
-  border-color: transparent;
-}
-
-.riff-view .btn-small.btn-accent:hover {
-  opacity: 0.9;
-}
-
 /* Two-pane content area */
 .riff-content-area {
   flex: 1;
@@ -311,37 +279,8 @@
   color: var(--text-secondary, var(--color-text-secondary));
 }
 
-/* Microphone / dictation button */
-.riff-mic-button {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.riff-mic-button:hover:not(:disabled) {
-  background: var(--color-border);
-  color: var(--color-text);
-  border-color: var(--color-scrollbar);
-}
-
-.riff-mic-button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.riff-mic-button.recording {
-  background: var(--color-danger);
-  color: white;
-  border-color: var(--color-danger);
+/* Preserve the recording pulse while shared Button owns mic geometry/colors. */
+.riff-view [data-composer-control="mic"][data-recording] {
   animation: pulse-recording 1.5s ease-in-out infinite;
 }
 
@@ -401,11 +340,11 @@
     order: 0;
   }
 
-  .riff-view .input-form .input-row .riff-mic-button {
+  .riff-view .input-form .input-row [data-composer-control="mic"] {
     order: 1;
   }
 
-  .riff-view .input-form .input-row .send-button {
+  .riff-view .input-form .input-row [data-composer-control="send"] {
     order: 2;
   }
 }

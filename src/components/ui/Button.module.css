@@ -42,23 +42,81 @@
 }
 
 .small {
-  min-height: 32px;
-  padding: 0.45rem 0.75rem;
+  min-height: 30px;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
   font-size: var(--text-sm);
 }
 
+.small.surface {
+  border-radius: var(--radius-control);
+}
+
+.small.primary {
+  box-shadow: none;
+}
+
+.small.primary[data-hovered] {
+  opacity: 0.9;
+  filter: none;
+}
+
 .icon {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
   padding: 0;
 }
 
+.compactIcon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+/* Chat and Riff share this exact control geometry with their 48px textareas
+   and model picker. Variant refinements below preserve the established
+   attach/mic/send appearance while centralizing interaction behavior. */
 .composer {
   width: 48px;
   height: 48px;
   flex: 0 0 auto;
   padding: 0;
-  font-size: 1.35rem;
+  border-radius: 12px;
+  font-size: 1.5rem;
+}
+
+.composer.secondary {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
+  font-weight: 400;
+}
+
+.composer.secondary[data-hovered] {
+  color: var(--color-text);
+  background: var(--color-border);
+  border-color: var(--color-scrollbar);
+}
+
+.composer.primary {
+  font-weight: 600;
+}
+
+.composer.primary[data-hovered] {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgb(102 126 234 / 40%);
+  filter: none;
+}
+
+.composer.danger {
+  font-size: 1rem;
+}
+
+.composer[data-disabled] {
+  opacity: 0.35;
+  box-shadow: none;
 }
 
 /* Variants */
@@ -82,6 +140,28 @@
 
 .secondary[data-hovered] {
   background: var(--color-surface);
+}
+
+.surface {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.surface[data-hovered] {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.muted {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
+}
+
+.muted[data-hovered] {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
 }
 
 .quiet {

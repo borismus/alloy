@@ -74,7 +74,7 @@ describe('ui primitives', () => {
     const user = userEvent.setup();
     render(
       <AlloyTooltip content="Go back">
-        <button onClick={onPress} aria-label="Back">‹</button>
+        <Button onPress={onPress} aria-label="Back">‹</Button>
       </AlloyTooltip>,
     );
     const button = screen.getByRole('button', { name: 'Back' });

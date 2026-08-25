@@ -7,6 +7,7 @@ import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { AiEditPanel } from './AiEditPanel';
+import { Button } from './ui';
 import { describeTaskSchedule, parseTaskCron } from '../utils/taskSchedule';
 import { providerLabel, isLocalModel } from '../utils/models';
 import './TaskDetailView.css';
@@ -338,23 +339,24 @@ export function TaskDetailView({
         canGoBack={canGoBack}
         onClose={onClose}
       >
-        <button className="btn-small btn-accent" onClick={handleRunNow} disabled={isChecking}>
+        <Button variant="primary" size="small" onPress={handleRunNow} isDisabled={isChecking}>
           {isChecking ? 'Running…' : 'Run now'}
-        </button>
-        <button
-          className={`btn-small ${task.enabled ? '' : 'btn-muted'}`}
-          onClick={handleToggleEnabled}
-          disabled={isToggling}
+        </Button>
+        <Button
+          variant={task.enabled ? 'secondary' : 'muted'}
+          size="small"
+          onPress={handleToggleEnabled}
+          isDisabled={isToggling}
         >
           {task.enabled ? 'Disable' : 'Enable'}
-        </button>
+        </Button>
         {showDeleteConfirm ? (
           <>
-            <button className="btn-small btn-danger" onClick={() => { onDelete(); setShowDeleteConfirm(false); }}>Confirm</button>
-            <button className="btn-small" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
+            <Button variant="danger" size="small" onPress={() => { onDelete(); setShowDeleteConfirm(false); }}>Confirm</Button>
+            <Button variant="secondary" size="small" onPress={() => setShowDeleteConfirm(false)}>Cancel</Button>
           </>
         ) : (
-          <button className="btn-small" onClick={() => setShowDeleteConfirm(true)}>Delete</button>
+          <Button variant="secondary" size="small" onPress={() => setShowDeleteConfirm(true)}>Delete</Button>
         )}
       </ItemHeader>
 

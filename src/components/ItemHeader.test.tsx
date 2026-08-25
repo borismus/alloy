@@ -23,4 +23,20 @@ describe('ItemHeader settings gear', () => {
     render(<ItemHeader title="Conversation" onBack={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Open settings' })).toBeNull();
   });
+
+  it('uses the shared accessible button and optional subtitle patterns', () => {
+    render(
+      <ItemHeader
+        title="Conversation"
+        subtitle="Claude subscription"
+        onBack={vi.fn()}
+        canGoBack={false}
+      />,
+    );
+
+    const back = screen.getByRole('button', { name: 'Go back' });
+    expect((back as HTMLButtonElement).disabled).toBe(true);
+    expect(back.className.split(' ').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText('Claude subscription')).toBeTruthy();
+  });
 });

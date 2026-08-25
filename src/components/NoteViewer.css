@@ -36,38 +36,6 @@
   background: var(--color-accent-strong);
 }
 
-.note-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
-}
-
-.back-button {
-  background: none;
-  border: none;
-  font-size: 1.25rem;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.back-button:hover {
-  background: var(--color-border);
-  color: var(--color-text);
-}
-
-.note-title {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
 .note-content-container {
   flex: 1;
   overflow-y: auto;
@@ -83,86 +51,6 @@
   color: var(--color-text);
   overflow-wrap: break-word;
   word-break: break-word;
-}
-
-.edit-note-btn {
-  padding: 6px 12px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  white-space: nowrap;
-}
-
-.edit-note-btn:hover {
-  background: var(--color-surface-hover);
-  border-color: var(--color-scrollbar);
-}
-
-.note-input-area {
-  padding: 1rem 1.5rem 1.5rem;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface);
-}
-
-.note-input-hint {
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  margin-bottom: 0.75rem;
-  text-align: center;
-}
-
-.note-input-area .input-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-end;
-}
-
-.note-input-area textarea {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 0.9375rem;
-  font-family: inherit;
-  resize: none;
-  height: 44px;
-  max-height: 200px;
-  line-height: 1.4;
-  transition: border-color 0.15s;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.note-input-area textarea:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.note-input-area .send-button {
-  width: 44px;
-  height: 44px;
-  border: none;
-  border-radius: 8px;
-  background: var(--color-accent);
-  color: white;
-  font-size: 1.25rem;
-  cursor: pointer;
-  transition: background 0.15s;
-  flex-shrink: 0;
-}
-
-.note-input-area .send-button:hover:not(:disabled) {
-  background: var(--color-accent-strong);
-}
-
-.note-input-area .send-button:disabled {
-  background: var(--color-scrollbar);
-  cursor: not-allowed;
 }
 
 /* Mobile styles */

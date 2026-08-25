@@ -22,6 +22,11 @@
   min-width: 0;
 }
 
+.item-header-heading {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .item-header-title h2 {
   margin: 0;
   font-size: 1.125rem;
@@ -32,32 +37,21 @@
   white-space: nowrap;
 }
 
-.item-header .btn-back,
-.item-header .btn-forward {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-secondary, #666);
-  transition: all 0.15s ease;
-  flex-shrink: 0;
+.item-header-subtitle {
+  margin-top: 2px;
+  color: var(--text-tertiary, var(--color-text-muted));
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.item-header .btn-back:hover:not(:disabled),
-.item-header .btn-forward:hover:not(:disabled) {
-  background: var(--bg-hover, #e0e0e0);
-  color: var(--text-primary, #333);
-}
-
-.item-header .btn-back:disabled,
-.item-header .btn-forward:disabled {
+/* Keep disabled navigation visually identical to the old header controls;
+   React Aria's shared Button otherwise fades the whole icon. */
+.item-header-title button[data-disabled] {
   color: var(--text-tertiary, #ccc);
-  cursor: default;
+  opacity: 1;
 }
 
 .item-header-actions {
@@ -67,44 +61,8 @@
   flex-shrink: 0;
 }
 
-.item-header .btn-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
+.item-header-actions button[data-header-close] {
   color: var(--text-tertiary, #aaa);
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.item-header .btn-close:hover {
-  background: var(--bg-hover, #e0e0e0);
-  color: var(--text-primary, #333);
-}
-
-.item-header .btn-settings {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-secondary, #666);
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.item-header .btn-settings:hover {
-  background: var(--bg-hover, #e0e0e0);
-  color: var(--text-primary, #333);
 }
 
 /* Mobile adjustments */
