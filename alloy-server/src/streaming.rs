@@ -739,12 +739,25 @@ impl ToolEventSink for SessionToolSink {
     fn on_tool_use(&self, call: &ToolCall) {
         {
             let mut inner = self.session.inner.lock().unwrap();
-            inner.tool_history.push(ToolHistoryEntry::Use {
-                id: call.id.clone(),
-                name: call.name.clone(),
-                input: call.input.clone(),
-            });
+            if let Some(ToolHistoryEntry::Use { name, input, .. }) = inner
+                .tool_history
+                .iter_mut()
+                .find(|entry| matches!(entry, ToolHistoryEntry::Use { id, .. } if id == &call.id))
+            {
+                // Providers may learn richer metadata after a tool starts
+                // (Codex web search supplies its query only on completion).
+                // Replace by call id so persistence and replay contain one pill.
+                *name = call.name.clone();
+                *input = call.input.clone();
+            } else {
+                inner.tool_history.push(ToolHistoryEntry::Use {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    input: call.input.clone(),
+                });
+            }
         }
+        // Live subscribers also receive the update; the client upserts by id.
         let _ = self.session.tx.send(SessionEvent::ToolUse(call.clone()));
     }
 
@@ -1143,6 +1156,34 @@ mod tests {
         assert_eq!(pick_title_model("mlx/Qwen3"), "mlx/Qwen3");
         // The Claude Code CLI takes a bare alias, not a provider-prefixed id.
         assert_eq!(pick_title_model("claude-cli/opus"), "haiku");
+    }
+
+    #[test]
+    fn repeated_tool_use_id_updates_history_instead_of_adding_a_second_pill() {
+        let registry = SessionRegistry::new();
+        registry.insert_test_session("session", "conversation", "message", "token");
+        let session = registry.get("session").unwrap();
+        let sink = SessionToolSink {
+            session: session.clone(),
+        };
+
+        sink.on_tool_use(&ToolCall {
+            id: "search-1".into(),
+            name: "web_search".into(),
+            input: json!({}),
+        });
+        sink.on_tool_use(&ToolCall {
+            id: "search-1".into(),
+            name: "web_search".into(),
+            input: json!({ "query": "R1811 connector map" }),
+        });
+
+        let inner = session.inner.lock().unwrap();
+        assert_eq!(inner.tool_history.len(), 1);
+        let ToolHistoryEntry::Use { input, .. } = &inner.tool_history[0] else {
+            panic!("expected tool use")
+        };
+        assert_eq!(input, &json!({ "query": "R1811 connector map" }));
     }
 
     #[test]

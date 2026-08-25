@@ -10,7 +10,7 @@ interface StreamingContextValue {
   setStreamingThinkingState: (id: string, content: string, elapsedMs: number, durationMs?: number) => void;
   updateStreamingThinking: (id: string, chunk: string) => void;
   finishStreamingThinking: (id: string, durationMs: number) => void;
-  addToolUse: (id: string, toolUse: ToolUse) => void;
+  addToolUse: (id: string, toolUse: ToolUse, toolCallId?: string) => void;
   stopStreaming: (id: string) => void;
   completeStreaming: (id: string, isCurrentConversation?: boolean) => void;
   clearStreamingContent: (id: string) => void;
@@ -27,6 +27,8 @@ const StreamingContext = createContext<StreamingContextValue | null>(null);
 
 const MAX_THINKING_CHARS = 128 * 1024;
 const THINKING_TRUNCATED_MARKER = '[earlier thinking truncated]\n';
+const STREAM_TOOL_CALL_ID = Symbol('streamToolCallId');
+type StreamingToolUse = ToolUse & { [STREAM_TOOL_CALL_ID]?: string };
 
 function boundThinking(value: string): string {
   if (value.length <= MAX_THINKING_CHARS) return value;
@@ -163,18 +165,36 @@ export function StreamingProvider({ children }: { children: React.ReactNode }) {
     setStreamVersion(v => v + 1);
   }, []);
 
-  const addToolUse = useCallback((id: string, toolUse: ToolUse) => {
+  const addToolUse = useCallback((id: string, toolUse: ToolUse, toolCallId?: string) => {
     setStreamingStates((prev) => {
       const existing = prev.get(id);
       if (!existing) return prev;
 
+      const tools = [...(existing.streamingToolUse || [])] as StreamingToolUse[];
+      const nextTool = { ...toolUse } as StreamingToolUse;
+      if (toolCallId) {
+        // A Symbol keeps this transient stream identity out of conversation
+        // YAML while allowing richer follow-up events to replace the pill.
+        nextTool[STREAM_TOOL_CALL_ID] = toolCallId;
+      }
+      const existingIndex = toolCallId
+        ? tools.findIndex(tool => tool[STREAM_TOOL_CALL_ID] === toolCallId)
+        : -1;
+      if (existingIndex >= 0) {
+        tools[existingIndex] = nextTool;
+      } else {
+        tools.push(nextTool);
+      }
+
       const next = new Map(prev);
-      next.set(id, {
-        ...existing,
-        streamingToolUse: [...(existing.streamingToolUse || []), toolUse],
-      });
+      next.set(id, { ...existing, streamingToolUse: tools });
       return next;
     });
+    // Context consumers read through stable getter callbacks, so changing the
+    // map alone does not change the memoized context value. Notify them just as
+    // token/thinking updates do, otherwise a tool pill remains invisible until
+    // some unrelated text chunk happens to trigger a render.
+    setStreamVersion(v => v + 1);
   }, []);
 
   const stopStreaming = useCallback((id: string) => {

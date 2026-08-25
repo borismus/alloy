@@ -18,7 +18,7 @@ interface UseSendMessageDeps {
   setStreamingThinkingState: (convId: string, content: string, elapsedMs: number, durationMs?: number) => void;
   updateStreamingThinking: (convId: string, chunk: string) => void;
   finishStreamingThinking: (convId: string, durationMs: number) => void;
-  addToolUse: (convId: string, toolUse: ToolUse) => void;
+  addToolUse: (convId: string, toolUse: ToolUse, toolCallId?: string) => void;
   // Sub-agent callbacks kept on the deps surface for backward compat with App.tsx;
   // server-side spawn_subagent doesn't currently fan out per-agent updates,
   // so these are no-ops at runtime.
@@ -131,7 +131,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
             setDraftConversation(prev => prev?.id === conv.id ? conv : prev);
             setConversations(prev => prev.map(c => c.id === conv.id ? conv : c));
           },
-          onToolUse: (toolUse) => addToolUse(convId, toolUse),
+          onToolUse: (toolUse, toolCallId) => addToolUse(convId, toolUse, toolCallId),
           signal,
         },
       );

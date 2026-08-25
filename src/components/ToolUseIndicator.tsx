@@ -16,6 +16,8 @@ const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: str
   append_to_note: { active: 'Appending', complete: 'Append', icon: 'file' },
   http_get: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
   web_search: { active: 'Searching', complete: 'Searched', icon: 'search' },
+  command_execution: { active: 'Running command', complete: 'Ran command', icon: 'tool' },
+  file_change: { active: 'Applying file changes', complete: 'Applied file changes', icon: 'file' },
   spawn_subagent: { active: 'Running sub-agents', complete: 'Ran sub-agents', icon: 'agents' },
   // Claude Code's native tools (subscription provider, text + read-only/web).
   Read: { active: 'Reading', complete: 'Read file', icon: 'file' },
@@ -157,10 +159,13 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
         // For web_search, include the query in the label
         let label = isToolComplete ? labels.complete : labels.active;
         if (tool.type === 'web_search' && typeof tool.input?.query === 'string') {
-          const query = tool.input.query.length > 40
-            ? tool.input.query.slice(0, 40) + '...'
-            : tool.input.query;
-          label = isToolComplete ? `Searched "${query}"` : `Searching "${query}"`;
+          const fullQuery = tool.input.query.trim();
+          if (fullQuery) {
+            const query = fullQuery.length > 40
+              ? fullQuery.slice(0, 40) + '...'
+              : fullQuery;
+            label = isToolComplete ? `Searched "${query}"` : `Searching "${query}"`;
+          }
         }
 
         const isError = tool.isError && tool.result;

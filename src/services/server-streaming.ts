@@ -51,7 +51,7 @@ export interface ServerStreamOptions {
   onThinking?: (text: string) => void;
   onThinkingDone?: (durationMs: number) => void;
   onTitle?: (title: string) => void;
-  onToolUse?: (toolUse: ToolUse) => void;
+  onToolUse?: (toolUse: ToolUse, toolCallId?: string) => void;
   signal?: AbortSignal;
   /**
    * When true, the server runs the model + tool loop but does NOT append
@@ -216,16 +216,26 @@ export async function executeViaServer(
       // type/input/result/isError — we just need to keep that array fresh.
       eventSource.addEventListener('tool_use', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
-        const toolUse: ToolUse = {
+        const nextToolUse: ToolUse = {
           // The claude-cli provider calls Alloy's tools over MCP, which names
           // them `mcp__alloy__<tool>`. Strip the prefix so pills (and persisted
           // history) match the same labels/icons as every other provider.
           type: typeof data.name === 'string' ? data.name.replace(/^mcp__alloy__/, '') : data.name,
           input: data.input,
         };
-        if (data.id) toolUsesById.set(data.id, toolUse);
-        allToolUses.push(toolUse);
-        options.onToolUse?.(toolUse);
+        const existing = data.id ? toolUsesById.get(data.id) : undefined;
+        if (existing) {
+          // Some providers refine tool metadata after start. Codex native web
+          // searches, for example, reveal the query only when they complete.
+          // Keep the same array entry so the final result contains one pill.
+          existing.type = nextToolUse.type;
+          existing.input = nextToolUse.input;
+          options.onToolUse?.(existing, data.id);
+          return;
+        }
+        if (data.id) toolUsesById.set(data.id, nextToolUse);
+        allToolUses.push(nextToolUse);
+        options.onToolUse?.(nextToolUse, data.id);
       });
 
       eventSource.addEventListener('tool_result', (e: MessageEvent) => {

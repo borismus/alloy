@@ -1,9 +1,9 @@
 //! Codex CLI provider (OpenAI Codex, ChatGPT/Codex subscription).
 //!
-//! Shells out to `codex exec` in a read-only sandbox so calls bill against the
-//! user's ChatGPT/Codex **subscription** (via `codex login`) rather than an API
-//! key. Text-only: Codex runs its own agent loop; Alloy doesn't attach tool
-//! definitions or bridge MCP (unlike cli_claude), so the model just answers.
+//! Interactive turns use Codex's app-server JSON-RPC protocol so calls bill
+//! against the user's ChatGPT/Codex **subscription** (via `codex login`) while
+//! still providing token deltas, turn interruption, images, and Alloy's MCP
+//! tools. Small internal one-shot tasks (titles/compaction) retain `codex exec`.
 //! Prompts go to OpenAI, so this provider is always CLOUD (never `local`, no
 //! private-dir access — enforced in `local::provider_is_local`).
 //!
@@ -25,7 +25,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::Command;
 
 use crate::config::ProviderConfig;
@@ -33,6 +33,7 @@ use crate::providers::{
     ChatMessage, DiscoveredModel, McpBridge, Provider, ProviderStreamEvent, StreamRequest,
     StreamResult, Usage,
 };
+use crate::types::{ToolCall, ToolResult};
 
 /// Well-known absolute install locations for the `codex` binary (a Finder-
 /// launched macOS app doesn't inherit the shell PATH).
@@ -65,7 +66,10 @@ fn last_message_path() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    std::env::temp_dir().join(format!("alloy-codex-{}-{nanos}-{n}.txt", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "alloy-codex-{}-{nanos}-{n}.txt",
+        std::process::id()
+    ))
 }
 
 pub struct CliCodexProvider {
@@ -74,7 +78,6 @@ pub struct CliCodexProvider {
 
 struct RunOutput {
     text: String,
-    usage: Option<Usage>,
 }
 
 #[derive(Deserialize)]
@@ -237,8 +240,25 @@ impl CliCodexProvider {
         cmd
     }
 
-    /// Run `codex exec` with `prompt` on stdin; return the final agent message
-    /// (+ token usage).
+    fn app_server_command(&self, mcp: Option<&McpBridge>) -> Command {
+        let mut cmd = self.command();
+        cmd.arg("app-server").arg("--stdio");
+        if let Some(mcp) = mcp {
+            cmd.arg("-c").arg(format!(
+                r#"mcp_servers.alloy.url="{}/api/mcp?session={}&token={}""#,
+                mcp.base_url, mcp.session_id, mcp.token
+            ));
+        }
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        cmd
+    }
+
+    /// Run `codex exec` with `prompt` on stdin and return its final message.
+    /// Interactive user turns use app-server below; this path remains for title
+    /// generation and compaction, which need only one result.
     async fn run(
         &self,
         prompt: &str,
@@ -296,37 +316,266 @@ impl CliCodexProvider {
                 "codex CLI produced no response (is `codex login` done for a ChatGPT/Codex subscription?)"
             );
         }
-        Ok(RunOutput {
-            text,
-            usage: events.usage,
-        })
+        Ok(RunOutput { text })
+    }
+
+    /// Run one interactive turn through app-server. Unlike `codex exec --json`,
+    /// app-server exposes actual token deltas, a turn interrupt RPC, and image
+    /// inputs. One ephemeral process/thread per Alloy turn keeps lifecycle and
+    /// cancellation ownership simple and avoids persisting duplicate sessions.
+    async fn run_app_server(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
+        let prompt = flatten_prompt(&req.messages);
+        let input = app_server_input(&prompt, &req.messages);
+        let has_mcp = req.mcp.is_some();
+        let mut cancel = req.cancel;
+        if *cancel.borrow() {
+            return Ok(cancelled_result(String::new(), None));
+        }
+
+        let mut cmd = self.app_server_command(req.mcp.as_ref());
+        let mut child = cmd.spawn().map_err(|e| {
+            anyhow::anyhow!(
+                "failed to launch the `codex` app-server at `{}`: {}. Install the OpenAI Codex CLI and run `codex login`, or set the provider's `command` to its absolute path.",
+                self.command,
+                e
+            )
+        })?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Codex app-server stdin unavailable"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Codex app-server stdout unavailable"))?;
+        let mut lines = BufReader::new(stdout).lines();
+        let stderr_handle = child.stderr.take().map(|mut stderr| {
+            tokio::spawn(async move {
+                let mut text = String::new();
+                let _ = stderr.read_to_string(&mut text).await;
+                text
+            })
+        });
+
+        write_rpc(
+            &mut stdin,
+            &serde_json::json!({
+                "id": 1,
+                "method": "initialize",
+                "params": {"clientInfo": {"name": "alloy", "version": env!("CARGO_PKG_VERSION")}}
+            }),
+        )
+        .await
+        .map_err(anyhow::Error::msg)?;
+        ensure_rpc_success(
+            read_rpc_response(&mut lines, 1)
+                .await
+                .map_err(anyhow::Error::msg)?,
+        )
+        .map_err(anyhow::Error::msg)?;
+        write_rpc(
+            &mut stdin,
+            &serde_json::json!({"method": "initialized", "params": {}}),
+        )
+        .await
+        .map_err(anyhow::Error::msg)?;
+
+        write_rpc(
+            &mut stdin,
+            &serde_json::json!({
+                "id": 2,
+                "method": "thread/start",
+                "params": app_server_thread_start_params(&req.model, has_mcp)
+            }),
+        )
+        .await
+        .map_err(anyhow::Error::msg)?;
+        let thread_response = ensure_rpc_success(
+            read_rpc_response(&mut lines, 2)
+                .await
+                .map_err(anyhow::Error::msg)?,
+        )
+        .map_err(anyhow::Error::msg)?;
+        let thread_id = thread_response
+            .pointer("/result/thread/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("Codex thread/start response had no thread id"))?
+            .to_string();
+
+        write_rpc(
+            &mut stdin,
+            &serde_json::json!({
+                "id": 3,
+                "method": "turn/start",
+                "params": {"threadId": thread_id, "input": input}
+            }),
+        )
+        .await
+        .map_err(anyhow::Error::msg)?;
+        let turn_response = ensure_rpc_success(
+            read_rpc_response(&mut lines, 3)
+                .await
+                .map_err(anyhow::Error::msg)?,
+        )
+        .map_err(anyhow::Error::msg)?;
+        let turn_id = turn_response
+            .pointer("/result/turn/id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow::anyhow!("Codex turn/start response had no turn id"))?
+            .to_string();
+
+        let mut content = String::new();
+        let mut last_agent_message_item_id: Option<String> = None;
+        let mut usage: Option<Usage> = None;
+        let mut error: Option<String> = None;
+        let mut completion: Option<AppServerCompletion> = None;
+        let mut cancel_requested = false;
+        let mut cancel_watch_open = true;
+        let mut cancel_deadline: Option<tokio::time::Instant> = None;
+
+        loop {
+            tokio::select! {
+                line = lines.next_line() => {
+                    let line = match line {
+                        Ok(Some(line)) => line,
+                        Ok(None) => break,
+                        Err(e) => {
+                            error = Some(format!("Codex app-server stdout read failed: {e}"));
+                            break;
+                        }
+                    };
+                    let Ok(message): Result<Value, _> = serde_json::from_str(&line) else {
+                        continue;
+                    };
+                    if let Some((item_id, delta)) = app_server_delta(&message, &thread_id, &turn_id) {
+                        let visible_delta = append_app_server_delta(
+                            &mut content,
+                            &mut last_agent_message_item_id,
+                            item_id,
+                            delta,
+                        );
+                        if !visible_delta.is_empty() {
+                            let _ = req.delta_tx.send(ProviderStreamEvent::Content(visible_delta));
+                        }
+                    }
+                    if let Some(delta) = app_server_thinking_delta(&message, &thread_id, &turn_id) {
+                        let _ = req.delta_tx.send(ProviderStreamEvent::Thinking(delta.to_string()));
+                    }
+                    if let Some(next_usage) = app_server_usage(&message, &thread_id, &turn_id) {
+                        usage = Some(next_usage);
+                    }
+                    if let Some(call) = app_server_tool_use(&message, &thread_id, &turn_id) {
+                        req.tool_sink.on_tool_use(&call);
+                    }
+                    // Native web-search start events contain `query: ""`;
+                    // Codex fills the real query only on completion. Re-emit
+                    // that call by id so the session/UI can update it in place.
+                    if let Some(call) = app_server_tool_update(&message, &thread_id, &turn_id) {
+                        req.tool_sink.on_tool_use(&call);
+                    }
+                    if let Some(result) = app_server_tool_result(&message, &thread_id, &turn_id) {
+                        req.tool_sink.on_tool_result(&result);
+                    }
+                    if error.is_none() {
+                        error = app_server_error(&message, &thread_id, &turn_id);
+                    }
+                    if let Some(done) = app_server_completion(&message, &thread_id, &turn_id) {
+                        completion = Some(done);
+                        break;
+                    }
+                }
+                changed = cancel.changed(), if !cancel_requested && cancel_watch_open => {
+                    match changed {
+                        Ok(()) if *cancel.borrow() => {
+                            cancel_requested = true;
+                            cancel_deadline = Some(tokio::time::Instant::now() + Duration::from_secs(3));
+                            // Graceful interruption preserves any partial deltas and
+                            // produces a normal `turn/completed: interrupted` event.
+                            // The deadline below kills a wedged child as a backstop.
+                            let _ = write_rpc(
+                                &mut stdin,
+                                &serde_json::json!({
+                                    "id": 4,
+                                    "method": "turn/interrupt",
+                                    "params": {"threadId": thread_id, "turnId": turn_id}
+                                }),
+                            ).await;
+                        }
+                        Ok(()) => {}
+                        Err(_) => cancel_watch_open = false,
+                    }
+                }
+                _ = async {
+                    tokio::time::sleep_until(cancel_deadline.expect("guarded deadline")).await;
+                }, if cancel_deadline.is_some() => {
+                    let _ = child.start_kill();
+                    break;
+                }
+            }
+        }
+
+        let _ = child.start_kill();
+        let status = child.wait().await.ok();
+        let stderr = match stderr_handle {
+            Some(handle) => handle.await.unwrap_or_default(),
+            None => String::new(),
+        };
+        let cancelled = cancel_requested
+            || *cancel.borrow()
+            || completion.as_ref().map(|c| c.status.as_str()) == Some("interrupted");
+
+        // Some app-server versions may complete without delta notifications.
+        // Emit the final item once as a compatibility fallback.
+        if content.is_empty() {
+            if let Some(final_text) = completion.as_ref().and_then(|c| c.text.as_ref()) {
+                if !final_text.is_empty() {
+                    content = final_text.clone();
+                    let _ = req
+                        .delta_tx
+                        .send(ProviderStreamEvent::Content(final_text.clone()));
+                }
+            }
+        }
+
+        if !cancelled {
+            if let Some(done_error) = completion.as_ref().and_then(|c| c.error.clone()) {
+                anyhow::bail!("codex app-server: {done_error}");
+            }
+            if let Some(message) = error {
+                anyhow::bail!("codex app-server: {message}");
+            }
+            if completion.is_none() {
+                let detail = if stderr.trim().is_empty() {
+                    status
+                        .map(|s| format!("process exited {s}"))
+                        .unwrap_or_else(|| "process ended before turn/completed".to_string())
+                } else {
+                    stderr.trim().to_string()
+                };
+                anyhow::bail!("codex app-server ended early: {detail}");
+            }
+            if content.trim().is_empty() {
+                anyhow::bail!("codex app-server produced no response");
+            }
+        }
+
+        if cancelled {
+            Ok(cancelled_result(content, usage))
+        } else {
+            Ok(StreamResult {
+                content,
+                usage,
+                stop_reason: "end_turn".to_string(),
+                tool_calls: Vec::new(),
+            })
+        }
     }
 }
 
 #[async_trait]
 impl Provider for CliCodexProvider {
     async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
-        if *req.cancel.borrow() {
-            return Ok(StreamResult {
-                content: String::new(),
-                usage: None,
-                stop_reason: "cancelled".to_string(),
-                tool_calls: Vec::new(),
-            });
-        }
-        // Non-streaming: `codex exec` runs its own loop; we run to completion and
-        // emit the final agent message as one chunk.
-        let prompt = flatten_prompt(&req.messages);
-        let out = self.run(&prompt, &req.model, req.mcp.as_ref()).await?;
-        let _ = req
-            .delta_tx
-            .send(ProviderStreamEvent::Content(out.text.clone()));
-        Ok(StreamResult {
-            content: out.text,
-            usage: out.usage,
-            stop_reason: "end_turn".to_string(),
-            tool_calls: Vec::new(),
-        })
+        self.run_app_server(req).await
     }
 
     async fn generate_title(&self, user_msg: &str, assistant_msg: &str, model: &str) -> String {
@@ -367,11 +616,11 @@ impl Provider for CliCodexProvider {
         false
     }
 
-    /// `codex exec` takes a single text prompt on stdin; `flatten_prompt` drops
-    /// images entirely. Report that up front so the composer can block the
-    /// attachment rather than let the model answer as if none was sent.
+    /// App-server accepts both image data URLs and local image paths. Alloy has
+    /// already resolved vault attachments to base64, so turns use data URLs and
+    /// never grant Codex direct filesystem access to the vault.
     fn supports_images(&self, _model: &str) -> bool {
-        false
+        true
     }
 }
 
@@ -465,9 +714,369 @@ fn parse_model_list_response(
     }
 }
 
-/// Flatten the conversation into a single prompt string (`codex exec` takes one
-/// prompt). System instruction first, then a labeled transcript ending on the
-/// latest user turn. Images are dropped (codex exec is text-only here).
+fn app_server_thread_start_params(model: &str, has_mcp: bool) -> Value {
+    serde_json::json!({
+        "cwd": std::env::temp_dir().to_string_lossy(),
+        "model": if model.is_empty() || model == "default" { Value::Null } else { Value::String(model.to_string()) },
+        "sandbox": if has_mcp { "workspace-write" } else { "read-only" },
+        "approvalPolicy": if has_mcp { "on-request" } else { "never" },
+        // Equivalent to `codex exec --approve-for-me`: MCP approvals are
+        // reviewed internally instead of becoming unanswered client requests.
+        "approvalsReviewer": if has_mcp { Value::String("auto_review".into()) } else { Value::Null },
+        "ephemeral": true,
+    })
+}
+
+/// Build one app-server turn from Alloy's flattened transcript plus every image
+/// attachment in message order. Data URLs keep vault paths private from Codex.
+fn app_server_input(prompt: &str, messages: &[ChatMessage]) -> Vec<Value> {
+    let mut input = vec![serde_json::json!({"type": "text", "text": prompt})];
+    for message in messages {
+        if let ChatMessage::User { images, .. } = message {
+            for image in images {
+                input.push(serde_json::json!({
+                    "type": "image",
+                    "url": format!("data:{};base64,{}", image.mime_type, image.base64),
+                }));
+            }
+        }
+    }
+    input
+}
+
+fn app_server_event_matches(v: &Value, method: &str, thread_id: &str, turn_id: &str) -> bool {
+    v.get("method").and_then(Value::as_str) == Some(method)
+        && v.pointer("/params/threadId").and_then(Value::as_str) == Some(thread_id)
+        && (v.pointer("/params/turnId").and_then(Value::as_str) == Some(turn_id)
+            || v.pointer("/params/turn/id").and_then(Value::as_str) == Some(turn_id))
+}
+
+fn app_server_delta<'a>(
+    v: &'a Value,
+    thread_id: &str,
+    turn_id: &str,
+) -> Option<(&'a str, &'a str)> {
+    if !app_server_event_matches(v, "item/agentMessage/delta", thread_id, turn_id) {
+        return None;
+    }
+    Some((
+        v.pointer("/params/itemId").and_then(Value::as_str)?,
+        v.pointer("/params/delta").and_then(Value::as_str)?,
+    ))
+}
+
+/// Codex emits commentary and final answers as separate `agentMessage` items.
+/// Their individual text is well-formed, but neither side includes boundary
+/// whitespace, so blindly concatenating deltas produces `sentence.Next`.
+fn append_app_server_delta(
+    content: &mut String,
+    last_item_id: &mut Option<String>,
+    item_id: &str,
+    delta: &str,
+) -> String {
+    if delta.is_empty() {
+        return String::new();
+    }
+
+    let starts_new_item = last_item_id
+        .as_deref()
+        .is_some_and(|previous| previous != item_id);
+    let needs_separator = starts_new_item
+        && !content.is_empty()
+        && !content.chars().next_back().is_some_and(char::is_whitespace)
+        && !delta.chars().next().is_some_and(char::is_whitespace);
+
+    let mut visible = String::with_capacity(delta.len() + usize::from(needs_separator) * 2);
+    if needs_separator {
+        visible.push_str("\n\n");
+        content.push_str("\n\n");
+    }
+    visible.push_str(delta);
+    content.push_str(delta);
+    *last_item_id = Some(item_id.to_string());
+    visible
+}
+
+fn app_server_thinking_delta<'a>(v: &'a Value, thread_id: &str, turn_id: &str) -> Option<&'a str> {
+    app_server_event_matches(v, "item/reasoning/summaryTextDelta", thread_id, turn_id)
+        .then(|| v.pointer("/params/delta").and_then(Value::as_str))
+        .flatten()
+}
+
+fn app_server_usage(v: &Value, thread_id: &str, turn_id: &str) -> Option<Usage> {
+    if !app_server_event_matches(v, "thread/tokenUsage/updated", thread_id, turn_id) {
+        return None;
+    }
+    let last = v.pointer("/params/tokenUsage/last")?;
+    let input = last.get("inputTokens").and_then(Value::as_u64).unwrap_or(0);
+    let output = last
+        .get("outputTokens")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if input == 0 && output == 0 {
+        return None;
+    }
+    Some(Usage {
+        input_tokens: input.min(u32::MAX as u64) as u32,
+        output_tokens: output.min(u32::MAX as u64) as u32,
+        ..Default::default()
+    })
+}
+
+fn app_server_error(v: &Value, thread_id: &str, turn_id: &str) -> Option<String> {
+    if !app_server_event_matches(v, "error", thread_id, turn_id)
+        || v.pointer("/params/willRetry").and_then(Value::as_bool) == Some(true)
+    {
+        return None;
+    }
+    v.pointer("/params/error/message")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn app_server_item<'a>(
+    v: &'a Value,
+    method: &str,
+    thread_id: &str,
+    turn_id: &str,
+) -> Option<&'a Value> {
+    app_server_event_matches(v, method, thread_id, turn_id)
+        .then(|| v.pointer("/params/item"))
+        .flatten()
+}
+
+/// Translate both Alloy MCP calls and Codex's native app-server tools into the
+/// one ToolCall stream the UI already renders. The initial app-server migration
+/// handled only `mcpToolCall`, so native command/web/file activity happened but
+/// remained invisible in the thread.
+fn app_server_tool_use(v: &Value, thread_id: &str, turn_id: &str) -> Option<ToolCall> {
+    let item = app_server_item(v, "item/started", thread_id, turn_id)?;
+    let id = item.get("id")?.as_str()?.to_string();
+    let (name, input) = match item.get("type").and_then(Value::as_str)? {
+        "mcpToolCall" | "dynamicToolCall" => (
+            item.get("tool")?.as_str()?.to_string(),
+            item.get("arguments")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({})),
+        ),
+        "commandExecution" => (
+            "command_execution".to_string(),
+            serde_json::json!({
+                "command": item.get("command").and_then(Value::as_str).unwrap_or_default(),
+                "cwd": item.get("cwd").and_then(Value::as_str).unwrap_or_default(),
+            }),
+        ),
+        "fileChange" => {
+            // Keep patches themselves out of UI state/YAML; the pill only needs
+            // the affected paths and operation kinds.
+            let changes = item
+                .get("changes")
+                .and_then(Value::as_array)
+                .map(|changes| {
+                    changes
+                        .iter()
+                        .map(|change| {
+                            serde_json::json!({
+                                "path": change.get("path").and_then(Value::as_str).unwrap_or_default(),
+                                "kind": change.get("kind").and_then(Value::as_str).unwrap_or_default(),
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            (
+                "file_change".to_string(),
+                serde_json::json!({ "changes": changes }),
+            )
+        }
+        "webSearch" => ("web_search".to_string(), app_server_web_search_input(item)),
+        _ => return None,
+    };
+    Some(ToolCall { id, name, input })
+}
+
+fn app_server_web_search_input(item: &Value) -> Value {
+    let query = item
+        .get("query")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            item.pointer("/action/query")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|query| !query.is_empty())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            item.pointer("/action/queries")
+                .and_then(Value::as_array)
+                .map(|queries| {
+                    queries
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::trim)
+                        .filter(|query| !query.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                })
+                .filter(|query| !query.is_empty())
+        });
+
+    if let Some(query) = query {
+        return serde_json::json!({ "query": query });
+    }
+
+    match item.pointer("/action/type").and_then(Value::as_str) {
+        Some("openPage") => item
+            .pointer("/action/url")
+            .and_then(Value::as_str)
+            .map(|url| serde_json::json!({ "url": url }))
+            .unwrap_or_else(|| serde_json::json!({})),
+        Some("findInPage") => serde_json::json!({
+            "url": item.pointer("/action/url").and_then(Value::as_str).unwrap_or_default(),
+            "query": item.pointer("/action/pattern").and_then(Value::as_str).unwrap_or_default(),
+        }),
+        _ => serde_json::json!({}),
+    }
+}
+
+fn app_server_tool_update(v: &Value, thread_id: &str, turn_id: &str) -> Option<ToolCall> {
+    let item = app_server_item(v, "item/completed", thread_id, turn_id)?;
+    if item.get("type").and_then(Value::as_str) != Some("webSearch") {
+        return None;
+    }
+    let input = app_server_web_search_input(item);
+    if input.as_object().is_none_or(serde_json::Map::is_empty) {
+        return None;
+    }
+    Some(ToolCall {
+        id: item.get("id")?.as_str()?.to_string(),
+        name: "web_search".to_string(),
+        input,
+    })
+}
+
+fn app_server_tool_result(v: &Value, thread_id: &str, turn_id: &str) -> Option<ToolResult> {
+    let item = app_server_item(v, "item/completed", thread_id, turn_id)?;
+    let kind = item.get("type").and_then(Value::as_str)?;
+    if !matches!(
+        kind,
+        "mcpToolCall" | "dynamicToolCall" | "commandExecution" | "fileChange" | "webSearch"
+    ) {
+        return None;
+    }
+
+    let status = item.get("status").and_then(Value::as_str);
+    let is_error = matches!(status, Some("failed" | "declined"))
+        || item
+            .get("exitCode")
+            .and_then(Value::as_i64)
+            .is_some_and(|code| code != 0)
+        || item.get("success").and_then(Value::as_bool) == Some(false)
+        || item.get("error").is_some_and(|error| !error.is_null());
+    let error = item
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    let content = match kind {
+        "mcpToolCall" => item
+            .pointer("/result/content")
+            .and_then(Value::as_array)
+            .map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|part| {
+                        part.get("text")
+                            .and_then(Value::as_str)
+                            .or_else(|| part.as_str())
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .filter(|text| !text.is_empty()),
+        "dynamicToolCall" => item.get("contentItems").and_then(|content| {
+            (!content.is_null()).then(|| serde_json::to_string(content).unwrap_or_default())
+        }),
+        "commandExecution" => item
+            .get("aggregatedOutput")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                item.get("exitCode")
+                    .and_then(Value::as_i64)
+                    .map(|code| format!("Command exited with status {code}"))
+            }),
+        "fileChange" => item
+            .get("changes")
+            .and_then(Value::as_array)
+            .map(|changes| format!("Applied {} file change(s)", changes.len())),
+        "webSearch" => item
+            .get("results")
+            .and_then(Value::as_array)
+            .map(|results| format!("Found {} result(s)", results.len())),
+        _ => None,
+    }
+    .or(error)
+    .unwrap_or_else(|| "Completed".to_string());
+
+    Some(ToolResult {
+        tool_use_id: item.get("id")?.as_str()?.to_string(),
+        content,
+        is_error: is_error.then_some(true),
+    })
+}
+
+struct AppServerCompletion {
+    status: String,
+    text: Option<String>,
+    error: Option<String>,
+}
+
+fn app_server_completion(v: &Value, thread_id: &str, turn_id: &str) -> Option<AppServerCompletion> {
+    if !app_server_event_matches(v, "turn/completed", thread_id, turn_id) {
+        return None;
+    }
+    let turn = v.pointer("/params/turn")?;
+    let text = turn
+        .get("items")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items.iter().rev().find_map(|item| {
+                (item.get("type").and_then(Value::as_str) == Some("agentMessage"))
+                    .then(|| item.get("text").and_then(Value::as_str).map(str::to_string))
+                    .flatten()
+            })
+        });
+    Some(AppServerCompletion {
+        status: turn
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("completed")
+            .to_string(),
+        text,
+        error: turn
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+fn cancelled_result(content: String, usage: Option<Usage>) -> StreamResult {
+    StreamResult {
+        content,
+        usage,
+        stop_reason: "cancelled".to_string(),
+        tool_calls: Vec::new(),
+    }
+}
+
+/// Flatten the conversation into a single prompt string. System instruction
+/// first, then a labeled transcript ending on the latest user turn. Images are
+/// attached separately as app-server input items.
 fn flatten_prompt(messages: &[ChatMessage]) -> String {
     let mut system: Option<&str> = None;
     let mut turns: Vec<String> = Vec::new();
@@ -499,7 +1108,6 @@ fn flatten_prompt(messages: &[ChatMessage]) -> String {
 #[derive(Default)]
 struct CodexEvents {
     agent_message: Option<String>,
-    usage: Option<Usage>,
     error: Option<String>,
 }
 
@@ -518,9 +1126,6 @@ fn parse_events(stdout: &str) -> CodexEvents {
         };
         if let Some(t) = agent_text(&v) {
             ev.agent_message = Some(t);
-        }
-        if let Some(u) = parse_usage(&v) {
-            ev.usage = Some(u);
         }
         if ev.error.is_none() {
             if let Some(e) = parse_error(&v) {
@@ -576,24 +1181,6 @@ fn agent_text(v: &Value) -> Option<String> {
         }
     }
     None
-}
-
-/// Token usage from a `turn.completed` event.
-fn parse_usage(v: &Value) -> Option<Usage> {
-    if v.get("type").and_then(Value::as_str) != Some("turn.completed") {
-        return None;
-    }
-    let u = v.get("usage")?;
-    let input = u.get("input_tokens").and_then(Value::as_u64).unwrap_or(0) as u32;
-    let output = u.get("output_tokens").and_then(Value::as_u64).unwrap_or(0) as u32;
-    if input == 0 && output == 0 {
-        return None;
-    }
-    Some(Usage {
-        input_tokens: input,
-        output_tokens: output,
-        ..Default::default()
-    })
 }
 
 /// Fatal error text from an `error` or `turn.failed` event (codex nests the API
@@ -652,6 +1239,52 @@ mod tests {
             .collect()
     }
 
+    fn app_server_args(mcp: Option<&McpBridge>) -> Vec<String> {
+        let cmd = provider().app_server_command(mcp);
+        cmd.as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn stream_request(
+        messages: Vec<ChatMessage>,
+        cancel: tokio::sync::watch::Receiver<bool>,
+        delta_tx: tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>,
+    ) -> StreamRequest {
+        StreamRequest {
+            messages,
+            model: "default".into(),
+            tools: Vec::new(),
+            delta_tx,
+            cancel,
+            tool_sink: std::sync::Arc::new(crate::types::NullSink),
+            mcp: None,
+        }
+    }
+
+    #[cfg(unix)]
+    fn scripted_provider(script: &str) -> (CliCodexProvider, tempfile::TempDir) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake-codex");
+        std::fs::write(&path, script).unwrap();
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+        let cfg = crate::config::ProviderConfig {
+            id: "codex-cli".into(),
+            kind: crate::config::ProviderKind::Cli,
+            adapter: Some(crate::config::CliAdapter::Codex),
+            base_url: None,
+            api_key: String::new(),
+            command: Some(path.to_string_lossy().into_owned()),
+            oauth_token: None,
+            local: None,
+        };
+        (CliCodexProvider::new(&cfg), dir)
+    }
+
     #[test]
     fn attaches_the_alloy_mcp_bridge_when_one_is_supplied() {
         let bridge = McpBridge {
@@ -672,6 +1305,27 @@ mod tests {
         // Mutually exclusive with --approve-for-me: the CLI errors out if both
         // are passed ("cannot be used with").
         assert!(!args.iter().any(|a| a == "--sandbox"), "{args:?}");
+    }
+
+    #[test]
+    fn app_server_preserves_mcp_config_and_automatic_review() {
+        let bridge = McpBridge {
+            base_url: "http://127.0.0.1:4321".into(),
+            session_id: "sess-1".into(),
+            token: "tok-2".into(),
+        };
+        let args = app_server_args(Some(&bridge));
+        assert!(args.iter().any(|a| a == "app-server"), "{args:?}");
+        assert!(
+            args.iter().any(|a| a
+                == r#"mcp_servers.alloy.url="http://127.0.0.1:4321/api/mcp?session=sess-1&token=tok-2""#),
+            "missing MCP config: {args:?}"
+        );
+        let params = app_server_thread_start_params("default", true);
+        assert_eq!(params["sandbox"], "workspace-write");
+        assert_eq!(params["approvalPolicy"], "on-request");
+        assert_eq!(params["approvalsReviewer"], "auto_review");
+        assert_eq!(params["ephemeral"], true);
     }
 
     #[test]
@@ -719,9 +1373,187 @@ mod tests {
         );
     }
 
-    // Real codex-cli 0.145 output for a successful turn.
     #[test]
-    fn parses_agent_message_and_usage_from_real_output() {
+    fn app_server_attaches_images_as_data_urls() {
+        let messages = vec![ChatMessage::User {
+            content: "what color?".into(),
+            images: vec![crate::providers::ImageData {
+                mime_type: "image/png".into(),
+                base64: "aGVsbG8=".into(),
+            }],
+        }];
+        let input = app_server_input("what color?", &messages);
+        assert_eq!(input[0], json!({"type": "text", "text": "what color?"}));
+        assert_eq!(
+            input[1],
+            json!({"type": "image", "url": "data:image/png;base64,aGVsbG8="})
+        );
+    }
+
+    #[test]
+    fn parses_real_app_server_delta_usage_and_completion_events() {
+        let delta = json!({
+            "method": "item/agentMessage/delta",
+            "params": {"threadId": "thread", "turnId": "turn", "itemId": "msg", "delta": "Hello"}
+        });
+        assert_eq!(
+            app_server_delta(&delta, "thread", "turn"),
+            Some(("msg", "Hello"))
+        );
+        assert!(app_server_delta(&delta, "other", "turn").is_none());
+
+        let usage = json!({
+            "method": "thread/tokenUsage/updated",
+            "params": {"threadId": "thread", "turnId": "turn", "tokenUsage": {
+                "last": {"inputTokens": 13423, "outputTokens": 32}
+            }}
+        });
+        let usage = app_server_usage(&usage, "thread", "turn").unwrap();
+        assert_eq!(usage.input_tokens, 13423);
+        assert_eq!(usage.output_tokens, 32);
+
+        let completed = json!({
+            "method": "turn/completed",
+            "params": {"threadId": "thread", "turn": {
+                "id": "turn", "status": "completed", "error": null,
+                "items": [{"type": "agentMessage", "text": "Hello", "phase": "final_answer"}]
+            }}
+        });
+        let completed = app_server_completion(&completed, "thread", "turn").unwrap();
+        assert_eq!(completed.status, "completed");
+        assert_eq!(completed.text.as_deref(), Some("Hello"));
+        assert!(completed.error.is_none());
+    }
+
+    #[test]
+    fn separates_distinct_app_server_agent_messages() {
+        let mut content = String::new();
+        let mut last_item_id = None;
+
+        assert_eq!(
+            append_app_server_delta(
+                &mut content,
+                &mut last_item_id,
+                "commentary-1",
+                "I’ll inspect the exact page."
+            ),
+            "I’ll inspect the exact page."
+        );
+        // Deltas within one item remain byte-for-byte adjacent.
+        assert_eq!(
+            append_app_server_delta(
+                &mut content,
+                &mut last_item_id,
+                "commentary-1",
+                " More commentary."
+            ),
+            " More commentary."
+        );
+        // A new agentMessage item gets a paragraph boundary when Codex omits
+        // whitespace on both sides of the item transition.
+        assert_eq!(
+            append_app_server_delta(
+                &mut content,
+                &mut last_item_id,
+                "final-answer-1",
+                "That confirms the wiring:"
+            ),
+            "\n\nThat confirms the wiring:"
+        );
+        assert_eq!(
+            content,
+            "I’ll inspect the exact page. More commentary.\n\nThat confirms the wiring:"
+        );
+    }
+
+    #[test]
+    fn parses_app_server_mcp_tool_events() {
+        let started = json!({
+            "method": "item/started",
+            "params": {"threadId": "thread", "turnId": "turn", "item": {
+                "type": "mcpToolCall", "id": "call-1", "server": "alloy",
+                "tool": "read_file", "status": "inProgress", "arguments": {"path": "notes/x.md"}
+            }}
+        });
+        let call = app_server_tool_use(&started, "thread", "turn").unwrap();
+        assert_eq!(call.id, "call-1");
+        assert_eq!(call.name, "read_file");
+        assert_eq!(call.input, json!({"path": "notes/x.md"}));
+
+        let completed = json!({
+            "method": "item/completed",
+            "params": {"threadId": "thread", "turnId": "turn", "item": {
+                "type": "mcpToolCall", "id": "call-1", "server": "alloy",
+                "tool": "read_file", "status": "completed", "arguments": {"path": "notes/x.md"},
+                "result": {"content": [{"type": "text", "text": "contents"}]}, "error": null
+            }}
+        });
+        let result = app_server_tool_result(&completed, "thread", "turn").unwrap();
+        assert_eq!(result.tool_use_id, "call-1");
+        assert_eq!(result.content, "contents");
+        assert_eq!(result.is_error, None);
+    }
+
+    #[test]
+    fn parses_app_server_native_tool_events() {
+        // Real codex-cli 0.147 app-server shapes. These are Codex-native tools,
+        // not calls through Alloy's MCP server, but users should still see
+        // their activity in the same thread pill stream.
+        let command_started = json!({
+            "method": "item/started",
+            "params": {"threadId": "thread", "turnId": "turn", "item": {
+                "type": "commandExecution", "id": "exec-1", "command": "/bin/zsh -lc pwd",
+                "cwd": "/tmp", "status": "inProgress", "commandActions": []
+            }}
+        });
+        let call = app_server_tool_use(&command_started, "thread", "turn").unwrap();
+        assert_eq!(call.name, "command_execution");
+        assert_eq!(call.input["command"], "/bin/zsh -lc pwd");
+
+        let command_completed = json!({
+            "method": "item/completed",
+            "params": {"threadId": "thread", "turnId": "turn", "item": {
+                "type": "commandExecution", "id": "exec-1", "command": "/bin/zsh -lc pwd",
+                "cwd": "/tmp", "status": "completed", "commandActions": [],
+                "aggregatedOutput": "/private/tmp\n", "exitCode": 0
+            }}
+        });
+        let result = app_server_tool_result(&command_completed, "thread", "turn").unwrap();
+        assert_eq!(result.content, "/private/tmp\n");
+        assert_eq!(result.is_error, None);
+
+        let web_started = json!({
+            "method": "item/started",
+            "params": {"threadId": "thread", "turnId": "turn", "item": {
+                "type": "webSearch", "id": "search-1", "query": "", "action": null, "results": null
+            }}
+        });
+        let started_call = app_server_tool_use(&web_started, "thread", "turn").unwrap();
+        assert_eq!(started_call.name, "web_search");
+        assert_eq!(started_call.input, json!({}));
+
+        let web_completed = json!({
+            "method": "item/completed",
+            "params": {"threadId": "thread", "turnId": "turn", "item": {
+                "type": "webSearch", "id": "search-1", "query": "Alloy",
+                "action": {"type": "search", "query": "Alloy"},
+                "results": [{"type": "text_result"}, {"type": "text_result"}]
+            }}
+        });
+        let updated_call = app_server_tool_update(&web_completed, "thread", "turn").unwrap();
+        assert_eq!(updated_call.id, "search-1");
+        assert_eq!(updated_call.input, json!({"query": "Alloy"}));
+
+        let result = app_server_tool_result(&web_completed, "thread", "turn").unwrap();
+        assert_eq!(result.content, "Found 2 result(s)");
+        assert_eq!(result.is_error, None);
+    }
+
+    // Real codex-cli 0.145 output for a successful exec turn (the one-shot
+    // fallback still parses its final message; interactive usage comes from
+    // app-server notifications above).
+    #[test]
+    fn parses_agent_message_from_real_exec_output() {
         let out = format!(
             "{}\n{}\n{}\n{}\n",
             json!({"type":"thread.started","thread_id":"abc"}),
@@ -732,9 +1564,6 @@ mod tests {
         let ev = parse_events(&out);
         assert_eq!(ev.agent_message.as_deref(), Some("Hello there, friend!"));
         assert!(ev.error.is_none());
-        let usage = ev.usage.expect("usage");
-        assert_eq!(usage.input_tokens, 15576);
-        assert_eq!(usage.output_tokens, 9);
     }
 
     // Real codex-cli 0.145 output when a ChatGPT account is sent an unsupported
@@ -751,7 +1580,9 @@ mod tests {
         let ev = parse_events(&out);
         assert_eq!(
             ev.error.as_deref(),
-            Some("The 'gpt-5-codex' model is not supported when using Codex with a ChatGPT account.")
+            Some(
+                "The 'gpt-5-codex' model is not supported when using Codex with a ChatGPT account."
+            )
         );
         // The item.completed warning must not be mistaken for the answer.
         assert!(ev.agent_message.is_none());
@@ -810,6 +1641,91 @@ mod tests {
         let configured = parse_model_list_response(&response, Some("gpt-fast")).expect("catalog");
         assert!(!configured[0].is_default);
         assert!(configured[1].is_default);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn streams_app_server_deltas_and_usage() {
+        let script = r#"#!/bin/sh
+read init
+echo '{"id":1,"result":{}}'
+read initialized
+read thread
+echo '{"id":2,"result":{"thread":{"id":"thread-1"}}}'
+read turn
+echo '{"id":3,"result":{"turn":{"id":"turn-1"}}}'
+echo '{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"msg-1","delta":"Hello"}}'
+echo '{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"msg-1","delta":" world"}}'
+echo '{"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"inputTokens":12,"outputTokens":2}}}}'
+echo '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","error":null,"items":[{"type":"agentMessage","text":"Hello world"}]}}}'
+sleep 30
+"#;
+        let (provider, _dir) = scripted_provider(script);
+        let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+        let (delta_tx, mut delta_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let result = provider
+            .stream(stream_request(vec![user("hi")], cancel_rx, delta_tx))
+            .await
+            .unwrap();
+
+        assert_eq!(result.content, "Hello world");
+        assert_eq!(result.stop_reason, "end_turn");
+        assert_eq!(result.usage.as_ref().map(|u| u.input_tokens), Some(12));
+        assert_eq!(result.usage.as_ref().map(|u| u.output_tokens), Some(2));
+        let mut deltas = Vec::new();
+        while let Ok(event) = delta_rx.try_recv() {
+            if let ProviderStreamEvent::Content(text) = event {
+                deltas.push(text);
+            }
+        }
+        assert_eq!(deltas, vec!["Hello", " world"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn interrupts_an_active_app_server_turn() {
+        let script = r#"#!/bin/sh
+read init
+echo '{"id":1,"result":{}}'
+read initialized
+read thread
+echo '{"id":2,"result":{"thread":{"id":"thread-1"}}}'
+read turn
+echo '{"id":3,"result":{"turn":{"id":"turn-1"}}}'
+echo '{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"msg-1","delta":"Partial"}}'
+read interrupt
+echo '{"id":4,"result":{}}'
+echo '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted","error":null,"items":[]}}}'
+sleep 30
+"#;
+        let (provider, _dir) = scripted_provider(script);
+        let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+        let (delta_tx, mut delta_rx) = tokio::sync::mpsc::unbounded_channel();
+        let handle = tokio::spawn(async move {
+            provider
+                .stream(stream_request(
+                    vec![user("long answer")],
+                    cancel_rx,
+                    delta_tx,
+                ))
+                .await
+        });
+
+        let first = tokio::time::timeout(Duration::from_secs(3), delta_rx.recv())
+            .await
+            .expect("first delta timeout")
+            .expect("first delta");
+        assert_eq!(first, ProviderStreamEvent::Content("Partial".into()));
+        cancel_tx.send(true).unwrap();
+
+        let result = tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("cancellation timeout")
+            .expect("provider task")
+            .unwrap();
+        assert_eq!(result.stop_reason, "cancelled");
+        assert_eq!(result.content, "Partial");
     }
 
     #[test]

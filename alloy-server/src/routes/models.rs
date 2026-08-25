@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_reports_no_image_support_and_claude_stays_optimistic() {
+    fn subscription_cli_adapters_report_image_support() {
         use crate::config::{CliAdapter, ProviderConfig, ProviderKind};
         let cfg = |adapter| ProviderConfig {
             id: "p".into(),
@@ -444,8 +444,8 @@ mod tests {
             oauth_token: None,
             local: None,
         };
-        // codex exec takes one text prompt; images are dropped in flatten_prompt.
-        assert!(!CliCodexProvider::new(&cfg(CliAdapter::Codex)).supports_images(""));
+        // Codex app-server accepts base64 data URL image inputs.
+        assert!(CliCodexProvider::new(&cfg(CliAdapter::Codex)).supports_images(""));
         // Claude's stream-json protocol carries base64 image blocks (verified
         // end to end against the real CLI).
         assert!(CliClaudeProvider::new(&cfg(CliAdapter::Claude)).supports_images(""));
