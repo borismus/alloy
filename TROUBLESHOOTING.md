@@ -1,240 +1,197 @@
 # Alloy Troubleshooting Guide
 
-## Common Issues and Solutions
+## Development setup
 
-### "cargo: command not found" or "Rust not found"
+### `cargo: command not found`
 
-**Problem**: Rust isn't available in your shell's PATH.
-
-**Solution**:
+Load Rust into the current shell and verify it:
 
 ```bash
-# Load Rust into your current shell
-source $HOME/.cargo/env
-
-# Verify it worked
+source "$HOME/.cargo/env"
 cargo --version
 ```
 
-**Permanent Fix**: Add this to your shell profile (`~/.zshrc` or `~/.bashrc`):
-```bash
-source $HOME/.cargo/env
+`./run.sh` performs this check before running `npm run tauri dev`.
+
+### First build is slow
+
+The first Rust build compiles the full dependency graph and can take several
+minutes. Later builds are incremental. If a build is genuinely stuck, stop all
+Alloy/cargo processes before deleting build output; concurrent builds can hold
+the same Cargo lock.
+
+### Supported Node version
+
+Vite requires Node `^20.19.0` or `>=22.12.0`. CI and release workflows use Node
+24. Check with `node --version`.
+
+## Startup and configuration
+
+### Config v2 errors
+
+`config.yaml` is deliberately strict. It must start with `version: 2` and use:
+
+```yaml
+providers:
+  - id: openrouter
+    kind: openai_compatible
+    baseUrl: https://openrouter.ai/api/v1
+    apiKey: sk-or-v1-...
+
+  - id: codex-cli
+    kind: cli
+    adapter: codex
 ```
 
-Then restart your terminal or run `source ~/.zshrc` (or `~/.bashrc`).
+Old `cli_claude`/`cli_codex` kinds, version 1, legacy flat API-key fields, and
+snake_case settings are rejected rather than silently migrated. See
+[README.md](README.md#supported-providers).
 
-**Easiest Fix**: Just use the launch script which handles this automatically:
-```bash
-./run.sh
-```
+### Claude or Codex subscription provider fails
 
----
-
-### Build takes forever on first run
-
-**Problem**: First Rust build compiles all dependencies.
-
-**Expected**: 2-5 minutes for first build
-**Subsequent builds**: 5-15 seconds
-
-**This is normal!** Just wait it out once. Future runs will be much faster.
-
----
-
-### "Error deserializing 'plugins.X'"
-
-**Problem**: Tauri plugin configuration mismatch.
-
-**Solution**: Make sure your [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json) has empty plugins:
-```json
-"plugins": {}
-```
-
-And permissions are in the `security.capabilities` section.
-
----
-
-### Can't select vault folder / Permission denied
-
-**Problem**: File system permissions not granted.
-
-**Solutions**:
-1. Choose a folder you have write access to (e.g., `~/Documents/alloy-vault`)
-2. On macOS, grant Full Disk Access: System Settings → Privacy & Security → Full Disk Access
-3. Try a different location like your home directory
-
----
-
-### API Key errors / "Invalid API key"
-
-**Problem**: Anthropic API key is missing or invalid.
-
-**Solutions**:
-
-1. **Get a valid key**:
-   - Go to https://console.anthropic.com/
-   - Sign in and navigate to API Keys
-   - Generate a new key (starts with `sk-ant-`)
-
-2. **Check your key format**:
-   ```
-   ✅ Correct: sk-ant-api03-xxxxxxxxxxxxxxxxxxxxx
-   ❌ Wrong: api-key-123 (not a real Anthropic key)
-   ```
-
-3. **Update your key**:
-   Edit `[your-vault]/config.yaml` — keys live on the provider entry:
-   ```yaml
-   providers:
-     - id: openrouter
-       kind: openai_compatible
-       baseUrl: https://openrouter.ai/api/v1
-       apiKey: sk-or-v1-your-key-here
-   ```
-
-4. **Check your account has credits**:
-   Visit https://console.anthropic.com/settings/billing
-
----
-
-### Conversations not saving
-
-**Problem**: Files aren't being written to vault.
-
-**Diagnosis**:
-```bash
-# Check if vault was initialized
-ls -la ~/your-vault-path/
-
-# Should show:
-# conversations/
-# notes/
-# tasks/
-# skills/
-# memory.md
-# config.yaml
-```
-
-**Solutions**:
-1. Verify the vault folder exists and is writable
-2. Check console for errors (right-click in app → Inspect Element → Console)
-3. Try recreating the vault by selecting a new folder
-
----
-
-### Search not working
-
-**Problem**: Can't find conversations you know exist.
-
-**Solutions**:
-1. **Refresh the conversation list**: Close and reopen the app
-2. **Check file format**: Conversations must be `.yaml` files in `conversations/`
-3. **Case sensitive**: Search is case-insensitive, but make sure files are properly formatted YAML
-
----
-
-### App window is blank / white screen
-
-**Problem**: Frontend failed to load.
-
-**Diagnosis**:
-```bash
-# Check the terminal output for errors
-# Look for Vite or React errors
-```
-
-**Solutions**:
-1. Stop the dev server (Ctrl+C)
-2. Clear build cache:
-   ```bash
-   rm -rf dist
-   rm -rf src-tauri/target
-   ```
-3. Reinstall dependencies:
-   ```bash
-   npm install
-   ```
-4. Try again:
-   ```bash
-   ./run.sh
-   ```
-
----
-
-### "dangerouslyAllowBrowser" warning
-
-**Problem**: Console warning about Anthropic SDK in browser.
-
-**This is expected!** We're using the Anthropic SDK in a Tauri webview (which is like a browser). Since we control the environment and API keys stay local, this is safe. The warning can be ignored.
-
----
-
-### Memory not being included in conversations
-
-**Problem**: Claude doesn't seem to know your context.
-
-**Verify**:
-1. Check `[vault]/memory.md` exists and has content
-2. Restart the app after editing memory.md
-3. Memory is sent as a system prompt - check the Anthropic console to verify it's being included
-
----
-
-### Hot reload not working
-
-**Problem**: Changes to React code don't appear.
-
-**Solutions**:
-1. **Frontend changes**: Should reload automatically via Vite
-2. **Rust changes**: Require rebuild (Tauri watches automatically)
-3. **Config changes**: Require full restart (Ctrl+C and restart)
-
-If still not working:
-```bash
-# Force restart
-# Ctrl+C to stop
-./run.sh
-```
-
----
-
-## Getting Help
-
-If you're still stuck:
-
-1. **Check the logs**:
-   - Terminal output where you ran `./run.sh`
-   - Browser console (right-click → Inspect Element → Console)
-
-2. **Check your environment**:
-   ```bash
-   node --version    # Should be 18+
-   cargo --version   # Should show Rust version
-   npm --version     # Should show npm version
-   ```
-
-3. **Start fresh**:
-   ```bash
-   rm -rf node_modules dist src-tauri/target
-   npm install
-   ./run.sh
-   ```
-
-4. **File an issue**: https://github.com/borismus/alloy/issues
-
----
-
-## Debug Mode
-
-For more detailed error messages:
+The CLI runs on the machine hosting `alloy-server`, which may be a remote Mac in
+browser mode rather than the device displaying the page.
 
 ```bash
-# Run with Rust backtrace
-RUST_BACKTRACE=1 ./run.sh
-
-# Or manually:
-source $HOME/.cargo/env
-RUST_BACKTRACE=1 npm run tauri dev
+claude --version
+claude                 # complete Claude login
+codex --version
+codex login
 ```
 
-This will show full stack traces for Rust errors.
+If Alloy cannot discover the binary, set the provider's `command` to its
+absolute path. Interactive Codex turns require a current CLI with app-server
+support. Restart Alloy after changing CLI installation or `config.yaml`.
+
+### Port already in use
+
+The desktop server uses a random loopback port. Network sharing uses the fixed
+`sharePort` (3001 by default), and standalone `alloy-serve` also defaults to
+3001. A second process cannot adopt or silently replace the listener.
+
+Quit the other Alloy instance—not just its window—or choose another standalone
+port. Development mode deliberately uses backend port 3030 by default; override
+it with `ALLOY_DEV_PORT`.
+
+### Vault permission denied on macOS
+
+Choose a writable vault directory. macOS may deny a development build access to
+`~/Documents` even when a released build worked previously. Grant the terminal
+or development Alloy binary access under **System Settings → Privacy & Security**,
+or use a vault under your home directory while developing.
+
+Alloy preserves the selected vault when startup fails. Fix the permission/config
+problem and use Retry rather than reselecting or recreating it.
+
+## Providers and tools
+
+### API request fails
+
+Check the provider entry in `[vault]/config.yaml`, its upstream URL, account
+credits, and backend logs. HTTP provider keys are sent only to their configured
+upstream. Claude/Codex adapters use their CLI login and still send prompts to
+the respective cloud service.
+
+### Built-in web search says the key is missing
+
+Add a top-level Serper key and restart Alloy:
+
+```yaml
+serperApiKey: your-serper-key
+```
+
+See [SEARCH.md](SEARCH.md). Native Claude/Codex searches do not use this key.
+
+### A skill is ignored
+
+Invoke it explicitly as `/skill-name` for deterministic behavior. Autonomous
+selection through `use_skill` is best-effort and depends on the model.
+
+## Vault behavior
+
+### Conversations are not saving
+
+Verify that the selected vault exists and is writable:
+
+```bash
+ls -la /path/to/vault
+ls -la /path/to/vault/conversations
+```
+
+Model calls and persistence run in `alloy-server`; inspect its logs rather than
+looking only at the browser console.
+
+### Search misses known content
+
+Sidebar body search is server-side and case-insensitive across conversations,
+notes, and riffs. Test the backend directly:
+
+```bash
+curl --get 'http://localhost:3030/api/search' --data-urlencode 'q=known phrase'
+```
+
+Use the actual standalone port when it differs. Files larger than 512 KiB are
+read only up to that per-file cap. Search does not require opening a conversation
+first.
+
+### Changes made while mobile was backgrounded do not appear
+
+Alloy resynchronizes after watcher reconnect and when the page returns to the
+foreground. If it remains stale, verify `/api/watch` can connect and inspect the
+backend logs; a manual reload is a workaround, not expected normal behavior.
+
+### Memory changes are not reflected
+
+Check that `[vault]/memory.md` exists and contains the intended text. The vault
+watcher reloads it after external edits; if the watcher is disconnected, focus
+the app to trigger a resync.
+
+## UI and build problems
+
+### Blank or white window
+
+Run the desktop app from a terminal and inspect both the Rust logs and webview
+console:
+
+```bash
+ALLOY_LOG=debug npm run tauri dev
+```
+
+For web mode, use `npm run dev` and open <http://localhost:1420>.
+
+If dependencies or generated output are corrupt:
+
+```bash
+rm -rf node_modules dist dist-web .vite
+npm install
+npm run verify
+```
+
+Avoid deleting Cargo targets unless necessary; rebuilding them is expensive.
+
+### Frontend changes do not reload
+
+Vite hot-reloads TypeScript/CSS. Rust backend changes trigger an automatic
+rebuild under the development scripts, but an already-running release binary
+must be restarted. Config and CLI capability changes also require a restart.
+
+## Diagnostics and support
+
+Desktop development logs appear in the terminal running `npm run tauri dev`.
+For more detail:
+
+```bash
+ALLOY_LOG=debug RUST_BACKTRACE=1 npm run tauri dev
+```
+
+Before filing an issue, include:
+
+```bash
+node --version
+cargo --version
+claude --version  # when relevant
+codex --version   # when relevant
+```
+
+Do not include API keys, OAuth tokens, private vault content, or MCP session
+URLs. File issues at <https://github.com/borismus/alloy/issues>.

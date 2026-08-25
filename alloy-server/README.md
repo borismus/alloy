@@ -7,26 +7,22 @@ running server-side.
 Used in two modes:
 - **Standalone CLI** (`alloy-serve --vault ... --port ...`) — for headless
   deployments and the web-only `npm run dev` workflow.
-- **Embedded in Tauri** (Phase 2, `src/embed.rs`) — the Tauri desktop shell
-  spawns axum in-process via `tokio::spawn`. The SPA inside the webview talks
-  to it over `/api/*` on a random loopback port. Optionally exposes a public
-  listener on a configurable port so phones on the LAN/Tailnet can hit the
-  same vault from a browser.
+- **Embedded in Tauri** (`src/embed.rs`) — the Tauri desktop shell spawns axum
+  in-process via `tokio::spawn`. The SPA inside the webview talks to it over
+  `/api/*` on a random loopback port. It can optionally expose a configurable
+  listener so phones on the Tailnet can use the same vault from a browser.
 
 ## Why this exists
 
-In server mode the SPA delegates everything model-related to a backend over
-HTTP+SSE. The original Node server (`server/`) supports streaming but never
-implemented tool execution, so `web_search`, `read_file`, etc. silently
-no-op on mobile. This Rust port adds full tool support and is the long-term
-server for both desktop (embedded in Tauri) and mobile (LAN-shared).
-
-The Node `server/` and the Tauri client-side TS providers/tools still exist
-during the transition — Phase 3 deletes them.
+Both runtime modes use one backend for provider discovery, model calls, tools,
+stream persistence, vault search, file watching, and scheduled tasks. Keeping
+those mechanisms in Rust avoids desktop/browser behavior drift and keeps vault
+bodies and provider credentials off the browser client.
 
 ## Build & run
 
-Requires Rust 1.90+ and a vault directory with a `config.yaml`.
+Requires the latest stable Rust toolchain and a vault directory with a
+`config.yaml`.
 
 ### Embedded in Tauri (default)
 
@@ -93,7 +89,9 @@ configs are rejected at startup with migration guidance. All cloud models are
 reached via OpenRouter (or any configured OpenAI-compatible provider); on-device
 models only via an explicitly trusted `local: true` OpenAI-compatible endpoint
 (omission is cloud); subscription access via
-CLI adapters (always cloud; Codex is text-only and uses a read-only sandbox).
+CLI adapters (always cloud). Interactive Codex turns use app-server for token
+streaming, interruption, image data URLs, and scoped Alloy tools over MCP; the
+process runs from a temporary working directory.
 
 ## Layout
 
@@ -101,7 +99,7 @@ CLI adapters (always cloud; Codex is text-only and uses a read-only sandbox).
 src/
 ├── main.rs              CLI entry (clap), spawns axum (standalone mode)
 ├── lib.rs               build_router, AppState
-├── embed.rs             Phase 2: bootstrap_for_tauri, set_vault, set_share
+├── embed.rs             Tauri bootstrap, vault selection, network sharing
 ├── cli.rs               Args parser
 ├── config.rs            config.yaml loader + share write helper
 ├── auth.rs              IP allowlist middleware (loopback + Tailscale)
@@ -113,29 +111,37 @@ src/
 ├── streaming.rs         Session manager with broadcast SSE fan-out
 ├── types.rs             Tool definitions, BUILTIN_TOOLS, OpenAI shapes
 ├── providers/
-│   ├── mod.rs           Provider trait + ProviderRegistry + ChatMessage
-│   └── openai_compatible.rs
-└── routes/
-    ├── fs.rs            /api/fs/* (matches tauri-fs-http.ts surface)
-    ├── path.rs          /api/path/join
-    ├── stream.rs        /api/stream/* SSE
-    ├── models.rs        /api/models (live configured-provider catalog)
-    ├── watch.rs         /api/watch WebSocket file events
-    └── static_files.rs  Embedded SPA assets via rust-embed (Phase 2)
-tools/
+│   ├── mod.rs                 Provider trait + registry + stream types
+│   ├── openai_compatible.rs   OpenAI-compatible HTTP providers
+│   ├── cli_claude.rs          Claude subscription adapter
+│   └── cli_codex.rs           Codex subscription/app-server adapter
+├── routes/
+│   ├── config.rs        Resolved config reads and comment-preserving edits
+│   ├── fs.rs            /api/fs/* (matches tauri-fs-http.ts surface)
+│   ├── mcp.rs           Scoped MCP bridge for subscription CLIs
+│   ├── path.rs          /api/path/join
+│   ├── search.rs        Server-side vault full-text search
+│   ├── stream.rs        /api/stream/* SSE
+│   ├── models.rs        /api/models (live configured-provider catalog)
+│   ├── tasks.rs         Manual scheduled-task execution
+│   ├── watch.rs         /api/watch WebSocket file events
+│   └── static_files.rs  Embedded SPA assets via rust-embed
+├── tasks/               Cron scheduler, task schema, and executor
+└── tools/
     ├── mod.rs           Dispatch
     ├── websearch.rs     Serper client
     ├── http.rs          http_get
     ├── files.rs         read/write/list/append with safe-path allowlist
-    ├── search.rs        search_directory (substring, no regex)
+    ├── search.rs        search_directory
     ├── skills.rs        use_skill
-    └── subagents.rs     spawn_subagent (parallel, no nesting)
+    ├── subagents.rs     spawn_subagent (parallel, no nesting)
+    └── tasks.rs         create/update scheduled tasks
 ```
 
 ## Endpoints
 
-All routes mounted under `/api/*`. CORS allows all origins, matching the
-Node server's behavior.
+All routes are mounted under `/api/*`. CORS is deliberately permissive so the
+Tauri WKWebView and browser-mode shims can use the same surface.
 
 | Method | Path | Notes |
 |---|---|---|
@@ -143,23 +149,27 @@ Node server's behavior.
 | POST | `/api/path/join` | Path joiner |
 | WS | `/api/watch` | Vault file change events |
 | POST | `/api/stream/start` | Start an SSE session |
-| GET | `/api/stream/events/:id` | SSE event stream |
-| POST | `/api/stream/stop/:id` | Cancel a session |
+| GET | `/api/stream/events/{id}` | SSE event stream |
+| POST | `/api/stream/stop/{id}` | Cancel a session |
 | GET | `/api/stream/active` | List sessions (for reconnect) |
-| GET | `/api/models` | Aggregated model list across providers |
-| POST | `/api/tasks/:id/run` | Run a scheduled task now without shifting its cron schedule |
+| GET | `/api/models` | Aggregated live/cached model catalog |
+| GET | `/api/config` | Resolved config with provider API keys omitted |
+| PUT | `/api/config/{favorites,value}` | Comment-preserving config edits |
+| GET | `/api/search?q=...` | Full-text vault search with snippets |
+| POST | `/api/tasks/{id}/run` | Run a scheduled task now without shifting its cron schedule |
+| POST | `/api/mcp` | Session-token-scoped MCP bridge for CLI adapters |
 
 ## Tools
 
 | Tool | Status | Notes |
 |---|---|---|
-| `web_search` | ✓ | Serper. Reads `SERPER_API_KEY` from config |
+| `web_search` | ✓ | Serper; reads top-level `serperApiKey` from config |
 | `http_get` | ✓ | 30s timeout, 2MB body cap |
 | `read_file` | ✓ | notes/, skills/, conversations/, tasks/, root files |
 | `list_directory` | ✓ | Same allowlist |
-| `write_file` | ✓ | Only `notes/*` and `memory.md` in server mode (other paths require approval; hard-error here) |
-| `append_to_note` | ✓ | Notes only. Auto-adds `&[[conv^msg]]` provenance markers |
-| `search_directory` | ✓ | notes/, skills/, conversations/. Substring search, depth 3, 500 file cap |
+| `write_file` | ✓ | Only `notes/*` and `memory.md`; other paths are rejected |
+| `append_to_note` | ✓ | Notes only; auto-adds `&[[conversation-id^message-id]]` provenance markers |
+| `search_directory` | ✓ | Recency-sorted substring search across allowed vault paths |
 | `use_skill` | ✓ | Loaded once from `vault/skills/*/SKILL.md` at startup |
 | `spawn_subagent` | ✓ | 1-3 in parallel. No nesting. Sub-agents get read-only tool set |
 | `create_scheduled_task` | ✓ | Five-field cron + timezone; optional delivery condition |
@@ -191,16 +201,16 @@ serialized as block arrays with `cache_control: { type: "ephemeral" }` on:
 - the system prompt (cached for the conversation lifetime), and
 - the second-to-last user message (cached on follow-up turns).
 
-This matches the Tauri-side caching pattern in
-`src/services/providers/anthropic.ts` and works through OpenRouter per
+This works through OpenRouter per
 [their docs](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
 
-## Auth
+## Network access
 
-Phase 1 ships no bearer-token UX. Loopback (127.0.0.1, ::1) and Tailscale
-(100.x.x.x) IPs are auto-allowed. Public IPs are rejected with 403.
-
-Phase 2 will add a real auth flow for remote deployments.
+There is no public-internet bearer-token flow. Loopback is always accepted.
+Direct access is limited to loopback and Tailscale (`100.*`) source addresses;
+other LAN and public addresses are rejected. Tailscale-proxied requests are also
+blocked when network sharing is disabled. `/api/mcp` additionally requires a
+per-stream session token.
 
 ## Tests
 
@@ -208,15 +218,14 @@ Phase 2 will add a real auth flow for remote deployments.
 cargo test
 ```
 
-29 unit tests cover vault path safety, IP allowlist behavior, Serper
-recency parsing, file permission checks, search snippet truncation, slug
-generation, Anthropic model detection, `cache_control` placement, and the
-OpenRouter "Vendor: " prefix stripping.
+The Rust suite covers config parsing, provider protocols, streaming and replay,
+vault path safety, file permissions, search, scheduled tasks, MCP authorization,
+image handling, and tool persistence. Run the repository-wide gate with
+`npm run verify` from the project root.
 
-## Out of scope (Phase 3+)
+## Out of scope
 
-- **Phase 3**: delete the Node `server/`, client-side TS providers/tools/mocks,
-  Tauri JS plugins for FS/HTTP, and the `isServerMode()` branching.
-- Real auth (QR pairing, bearer token UX) for remote-internet deployments.
+- Public-internet exposure and its required pairing/bearer-token UX.
 - Approval flow over SSE for writes outside the safe-path allowlist.
-- Background trigger execution (cron-like scheduler running when UI is closed).
+- Arbitrary third-party plugin execution. The proposed extension boundary is
+  documented in [`docs/plugin-architecture.md`](../docs/plugin-architecture.md).

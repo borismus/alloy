@@ -18,10 +18,11 @@ npm run tauri dev
 ```
 alloy/
 ├── src/                      # React frontend
-│   ├── components/           # UI components
+│   ├── components/           # Feature UI components
+│   │   ├── ui/               # Alloy-owned React Aria primitives + CSS Modules
 │   │   ├── ChatInterface.tsx # Main chat UI
 │   │   ├── RiffView.tsx      # Draft note editing
-│   │   ├── Sidebar.tsx       # Conversation list & search
+│   │   ├── Sidebar.tsx       # Timeline and vault search
 │   │   └── Settings.tsx      # Settings panel
 │   ├── services/             # Business logic
 │   │   ├── vault.ts          # File system operations
@@ -32,6 +33,7 @@ alloy/
 │   │   └── api/              # HTTP shims for Tauri plugins (web + Tauri)
 │   ├── contexts/             # React contexts
 │   ├── hooks/                # Custom hooks
+│   ├── styles/tokens.css     # Semantic light/dark design tokens
 │   ├── types/                # TypeScript types
 │   └── App.tsx               # Main app component
 │
@@ -53,13 +55,13 @@ alloy/
 
 - **Frontend**: React 19 + TypeScript + Vite
 - **Backend**: Tauri 2 (Rust)
-- **AI**: Anthropic, OpenAI-compatible services including OpenRouter and oMLX, Google Gemini, xAI (Grok), Claude subscription
-- **Storage**: YAML/Markdown files (js-yaml)
-- **Styling**: Plain CSS
+- **AI**: OpenAI-compatible services (including OpenRouter/oMLX) plus Claude and Codex subscription adapters
+- **Storage**: YAML/Markdown vault files; Rust is the sole `config.yaml` parser
+- **Styling**: Semantic tokens, Alloy-owned React Aria primitives, CSS Modules for shared UI, and tokenized feature CSS
 
 ## Roadmap
 
-Active tasks live in [BACKLOG.md](../BACKLOG.md). Larger, not-yet-scheduled
+Active tasks live in [BACKLOG.md](BACKLOG.md). Larger, not-yet-scheduled
 directions:
 
 - **Plugin architecture** — returning Alloy to an extensible, plugin-oriented app
@@ -94,8 +96,9 @@ One-off design decisions are recorded in [docs/design-decisions.md](docs/design-
   Each run copies the fixture to a temp dir, so the checked-in fixture is never
   dirtied.
 
-CI (`.github/workflows/ci.yml`) runs typecheck + lint + unit tests and the smoke
-suite on every pull request and push to `main`.
+`npm run verify` runs typecheck, lint, frontend unit tests, Rust tests, and the
+production web build. CI (`.github/workflows/ci.yml`) runs those concerns plus
+the seeded smoke suite on every pull request and push to `main`.
 
 ## Dual Runtime Modes
 
@@ -108,10 +111,10 @@ In both modes, model calls and tool execution happen in `alloy-server`. All buil
 
 ## API Integration
 
-The app supports multiple AI providers. API keys are:
-- Stored in `config.yaml` in the user's vault
-- Never sent to any server except the respective provider
-- Loaded at startup if vault exists
+Provider configuration lives in the vault's `config.yaml`. HTTP API keys are
+sent only to their configured upstream provider. Subscription adapters use the
+locally installed Claude/Codex CLI authentication and are still cloud providers:
+prompts leave the machine.
 
 ## File Formats
 
@@ -192,7 +195,7 @@ All vault operations can be inspected by looking at the files in your vault fold
 - **Fast iteration**: Keep `npm run tauri dev` running
 - **Test persistence**: Check your vault folder to verify files
 - **Web mode**: `npm run dev` for faster iteration — Vite frontend + auto-rebuilding `alloy-server` on :3030, one command (vault from `.env`)
-- **Search**: Works across all message content in all conversations
+- **Search**: Sidebar body search runs server-side through `/api/search`; do not eagerly load vault bodies into React state
 - **Memory**: Edit `memory.md` to customize AI context
 
 ## Common Issues
@@ -200,7 +203,7 @@ All vault operations can be inspected by looking at the files in your vault fold
 **Build fails**: Make sure Rust is installed and in PATH
 **API errors**: Check your API keys in `config.yaml` or the Settings panel
 **Files not saving**: Verify vault folder permissions
-**Search not working**: Check that conversations have loaded
+**Search not working**: Check the standalone/embedded backend logs and `/api/search?q=...` response
 
 ---
 

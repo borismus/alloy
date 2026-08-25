@@ -1,93 +1,42 @@
-# Local SearXNG Setup
+# Web Search Setup
 
-This guide sets up a local SearXNG instance for web search.
+Alloy's built-in `web_search` tool uses [Serper](https://serper.dev/) to query
+Google Search. This is separate from sidebar vault search, which needs no API key
+and runs locally through `GET /api/search`.
 
-## Prerequisites
+## Configure Serper
 
-- Docker Desktop installed and running
-
-## Setup
-
-### 1. Create config directory
-
-```bash
-mkdir -p ~/.searxng
-```
-
-### 2. Create settings file
-
-Create `~/.searxng/settings.yml`:
+1. Create a Serper account and API key at <https://serper.dev/>.
+2. Add the key at the top level of your vault's `config.yaml`:
 
 ```yaml
-use_default_settings: true
+version: 2
 
-search:
-  formats:
-    - html
-    - json
+# providers: ...
 
-server:
-  secret_key: "alloy-searxng-local"
-  limiter: false
-  default_http_headers:
-    Access-Control-Allow-Origin: "*"
-    Access-Control-Allow-Methods: "GET, POST, OPTIONS"
-    Access-Control-Allow-Headers: "Content-Type, Accept"
+serperApiKey: your-serper-key
 ```
 
-### 3. Start SearXNG
+3. Restart Alloy after changing `config.yaml`.
 
-```bash
-docker run -d \
-  --name searxng \
-  -p 8080:8080 \
-  -v ~/.searxng:/etc/searxng \
-  searxng/searxng
-```
+The key remains in the vault and is sent only to Serper when a model calls
+`web_search`.
 
-### 4. Configure Alloy
+## Verify
 
-Add to your vault's `config.yaml`:
+Ask a tool-capable model to search the web, or invoke a skill that calls
+`web_search`. A successful call appears as a search pill in the response.
 
-```yaml
-SEARCH_PROVIDER: searxng
-SEARXNG_URL: http://localhost:8080
-```
-
-### 5. Verify
-
-```bash
-curl "http://localhost:8080/search?q=test&format=json"
-```
-
-You should see JSON output with search results.
-
-## Managing the Instance
-
-```bash
-# Stop
-docker stop searxng
-
-# Start (after stopping)
-docker start searxng
-
-# Remove completely
-docker rm -f searxng
-
-# View logs
-docker logs searxng
-```
+Claude and Codex subscription adapters may also invoke native web tools supplied
+by their CLIs. Those searches do not use `serperApiKey`; Alloy still surfaces
+them as tool pills.
 
 ## Troubleshooting
 
-**Container won't start:**
-```bash
-docker rm -f searxng
-docker run -d --name searxng -p 8080:8080 -v ~/.searxng:/etc/searxng searxng/searxng
-```
+- **`SERPER_API_KEY not configured`** — add `serperApiKey` exactly as shown
+  above and restart the backend.
+- **401/403 from Serper** — verify the key and account status.
+- **No search pill** — explicit `/skill-name` invocation is deterministic;
+  autonomous tool selection remains model-dependent.
 
-**JSON returns HTML error:**
-Ensure `settings.yml` includes `json` in the `formats` list and restart:
-```bash
-docker restart searxng
-```
+SearXNG configuration is not currently supported by the Rust backend.

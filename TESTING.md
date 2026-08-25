@@ -1,35 +1,70 @@
 # Testing
 
-## Unit Tests
+## Full verification gate
+
+Run this before shipping or opening a release PR:
 
 ```bash
-npm run test            # Watch mode
-npm run test:run        # Run once
+npm run verify
 ```
 
-## E2E Tests (Playwright)
+It runs TypeScript typechecking, ESLint, all Vitest tests, all Rust backend tests,
+and the production web build.
 
-Standard Playwright tests against the web dev server:
+## Focused tests
 
 ```bash
-npm run test:e2e            # Headless
-npm run test:e2e:headed     # With browser visible
-npm run test:e2e:ui         # Interactive UI mode
+npm run test            # Vitest watch mode
+npm run test:run        # All Vitest tests once
+npm test -- path/to/file.test.tsx
+cargo test --manifest-path alloy-server/Cargo.toml
 ```
 
-Tests are in `tests/e2e/`. The Playwright config starts the Vite dev server automatically.
+Frontend tests are colocated as `*.test.ts(x)`. Rust tests live beside their
+modules under `alloy-server/src/`.
 
-## Playwright MCP (AI-Assisted Testing)
-
-The Playwright MCP server is configured in `.mcp.json` (`npx @playwright/mcp`) and is available to Claude Code automatically — no separate launch step. To drive the app against fixture data, start the backend and SPA pointed at the test vault:
+## Seeded smoke tests
 
 ```bash
-# Frontend + auto-rebuilding backend (:3030) on the test vault, one command
+npm run test:smoke
+```
+
+This builds the embedded SPA, compiles `alloy-serve`, copies
+`tests/smoke/fixture-vault/` into a temporary directory, and drives the real
+single-origin backend/app at desktop and mobile-emulated viewports. It needs no
+personal vault or provider credentials. Tests live in `tests/smoke/` and use
+`playwright.smoke.config.ts`.
+
+Use smoke coverage for behavior that must cross the browser/backend boundary,
+such as startup, watcher recovery, full-text search, persistence, and responsive
+layout. Native iOS keyboard/rotation behavior still requires physical-device
+verification.
+
+## Development E2E tests
+
+```bash
+npm run test:e2e
+npm run test:e2e:headed
+npm run test:e2e:ui
+```
+
+These tests live in `tests/e2e/`. `playwright.config.ts` starts `npm run dev`, so
+the backend uses the vault selected by `ALLOY_VAULT`/`.env`. Prefer the seeded
+smoke suite for CI-safe regression coverage.
+
+## Playwright MCP
+
+`.mcp.json` configures `npx @playwright/mcp` for interactive testing. To use the
+safe development fixture:
+
+```bash
 ALLOY_VAULT=tests/fixtures/test-vault npm run dev
 ```
 
-Then Claude Code can use the `mcp__playwright__*` tools to navigate, click, fill forms, take screenshots, etc. against `http://localhost:1420`.
+Then drive <http://localhost:1420>. Never point automated destructive tests at a
+personal vault.
 
-## Test Vault
+## CI
 
-The test vault at `tests/fixtures/test-vault/` contains safe fixture data for testing. Add test conversations, notes, and config there as needed.
+`.github/workflows/ci.yml` has separate frontend checks, Rust tests, and seeded
+smoke jobs. CI uses Node 24 and the latest stable Rust toolchain.

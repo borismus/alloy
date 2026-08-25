@@ -11,8 +11,8 @@ Compress a note file significantly while preserving the provenance of the origin
 1. **Read the note** using `read_file` to get its current content
 
 2. **Identify content types:**
-   - **Human content**: Lines WITHOUT `&[[chat^...]]` markers - these are user-written
-   - **AI content**: Lines WITH `&[[chat^...]]` markers - these were AI-generated
+   - **Human content**: Lines WITHOUT `&[[conversation-id^message-id]]` markers — these are user-written
+   - **AI content**: Lines WITH `&[[conversation-id^message-id]]` markers — these were AI-generated
 
 3. **Summarize following these rules:**
    - **Human content**: Keep VERBATIM. You may reorder but NEVER alter the text.

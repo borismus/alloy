@@ -5,7 +5,7 @@ description: Create or edit recurring cron-based tasks, optionally delivering on
 
 # Manage Scheduled Tasks
 
-Help the user create or edit recurring tasks that run server-side even when Alloy is closed.
+Help the user create or edit recurring tasks that run server-side while the Alloy backend is running, even when no browser or desktop window is open.
 
 ## Gather the essentials
 

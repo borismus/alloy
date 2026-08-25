@@ -5,7 +5,7 @@
 **Alloy** is a multi-model AI chat application built with Tauri 2 + React.
 
 Key features:
-- **Multi-provider**: Anthropic (Claude), OpenAI-compatible services including OpenRouter and oMLX, Google Gemini, xAI (Grok), and Claude subscription access
+- **Multi-provider**: OpenAI-compatible services including OpenRouter and oMLX, plus Claude and Codex subscription access
 - **Comparison/Council studies (planned)**: Previously shipped multi-model modes,
   intended to return as durable one-shot workspace extensions (parallel responses;
   Council adds chairman synthesis)
@@ -36,12 +36,8 @@ src/
 ├── services/
 │   ├── vault.ts            # File I/O, conversation/note CRUD
 │   ├── riff.ts             # Draft integration logic
-│   ├── background.ts       # Background orchestrator
-│   ├── providers/          # AI provider implementations
-│   ├── skills/             # Skill loading and execution
-│   ├── tools/              # Built-in tool implementations
-│   ├── tasks/              # Scheduled-task loading and execution
-│   ├── context/            # Context window estimation and management
+│   ├── server-streaming.ts # HTTP/SSE client for model turns
+│   ├── skills/             # Skill loading and registry
 │   └── api/                # HTTP shims for Tauri plugins (web + Tauri)
 ├── utils/                  # Shared utilities (IDs, frontmatter, wiki links, etc.)
 ├── contexts/               # React contexts
@@ -55,7 +51,7 @@ alloy-server/               # Rust (axum) backend: model calls + tool execution
 
 - [src/App.tsx](src/App.tsx) - Main app component, all top-level state
 - [src/services/vault.ts](src/services/vault.ts) - File operations, conversation/note persistence
-- [src/services/providers/registry.ts](src/services/providers/registry.ts) - Provider management
+- [alloy-server/src/providers/mod.rs](alloy-server/src/providers/mod.rs) - Provider trait, registry, and stream types
 - [src/types/index.ts](src/types/index.ts) - Core type definitions
 - [src/services/riff.ts](src/services/riff.ts) - Draft/riff processing
 
@@ -67,7 +63,9 @@ npm run dev             # Web mode: Vite frontend (:1420) + auto-rebuilding back
 npm run test            # Run unit tests (watch mode)
 npm run test:run        # Run unit tests once
 npm run test:e2e        # Run Playwright e2e tests
-npm run build           # Build for production
+npm run test:smoke      # Run seeded desktop/mobile browser smoke tests
+npm run verify          # Full frontend/Rust/build verification gate
+npm run build           # Build the production web bundle
 ```
 
 ## Testing
@@ -89,14 +87,16 @@ npm run build           # Build for production
 - Atomic updates via `vaultService.updateConversation()` / `updateTask()`
 
 ### Provider Pattern
-- All providers implement the interface in `services/providers/types.ts`
-- Registry manages initialization and model discovery
-- Models use `provider/model` format (e.g., `anthropic/claude-opus-4-6`)
+- Providers implement the Rust trait in `alloy-server/src/providers/mod.rs`
+- The Rust registry manages routing, model discovery, model calls, and tools
+- Models use `provider/model` format (e.g., `openrouter/anthropic/claude-sonnet-4.6`)
 
 ### Component Structure
 - Components receive data + callbacks as props
 - Avoid internal state when parent can manage it
 - Use refs for imperative actions (focus, scroll)
+- Reuse Alloy-owned React Aria wrappers under `src/components/ui/`
+- Use semantic tokens from `src/styles/tokens.css`; shared primitives use CSS Modules
 
 ## Vault Structure
 
@@ -108,7 +108,7 @@ vault-folder/
 ├── notes/                # User notes (Markdown)
 ├── tasks/                # Scheduled tasks (YAML)
 ├── skills/               # Custom skills (Markdown)
-└── riffs/              # Draft notes (Markdown)
+└── riffs/                # Draft notes (Markdown)
 ```
 
 ## Git Workflow

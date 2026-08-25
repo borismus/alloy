@@ -116,20 +116,21 @@ providers:
   #   baseUrl: http://localhost:8000/v1
   #   local: true
 
-  # Your Claude Pro/Max subscription via the Claude Code CLI (text-only; bills
-  # your subscription, not API credits). Requires the \`claude\` binary installed
-  # and logged in (run \`claude\` once). Runs locally but sends prompts to
-  # Anthropic — treated as cloud.
+  # Your Claude Pro/Max subscription via the Claude Code CLI. Supports images
+  # and scoped Alloy tools; bills your subscription, not API credits. Requires
+  # the \`claude\` binary installed and logged in (run \`claude\` once). The CLI
+  # runs locally but sends prompts/images to Anthropic — treated as cloud.
   # - id: claude-cli
   #   kind: cli
   #   adapter: claude
   #   command: /opt/homebrew/bin/claude   # only if auto-discovery fails
   #   oauthToken: sk-ant-oat-...           # from 'claude setup-token' (optional)
 
-  # Your ChatGPT/Codex subscription via the OpenAI Codex CLI (text-only; bills
-  # your subscription, not API credits). Requires the \`codex\` binary installed
-  # and logged in (run \`codex login\`). Runs locally but sends prompts to
-  # OpenAI — treated as cloud.
+  # Your ChatGPT/Codex subscription via the OpenAI Codex CLI. Interactive turns
+  # stream through app-server with images, cancellation, and scoped Alloy tools;
+  # bills your subscription, not API credits. Requires the \`codex\` binary
+  # installed and logged in (run \`codex login\`). Prompts/images go to OpenAI —
+  # treated as cloud.
   # - id: codex-cli
   #   kind: cli
   #   adapter: codex

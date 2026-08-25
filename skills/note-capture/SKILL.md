@@ -12,17 +12,11 @@ At the end of meaningful conversations, propose extracting key insights into not
 1. Identify noteworthy content: projects, people, concepts, decisions, learnings
 2. Use `list_directory` with directory `notes` to see existing notes
 3. Use `read_file` to check if a relevant note exists (e.g., `notes/projectname.md`)
-4. Append new insights or create a new note file
+4. Use `append_to_note` for new insights, or `write_file` with the complete updated note when revising existing AI-authored lines
 
-## CRITICAL: The &[[conversation]] marker
+## CRITICAL: Provenance markers
 
-Every line you write MUST end with `&[[CONVERSATION_PATH]]` where CONVERSATION_PATH is provided in the system prompt under "Current Conversation".
-
-Example (if system prompt says the path is `conversations/2025-01-19-1430-a1b2-notes-discussion`):
-```markdown
-- Working on AI notes feature &[[conversations/2025-01-19-1430-a1b2-notes-discussion]]
-- Key insight: use provenance markers &[[conversations/2025-01-19-1430-a1b2-notes-discussion]]
-```
+Do not add provenance markers manually when calling `append_to_note`. Alloy automatically appends `&[[conversation-id^message-id]]` to every non-empty line, tying it to the turn that produced it.
 
 ## Edit rules (PEN VS PENCIL)
 

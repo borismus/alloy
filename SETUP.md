@@ -2,9 +2,9 @@
 
 ## Prerequisites
 
-1. **Node.js** (v18 or later)
+1. **Node.js** (`^20.19.0` or `>=22.12.0`)
 2. **Rust** (latest stable version)
-3. At least one API key (Anthropic, OpenAI, Google Gemini, or xAI), or an **oMLX** OpenAI-compatible server running locally
+3. At least one provider: an OpenAI-compatible API, a local **oMLX** endpoint, or a logged-in Claude/Codex subscription CLI
 
 ## Installation
 
@@ -37,7 +37,7 @@ This will:
 When you first launch Alloy:
 
 1. **Select Vault Folder**: Choose a folder where your data will be stored
-2. **Add API Keys**: Open Settings and add keys for the providers you want to use
+2. **Configure Providers**: Open Settings → **Edit config.yaml** and configure an API, local endpoint, or Claude/Codex CLI adapter. The complete v2 examples are in [README.md](README.md#supported-providers).
 
 Your vault will be initialized with:
 - `conversations/` — Chat history (YAML)
@@ -58,7 +58,7 @@ Your vault will be initialized with:
 
 ### Searching Conversations
 
-Use the search box in the sidebar to search across all your conversations by content or date.
+Use the search box in the sidebar to search conversation, note, and riff titles and bodies. Matching context appears as a snippet; body search runs in the Rust backend rather than loading the whole vault into the browser.
 
 ### Memory
 
@@ -83,9 +83,9 @@ source $HOME/.cargo/env
 
 Or restart your terminal after installing Rust.
 
-### API Key Issues
+### Provider Issues
 
-Your API keys are stored in `[vault-path]/config.yaml`. You can also update them through the Settings panel in the app.
+Provider configuration lives in `[vault-path]/config.yaml`; Settings opens that file for editing. Config v2 is strict and rejects obsolete provider kinds. Claude requires a logged-in `claude` CLI, Codex requires `codex login`, and local OpenAI-compatible endpoints should set `local: true` only when they use a private-network URL.
 
 ### Conversations Not Loading
 

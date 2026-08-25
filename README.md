@@ -1,6 +1,6 @@
 # Alloy
 
-A local-first, multi-model AI chat app. Bring your own API keys, talk to Claude, GPT, Gemini, Grok, or local models through an oMLX OpenAI-compatible endpoint. All conversations are stored as plain text files in a folder you choose.
+A local-first, multi-model AI chat app. Use OpenAI-compatible APIs, local models through an oMLX endpoint, or your Claude/Codex subscription. All conversations are stored as plain-text files in a folder you choose.
 
 [Blog post](https://smus.com/alloy-local-first-ai-workbench/) · [Download for macOS](https://github.com/borismus/alloy/releases)
 
@@ -15,7 +15,7 @@ npm install
 npm run tauri dev
 ```
 
-On first launch, pick a vault folder and add at least one API key in settings. See [SETUP.md](SETUP.md) for detailed instructions including Rust installation.
+On first launch, pick a vault folder and configure at least one API, local, or subscription provider. See [SETUP.md](SETUP.md) for detailed instructions including Rust installation.
 
 ## Vault Structure
 
@@ -73,26 +73,29 @@ When you learn something important about the user, save it to `memory.md`
 using `append_to_note`. Before answering, check `memory.md` for context.
 ```
 
+Invoke a skill explicitly with `/skill-name`; that is the deterministic path.
+Models may also discover and call `use_skill` autonomously, but that selection is
+best-effort.
+
 ### Built-in Tools
 
 | Tool | Description |
 |------|-------------|
 | `read_file` | Read files from your vault |
-| `write_file` | Create or update files |
+| `write_file` | Create or update notes and `memory.md` |
 | `append_to_note` | Append to notes with provenance tracking |
 | `list_directory` | List files in vault directories |
 | `search_directory` | Search files and content |
 | `http_get` | Fetch data from URLs |
-| `web_search` | Search the web (Serper or SearXNG) |
+| `web_search` | Search the web through Serper |
 | `use_skill` | Load another skill on-demand |
 | `spawn_subagent` | Run 1-3 parallel sub-agents |
 
 ### Web Search Setup
 
-The `web_search` tool requires one of:
-
-- **[SearXNG](https://docs.searxng.org/)** (free, self-hosted) — Run a local instance via Docker with JSON format enabled. Set `SEARXNG_URL` in your vault's `config.yaml` (see [SEARCH.md](SEARCH.md)).
-- **[Serper](https://serper.dev/)** (paid API) — Sign up for a key and add it as `serperApiKey` in your vault's `config.yaml`.
+The `web_search` tool uses [Serper](https://serper.dev/). Add its API key as
+`serperApiKey` in your vault's `config.yaml`; see [SEARCH.md](SEARCH.md). Codex
+and Claude subscription models may additionally use their own native web tools.
 
 ## Supported Providers
 
@@ -133,8 +136,7 @@ just like every other provider.
 ### Codex subscription mode
 
 Use Codex billed against your **ChatGPT/Codex subscription** rather than
-per-token API credits. It works by shelling out to the OpenAI Codex CLI
-(`codex exec`).
+per-token API credits. It works by shelling out to the OpenAI Codex CLI.
 
 Enable it by adding a Codex CLI adapter to your vault's `config.yaml`:
 
@@ -148,22 +150,24 @@ providers:
 
 Requires the [`codex` CLI](https://github.com/openai/codex) installed and logged
 in to your subscription (run `codex login`). Alloy reads the authenticated Codex
-model catalog, shows each exact model available to the account, and passes that
-selection to `codex exec --model`. A separate **Codex (default: _model_)**
-option shows and keeps Codex's current account/config-selected default. Unlike
-Claude subscription mode, Codex is **text-only** for now — it answers prompts
-but does not use Alloy's built-in tools (web search, vault files, skills). Codex
-runs its own agent in a
-read-only sandbox and sends prompts to OpenAI, so it is treated as cloud (no
-access to private directories).
+model catalog and shows each exact model available to the account. A separate
+**Codex (default: _model_)** option shows and keeps Codex's current
+account/config-selected default. Interactive turns use Codex's app-server
+protocol for token streaming, stop-button cancellation, image attachments, and
+Alloy's built-in tools over the same scoped MCP bridge used by Claude. Codex
+runs from a temporary working directory and sends prompts and images to OpenAI,
+so it is treated as cloud and never receives trusted-local/private-directory
+access.
 
 ## Development
 
 ```bash
 npm run tauri dev       # Desktop app (requires Rust)
 npm run dev             # Web mode: frontend (:1420) + auto-rebuilding backend (:3030); vault from .env
-npm run test:run        # Run tests
-npm run tauri build     # Production build
+npm run test:run        # Unit tests
+npm run test:smoke      # Seeded backend/browser smoke tests
+npm run verify          # Typecheck, lint, unit/Rust tests, production web build
+npm run tauri build     # Production desktop build
 ```
 
 See [DEV.md](DEV.md) for architecture details.
@@ -176,9 +180,9 @@ See [DEV.md](DEV.md) for architecture details.
 
 ### Requirements
 
-- Node.js v18+
+- Node.js `^20.19.0` or `>=22.12.0`
 - Rust (latest stable) — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- At least one API key, or an oMLX server running locally
+- An API provider, a local OpenAI-compatible server, or a logged-in Claude/Codex CLI
 
 ## Contributing
 
