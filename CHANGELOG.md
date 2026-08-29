@@ -4,6 +4,32 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.15
+
+- **Your configured default model is now authoritative.** New conversations,
+  riffs, and other default-seeded work use `defaultModel` whenever it is
+  available, falling back deterministically (first reachable favorite in config
+  order, then the catalog) instead of picking a random favorite every time.
+- **Three-state model star.** Clicking a model's star in the picker cycles
+  hollow → yellow favorite → red default → hollow. There is at most one red
+  default; promoting a new one demotes the previous default to a favorite. The
+  open picker keeps rows in place while you cycle — fully unstarred models drop
+  off on the next open.
+- **Codex subscription conversations get real titles.** Title generation now
+  uses each provider's own model (Codex uses your account default) instead of
+  sending an Anthropic id to the Codex CLI and silently falling back to the
+  first 50 characters of your message.
+- **Immediate "Preparing images…" feedback.** Sending a message with photo
+  attachments shows a progress indicator while they are persisted, instead of
+  looking ignored for several seconds; messages sent during preparation queue
+  safely.
+- **Sidebar `+` creates a conversation in one click.** New riff moved to an
+  adjacent overflow menu; on mobile the creation controls live in the header
+  with full-size touch targets and search gets its own row.
+- **Find-in-conversation is legible in dark mode**, including match highlights.
+- Custom oMLX providers (e.g. a second machine) are searchable as "oMLX" in the
+  model picker.
+
 ## 0.4.14
 
 - **Codex subscription mode now has full interactive parity.** Responses stream
