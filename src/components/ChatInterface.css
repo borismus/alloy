@@ -192,6 +192,21 @@
   }
 }
 
+/* Attachment persistence, before any model request exists (not "Thinking"). */
+.preparing-images-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.preparing-images-indicator .thinking-indicator {
+  padding: 0;
+}
+
 .input-form {
   border-top: 1px solid var(--color-border);
   padding: 1.5rem;

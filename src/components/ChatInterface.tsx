@@ -186,6 +186,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     urls: Record<string, string>;
   }>({ conversationId: null, urls: {} });
   const [isDragging, setIsDragging] = useState(false);
+  // True while image attachments are being persisted, before any model
+  // request exists — deliberately distinct from the streaming/thinking state.
+  const [isPreparingImages, setIsPreparingImages] = useState(false);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -462,18 +465,32 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // Capture the conversation ID at submission time - user may navigate away during streaming
     const submittedConversationId = conversation.id;
 
-    // Save images and collect attachments
+    // Save images and collect attachments. Persisting can take seconds and no
+    // model request has started yet, so show a distinct "Preparing images…"
+    // state immediately — without it the cleared composer looks like the send
+    // was ignored. It hands off to the streaming state once saves finish.
     const attachments: Attachment[] = [];
-    for (const img of pendingImages) {
-      const attachment = await onSaveImage(conversation.id, img.data, img.mimeType);
-      attachments.push(attachment);
-      URL.revokeObjectURL(img.preview);
+    if (pendingImages.length > 0) {
+      setIsPreparingImages(true);
+      try {
+        for (const img of pendingImages) {
+          const attachment = await onSaveImage(conversation.id, img.data, img.mimeType);
+          attachments.push(attachment);
+          URL.revokeObjectURL(img.preview);
+        }
+      } catch (error) {
+        setIsPreparingImages(false);
+        console.error('[ChatInterface] Failed to save image attachments:', error);
+        return;
+      }
     }
 
     setShouldAutoScroll(true);
 
-    // Start streaming and get AbortController
+    // Start streaming and get AbortController. Batched with the preparing
+    // reset so the indicator swaps for the streaming state in one render.
     const abortController = startStreaming();
+    setIsPreparingImages(false);
     if (!abortController) return;
 
     // Helper to check if user is still viewing this conversation
@@ -499,7 +516,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const handleFormSubmit = useCallback(async (message: string, pendingImages: PendingImage[]) => {
     if (!conversation) return;
 
-    if (isStreaming) {
+    // Queue during preparation too — attachment saves haven't started the
+    // stream yet, and a second concurrent processAndSend would race it.
+    if (isStreaming || isPreparingImages) {
       enqueue({
         id: generateMessageId(),
         content: message,
@@ -509,19 +528,19 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
 
     processAndSend(message, pendingImages);
-  }, [conversation, isStreaming, enqueue, processAndSend]);
+  }, [conversation, isStreaming, isPreparingImages, enqueue, processAndSend]);
 
   // Process queued messages when streaming completes. Everything queued during
   // the turn is folded into a single follow-up send (content joined by blank
   // lines, images concatenated) so N queued messages produce one reply, not N.
   useEffect(() => {
-    if (isStreaming || queue.length === 0) return;
+    if (isStreaming || isPreparingImages || queue.length === 0) return;
     const drained = drainQueue();
     if (drained.length === 0) return;
     const combinedContent = drained.map(m => m.content).join('\n\n');
     const combinedImages = drained.flatMap(m => m.pendingImages);
     processAndSend(combinedContent, combinedImages);
-  }, [isStreaming, queue.length, drainQueue, processAndSend]);
+  }, [isStreaming, isPreparingImages, queue.length, drainQueue, processAndSend]);
 
   // Global Escape key handler for stopping streaming
   useGlobalEscape(handleStop, isStreaming);
@@ -733,6 +752,13 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               </>
             )}
           </>
+        )}
+
+        {isPreparingImages && !showStreamingMessage && (
+          <div className="preparing-images-indicator" role="status">
+            <span className="thinking-indicator"><span></span><span></span><span></span></span>
+            Preparing images…
+          </div>
         )}
 
         <div ref={messagesEndRef} />
