@@ -39,7 +39,7 @@ interface NoteViewerProps {
   onSaveNote?: (filename: string, content: string) => Promise<void>;
   availableModels?: ModelInfo[];
   favoriteModels?: string[];
-  onToggleFavorite?: (modelKey: string) => void;
+  onCycleModelPreference?: (modelKey: string) => void;
   defaultModel?: string;
 }
 
@@ -57,7 +57,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   onSaveNote,
   availableModels,
   favoriteModels,
-  onToggleFavorite,
+  onCycleModelPreference,
   defaultModel,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -138,7 +138,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
           defaultModel={defaultModel!}
           availableModels={availableModels!}
           favoriteModels={favoriteModels}
-          onToggleFavorite={onToggleFavorite}
+          onCycleModelPreference={onCycleModelPreference}
         />
       )}
     </div>

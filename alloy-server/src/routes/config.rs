@@ -5,16 +5,21 @@
 //! so the two sides can't drift. Writes are comment-preserving line splices,
 //! mirroring what the SPA used to do in `vault.ts`.
 
-use axum::{Json, Router, extract::State, routing::{get, put}};
+use axum::{
+    extract::State,
+    routing::{get, put},
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{CliAdapter, ProviderKind, parse_raw_config};
-use crate::{AppState, error::AppError, local};
+use crate::config::{parse_raw_config, CliAdapter, ProviderKind};
+use crate::{error::AppError, local, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/config", get(get_config))
         .route("/api/config/favorites", put(put_favorites))
+        .route("/api/config/model-preferences", put(put_model_preferences))
         .route("/api/config/value", put(put_value))
 }
 
@@ -114,6 +119,35 @@ async fn put_favorites(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelPreferencesReq {
+    default_model: String,
+    favorite_models: Vec<String>,
+}
+
+async fn put_model_preferences(
+    State(state): State<AppState>,
+    Json(req): Json<ModelPreferencesReq>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if std::iter::once(&req.default_model)
+        .chain(req.favorite_models.iter())
+        .any(|key| key.contains('\r') || key.contains('\n'))
+    {
+        return Err(AppError::BadRequest(
+            "model keys must be single-line values".into(),
+        ));
+    }
+
+    let path = state.vault.resolve("config.yaml")?;
+    let existing = tokio::fs::read_to_string(&path).await.unwrap_or_default();
+    let next = splice_model_preferences(&existing, &req.default_model, &req.favorite_models);
+    tokio::fs::write(&path, next.as_bytes())
+        .await
+        .map_err(|e| AppError::Internal(format!("write config.yaml: {e}")))?;
+    Ok(Json(serde_json::json!({})))
+}
+
+#[derive(Deserialize)]
 struct ValueReq {
     key: String,
     value: String,
@@ -171,6 +205,22 @@ fn splice_favorites_block(existing: &str, block: &str) -> String {
     format!("{before_part}{block}{after}")
 }
 
+fn splice_model_preferences(
+    existing: &str,
+    default_model: &str,
+    favorite_models: &[String],
+) -> String {
+    // Cycling the default off sends an empty string; write it as an explicit
+    // quoted empty scalar rather than a bare dangling key.
+    let default_value = if default_model.is_empty() {
+        "\"\""
+    } else {
+        default_model
+    };
+    let with_default = splice_scalar(existing, "defaultModel", default_value);
+    splice_favorites_block(&with_default, &render_favorites_block(favorite_models))
+}
+
 /// Replace a top-level `key: value` line, preserving every other line; append
 /// the key if absent.
 fn splice_scalar(existing: &str, key: &str, value: &str) -> String {
@@ -196,7 +246,10 @@ mod tests {
 
     #[test]
     fn serializes_v2_provider_kind_and_adapters() {
-        assert_eq!(kind_str(ProviderKind::OpenaiCompatible), "openai_compatible");
+        assert_eq!(
+            kind_str(ProviderKind::OpenaiCompatible),
+            "openai_compatible"
+        );
         assert_eq!(kind_str(ProviderKind::Cli), "cli");
         assert_eq!(adapter_str(Some(CliAdapter::Claude)), Some("claude"));
         assert_eq!(adapter_str(Some(CliAdapter::Codex)), Some("codex"));
@@ -228,6 +281,33 @@ mod tests {
         let next = splice_favorites_block(&existing, &render_favorites_block(&["a/b".into()]));
         assert!(next.starts_with("favoriteModels:\n  - a/b\n"));
         assert!(next.contains("defaultModel: x"));
+    }
+
+    #[test]
+    fn splices_model_preferences_together_without_losing_comments() {
+        let existing = "version: 2\n# preferred models\ndefaultModel: old/default\nfavoriteModels:\n  - old/default\n# providers stay put\nproviders: []\n";
+        let next = splice_model_preferences(
+            existing,
+            "new/default",
+            &["old/default".into(), "new/default".into()],
+        );
+
+        assert!(next.contains("defaultModel: new/default"), "{next}");
+        assert!(
+            next.contains("favoriteModels:\n  - old/default\n  - new/default\n"),
+            "{next}"
+        );
+        assert!(next.contains("# preferred models"), "{next}");
+        assert!(
+            next.contains("# providers stay put\nproviders: []"),
+            "{next}"
+        );
+        assert!(!next.contains("defaultModel: old/default"), "{next}");
+
+        // Unsetting the default (red → hollow) writes a quoted empty scalar.
+        let cleared = splice_model_preferences(existing, "", &[]);
+        assert!(cleared.contains("defaultModel: \"\""), "{cleared}");
+        assert!(cleared.contains("favoriteModels: []"), "{cleared}");
     }
 
     #[test]

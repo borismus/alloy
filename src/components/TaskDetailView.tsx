@@ -63,7 +63,7 @@ interface TaskDetailViewProps {
   canGoBack?: boolean;
   onClose?: () => void;
   favoriteModels?: string[];
-  onToggleFavorite?: (modelKey: string) => void;
+  onCycleModelPreference?: (modelKey: string) => void;
   defaultModel?: string;
 }
 
@@ -136,7 +136,7 @@ export function TaskDetailView({
   canGoBack = false,
   onClose,
   favoriteModels,
-  onToggleFavorite,
+  onCycleModelPreference,
   defaultModel,
 }: TaskDetailViewProps) {
   const modelInfo = availableModels.find(m => m.key === task.model);
@@ -500,7 +500,7 @@ export function TaskDetailView({
           defaultModel={defaultModel!}
           availableModels={availableModels}
           favoriteModels={favoriteModels}
-          onToggleFavorite={onToggleFavorite}
+          onCycleModelPreference={onCycleModelPreference}
         />
       )}
     </div>

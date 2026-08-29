@@ -84,8 +84,11 @@ interface ModelSelectorProps {
   disabled: boolean;
   models: ModelInfo[];
   favoriteModels?: string[];  // Format: "provider/model-id"
-  /** Toggle a model in/out of the favorites list. Parent persists. */
-  onToggleFavorite?: (modelKey: string) => void;
+  /** The one configured model used for new resources. */
+  defaultModel?: string;
+  /** Advance a model's star (hollow → favorite → default → hollow). Parent
+   *  owns the state machine and persistence. */
+  onCycleModelPreference?: (modelKey: string) => void;
 }
 
 export function ModelSelector({
@@ -94,7 +97,8 @@ export function ModelSelector({
   disabled,
   models,
   favoriteModels = [],
-  onToggleFavorite,
+  defaultModel,
+  onCycleModelPreference,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   // Focusing the search field on open pops the iOS software keyboard, which
@@ -137,8 +141,9 @@ export function ModelSelector({
             value={value}
             models={models}
             favoriteModels={favoriteModels}
+            defaultModel={defaultModel}
             onPick={handlePick}
-            onToggleFavorite={onToggleFavorite}
+            onCycleModelPreference={onCycleModelPreference}
           />
         </Autocomplete>
       </Popover>
@@ -150,26 +155,91 @@ interface ModelResultsProps {
   value: string;
   models: ModelInfo[];
   favoriteModels: string[];
+  defaultModel?: string;
   onPick: (key: Key) => void;
-  onToggleFavorite?: (modelKey: string) => void;
+  onCycleModelPreference?: (modelKey: string) => void;
+}
+
+type ModelPreference = 'none' | 'favorite' | 'default';
+
+interface PreferenceControlProps {
+  model: ModelInfo;
+  preference: ModelPreference;
+  onCycle?: (modelKey: string) => void;
+}
+
+/**
+ * One star, three states. Each activation advances hollow → yellow favorite →
+ * red default → hollow; the label always describes what the next click does.
+ */
+function PreferenceControl({ model, preference, onCycle }: PreferenceControlProps) {
+  const label = preference === 'default'
+    ? `Remove ${model.name} as default`
+    : preference === 'favorite'
+      ? `Make ${model.name} the default model`
+      : `Add ${model.name} to favorites`;
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className={`${styles.star} ${preference === 'favorite' ? styles.starOn : ''} ${preference === 'default' ? styles.starDefault : ''}`}
+      aria-label={label}
+      title={label}
+      data-preference={preference}
+      onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onCycle?.(model.key);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        onCycle?.(model.key);
+      }}
+    >
+      {preference === 'none' ? '☆' : '★'}
+    </span>
+  );
 }
 
 // Reads the live query from the Autocomplete so the list can show favorites
 // only when empty and relevance-ranked matches while searching.
-function ModelResults({ value, models, favoriteModels, onPick, onToggleFavorite }: ModelResultsProps) {
+function ModelResults({
+  value,
+  models,
+  favoriteModels,
+  defaultModel,
+  onPick,
+  onCycleModelPreference,
+}: ModelResultsProps) {
   const state = useContext(AutocompleteStateContext);
   const query = (state?.inputValue ?? '').trim();
-  const isFavorite = (key: string) => favoriteModels.includes(key);
-  const hasFavorites = favoriteModels.length > 0;
+  const preferenceFor = (key: string): ModelPreference =>
+    key === defaultModel ? 'default' : favoriteModels.includes(key) ? 'favorite' : 'none';
+  const hasPinnedModels = models.some(model => preferenceFor(model.key) !== 'none');
 
-  const rows = useMemo<Array<ModelInfo & { favorite: boolean }>>(() => {
+  // Rows shown while this popover has been open. Cycling a star must restyle
+  // the row, not yank it out from under the pointer — so the empty-query list
+  // can grow (newly starred models) but never shrinks until the next open.
+  // ModelResults remounts with the popover, so this resets naturally.
+  const [sessionPinnedKeys] = useState(() => new Set<string>());
+
+  const rows = useMemo<Array<ModelInfo & { preference: ModelPreference }>>(() => {
     let list: ModelInfo[];
     if (query.length === 0) {
-      const favs = models.filter(m => isFavorite(m.key));
-      const selected = models.find(m => m.key === value);
-      // Pin the selected model on top when it isn't already a favorite, so the
-      // picker never looks empty when something is selected.
-      list = selected && !isFavorite(selected.key) ? [selected, ...favs] : favs;
+      for (const model of models) {
+        if (preferenceFor(model.key) !== 'none') sessionPinnedKeys.add(model.key);
+      }
+      // Only when nothing at all is starred does the selected model earn a
+      // pin, so the picker never looks empty — but an unstarred model must NOT
+      // reappear beside the remaining favorites on the next open.
+      if (sessionPinnedKeys.size === 0) {
+        const selected = models.find(model => model.key === value);
+        if (selected) sessionPinnedKeys.add(selected.key);
+      }
+      list = models.filter(model => sessionPinnedKeys.has(model.key));
     } else {
       list = models
         .map(m => ({ m, rank: rankMatch(query, m) }))
@@ -177,12 +247,12 @@ function ModelResults({ value, models, favoriteModels, onPick, onToggleFavorite 
         .sort((a, b) => a.rank - b.rank || a.m.name.localeCompare(b.m.name))
         .map(x => x.m);
     }
-    // Bake the favorite flag into each row so the row's identity changes when
-    // favorites change; otherwise React Aria caches the row by key (the model
-    // reference is stable) and the star never re-renders.
-    return list.map(m => ({ ...m, favorite: isFavorite(m.key) }));
+    // Bake preference into each row so the row's identity changes when config
+    // changes; otherwise React Aria caches the row by key and the star can keep
+    // its previous color/accessible label.
+    return list.map(model => ({ ...model, preference: preferenceFor(model.key) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, value, models, favoriteModels]);
+  }, [query, value, models, favoriteModels, defaultModel]);
 
   return (
     <ListBox
@@ -193,7 +263,7 @@ function ModelResults({ value, models, favoriteModels, onPick, onToggleFavorite 
       renderEmptyState={() => (
         <div className={styles.empty}>
           {query.length === 0
-            ? (hasFavorites ? 'No favorites match.' : 'No favorites yet — type to find a model, then ☆ to add it.')
+            ? (hasPinnedModels ? 'No pinned models match.' : 'No favorites yet — type to find a model, then ☆ for options.')
             : 'No models match your search.'}
         </div>
       )}
@@ -204,17 +274,11 @@ function ModelResults({ value, models, favoriteModels, onPick, onToggleFavorite 
           textValue={model.name}
           className={`${styles.option} ${model.key === value ? styles.optionCurrent : ''}`}
         >
-          <span
-            role="button"
-            tabIndex={-1}
-            className={`${styles.star} ${model.favorite ? styles.starOn : ''}`}
-            aria-label={model.favorite ? 'Remove from favorites' : 'Add to favorites'}
-            title={model.favorite ? 'Remove from favorites' : 'Add to favorites'}
-            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(model.key); }}
-          >
-            {model.favorite ? '★' : '☆'}
-          </span>
+          <PreferenceControl
+            model={model}
+            preference={model.preference}
+            onCycle={onCycleModelPreference}
+          />
           <ProviderTag model={model} />
           <span className={styles.optionName}>{model.name}</span>
         </ListBoxItem>

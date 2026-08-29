@@ -164,7 +164,7 @@
   white-space: nowrap;
 }
 
-/* Favorite star — an independent mouse hit target within the row. */
+/* Model preference star — an independent menu target within the row. */
 .star {
   display: inline-flex;
   align-items: center;
@@ -172,12 +172,16 @@
   width: 28px;
   height: 28px;
   flex: 0 0 auto;
-  color: #c8cdd4;
+  padding: 0;
+  color: var(--color-border-strong);
+  background: transparent;
+  border: 0;
   border-radius: var(--radius-control);
   cursor: pointer;
+  font-family: inherit;
   font-size: 18px;
   line-height: 1;
-  transition: background var(--duration-fast), color var(--duration-fast);
+  transition: background var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
 .star:hover {
@@ -185,12 +189,28 @@
   background: var(--color-surface-pressed);
 }
 
+.star:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus);
+}
+
 .starOn {
-  color: #f59e0b;
+  color: var(--color-model-favorite);
 }
 
 .starOn:hover {
-  color: #d97706;
+  color: var(--color-model-favorite-hover);
+}
+
+/* The default outranks favorites: vivid red, slightly larger, soft glow. */
+.starDefault {
+  color: var(--color-model-default);
+  font-size: 21px;
+  text-shadow: 0 0 8px var(--color-model-default-glow);
+}
+
+.starDefault:hover {
+  color: var(--color-model-default-hover);
 }
 
 .empty {

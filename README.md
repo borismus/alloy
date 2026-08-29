@@ -103,6 +103,14 @@ All models are configured under a single `providers:` list in config v2
 (`version: 2`). Local trust is explicit: only `local: true` grants the Local
 badge and private-directory access; omission is treated as cloud.
 
+`defaultModel` is the authoritative model for new conversations, riffs, and
+other default-seeded work. In the picker, clicking a model's star cycles it
+through hollow → yellow favorite → red default → hollow; there is at most one
+red default, and promoting a new one demotes the previous default to a yellow
+favorite. If the configured default is unset or unavailable after discovery,
+Alloy falls back deterministically to the first reachable favorite in config
+order, then the first model in the live catalog.
+
 - **OpenRouter** — one key for Claude, GPT, Gemini, Grok, Llama, and more (the cloud gateway)
 - **oMLX** — local, on-device models through an OpenAI-compatible endpoint (mark `local: true`; prompts stay on your machine/LAN)
 - **Claude subscription** — use your Claude Pro/Max plan instead of API credits (see below)

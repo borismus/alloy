@@ -26,6 +26,12 @@ import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
 import { openInEditor, type ExternalEditor } from './utils/openInEditor';
+import { chooseDefaultModel } from './utils/models';
+import {
+  cycleModelPreference,
+  persistModelPreferencesOptimistically,
+  type ModelPreferences,
+} from './utils/modelPreferences';
 import { reconnectToActiveSessions } from './services/server-streaming';
 import { getEmbeddedApiBase, loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
@@ -317,13 +323,17 @@ function AppContent() {
 
   // Integrate handler (for NoteViewer)
   const handleIntegrateNote = useCallback(async (filename: string) => {
-    const model = config?.defaultModel || availableModels[0]?.key || '';
+    const model = chooseDefaultModel(
+      config?.defaultModel,
+      config?.favoriteModels,
+      availableModels,
+    ) || '';
     if (model && filename) {
       riffContext.setConfig(model, notes);
       await riffContext.enterRiffMode(filename);
       await riffContext.integrateNow();
     }
-  }, [riffContext, config?.favoriteModels, availableModels, notes]);
+  }, [riffContext, config?.defaultModel, config?.favoriteModels, availableModels, notes]);
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
@@ -913,31 +923,11 @@ function AppContent() {
   // replace the whole chat UI with "No Provider Configured".
   const hasProvider = (config?.providers?.length ?? 0) > 0 || availableModels.length > 0;
 
-  const getDefaultModel = (): string | null => {
-    // Model discovery no longer blocks startup, so the catalog can still be
-    // in flight here. Validating against an empty catalog would reject the
-    // user's own configured model and report "no provider configured", so fall
-    // back to what config.yaml declares until the live list arrives.
-    if (availableModels.length === 0) {
-      const configuredFavorites = config?.favoriteModels ?? [];
-      if (configuredFavorites.length > 0) {
-        return configuredFavorites[Math.floor(Math.random() * configuredFavorites.length)];
-      }
-      return config?.defaultModel ?? null;
-    }
-
-    const validKeys = new Set(availableModels.map(m => m.key));
-    const isValid = (key: string | undefined | null): key is string =>
-      !!key && validKeys.has(key);
-
-    const liveFavorites = (config?.favoriteModels ?? []).filter(isValid);
-    if (liveFavorites.length > 0) {
-      return liveFavorites[Math.floor(Math.random() * liveFavorites.length)];
-    }
-
-    if (isValid(config?.defaultModel)) return config!.defaultModel;
-    return availableModels[0]?.key ?? null;
-  };
+  const getDefaultModel = (): string | null => chooseDefaultModel(
+    config?.defaultModel,
+    config?.favoriteModels,
+    availableModels,
+  );
 
   const handleNewConversation = () => {
     const model = getDefaultModel();
@@ -1009,22 +999,39 @@ function AppContent() {
     }
   };
 
-  const handleToggleFavorite = useCallback(async (modelKey: string) => {
-    const current = config?.favoriteModels ?? [];
-    const next = current.includes(modelKey)
-      ? current.filter(k => k !== modelKey)
-      : [...current, modelKey];
-    setConfig(prev => prev ? { ...prev, favoriteModels: next } : prev);
+  const persistModelPreferences = useCallback(async (
+    current: ModelPreferences,
+    next: ModelPreferences,
+  ) => {
+    if (current === next) return;
+    const apply = (preferences: ModelPreferences) => {
+      setConfig(previous => previous ? { ...previous, ...preferences } : previous);
+    };
     try {
       const vaultPathForSave = vaultService.getVaultPath();
       if (vaultPathForSave) markSelfWrite(`${vaultPathForSave}/config.yaml`);
-      await vaultService.updateFavoriteModels(next);
-    } catch (e) {
-      console.error('Failed to persist favorites:', e);
-      // Roll back state on persist failure so UI matches disk.
-      setConfig(prev => prev ? { ...prev, favoriteModels: current } : prev);
+      await persistModelPreferencesOptimistically(
+        current,
+        next,
+        apply,
+        preferences => vaultService.updateModelPreferences(
+          preferences.defaultModel,
+          preferences.favoriteModels,
+        ),
+      );
+    } catch (error) {
+      console.error('Failed to persist model preferences:', error);
+      showToast('Could not save model preferences. The previous settings were restored.', 'error');
     }
-  }, [config, markSelfWrite]);
+  }, [markSelfWrite, showToast]);
+
+  const handleCycleModelPreference = useCallback(async (modelKey: string) => {
+    const current: ModelPreferences = {
+      defaultModel: config?.defaultModel ?? '',
+      favoriteModels: config?.favoriteModels ?? [],
+    };
+    await persistModelPreferences(current, cycleModelPreference(current, modelKey));
+  }, [config?.defaultModel, config?.favoriteModels, persistModelPreferences]);
 
   const handleModelChange = (modelKey: string) => {
     if (!currentConversation) return;
@@ -1329,7 +1336,7 @@ function AppContent() {
                   task={selectedTask}
                   availableModels={availableModels}
                   favoriteModels={config?.favoriteModels}
-                  onToggleFavorite={handleToggleFavorite}
+                  onCycleModelPreference={handleCycleModelPreference}
                   defaultModel={config?.defaultModel}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
@@ -1355,7 +1362,7 @@ function AppContent() {
               isViewingDraft ? (
                 <RiffView
                   notes={notes}
-                  model={config?.defaultModel || availableModels[0]?.key || ''}
+                  model={getDefaultModel() || ''}
                   sonioxApiKey={config?.sonioxApiKey}
                   onNavigateToNote={handleSelectNote}
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1375,7 +1382,7 @@ function AppContent() {
                   onSaveNote={handleSaveNoteEdit}
                   availableModels={availableModels}
                   favoriteModels={config?.favoriteModels}
-                  onToggleFavorite={handleToggleFavorite}
+                  onCycleModelPreference={handleCycleModelPreference}
                   defaultModel={config?.defaultModel}
                   conversations={conversations}
                   onBack={() => setMobileView('list')}
@@ -1391,7 +1398,7 @@ function AppContent() {
               // Mobile: fresh riff mode (no item selected)
               <RiffView
                 notes={notes}
-                model={config?.defaultModel || availableModels[0]?.key || ''}
+                model={getDefaultModel() || ''}
                 sonioxApiKey={config?.sonioxApiKey}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1412,7 +1419,7 @@ function AppContent() {
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
                 favoriteModels={config?.favoriteModels}
-                onToggleFavorite={handleToggleFavorite}
+                onCycleModelPreference={handleCycleModelPreference}
                 defaultModel={config?.defaultModel}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1456,7 +1463,7 @@ function AppContent() {
         {isRiffNote || (riffContext.isRiffMode && !hasNonRiffSelection) ? (
           <RiffView
             notes={notes}
-            model={config?.defaultModel || availableModels[0]?.key || ''}
+            model={getDefaultModel() || ''}
             sonioxApiKey={config?.sonioxApiKey}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1471,7 +1478,7 @@ function AppContent() {
               task={selectedTask}
               availableModels={availableModels}
               favoriteModels={config?.favoriteModels}
-              onToggleFavorite={handleToggleFavorite}
+              onCycleModelPreference={handleCycleModelPreference}
               defaultModel={config?.defaultModel}
               onBack={goBack}
               canGoBack={canGoBack}
@@ -1503,7 +1510,7 @@ function AppContent() {
             onSaveNote={handleSaveNoteEdit}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
-            onToggleFavorite={handleToggleFavorite}
+            onCycleModelPreference={handleCycleModelPreference}
             defaultModel={config?.defaultModel}
             conversations={conversations}
             onBack={goBack}
@@ -1521,7 +1528,7 @@ function AppContent() {
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
-            onToggleFavorite={handleToggleFavorite}
+            onCycleModelPreference={handleCycleModelPreference}
             defaultModel={config?.defaultModel}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}

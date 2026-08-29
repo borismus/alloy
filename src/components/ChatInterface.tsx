@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import { Conversation, Message, ModelInfo, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { generateMessageId } from '../utils/ids';
-import { PROVIDER_NAMES } from '../utils/models';
+import { chooseDefaultModel, PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useMessageQueue } from '../hooks/useMessageQueue';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
@@ -122,8 +122,8 @@ interface ChatInterfaceProps {
   onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
   availableModels: ModelInfo[];
   favoriteModels?: string[];  // Format: "provider/model-id"
-  /** Toggle a model in/out of the favorites list (writes back to config.yaml). */
-  onToggleFavorite?: (modelKey: string) => void;
+  /** Advance a model's star (favorite/default cycle); writes back to config.yaml. */
+  onCycleModelPreference?: (modelKey: string) => void;
   /** Configured default model from config.yaml. Used to seed the picker on
    *  the empty-state welcome screen; ignored if not in availableModels. */
   defaultModel?: string;
@@ -165,7 +165,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onModelChange,
   availableModels,
   favoriteModels,
-  onToggleFavorite,
+  onCycleModelPreference,
   defaultModel,
   onNavigateToNote,
   onNavigateToConversation,
@@ -614,15 +614,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             onSubmit={handleFormSubmit}
             onStop={handleStop}
             isStreaming={isStreaming}
-            model={
-              (defaultModel && availableModels.some(m => m.key === defaultModel))
-                ? defaultModel
-                : (availableModels[0]?.key || '')
-            }
+            model={chooseDefaultModel(defaultModel, favoriteModels, availableModels) || ''}
             onModelChange={onModelChange}
             availableModels={availableModels}
             favoriteModels={favoriteModels}
-            onToggleFavorite={onToggleFavorite}
+            defaultModel={defaultModel}
+            onCycleModelPreference={onCycleModelPreference}
           />
         </div>
       );
@@ -752,7 +749,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         onModelChange={onModelChange}
         availableModels={availableModels}
         favoriteModels={favoriteModels}
-        onToggleFavorite={onToggleFavorite}
+        defaultModel={defaultModel}
+        onCycleModelPreference={onCycleModelPreference}
       />
     </div>
   );

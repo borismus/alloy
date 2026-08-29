@@ -35,10 +35,12 @@ export const PROVIDER_TAGS: Record<ProviderType, string> = {
  */
 export function providerLabel(providerId: string | undefined, modelKey: string): string {
   const id = providerId || modelKey.split('/')[0] || '';
-  return (
-    PROVIDER_NAMES[id as ProviderType] ||
-    id.charAt(0).toUpperCase() + id.slice(1)
-  );
+  const known = PROVIDER_NAMES[id as ProviderType];
+  if (known) return known;
+  // User-defined oMLX endpoints (`mlx-local`, `omlx-m4`, …) should read — and
+  // therefore SEARCH — as oMLX rather than as a prettified raw id.
+  if (id.toLowerCase().includes('mlx')) return `oMLX (${id})`;
+  return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
 /**
@@ -58,5 +60,33 @@ export function providerTag(providerId: string | undefined, modelKey: string): s
  */
 export function isLocalModel(modelKey: string, availableModels: ModelInfo[]): boolean {
   return availableModels.some(m => m.key === modelKey && m.local);
+}
+
+/**
+ * Choose the model for a newly created resource. While discovery is still in
+ * flight, trust config.yaml; once the catalog is available, only return a key
+ * the picker can render.
+ */
+export function chooseDefaultModel(
+  configuredDefault: string | undefined,
+  favoriteModels: string[] | undefined,
+  availableModels: ModelInfo[],
+): string | null {
+  if (availableModels.length === 0) {
+    // Discovery is asynchronous. Honor the configured default before the live
+    // catalog arrives; if it is blank, preserve config order as the fallback.
+    return configuredDefault || favoriteModels?.[0] || null;
+  }
+
+  const validKeys = new Set(availableModels.map(model => model.key));
+  if (configuredDefault && validKeys.has(configuredDefault)) {
+    return configuredDefault;
+  }
+
+  // A stale/offline default cannot be rendered by the picker. Fall back in a
+  // stable order: first reachable configured favorite, then catalog order.
+  return (favoriteModels ?? []).find(key => validKeys.has(key))
+    ?? availableModels[0]?.key
+    ?? null;
 }
 

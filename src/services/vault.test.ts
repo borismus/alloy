@@ -195,6 +195,34 @@ describe('VaultService', () => {
     });
   });
 
+  describe('updateModelPreferences', () => {
+    it('posts the default and favorites together and rejects failed writes', async () => {
+      vaultService.setVaultPath('/test/vault');
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({ ok: true, status: 200 })
+        .mockResolvedValueOnce({ ok: false, status: 500 });
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        await vaultService.updateModelPreferences('provider/default', [
+          'provider/default',
+          'provider/favorite',
+        ]);
+        const [, request] = fetchMock.mock.calls[0];
+        expect(fetchMock.mock.calls[0][0]).toContain('/api/config/model-preferences');
+        expect(JSON.parse(request.body)).toEqual({
+          defaultModel: 'provider/default',
+          favoriteModels: ['provider/default', 'provider/favorite'],
+        });
+
+        await expect(vaultService.updateModelPreferences('provider/other', []))
+          .rejects.toThrow('HTTP 500');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   describe('saveConversation', () => {
     it('should do nothing if vault path is not set', async () => {
       const mockConversation = createMockConversation();

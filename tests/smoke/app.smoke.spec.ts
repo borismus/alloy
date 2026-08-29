@@ -18,6 +18,34 @@ test('renders the seeded vault instead of the setup screen', async ({ page }) =>
   expect(await page.locator('.timeline-item').count()).toBeGreaterThanOrEqual(4);
 });
 
+test('positions creation actions responsively and keeps the riff command reachable', async ({ page }, testInfo) => {
+  const header = page.locator('.mobile-sidebar-header');
+  const searchRow = page.locator('.search-box');
+  const newConversation = page.getByRole('button', { name: 'New conversation' });
+  const creationOverflow = page.getByRole('button', { name: 'More creation options' });
+
+  if (testInfo.project.name === 'mobile') {
+    await expect(header).toBeVisible();
+    await expect(header.getByRole('button', { name: 'New conversation' })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'More creation options' })).toBeVisible();
+    await expect(searchRow.getByRole('button', { name: 'New conversation' })).toHaveCount(0);
+
+    const plusBox = await newConversation.boundingBox();
+    const overflowBox = await creationOverflow.boundingBox();
+    expect(plusBox?.width).toBeGreaterThanOrEqual(40);
+    expect(plusBox?.height).toBeGreaterThanOrEqual(40);
+    expect(overflowBox?.width).toBeGreaterThanOrEqual(40);
+    expect(overflowBox?.height).toBeGreaterThanOrEqual(40);
+  } else {
+    await expect(header).toHaveCount(0);
+    await expect(searchRow.getByRole('button', { name: 'New conversation' })).toBeVisible();
+    await expect(searchRow.getByRole('button', { name: 'More creation options' })).toBeVisible();
+  }
+
+  await creationOverflow.click();
+  await expect(page.getByRole('menuitem', { name: 'New riff' })).toBeVisible();
+});
+
 test('opens a conversation and shows the composer and model picker', async ({ page }) => {
   await page.getByText('Welcome to Alloy').click();
 
@@ -28,6 +56,51 @@ test('opens a conversation and shows the composer and model picker', async ({ pa
   await expect(picker).toBeVisible();
   await picker.click();
   await expect(page.getByRole('option').filter({ hasText: /Claude/ }).first()).toBeVisible();
+  const defaultStar = page.getByRole('button', { name: /Remove Claude Sonnet.* as default/i });
+  await expect(defaultStar).toBeVisible();
+  await expect(defaultStar).toHaveAttribute('data-preference', 'default');
+});
+
+test('new conversations use the configured default before and after discovery', async ({ page }) => {
+  const configResponse = await page.request.get('/api/config');
+  const baseConfig = await configResponse.json();
+  await page.route('**/api/config', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      ...baseConfig,
+      defaultModel: 'claude-cli/sonnet',
+      favoriteModels: ['claude-cli/opus'],
+    }),
+  }));
+
+  // Startup path: discovery has not produced a usable catalog.
+  await page.route('**/api/models', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: '[]',
+  }));
+  await page.reload();
+  await expect(page.locator('.timeline-item').first()).toBeVisible();
+  await page.getByRole('button', { name: 'New conversation' }).click();
+  await expect(page.locator('.model-selector-container button[aria-label^="Model:"]'))
+    .toHaveAttribute('aria-label', /Sonnet/i);
+
+  // Live-catalog path: the configured default is available alongside a
+  // favorite. It must still win instead of choosing the favorite at random.
+  // Drop the draft selection persisted by the click above; restoring it would
+  // start mobile in the conversation view, where the timeline list is hidden.
+  await page.evaluate(() => localStorage.removeItem('alloy.selectedItem'));
+  await page.unroute('**/api/models');
+  const discovered = page.waitForResponse(response =>
+    response.url().includes('/api/models') && response.ok()
+  );
+  await page.reload();
+  await discovered;
+  await expect(page.locator('.timeline-item').first()).toBeVisible();
+  await page.getByRole('button', { name: 'New conversation' }).click();
+  await expect(page.locator('.model-selector-container button[aria-label^="Model:"]'))
+    .toHaveAttribute('aria-label', /Sonnet/i);
 });
 
 test('a failed model discovery does not claim the vault has no provider', async ({ page }) => {

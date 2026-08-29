@@ -154,7 +154,7 @@ Tauri WKWebView and browser-mode shims can use the same surface.
 | GET | `/api/stream/active` | List sessions (for reconnect) |
 | GET | `/api/models` | Aggregated live/cached model catalog |
 | GET | `/api/config` | Resolved config with provider API keys omitted |
-| PUT | `/api/config/{favorites,value}` | Comment-preserving config edits |
+| PUT | `/api/config/{favorites,value,model-preferences}` | Comment-preserving config edits |
 | GET | `/api/search?q=...` | Full-text vault search with snippets |
 | POST | `/api/tasks/{id}/run` | Run a scheduled task now without shifting its cron schedule |
 | POST | `/api/mcp` | Session-token-scoped MCP bridge for CLI adapters |

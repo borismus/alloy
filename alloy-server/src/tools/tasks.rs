@@ -33,7 +33,7 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
 
     let model = match input_string(input, "model") {
         Some(value) if !value.trim().is_empty() => value.trim().to_string(),
-        _ => registry.config.default_model.clone().ok_or_else(|| {
+        _ => current_default_model(registry).ok_or_else(|| {
             "create_scheduled_task: no model specified and config has no defaultModel".to_string()
         })?,
     };
@@ -290,6 +290,20 @@ fn optional_bool(input: &Value, name: &str) -> Result<Option<bool>, String> {
     }
 }
 
+fn current_default_model(registry: &ToolRegistry) -> Option<String> {
+    // Model preferences can change while the server is running. The registry's
+    // resolved config is a startup snapshot, so consult Rust's canonical parser
+    // before falling back to that snapshot.
+    registry
+        .vault
+        .resolve("config.yaml")
+        .ok()
+        .and_then(|path| crate::config::Config::load(&path).ok())
+        .and_then(|config| config.default_model)
+        .or_else(|| registry.config.default_model.clone())
+        .filter(|model| !model.trim().is_empty())
+}
+
 fn required<'a>(input: &'a Value, name: &str) -> Result<&'a str, String> {
     input_string(input, name)
         .map(str::trim)
@@ -378,6 +392,8 @@ fn slugify(title: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     #[test]
@@ -474,10 +490,31 @@ mod tests {
         assert!(error.contains("exactly five fields"));
     }
 
+    #[test]
+    fn task_creation_reads_the_current_default_from_disk() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            temp.path().join("config.yaml"),
+            "version: 2\ndefaultModel: provider/new\nproviders: []\n",
+        )
+        .unwrap();
+        let mut startup_config = crate::config::Config::default();
+        startup_config.default_model = Some("provider/old".into());
+        let registry = ToolRegistry::new(
+            Arc::new(startup_config),
+            Arc::new(crate::vault::Vault::new(temp.path().to_path_buf()).unwrap()),
+            crate::providers::ProviderRegistry::from_configs(&[]),
+            Arc::new(crate::skill_registry::SkillRegistry::new()),
+        );
+
+        assert_eq!(
+            current_default_model(&registry).as_deref(),
+            Some("provider/new")
+        );
+    }
+
     #[tokio::test]
     async fn update_tool_persists_partial_change() {
-        use std::sync::Arc;
-
         let temp = tempfile::tempdir().unwrap();
         let tasks_dir = temp.path().join("tasks");
         std::fs::create_dir_all(&tasks_dir).unwrap();

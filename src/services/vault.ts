@@ -190,6 +190,22 @@ providers:
   }
 
   /**
+   * Update the single default and favorites in one comment-preserving server
+   * write, avoiding an intermediate config where only one side has changed.
+   */
+  async updateModelPreferences(defaultModel: string, favoriteModels: string[]): Promise<void> {
+    if (!this.vaultPath) return;
+    const res = await fetch(`${getApiBase()}/api/config/model-preferences`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultModel, favoriteModels }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to save model preferences: HTTP ${res.status}`);
+    }
+  }
+
+  /**
    * Update a single top-level scalar in config.yaml (e.g. externalEditor). The
    * server does a comment-preserving splice.
    */
