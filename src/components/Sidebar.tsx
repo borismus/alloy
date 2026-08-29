@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
+import { Button as AriaButton, MenuTrigger } from 'react-aria-components';
 import { ModelInfo, TimelineItem, TimelineFilter } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -9,12 +10,52 @@ import { useLongPress } from '../hooks/useLongPress';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
-import { AlloyDialog, SegmentedControl } from './ui';
+import { AlloyDialog, AlloyMenu, SegmentedControl } from './ui';
 import './Sidebar.css';
 
-interface SidebarSearchControlProps {
+interface CreationActionsProps {
+  onNewConversation: () => void;
+  onNewRiff: () => void;
+}
+
+function CreationActions({ onNewConversation, onNewRiff }: CreationActionsProps) {
+  return (
+    <div className="creation-actions">
+      <button
+        type="button"
+        onClick={onNewConversation}
+        className="new-button"
+        title="New conversation"
+        aria-label="New conversation"
+      >
+        +
+      </button>
+      <MenuTrigger>
+        <AriaButton
+          className="creation-menu-button"
+          aria-label="More creation options"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="19" cy="12" r="1.8" />
+          </svg>
+        </AriaButton>
+        <AlloyMenu
+          placement="bottom end"
+          items={[{ id: 'new-riff', label: 'New riff' }]}
+          onAction={(key) => {
+            if (key === 'new-riff') onNewRiff();
+          }}
+        />
+      </MenuTrigger>
+    </div>
+  );
+}
+
+interface SidebarSearchControlProps extends CreationActionsProps {
   onQueryChange: (query: string) => void;
-  onNew: () => void;
+  showCreationActions: boolean;
 }
 
 /**
@@ -23,7 +64,12 @@ interface SidebarSearchControlProps {
  * of them to be reconciled before the search debounce had even expired.
  */
 const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlProps>(
-  function SidebarSearchControl({ onQueryChange, onNew }, ref) {
+  function SidebarSearchControl({
+    onQueryChange,
+    onNewConversation,
+    onNewRiff,
+    showCreationActions,
+  }, ref) {
     const textareaProps = useTextareaProps();
     const [value, setValue] = useState('');
 
@@ -65,9 +111,12 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
             </button>
           )}
         </div>
-        <button onClick={onNew} className="new-button" title="New">
-          +
-        </button>
+        {showCreationActions && (
+          <CreationActions
+            onNewConversation={onNewConversation}
+            onNewRiff={onNewRiff}
+          />
+        )}
       </div>
     );
   },
@@ -365,33 +414,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     void openItemMenu(item);
   });
 
-  const handleFabClick = async () => {
-    try {
-      const menu = await Menu.new({
-        items: [
-          {
-            id: 'new-conversation',
-            text: 'New Conversation',
-            action: () => {
-              onNewConversation();
-            }
-          },
-{
-            id: 'new-riff',
-            text: 'New Riff',
-            action: () => {
-              onNewRiff();
-            }
-          }
-        ]
-      });
-
-      await menu.popup();
-    } catch (error) {
-      console.error('Failed to show FAB menu:', error);
-    }
-  };
-
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -506,12 +528,18 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         <div className="mobile-sidebar-header">
           <img src="/icon-192.png" alt="Alloy" className="mobile-app-icon" width="44" height="44" />
           <h2>Alloy</h2>
+          <CreationActions
+            onNewConversation={onNewConversation}
+            onNewRiff={onNewRiff}
+          />
         </div>
       )}
       <SidebarSearchControl
         ref={searchInputRef}
         onQueryChange={setSearchQuery}
-        onNew={handleFabClick}
+        onNewConversation={onNewConversation}
+        onNewRiff={onNewRiff}
+        showCreationActions={!fullScreen}
       />
 
       <div className="filter-tabs-container">

@@ -10,6 +10,13 @@
   overflow: hidden;
 }
 
+.creation-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .new-button {
   flex-shrink: 0;
   width: 36px;
@@ -36,6 +43,39 @@
 
 .new-button:active {
   transform: scale(0.95);
+}
+
+.new-button:focus-visible,
+.creation-menu-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus);
+}
+
+.creation-menu-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.creation-menu-button:hover,
+.creation-menu-button[data-hovered] {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.creation-menu-button:active,
+.creation-menu-button[data-pressed] {
+  background: var(--color-surface-pressed);
 }
 
 .search-box {
@@ -494,16 +534,28 @@
   border-bottom: 1px solid var(--color-border);
   min-height: 56px;
   flex-shrink: 0;
-  touch-action: none;
+  touch-action: manipulation;
   user-select: none;
 }
 
 .mobile-sidebar-header h2 {
+  min-width: 0;
   font-size: 18px;
   font-weight: 600;
   color: var(--color-text);
   margin: 0;
   flex: 1;
+}
+
+.mobile-sidebar-header .creation-actions {
+  margin-left: auto;
+}
+
+.mobile-sidebar-header .new-button,
+.mobile-sidebar-header .creation-menu-button {
+  width: 40px;
+  height: 40px;
+  touch-action: manipulation;
 }
 
 .mobile-back-button {
