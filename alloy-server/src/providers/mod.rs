@@ -259,6 +259,72 @@ pub struct McpBridge {
     pub token: String,
 }
 
+pub(crate) fn fallback_title(user_msg: &str) -> String {
+    user_msg.chars().take(50).collect()
+}
+
+/// Normalize a model-generated title across provider protocols. Reasoning
+/// models occasionally return chain-of-thought or formatting despite the
+/// title-only prompt; keep that out of the timeline and filename.
+pub(crate) fn sanitize_title(raw: &str, user_msg: &str) -> String {
+    let stripped = strip_think_blocks(raw);
+    let first_line = stripped
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .trim_matches(|c: char| c == '"' || c == '\'' || c == '*' || c == '#')
+        .trim();
+
+    let nonblank_lines = stripped.lines().filter(|l| !l.trim().is_empty()).count();
+    let lower = stripped.to_lowercase();
+    let reads_like_reasoning = first_line.is_empty()
+        || first_line.chars().count() > 80
+        || first_line.ends_with(':')
+        || nonblank_lines > 2
+        || [
+            "thinking process",
+            "analyze user",
+            "the user is asking",
+            "the user wants",
+            "here's a",
+            "here is a",
+            "let me ",
+            "first, i",
+            "okay, so",
+            "step 1",
+        ]
+        .iter()
+        .any(|m| lower.contains(m));
+
+    if reads_like_reasoning {
+        fallback_title(user_msg)
+    } else {
+        first_line.chars().take(100).collect()
+    }
+}
+
+/// Remove `<think>…</think>` / `<thinking>…</thinking>` spans, including an
+/// unclosed trailing block (which a token limit can produce).
+fn strip_think_blocks(s: &str) -> String {
+    let mut out = s.to_string();
+    for (open, close) in [("<think>", "</think>"), ("<thinking>", "</thinking>")] {
+        while let Some(start) = out.find(open) {
+            match out[start + open.len()..].find(close) {
+                Some(rel) => {
+                    let end = start + open.len() + rel + close.len();
+                    out.replace_range(start..end, "");
+                }
+                None => {
+                    out.truncate(start);
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
 #[async_trait]
 pub trait Provider: Send + Sync {
     /// Stream a chat completion. Send visible content and provider-supplied
@@ -266,6 +332,15 @@ pub trait Provider: Send + Sync {
     /// If the model emits tool calls, `tool_calls` in the result is populated
     /// and `stop_reason` is "tool_use".
     async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult>;
+
+    /// Pick the provider-native model identifier used for title generation.
+    /// The input has already had Alloy's configured provider prefix removed.
+    /// HTTP-compatible providers normally reuse it; subscription adapters can
+    /// select a cheap/account-default alias without leaking another provider's
+    /// model id into their CLI.
+    fn title_model(&self, conversation_model: &str) -> String {
+        conversation_model.to_string()
+    }
 
     /// Generate a short title (3-6 words) from the first exchange.
     async fn generate_title(&self, user_msg: &str, assistant_msg: &str, model: &str) -> String;

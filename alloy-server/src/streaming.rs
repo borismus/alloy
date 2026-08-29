@@ -519,7 +519,7 @@ async fn run_stream(
                 && params.is_first_message
                 && !stream_result.content.trim().is_empty()
             {
-                let title_model = pick_title_model(&params.model);
+                let title_model = provider.title_model(&upstream_model);
                 let title = provider
                     .generate_title(
                         &params.user_message_content,
@@ -885,25 +885,6 @@ pub fn stop_session(registry: &SessionRegistry, id: &str) -> Option<Arc<Session>
     Some(session)
 }
 
-/// Pick a model for title generation. Phase-1 cheap default: Haiku via the
-/// configured provider.
-fn pick_title_model(conversation_model: &str) -> String {
-    if let Some((prefix, _)) = conversation_model.split_once('/') {
-        match prefix {
-            "openrouter" => return "anthropic/claude-haiku-4-5".to_string(),
-            "mlx" => return conversation_model.to_string(),
-            // The Claude Code CLI takes a bare `--model` alias (the returned
-            // string is passed straight through to `claude --model`); a
-            // provider-prefixed id like "anthropic/claude-haiku-4-5" is rejected
-            // and title generation falls back to the raw user message. Haiku
-            // keeps the subscription cost low.
-            "claude-cli" => return "haiku".to_string(),
-            _ => {}
-        }
-    }
-    "anthropic/claude-haiku-4-5".to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -974,6 +955,106 @@ mod tests {
         fn supports_tools(&self, _model: &str) -> bool {
             false
         }
+    }
+
+    struct TitleProvider {
+        received_model: Arc<Mutex<Option<String>>>,
+    }
+
+    #[async_trait]
+    impl Provider for TitleProvider {
+        async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
+            let content = "The title path is fixed.".to_string();
+            let _ = req
+                .delta_tx
+                .send(ProviderStreamEvent::Content(content.clone()));
+            Ok(StreamResult {
+                content,
+                usage: None,
+                stop_reason: "end_turn".into(),
+                tool_calls: vec![],
+            })
+        }
+
+        fn title_model(&self, _conversation_model: &str) -> String {
+            "default".into()
+        }
+
+        async fn generate_title(&self, _user: &str, _assistant: &str, model: &str) -> String {
+            *self.received_model.lock().unwrap() = Some(model.to_string());
+            "Codex Conversation Naming".into()
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn first_turn_title_reaches_persistence_and_replay_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let conversations = dir.path().join("conversations");
+        std::fs::create_dir(&conversations).unwrap();
+        let original_path = conversations.join("conv.yaml");
+        std::fs::write(
+            &original_path,
+            "id: conv\ntitle: Initial fallback\nmodel: work-codex/gpt-account-model\ncreated: now\nupdated: now\nmessages: []\n",
+        )
+        .unwrap();
+
+        let received_model = Arc::new(Mutex::new(None));
+        let provider = Arc::new(TitleProvider {
+            received_model: received_model.clone(),
+        });
+        let vault = Arc::new(Vault::new(dir.path().to_path_buf()).unwrap());
+        let providers = ProviderRegistry::from_test_provider("work-codex", provider);
+        let config = Arc::new(Config::default());
+        let tools = Arc::new(ToolRegistry::new(
+            config,
+            vault.clone(),
+            providers.clone(),
+            Arc::new(SkillRegistry::new()),
+        ));
+        let sessions = SessionRegistry::new();
+
+        run_to_completion(
+            &sessions,
+            providers,
+            vault,
+            tools,
+            Arc::new(ModelCache::new()),
+            CompactionSettings::default(),
+            None,
+            StartParams {
+                session_id: "title-session".into(),
+                conversation_id: "conv".into(),
+                assistant_message_id: Some("assistant".into()),
+                model: "work-codex/gpt-account-model".into(),
+                messages: vec![user_msg("why is naming broken?")],
+                system_prompt: None,
+                is_first_message: true,
+                user_message_content: "why is naming broken?".into(),
+                invoke_skill: None,
+                skip_persist: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(received_model.lock().unwrap().as_deref(), Some("default"));
+        let renamed_path = conversations.join("conv-codex-conversation-naming.yaml");
+        assert!(renamed_path.exists());
+        assert!(!original_path.exists());
+        let yaml = std::fs::read_to_string(renamed_path).unwrap();
+        assert!(yaml.contains("title: Codex Conversation Naming"), "{yaml}");
+
+        // The SSE route reads this field for both live completion and replay,
+        // so a reconnect receives the same title persisted above.
+        let session = sessions.get("title-session").unwrap();
+        assert_eq!(
+            session.inner.lock().unwrap().final_title.as_deref(),
+            Some("Codex Conversation Naming")
+        );
     }
 
     #[tokio::test]
@@ -1147,15 +1228,60 @@ mod tests {
 
     #[test]
     fn title_model_is_provider_appropriate() {
-        // OpenRouter wants a vendor-prefixed Haiku id.
-        assert_eq!(
-            pick_title_model("openrouter/google/gemini-3.5-flash"),
-            "anthropic/claude-haiku-4-5"
-        );
-        // oMLX is local — title with the same local model.
-        assert_eq!(pick_title_model("mlx/Qwen3"), "mlx/Qwen3");
-        // The Claude Code CLI takes a bare alias, not a provider-prefixed id.
-        assert_eq!(pick_title_model("claude-cli/opus"), "haiku");
+        use crate::config::{CliAdapter, ProviderConfig, ProviderKind};
+
+        let provider =
+            |id: &str, kind: ProviderKind, adapter, base_url: Option<&str>| ProviderConfig {
+                id: id.into(),
+                kind,
+                adapter,
+                base_url: base_url.map(str::to_string),
+                api_key: String::new(),
+                command: None,
+                oauth_token: None,
+                local: None,
+            };
+        let registry = ProviderRegistry::from_configs(&[
+            provider(
+                "openrouter",
+                ProviderKind::OpenaiCompatible,
+                None,
+                Some("https://openrouter.ai/api/v1"),
+            ),
+            provider(
+                "mlx",
+                ProviderKind::OpenaiCompatible,
+                None,
+                Some("http://localhost:8000/v1"),
+            ),
+            provider(
+                "subscription-claude",
+                ProviderKind::Cli,
+                Some(CliAdapter::Claude),
+                None,
+            ),
+            provider(
+                "work-codex",
+                ProviderKind::Cli,
+                Some(CliAdapter::Codex),
+                None,
+            ),
+        ]);
+
+        let (openrouter, model) = registry
+            .resolve("openrouter/google/gemini-3.5-flash")
+            .unwrap();
+        assert_eq!(model, "google/gemini-3.5-flash");
+        assert_eq!(openrouter.title_model(model), "anthropic/claude-haiku-4-5");
+
+        let (mlx, model) = registry.resolve("mlx/Qwen3").unwrap();
+        assert_eq!(mlx.title_model(model), "Qwen3");
+
+        let (claude, model) = registry.resolve("subscription-claude/opus").unwrap();
+        assert_eq!(claude.title_model(model), "haiku");
+
+        let (codex, model) = registry.resolve("work-codex/gpt-5.4").unwrap();
+        assert_eq!(codex.title_model(model), "default");
     }
 
     #[test]

@@ -30,8 +30,8 @@ use tokio::process::Command;
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    ChatMessage, DiscoveredModel, McpBridge, Provider, ProviderStreamEvent, StreamRequest,
-    StreamResult, Usage,
+    fallback_title, sanitize_title, ChatMessage, DiscoveredModel, McpBridge, Provider,
+    ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 use crate::types::{ToolCall, ToolResult};
 
@@ -578,6 +578,13 @@ impl Provider for CliCodexProvider {
         self.run_app_server(req).await
     }
 
+    fn title_model(&self, _conversation_model: &str) -> String {
+        // Omitting --model lets Codex use the authenticated account/config
+        // default. Passing an OpenRouter/Anthropic id here makes `codex exec`
+        // fail and silently degrades the title to the raw user-message prefix.
+        "default".to_string()
+    }
+
     async fn generate_title(&self, user_msg: &str, assistant_msg: &str, model: &str) -> String {
         let prompt = format!(
             "Generate a short, descriptive title (3-6 words) for a conversation that started with this exchange. Return ONLY the title, no quotes or punctuation.\n\nUser: {}\n\nAssistant: {}",
@@ -587,8 +594,11 @@ impl Provider for CliCodexProvider {
         // No MCP bridge: titling is a pure text summarization, and giving it
         // vault tools would let a title request take side effects.
         match self.run(&prompt, model, None).await {
-            Ok(out) => out.text.trim().chars().take(100).collect(),
-            Err(_) => user_msg.chars().take(50).collect(),
+            Ok(out) => sanitize_title(&out.text, user_msg),
+            Err(error) => {
+                tracing::warn!("Codex title generation failed: {}", error);
+                fallback_title(user_msg)
+            }
         }
     }
 
@@ -1547,6 +1557,27 @@ mod tests {
         let result = app_server_tool_result(&web_completed, "thread", "turn").unwrap();
         assert_eq!(result.content, "Found 2 result(s)");
         assert_eq!(result.is_error, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn title_generation_uses_account_default_without_a_model_flag() {
+        let script = r#"#!/bin/sh
+printf '%s\n' "$@" > "$(dirname "$0")/args"
+cat >/dev/null
+echo '{"type":"agent_message","text":"**Codex Conversation Naming**"}'
+"#;
+        let (provider, dir) = scripted_provider(script);
+        let title_model = provider.title_model("gpt-account-model");
+        let title = provider
+            .generate_title("why is naming broken?", "Here is the cause.", &title_model)
+            .await;
+
+        assert_eq!(title_model, "default");
+        assert_eq!(title, "Codex Conversation Naming");
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        assert!(!args.lines().any(|arg| arg == "--model"), "{args}");
+        assert!(!args.contains("anthropic"), "{args}");
     }
 
     // Real codex-cli 0.145 output for a successful exec turn (the one-shot

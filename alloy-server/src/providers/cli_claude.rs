@@ -661,6 +661,11 @@ impl Provider for CliClaudeProvider {
         })
     }
 
+    fn title_model(&self, _conversation_model: &str) -> String {
+        // Claude Code accepts a bare alias; provider-prefixed ids are rejected.
+        "haiku".to_string()
+    }
+
     async fn generate_title(&self, user_msg: &str, assistant_msg: &str, model: &str) -> String {
         let prompt = format!(
             "Generate a short, descriptive title (3-6 words) for a conversation that started with this exchange. Return ONLY the title, no quotes or punctuation.\n\nUser: {}\n\nAssistant: {}",

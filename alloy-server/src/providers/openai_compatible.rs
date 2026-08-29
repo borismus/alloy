@@ -12,8 +12,8 @@ use serde_json::{json, Value};
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    chat_messages_to_openai, image_content_blocks, ChatMessage, Provider, ProviderStreamEvent,
-    StreamRequest, StreamResult, Usage,
+    chat_messages_to_openai, fallback_title, image_content_blocks, sanitize_title, ChatMessage,
+    Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 use crate::types::{to_openai_tools, ToolCall};
 
@@ -331,6 +331,14 @@ impl Provider for OpenAICompatibleProvider {
         })
     }
 
+    fn title_model(&self, conversation_model: &str) -> String {
+        if self.base_url.contains("openrouter.ai") {
+            "anthropic/claude-haiku-4-5".to_string()
+        } else {
+            conversation_model.to_string()
+        }
+    }
+
     async fn generate_title(&self, user_msg: &str, assistant_msg: &str, model: &str) -> String {
         let prompt = format!(
             "Generate a short, descriptive title (3-6 words) for a conversation that started with this exchange. Return ONLY the title, no quotes or punctuation.\n\nUser: {}\n\nAssistant: {}",
@@ -467,75 +475,6 @@ fn bracketed_stream_error(text: &str) -> Option<String> {
     (!message.is_empty()).then(|| message.to_string())
 }
 
-fn fallback_title(user_msg: &str) -> String {
-    user_msg.chars().take(50).collect()
-}
-
-/// Clean an LLM-generated title. Reasoning models (e.g. Qwen on mlx) frequently
-/// emit their chain-of-thought instead of a title — inside `<think>…</think>` or
-/// as plain narration ("Here's a thinking process: 1. Analyze user input…").
-/// Strip think blocks, and if what remains still reads like reasoning rather
-/// than a title, fall back to deriving one from the user's message.
-fn sanitize_title(raw: &str, user_msg: &str) -> String {
-    let stripped = strip_think_blocks(raw);
-    let first_line = stripped
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())
-        .unwrap_or("")
-        .trim_matches(|c: char| c == '"' || c == '\'' || c == '*' || c == '#')
-        .trim();
-
-    let nonblank_lines = stripped.lines().filter(|l| !l.trim().is_empty()).count();
-    let lower = stripped.to_lowercase();
-    let reads_like_reasoning = first_line.is_empty()
-        || first_line.chars().count() > 80
-        || first_line.ends_with(':')
-        || nonblank_lines > 2
-        || [
-            "thinking process",
-            "analyze user",
-            "the user is asking",
-            "the user wants",
-            "here's a",
-            "here is a",
-            "let me ",
-            "first, i",
-            "okay, so",
-            "step 1",
-        ]
-        .iter()
-        .any(|m| lower.contains(m));
-
-    if reads_like_reasoning {
-        fallback_title(user_msg)
-    } else {
-        first_line.chars().take(100).collect()
-    }
-}
-
-/// Remove `<think>…</think>` / `<thinking>…</thinking>` spans, including an
-/// unclosed trailing block (which a token limit can produce). Case-sensitive on
-/// the original string so byte indices stay valid for non-ASCII content.
-fn strip_think_blocks(s: &str) -> String {
-    let mut out = s.to_string();
-    for (open, close) in [("<think>", "</think>"), ("<thinking>", "</thinking>")] {
-        while let Some(start) = out.find(open) {
-            match out[start + open.len()..].find(close) {
-                Some(rel) => {
-                    let end = start + open.len() + rel + close.len();
-                    out.replace_range(start..end, "");
-                }
-                None => {
-                    out.truncate(start);
-                    break;
-                }
-            }
-        }
-    }
-    out
-}
-
 /// Flatten an error and its `source()` chain into one line. `reqwest` hides the
 /// real failure (connection refused, timed out, DNS, TLS) behind a generic
 /// "error sending request for url (...)" Display — the useful cause lives in the
@@ -656,7 +595,8 @@ mod tests {
 
     #[test]
     fn sanitize_title_strips_think_blocks_and_keeps_the_title() {
-        let raw = "<think>The user wants a title. Let me summarize.</think>\nHearth architecture chat";
+        let raw =
+            "<think>The user wants a title. Let me summarize.</think>\nHearth architecture chat";
         assert_eq!(sanitize_title(raw, "fallback"), "Hearth architecture chat");
     }
 
