@@ -4,6 +4,19 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.16
+
+- **Model favorites are simple again.** Stars now toggle only favorite status;
+  they can no longer unexpectedly promote a model to the default. The configured
+  default stays fixed above a divider with its own marker, while a separate
+  **Set default** row action appears on hover and remains visible on touch
+  devices. Default and favorite status are persisted independently.
+- **Scheduled-task failures are no longer silent.** The latest failed run gets a
+  persistent red sidebar state and a prominent error in task details. Tasks with
+  `email: true` send a distinct failure alert on the first error in a consecutive
+  failure streak, while deliberate skips remain silent and repeated failures do
+  not spam the inbox.
+
 ## 0.4.15
 
 - **Your configured default model is now authoritative.** New conversations,
