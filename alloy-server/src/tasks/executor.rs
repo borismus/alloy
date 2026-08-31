@@ -166,11 +166,8 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
     } else {
         return TaskRunOutcome {
             result: TaskVerdict::Error,
-            response: String::new(),
-            error: Some(format!(
-                "No JSON verdict found in response: \"{}\"",
-                tail_chars(content, 200)
-            )),
+            response: truncate_chars(content.trim(), 4_000),
+            error: Some("Model response did not end with the required JSON verdict.".into()),
             usage,
         };
     };
@@ -180,8 +177,8 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
         Err(error) => {
             return TaskRunOutcome {
                 result: TaskVerdict::Error,
-                response: String::new(),
-                error: Some(format!("Parse error: {}", error)),
+                response: truncate_chars(content.trim(), 4_000),
+                error: Some(format!("Model returned an invalid JSON verdict: {}", error)),
                 usage,
             };
         }
@@ -191,8 +188,8 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
         None => {
             return TaskRunOutcome {
                 result: TaskVerdict::Error,
-                response: String::new(),
-                error: Some("Invalid response: triggered must be boolean".into()),
+                response: truncate_chars(content.trim(), 4_000),
+                error: Some("Model verdict field `triggered` must be true or false.".into()),
                 usage,
             };
         }
@@ -281,11 +278,6 @@ fn truncate_chars(value: &str, max: usize) -> String {
     }
 }
 
-fn tail_chars(value: &str, max: usize) -> String {
-    let chars = value.chars().collect::<Vec<_>>();
-    chars[chars.len().saturating_sub(max)..].iter().collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,15 +331,22 @@ mod tests {
     }
 
     #[test]
-    fn missing_or_invalid_verdict_is_error() {
+    fn missing_or_invalid_verdict_is_error_with_copyable_response() {
+        let missing = parse_conditional_response("plain response asking a question", None);
+        assert_eq!(missing.result, TaskVerdict::Error);
         assert_eq!(
-            parse_conditional_response("plain response", None).result,
-            TaskVerdict::Error
+            missing.error.as_deref(),
+            Some("Model response did not end with the required JSON verdict.")
         );
+        assert_eq!(missing.response, "plain response asking a question");
+
+        let invalid = parse_conditional_response("{\"triggered\": \"yes\"}", None);
+        assert_eq!(invalid.result, TaskVerdict::Error);
         assert_eq!(
-            parse_conditional_response("{\"triggered\": \"yes\"}", None).result,
-            TaskVerdict::Error
+            invalid.error.as_deref(),
+            Some("Model verdict field `triggered` must be true or false.")
         );
+        assert_eq!(invalid.response, "{\"triggered\": \"yes\"}");
     }
 
     #[test]

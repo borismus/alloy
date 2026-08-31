@@ -207,11 +207,17 @@ async fn maybe_email_result(
                 .as_deref()
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or("Unknown task execution error");
-            let bounded = detail.chars().take(4_000).collect::<String>();
-            format!(
-                "The scheduled task tried to run, but no result was delivered.\n\n**Error:**\n\n{}",
-                bounded
-            )
+            let bounded_error = detail.chars().take(2_000).collect::<String>();
+            let raw_response = outcome.response.trim();
+            if raw_response.is_empty() {
+                format!("Error:\n{}", bounded_error)
+            } else {
+                let bounded_response = raw_response.chars().take(4_000).collect::<String>();
+                format!(
+                    "Error:\n{}\n\nModel response:\n{}",
+                    bounded_error, bounded_response
+                )
+            }
         }
     };
 
@@ -229,6 +235,7 @@ async fn maybe_email_result(
 
     let email = crate::notify::TaskEmail {
         kind,
+        task_id: &task.id,
         task_title: &task.title,
         model: &task.model,
         content_markdown: &content,
