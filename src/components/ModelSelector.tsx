@@ -309,9 +309,11 @@ function ModelResults({
       onAction={onPick}
       renderEmptyState={() => (
         <div className={styles.empty}>
-          {query.length === 0
-            ? (hasPinnedModels ? 'No pinned models match.' : 'No favorites yet — search for a model, then select ☆.')
-            : 'No models match your search.'}
+          {models.length === 0
+            ? 'Loading models…'
+            : query.length === 0
+              ? (hasPinnedModels ? 'No pinned models match.' : 'No favorites yet — search for a model, then select ☆.')
+              : 'No models match your search.'}
         </div>
       )}
     >

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { vaultService } from './services/vault';
 import { loadSelectedItem } from './services/selectionStorage';
+import { loadCachedModelCatalog, saveCachedModelCatalog } from './services/modelCatalogCache';
 import { skillRegistry } from './services/skills';
 import { riffService } from './services/riff';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
@@ -125,7 +126,8 @@ function modelListsMatch(a: ModelInfo[], b: ModelInfo[]): boolean {
       && model.name === other.name
       && model.provider === other.provider
       && model.local === other.local
-      && model.contextWindow === other.contextWindow;
+      && model.contextWindow === other.contextWindow
+      && model.supportsImages === other.supportsImages;
   });
 }
 
@@ -667,6 +669,10 @@ function AppContent() {
       try {
         const discovered = await fetchAvailableModelList();
         if (!disposed) {
+          const vaultPath = vaultService.getVaultPath();
+          if (vaultPath && discovered.length > 0) {
+            saveCachedModelCatalog(vaultPath, discovered);
+          }
           setAvailableModels(current => {
             // An empty catalog means discovery failed for every provider (the
             // endpoint answers 200 with []), not that the user removed their
@@ -782,6 +788,17 @@ function AppContent() {
         setConfig(loadedConfig);
         localStorage.setItem('vaultPath', path);
 
+        // Render the last successful catalog immediately. The live refresh
+        // below can take seconds on a cold server because it probes remote
+        // endpoints and subscription CLIs; cache entries are isolated by vault
+        // and filtered to providers that still exist in this config.
+        const configuredProviderIds = new Set(loadedConfig.providers?.map(provider => provider.id) ?? []);
+        const cachedModels = loadCachedModelCatalog(path).filter(model => {
+          const providerId = model.provider ?? model.key.split('/')[0];
+          return configuredProviderIds.has(providerId);
+        });
+        setAvailableModels(cachedModels);
+
         // Pull the live model list from the embedded alloy-server. This is
         // the only source of truth for available models in the all-server
         // architecture; the SPA no longer bundles per-provider lists.
@@ -795,7 +812,14 @@ function AppContent() {
         // lands; until then the config-declared model is used.
         void fetchAvailableModelList()
           .then(loadedModels => {
-            setAvailableModels(loadedModels);
+            if (loadedModels.length > 0) saveCachedModelCatalog(path, loadedModels);
+            setAvailableModels(current => {
+              if (loadedModels.length === 0 && current.length > 0) {
+                console.warn('[App] initial /api/models returned an empty catalog; keeping the cached models');
+                return current;
+              }
+              return modelListsMatch(current, loadedModels) ? current : loadedModels;
+            });
 
             // Warn loudly when defaultModel can't be honored. Without this the
             // SPA silently substitutes availableModels[0] in `getDefaultModel`.

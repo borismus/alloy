@@ -62,6 +62,23 @@ describe('ModelSelector interaction', () => {
     expect(await screen.findByRole('searchbox', { name: 'Search models' })).toBeTruthy();
   });
 
+  it('labels a cold catalog as loading instead of claiming there are no favorites', async () => {
+    const user = userEvent.setup();
+    render(
+      <ModelSelector
+        value="provider/default"
+        onChange={vi.fn()}
+        disabled={false}
+        models={[]}
+        favoriteModels={[]}
+        defaultModel="provider/default"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /^Model:/ }));
+    expect(await screen.findByText('Loading models…')).toBeTruthy();
+    expect(screen.queryByText(/No favorites yet/)).toBeNull();
+  });
+
   it('shows the default first with a fixed marker instead of a favorite button', async () => {
     const user = userEvent.setup();
     render(<Harness
