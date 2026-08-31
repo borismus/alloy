@@ -4,6 +4,17 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.17
+
+- **Model choices are available immediately after startup.** Alloy now keeps the
+  last successful model catalog per vault, renders it while live discovery
+  refreshes in the background, and shows an honest loading state the first time
+  a vault has no cached catalog.
+- **Task-failure emails are ready to copy into feedback.** Each alert contains a
+  selectable plaintext report with task ID, model, timestamp, error, and a
+  bounded copy of the model's invalid response, plus a link for opening an Alloy
+  GitHub issue after reviewing the report for private details.
+
 ## 0.4.16
 
 - **Model favorites are simple again.** Stars now toggle only favorite status;
