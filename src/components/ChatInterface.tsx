@@ -122,8 +122,10 @@ interface ChatInterfaceProps {
   onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
   availableModels: ModelInfo[];
   favoriteModels?: string[];  // Format: "provider/model-id"
-  /** Advance a model's star (favorite/default cycle); writes back to config.yaml. */
-  onCycleModelPreference?: (modelKey: string) => void;
+  /** Toggle a non-default model's favorite state in config.yaml. */
+  onToggleFavorite?: (modelKey: string) => void;
+  /** Assign a model as the default without changing favorites. */
+  onSetDefault?: (modelKey: string) => void;
   /** Configured default model from config.yaml. Used to seed the picker on
    *  the empty-state welcome screen; ignored if not in availableModels. */
   defaultModel?: string;
@@ -165,7 +167,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onModelChange,
   availableModels,
   favoriteModels,
-  onCycleModelPreference,
+  onToggleFavorite,
+  onSetDefault,
   defaultModel,
   onNavigateToNote,
   onNavigateToConversation,
@@ -638,7 +641,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             availableModels={availableModels}
             favoriteModels={favoriteModels}
             defaultModel={defaultModel}
-            onCycleModelPreference={onCycleModelPreference}
+            onToggleFavorite={onToggleFavorite}
+            onSetDefault={onSetDefault}
           />
         </div>
       );
@@ -776,7 +780,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         availableModels={availableModels}
         favoriteModels={favoriteModels}
         defaultModel={defaultModel}
-        onCycleModelPreference={onCycleModelPreference}
+        onToggleFavorite={onToggleFavorite}
+        onSetDefault={onSetDefault}
       />
     </div>
   );

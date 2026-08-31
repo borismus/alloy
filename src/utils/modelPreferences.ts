@@ -19,45 +19,13 @@ export function toggleFavoritePreference(
   return { ...current, favoriteModels: unique(favoriteModels) };
 }
 
-/**
- * Assign the single red default. Defaults are also persisted as favorites so
- * assigning a new default demotes the previous one to a yellow favorite.
- */
+/** Assign the default without changing any model's independent favorite state. */
 export function setDefaultPreference(
   current: ModelPreferences,
   modelKey: string,
 ): ModelPreferences {
   if (!modelKey || modelKey === current.defaultModel) return current;
-  return {
-    defaultModel: modelKey,
-    favoriteModels: unique([
-      ...current.favoriteModels,
-      current.defaultModel,
-      modelKey,
-    ]),
-  };
-}
-
-/**
- * Advance a model's star: hollow → favorite (yellow) → default (red) → hollow.
- * Promoting a new default demotes the previous one to a yellow favorite;
- * removing the default also clears its favorite so the glyph returns to hollow
- * and the deterministic fallback order applies until a new default is chosen.
- */
-export function cycleModelPreference(
-  current: ModelPreferences,
-  modelKey: string,
-): ModelPreferences {
-  if (modelKey === current.defaultModel) {
-    return {
-      defaultModel: '',
-      favoriteModels: current.favoriteModels.filter(key => key !== modelKey),
-    };
-  }
-  if (current.favoriteModels.includes(modelKey)) {
-    return setDefaultPreference(current, modelKey);
-  }
-  return toggleFavoritePreference(current, modelKey);
+  return { ...current, defaultModel: modelKey };
 }
 
 /** Apply immediately, then restore the prior state if persistence fails. */

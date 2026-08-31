@@ -63,7 +63,8 @@ interface TaskDetailViewProps {
   canGoBack?: boolean;
   onClose?: () => void;
   favoriteModels?: string[];
-  onCycleModelPreference?: (modelKey: string) => void;
+  onToggleFavorite?: (modelKey: string) => void;
+  onSetDefault?: (modelKey: string) => void;
   defaultModel?: string;
 }
 
@@ -136,7 +137,8 @@ export function TaskDetailView({
   canGoBack = false,
   onClose,
   favoriteModels,
-  onCycleModelPreference,
+  onToggleFavorite,
+  onSetDefault,
   defaultModel,
 }: TaskDetailViewProps) {
   const modelInfo = availableModels.find(m => m.key === task.model);
@@ -156,11 +158,19 @@ export function TaskDetailView({
   const deliveredByTimestamp = useMemo(() => deliveredMap(task), [task]);
   const history = task.history ?? [];
   const hasDelivered = deliveredByTimestamp.size > 0;
+  const latestError = history[0]?.result === 'error'
+    ? (history[0].error?.trim() || history[0].reasoning?.trim() || 'Task execution failed')
+    : null;
 
   // Default-open the newest delivered run (the "latest result"), falling back to
   // the newest run overall. Reactive (not a mount-time snapshot) so it lands on
   // the right entry once the task's history/messages hydrate.
   const defaultOpenKey = useMemo<string | null>(() => {
+    // A fresh failure outranks an older delivered result: opening the task must
+    // show why it failed instead of expanding a stale success underneath it.
+    if (history[0]?.result === 'error') {
+      return `${tsKey(history[0].timestamp)}-0`;
+    }
     for (let i = 0; i < history.length; i++) {
       if (deliveredByTimestamp.has(tsKey(history[i].timestamp))) {
         return `${tsKey(history[i].timestamp)}-${i}`;
@@ -361,6 +371,13 @@ export function TaskDetailView({
       </ItemHeader>
 
       <div className="task-detail-content">
+        {latestError && (
+          <div className="task-failure-banner" role="alert">
+            <strong>Latest run failed</strong>
+            <span>{latestError}</span>
+          </div>
+        )}
+
         {/* 1 — Config summary: schedule, model, email. Above the run history. */}
         <section className="task-config-section">
           <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''}`}>
@@ -401,7 +418,7 @@ export function TaskDetailView({
             <div className="task-model-value">
               <span
                 className={`task-email-tag ${task.email ? 'on' : 'off'}`}
-                title={task.email ? 'Delivered results are emailed via Resend' : 'This task does not send email'}
+                title={task.email ? 'Delivered results and first-failure alerts are emailed via Resend' : 'This task does not send email'}
               >
                 {task.email ? 'On' : 'Off'}
               </span>
@@ -500,7 +517,8 @@ export function TaskDetailView({
           defaultModel={defaultModel!}
           availableModels={availableModels}
           favoriteModels={favoriteModels}
-          onCycleModelPreference={onCycleModelPreference}
+          onToggleFavorite={onToggleFavorite}
+          onSetDefault={onSetDefault}
         />
       )}
     </div>

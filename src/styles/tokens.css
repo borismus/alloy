@@ -62,9 +62,6 @@
   --color-search-highlight-text: #333333;
   --color-model-favorite: #d97706;
   --color-model-favorite-hover: #b45309;
-  --color-model-default: #e7000b;
-  --color-model-default-hover: #c10007;
-  --color-model-default-glow: rgb(231 0 11 / 35%);
 
   /* Typography */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -165,9 +162,6 @@
   --color-search-highlight-text: #fff7ed;
   --color-model-favorite: #fbbf24;
   --color-model-favorite-hover: #fcd34d;
-  --color-model-default: #ff453a;
-  --color-model-default-hover: #ff6b61;
-  --color-model-default-glow: rgb(255 69 58 / 55%);
 
   --shadow-control: 0 2px 8px rgb(0 0 0 / 45%);
   --shadow-popover: 0 8px 24px rgb(0 0 0 / 50%);

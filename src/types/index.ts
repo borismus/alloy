@@ -150,7 +150,7 @@ export interface ScheduledTask {
   title: string;
   model: string;
   enabled: boolean;
-  /** When true, delivered results are also emailed via services.email (Resend). */
+  /** When true, delivered results and first-failure alerts are emailed via services.email (Resend). */
   email?: boolean;
   prompt: string;
   schedule: TaskSchedule;
@@ -199,7 +199,7 @@ export interface ProviderConfig {
 export interface Config {
   version?: number;
   defaultModel: string;  // Format: "provider/model-id" (e.g., "openrouter/anthropic/claude-opus-4-6")
-  // Favorite models shown at top of selectors.
+  // Independently favorited models shown beneath the fixed default in selectors.
   favoriteModels?: string[];
   // User-defined models, additive to the bundled defaults.
   // Entries whose key collides with a bundled model are ignored.

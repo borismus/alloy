@@ -130,9 +130,11 @@
 }
 
 .option {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  overflow: hidden;
   min-height: 44px;
   padding: 0.4rem 0.5rem;
   border-radius: 8px;
@@ -149,6 +151,13 @@
 .optionCurrent {
   color: var(--color-accent-strong);
   background: var(--color-accent-soft);
+}
+
+/* The configured default is a fixed first row, separated from mutable favorites. */
+.optionDefault {
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 8px 8px 2px 2px;
 }
 
 .option .providerTag {
@@ -202,15 +211,73 @@
   color: var(--color-model-favorite-hover);
 }
 
-/* The default outranks favorites: vivid red, slightly larger, soft glow. */
-.starDefault {
-  color: var(--color-model-default);
-  font-size: 21px;
-  text-shadow: 0 0 8px var(--color-model-default-glow);
+.defaultMarker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--color-accent-strong);
 }
 
-.starDefault:hover {
-  color: var(--color-model-default-hover);
+.defaultMarker svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Independent from the star: appears over the row's right edge on intent. */
+.setDefault {
+  position: absolute;
+  right: 0.4rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 0.55rem;
+  color: var(--color-accent-strong);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: -10px 0 12px var(--color-surface-raised);
+  cursor: pointer;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition: opacity var(--duration-fast), transform var(--duration-fast), border-color var(--duration-fast);
+}
+
+.option[data-hovered] .setDefault,
+.option:focus-within .setDefault {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.setDefault:hover {
+  border-color: var(--color-accent);
+}
+
+.setDefault:focus-visible {
+  outline: none;
+  box-shadow: -10px 0 12px var(--color-surface-raised), 0 0 0 3px var(--color-focus);
+}
+
+/* Touch devices have no hover preview, so keep the action discoverable. */
+@media (hover: none) {
+  .setDefault {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
 }
 
 .empty {

@@ -253,6 +253,31 @@
   border-color: var(--color-accent);
 }
 
+/* Persistent health state: latest task attempt failed (not an unread badge). */
+.timeline-item.task-failed {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+}
+
+.timeline-item.task-failed:hover {
+  background: var(--color-danger-soft);
+}
+
+.task-error-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 0.35rem;
+  color: #ffffff;
+  background: var(--color-danger);
+  border-radius: 50%;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .item-preview {
   font-size: 0.9rem;
   color: var(--color-text);

@@ -174,16 +174,17 @@ pub async fn run_once(
     Ok(outcome)
 }
 
-/// Email a delivered task result when the task opts in (`email: true`) and
-/// `services.email` is configured. Only `completed`/`triggered` runs are
-/// emailed; skips and errors are not.
+/// Email a task result or first failure when the task opts in (`email: true`)
+/// and `services.email` is configured. Deliberate skips remain silent. An
+/// ongoing error streak sends only its first alert so an offline host cannot
+/// produce one email per cron occurrence.
 async fn maybe_email_result(
     state: &AppState,
     task: &ScheduledTask,
     outcome: &TaskRunOutcome,
     scheduled_for: Option<DateTime<Utc>>,
 ) {
-    use crate::tasks::model::TaskVerdict;
+    use crate::notify::TaskEmailKind;
 
     if !task.email {
         return;
@@ -195,30 +196,70 @@ async fn maybe_email_result(
         );
         return;
     };
-    if !matches!(outcome.result, TaskVerdict::Completed | TaskVerdict::Triggered) {
+    let Some(kind) = email_kind(task, outcome) else {
         return;
-    }
-    if outcome.response.trim().is_empty() {
-        return;
-    }
+    };
+    let content = match kind {
+        TaskEmailKind::Result => outcome.response.trim().to_string(),
+        TaskEmailKind::Error => {
+            let detail = outcome
+                .error
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("Unknown task execution error");
+            let bounded = detail.chars().take(4_000).collect::<String>();
+            format!(
+                "The scheduled task tried to run, but no result was delivered.\n\n**Error:**\n\n{}",
+                bounded
+            )
+        }
+    };
 
-    let delivered_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let occurred_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     // Deterministic per cron occurrence so a retry or a second Alloy racing the
     // same slot doesn't double-send; manual runs key off the delivery instant.
     let occurrence = scheduled_for
         .map(|s| s.to_rfc3339_opts(SecondsFormat::Secs, true))
-        .unwrap_or_else(|| delivered_at.clone());
-    let idempotency_key = format!("task-{}-{}", task.id, occurrence);
+        .unwrap_or_else(|| occurred_at.clone());
+    let kind_key = match kind {
+        TaskEmailKind::Result => "result",
+        TaskEmailKind::Error => "error",
+    };
+    let idempotency_key = format!("task-{}-{}-{}", kind_key, task.id, occurrence);
 
     let email = crate::notify::TaskEmail {
+        kind,
         task_title: &task.title,
         model: &task.model,
-        result_markdown: &outcome.response,
-        delivered_at: &delivered_at,
+        content_markdown: &content,
+        occurred_at: &occurred_at,
         idempotency_key: &idempotency_key,
     };
     if let Err(e) = crate::notify::send_task_email(email_cfg, email).await {
-        tracing::warn!("failed to email task {} result: {}", task.id, e);
+        tracing::warn!("failed to email task {} notification: {}", task.id, e);
+    }
+}
+
+fn email_kind(
+    task: &ScheduledTask,
+    outcome: &TaskRunOutcome,
+) -> Option<crate::notify::TaskEmailKind> {
+    use crate::notify::TaskEmailKind;
+    use crate::tasks::model::TaskVerdict;
+
+    match outcome.result {
+        TaskVerdict::Completed | TaskVerdict::Triggered if !outcome.response.trim().is_empty() => {
+            Some(TaskEmailKind::Result)
+        }
+        TaskVerdict::Error => {
+            let previous_was_error = task
+                .history
+                .as_ref()
+                .and_then(|history| history.first())
+                .is_some_and(|attempt| attempt.result == TaskVerdict::Error);
+            (!previous_was_error).then_some(TaskEmailKind::Error)
+        }
+        TaskVerdict::Completed | TaskVerdict::Triggered | TaskVerdict::Skipped => None,
     }
 }
 
@@ -270,7 +311,8 @@ impl Default for SchedulerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tasks::model::{TaskSchedule, TaskTrigger};
+    use crate::notify::TaskEmailKind;
+    use crate::tasks::model::{TaskAttempt, TaskSchedule, TaskTrigger, TaskVerdict};
     use serde_yaml::Mapping;
 
     fn task(created: &str, last_scheduled: Option<&str>, cron: &str) -> ScheduledTask {
@@ -392,6 +434,63 @@ mod tests {
         assert_eq!(
             value.last_scheduled_at.as_deref(),
             Some("2026-07-20T08:00:00Z")
+        );
+    }
+
+    #[test]
+    fn email_semantics_distinguish_delivery_skip_and_first_failure() {
+        let mut value = task("2026-07-20T00:00:00Z", None, "0 8 * * *");
+        let outcome = |result, response: &str, error: Option<&str>| TaskRunOutcome {
+            result,
+            response: response.into(),
+            error: error.map(str::to_string),
+            usage: None,
+        };
+
+        assert_eq!(
+            email_kind(&value, &outcome(TaskVerdict::Completed, "report", None)),
+            Some(TaskEmailKind::Result)
+        );
+        assert_eq!(
+            email_kind(&value, &outcome(TaskVerdict::Triggered, "alert", None)),
+            Some(TaskEmailKind::Result)
+        );
+        assert_eq!(
+            email_kind(&value, &outcome(TaskVerdict::Skipped, "not changed", None)),
+            None
+        );
+        assert_eq!(
+            email_kind(
+                &value,
+                &outcome(TaskVerdict::Error, "", Some("model unavailable"))
+            ),
+            Some(TaskEmailKind::Error)
+        );
+
+        value.history = Some(vec![TaskAttempt {
+            timestamp: "2026-07-20T01:00:00Z".into(),
+            result: TaskVerdict::Error,
+            reasoning: String::new(),
+            error: Some("still unavailable".into()),
+            usage: None,
+        }]);
+        assert_eq!(
+            email_kind(
+                &value,
+                &outcome(TaskVerdict::Error, "", Some("model unavailable"))
+            ),
+            None,
+            "continuing error streak must not spam"
+        );
+
+        value.history.as_mut().unwrap()[0].result = TaskVerdict::Skipped;
+        assert_eq!(
+            email_kind(
+                &value,
+                &outcome(TaskVerdict::Error, "", Some("model unavailable"))
+            ),
+            Some(TaskEmailKind::Error),
+            "an error after a non-error run starts a new alertable streak"
         );
     }
 

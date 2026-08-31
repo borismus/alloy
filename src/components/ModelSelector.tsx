@@ -86,9 +86,10 @@ interface ModelSelectorProps {
   favoriteModels?: string[];  // Format: "provider/model-id"
   /** The one configured model used for new resources. */
   defaultModel?: string;
-  /** Advance a model's star (hollow → favorite → default → hollow). Parent
-   *  owns the state machine and persistence. */
-  onCycleModelPreference?: (modelKey: string) => void;
+  /** Toggle a non-default model's favorite state. */
+  onToggleFavorite?: (modelKey: string) => void;
+  /** Assign a model as the default without changing its favorite state. */
+  onSetDefault?: (modelKey: string) => void;
 }
 
 export function ModelSelector({
@@ -98,7 +99,8 @@ export function ModelSelector({
   models,
   favoriteModels = [],
   defaultModel,
-  onCycleModelPreference,
+  onToggleFavorite,
+  onSetDefault,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   // Focusing the search field on open pops the iOS software keyboard, which
@@ -143,7 +145,8 @@ export function ModelSelector({
             favoriteModels={favoriteModels}
             defaultModel={defaultModel}
             onPick={handlePick}
-            onCycleModelPreference={onCycleModelPreference}
+            onToggleFavorite={onToggleFavorite}
+            onSetDefault={onSetDefault}
           />
         </Autocomplete>
       </Popover>
@@ -157,49 +160,90 @@ interface ModelResultsProps {
   favoriteModels: string[];
   defaultModel?: string;
   onPick: (key: Key) => void;
-  onCycleModelPreference?: (modelKey: string) => void;
+  onToggleFavorite?: (modelKey: string) => void;
+  onSetDefault?: (modelKey: string) => void;
 }
 
 type ModelPreference = 'none' | 'favorite' | 'default';
 
-interface PreferenceControlProps {
+interface FavoriteControlProps {
   model: ModelInfo;
-  preference: ModelPreference;
-  onCycle?: (modelKey: string) => void;
+  isFavorite: boolean;
+  onToggle?: (modelKey: string) => void;
 }
 
-/**
- * One star, three states. Each activation advances hollow → yellow favorite →
- * red default → hollow; the label always describes what the next click does.
- */
-function PreferenceControl({ model, preference, onCycle }: PreferenceControlProps) {
-  const label = preference === 'default'
-    ? `Remove ${model.name} as default`
-    : preference === 'favorite'
-      ? `Make ${model.name} the default model`
-      : `Add ${model.name} to favorites`;
+/** A plain two-state favorite toggle. Defaults use a separate, static marker. */
+function FavoriteControl({ model, isFavorite, onToggle }: FavoriteControlProps) {
+  const label = isFavorite
+    ? `Remove ${model.name} from favorites`
+    : `Add ${model.name} to favorites`;
 
   return (
     <span
       role="button"
       tabIndex={0}
-      className={`${styles.star} ${preference === 'favorite' ? styles.starOn : ''} ${preference === 'default' ? styles.starDefault : ''}`}
+      className={`${styles.star} ${isFavorite ? styles.starOn : ''}`}
       aria-label={label}
       title={label}
-      data-preference={preference}
+      data-favorite={isFavorite}
       onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
       onClick={(event) => {
         event.stopPropagation();
-        onCycle?.(model.key);
+        onToggle?.(model.key);
       }}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         event.stopPropagation();
-        onCycle?.(model.key);
+        onToggle?.(model.key);
       }}
     >
-      {preference === 'none' ? '☆' : '★'}
+      {isFavorite ? '★' : '☆'}
+    </span>
+  );
+}
+
+function DefaultMarker() {
+  return (
+    <span
+      className={styles.defaultMarker}
+      role="img"
+      aria-label="Default model"
+      title="Default model"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="10" cy="10" r="7.25" />
+        <path d="m6.75 10.1 2.05 2.05 4.45-4.55" />
+      </svg>
+    </span>
+  );
+}
+
+function SetDefaultControl({ model, onSetDefault }: {
+  model: ModelInfo;
+  onSetDefault?: (modelKey: string) => void;
+}) {
+  const label = `Set ${model.name} as default`;
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className={styles.setDefault}
+      aria-label={label}
+      title={label}
+      onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSetDefault?.(model.key);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSetDefault?.(model.key);
+      }}
+    >
+      Set default
     </span>
   );
 }
@@ -212,7 +256,8 @@ function ModelResults({
   favoriteModels,
   defaultModel,
   onPick,
-  onCycleModelPreference,
+  onToggleFavorite,
+  onSetDefault,
 }: ModelResultsProps) {
   const state = useContext(AutocompleteStateContext);
   const query = (state?.inputValue ?? '').trim();
@@ -220,10 +265,9 @@ function ModelResults({
     key === defaultModel ? 'default' : favoriteModels.includes(key) ? 'favorite' : 'none';
   const hasPinnedModels = models.some(model => preferenceFor(model.key) !== 'none');
 
-  // Rows shown while this popover has been open. Cycling a star must restyle
-  // the row, not yank it out from under the pointer — so the empty-query list
-  // can grow (newly starred models) but never shrinks until the next open.
-  // ModelResults remounts with the popover, so this resets naturally.
+  // Rows shown while this popover has been open. Toggling a favorite must
+  // restyle the row, not yank it out from under the pointer — so the empty-query
+  // list can grow but never shrinks until the next open.
   const [sessionPinnedKeys] = useState(() => new Set<string>());
 
   const rows = useMemo<Array<ModelInfo & { preference: ModelPreference }>>(() => {
@@ -232,9 +276,8 @@ function ModelResults({
       for (const model of models) {
         if (preferenceFor(model.key) !== 'none') sessionPinnedKeys.add(model.key);
       }
-      // Only when nothing at all is starred does the selected model earn a
-      // pin, so the picker never looks empty — but an unstarred model must NOT
-      // reappear beside the remaining favorites on the next open.
+      // With no configured default or favorites, pin the selected model so the
+      // picker has a useful starting row.
       if (sessionPinnedKeys.size === 0) {
         const selected = models.find(model => model.key === value);
         if (selected) sessionPinnedKeys.add(selected.key);
@@ -247,9 +290,13 @@ function ModelResults({
         .sort((a, b) => a.rank - b.rank || a.m.name.localeCompare(b.m.name))
         .map(x => x.m);
     }
-    // Bake preference into each row so the row's identity changes when config
-    // changes; otherwise React Aria caches the row by key and the star can keep
-    // its previous color/accessible label.
+
+    // The default is a separate, fixed choice above the mutable favorites.
+    // Stable sort preserves relevance/catalog order for every other row.
+    list.sort((a, b) => Number(b.key === defaultModel) - Number(a.key === defaultModel));
+
+    // Bake preference into each row so React Aria refreshes the star's color and
+    // accessible label after an optimistic config update.
     return list.map(model => ({ ...model, preference: preferenceFor(model.key) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, value, models, favoriteModels, defaultModel]);
@@ -263,7 +310,7 @@ function ModelResults({
       renderEmptyState={() => (
         <div className={styles.empty}>
           {query.length === 0
-            ? (hasPinnedModels ? 'No pinned models match.' : 'No favorites yet — type to find a model, then ☆ for options.')
+            ? (hasPinnedModels ? 'No pinned models match.' : 'No favorites yet — search for a model, then select ☆.')
             : 'No models match your search.'}
         </div>
       )}
@@ -272,15 +319,23 @@ function ModelResults({
         <ListBoxItem
           id={model.key}
           textValue={model.name}
-          className={`${styles.option} ${model.key === value ? styles.optionCurrent : ''}`}
+          data-default={model.preference === 'default' || undefined}
+          className={`${styles.option} ${model.key === value ? styles.optionCurrent : ''} ${model.preference === 'default' ? styles.optionDefault : ''}`}
         >
-          <PreferenceControl
-            model={model}
-            preference={model.preference}
-            onCycle={onCycleModelPreference}
-          />
+          {model.preference === 'default' ? (
+            <DefaultMarker />
+          ) : (
+            <FavoriteControl
+              model={model}
+              isFavorite={model.preference === 'favorite'}
+              onToggle={onToggleFavorite}
+            />
+          )}
           <ProviderTag model={model} />
           <span className={styles.optionName}>{model.name}</span>
+          {model.preference !== 'default' && onSetDefault && (
+            <SetDefaultControl model={model} onSetDefault={onSetDefault} />
+          )}
         </ListBoxItem>
       )}
     </ListBox>

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  cycleModelPreference,
   persistModelPreferencesOptimistically,
   setDefaultPreference,
   toggleFavoritePreference,
@@ -9,40 +8,36 @@ import {
 
 const initial: ModelPreferences = {
   defaultModel: 'provider/default',
-  favoriteModels: ['provider/default', 'provider/favorite'],
+  favoriteModels: ['provider/favorite'],
 };
 
 describe('model preferences', () => {
-  it('toggles yellow favorites but never removes the active default', () => {
-    expect(toggleFavoritePreference(initial, 'provider/new').favoriteModels)
-      .toEqual(['provider/default', 'provider/favorite', 'provider/new']);
-    expect(toggleFavoritePreference(initial, 'provider/favorite').favoriteModels)
-      .toEqual(['provider/default']);
+  it('toggles favorites directly but never changes the active default', () => {
+    expect(toggleFavoritePreference(initial, 'provider/new')).toEqual({
+      defaultModel: 'provider/default',
+      favoriteModels: ['provider/favorite', 'provider/new'],
+    });
+    expect(toggleFavoritePreference(initial, 'provider/favorite')).toEqual({
+      defaultModel: 'provider/default',
+      favoriteModels: [],
+    });
     expect(toggleFavoritePreference(initial, 'provider/default')).toBe(initial);
   });
 
-  it('assigns one default and demotes the previous default to a favorite', () => {
+  it('changes the default without changing independent favorite state', () => {
     expect(setDefaultPreference(initial, 'provider/new')).toEqual({
       defaultModel: 'provider/new',
-      favoriteModels: ['provider/default', 'provider/favorite', 'provider/new'],
+      favoriteModels: ['provider/favorite'],
     });
   });
 
-  it('cycles hollow → favorite → default → hollow', () => {
-    const hollow = cycleModelPreference(initial, 'provider/new');
-    expect(hollow.favoriteModels).toContain('provider/new');
-    expect(hollow.defaultModel).toBe('provider/default');
+  it('preserves a favorite while it temporarily serves as the default', () => {
+    const withFavorite = toggleFavoritePreference(initial, 'provider/new');
+    const promoted = setDefaultPreference(withFavorite, 'provider/new');
+    expect(promoted.favoriteModels).toContain('provider/new');
 
-    const promoted = cycleModelPreference(hollow, 'provider/new');
-    expect(promoted.defaultModel).toBe('provider/new');
-    // The previous default demotes to a yellow favorite, never vanishing.
-    expect(promoted.favoriteModels).toContain('provider/default');
-
-    const cleared = cycleModelPreference(promoted, 'provider/new');
-    expect(cleared.defaultModel).toBe('');
-    expect(cleared.favoriteModels).not.toContain('provider/new');
-    // Unrelated favorites survive the whole cycle.
-    expect(cleared.favoriteModels).toContain('provider/favorite');
+    const replaced = setDefaultPreference(promoted, 'provider/other');
+    expect(replaced.favoriteModels).toContain('provider/new');
   });
 
   it('rolls optimistic state back when the config write fails', async () => {

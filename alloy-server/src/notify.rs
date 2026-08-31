@@ -1,10 +1,10 @@
 //! Outbound notifications for scheduled tasks.
 //!
 //! Today this is email via [Resend](https://resend.com). A task with
-//! `email: true` gets its delivered result emailed *after* the result is
-//! persisted to `tasks/*.yaml` — email is a best-effort fan-out channel, never
-//! part of the task's own success/failure. A send failure is logged and
-//! swallowed so it can't turn a good run into an error.
+//! `email: true` gets delivered results and first-failure alerts emailed *after*
+//! the run is persisted to `tasks/*.yaml` — email is a best-effort fan-out
+//! channel, never part of the task's own success/failure. A send failure is
+//! logged and swallowed so it can't change the recorded run outcome.
 
 use std::time::Duration;
 
@@ -15,13 +15,20 @@ use crate::config::EmailConfig;
 const RESEND_URL: &str = "https://api.resend.com/emails";
 const SEND_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// One task result to email. Borrowed so the caller doesn't clone the body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskEmailKind {
+    Result,
+    Error,
+}
+
+/// One task notification to email. Borrowed so the caller doesn't clone the body.
 pub struct TaskEmail<'a> {
+    pub kind: TaskEmailKind,
     pub task_title: &'a str,
     pub model: &'a str,
-    pub result_markdown: &'a str,
-    /// ISO timestamp the result was delivered.
-    pub delivered_at: &'a str,
+    pub content_markdown: &'a str,
+    /// ISO timestamp the result or failure occurred.
+    pub occurred_at: &'a str,
     /// Stable key so a retry (or a second Alloy racing the same cron slot)
     /// doesn't send a duplicate. Resend honors the `Idempotency-Key` header.
     pub idempotency_key: &'a str,
@@ -30,7 +37,7 @@ pub struct TaskEmail<'a> {
 /// Send a task result email via Resend. Best-effort: returns `Err` only so the
 /// caller can log it; callers must not propagate it into task state.
 pub async fn send_task_email(cfg: &EmailConfig, email: TaskEmail<'_>) -> anyhow::Result<()> {
-    let subject = format!("[Alloy] {}", email.task_title);
+    let subject = subject(&email);
     let html = render_html(&email);
     let text = render_text(&email);
 
@@ -42,9 +49,7 @@ pub async fn send_task_email(cfg: &EmailConfig, email: TaskEmail<'_>) -> anyhow:
         "text": text,
     });
 
-    let client = reqwest::Client::builder()
-        .timeout(SEND_TIMEOUT)
-        .build()?;
+    let client = reqwest::Client::builder().timeout(SEND_TIMEOUT).build()?;
     let response = client
         .post(RESEND_URL)
         .header("Authorization", format!("Bearer {}", cfg.api_key))
@@ -60,7 +65,7 @@ pub async fn send_task_email(cfg: &EmailConfig, email: TaskEmail<'_>) -> anyhow:
         anyhow::bail!("Resend returned {}: {}", status, detail);
     }
     tracing::info!(
-        "emailed task result \"{}\" to {} recipient(s)",
+        "emailed task notification \"{}\" to {} recipient(s)",
         email.task_title,
         cfg.to.len()
     );
@@ -75,22 +80,31 @@ fn render_html(email: &TaskEmail<'_>) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
-    let parser = Parser::new_ext(email.result_markdown, options);
+    let parser = Parser::new_ext(email.content_markdown, options);
     let mut rendered = String::new();
     html::push_html(&mut rendered, parser);
 
     let footer = format!(
         "{} &middot; {}",
         escape_html(email.model),
-        escape_html(email.delivered_at)
+        escape_html(email.occurred_at)
     );
+    let status = match email.kind {
+        TaskEmailKind::Result => String::new(),
+        TaskEmailKind::Error => {
+            "<div style=\"padding:10px 12px;margin-bottom:16px;border-radius:6px;\
+             background:#fef2f2;color:#b91c1c;font-weight:700;\">Scheduled task failed</div>"
+                .to_string()
+        }
+    };
     format!(
         "<div style=\"font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;\
          font-size:15px;line-height:1.55;color:#222;max-width:640px;margin:0 auto;\">\
-         {body}\
+         {status}{body}\
          <hr style=\"border:none;border-top:1px solid #e0e0e0;margin:24px 0 12px;\">\
          <div style=\"font-size:12px;color:#888;\">{footer}</div>\
          </div>",
+        status = status,
         body = rendered,
         footer = footer,
     )
@@ -98,10 +112,21 @@ fn render_html(email: &TaskEmail<'_>) -> String {
 
 /// Plain-text fallback: the raw Markdown plus a short footer.
 fn render_text(email: &TaskEmail<'_>) -> String {
+    let heading = match email.kind {
+        TaskEmailKind::Result => "",
+        TaskEmailKind::Error => "SCHEDULED TASK FAILED\n\n",
+    };
     format!(
-        "{}\n\n---\n{} · {}\n",
-        email.result_markdown, email.model, email.delivered_at
+        "{}{}\n\n---\n{} · {}\n",
+        heading, email.content_markdown, email.model, email.occurred_at
     )
+}
+
+fn subject(email: &TaskEmail<'_>) -> String {
+    match email.kind {
+        TaskEmailKind::Result => format!("[Alloy] {}", email.task_title),
+        TaskEmailKind::Error => format!("[Alloy] Task failed: {}", email.task_title),
+    }
 }
 
 fn escape_html(s: &str) -> String {
@@ -116,10 +141,11 @@ mod tests {
 
     fn sample() -> TaskEmail<'static> {
         TaskEmail {
+            kind: TaskEmailKind::Result,
             task_title: "Nightly Digest",
             model: "mlx/Qwen",
-            result_markdown: "# Interests\n\n- **local-first** software\n",
-            delivered_at: "2026-07-20T09:00:00Z",
+            content_markdown: "# Interests\n\n- **local-first** software\n",
+            occurred_at: "2026-07-20T09:00:00Z",
             idempotency_key: "task-abc-2026-07-20T02:00:00Z",
         }
     }
@@ -138,6 +164,16 @@ mod tests {
         let text = render_text(&sample());
         assert!(text.contains("# Interests"));
         assert!(text.ends_with("mlx/Qwen · 2026-07-20T09:00:00Z\n"));
+    }
+
+    #[test]
+    fn error_notification_is_unmistakable() {
+        let mut email = sample();
+        email.kind = TaskEmailKind::Error;
+        email.content_markdown = "The model host is offline.";
+        assert_eq!(subject(&email), "[Alloy] Task failed: Nightly Digest");
+        assert!(render_html(&email).contains("Scheduled task failed"));
+        assert!(render_text(&email).starts_with("SCHEDULED TASK FAILED"));
     }
 
     #[test]

@@ -29,7 +29,8 @@ interface AiEditPanelProps {
   defaultModel: string;
   availableModels: ModelInfo[];
   favoriteModels?: string[];
-  onCycleModelPreference?: (modelKey: string) => void;
+  onToggleFavorite?: (modelKey: string) => void;
+  onSetDefault?: (modelKey: string) => void;
 }
 
 /** Strip a single surrounding ``` code fence, if the model wrapped its output. */
@@ -58,7 +59,8 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
   defaultModel,
   availableModels,
   favoriteModels,
-  onCycleModelPreference,
+  onToggleFavorite,
+  onSetDefault,
 }) => {
   const [input, setInput] = useState('');
   const [model, setModel] = useState(defaultModel);
@@ -191,7 +193,8 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
           models={availableModels}
           favoriteModels={favoriteModels}
           defaultModel={defaultModel}
-          onCycleModelPreference={onCycleModelPreference}
+          onToggleFavorite={onToggleFavorite}
+          onSetDefault={onSetDefault}
         />
         {isGenerating ? (
           <button type="button" className="ai-edit-submit stop" onClick={handleStop} aria-label="Stop">

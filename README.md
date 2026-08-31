@@ -104,12 +104,13 @@ All models are configured under a single `providers:` list in config v2
 badge and private-directory access; omission is treated as cloud.
 
 `defaultModel` is the authoritative model for new conversations, riffs, and
-other default-seeded work. In the picker, clicking a model's star cycles it
-through hollow → yellow favorite → red default → hollow; there is at most one
-red default, and promoting a new one demotes the previous default to a yellow
-favorite. If the configured default is unset or unavailable after discovery,
-Alloy falls back deterministically to the first reachable favorite in config
-order, then the first model in the live catalog.
+other default-seeded work. The picker keeps it fixed at the top with a distinct
+default marker and divider; its star cannot be changed there. Every other model
+has an independent favorite toggle plus a **Set default** action on hover (always
+visible on touch devices). You can also edit `config.yaml` directly. If the
+configured default is unset or unavailable after discovery, Alloy falls back
+deterministically to the first reachable favorite in config order, then the
+first model in the live catalog.
 
 - **OpenRouter** — one key for Claude, GPT, Gemini, Grok, Llama, and more (the cloud gateway)
 - **oMLX** — local, on-device models through an OpenAI-compatible endpoint (mark `local: true`; prompts stay on your machine/LAN)

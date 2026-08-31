@@ -15,7 +15,7 @@ Help the user create or edit recurring tasks that run server-side while the Allo
 4. **Timezone** — use an explicit IANA timezone when the request is calendar-based, such as `America/Los_Angeles`. If omitted, Alloy resolves and persists the server's local timezone.
 5. **Delivery condition** — optional. Ask only when it is ambiguous whether every result should be delivered.
 6. **Model** — optional; otherwise use the configured default.
-7. **Email** — optional. Set `email: true` only when the user asks to be emailed each result. Requires `services.email` (Resend) in config.yaml. Be cautious enabling it for tasks that read private notes, since the full result is emailed.
+7. **Email** — optional. Set `email: true` only when the user asks to be emailed each delivered result and the first error in a consecutive failure streak. Requires `services.email` (Resend) in config.yaml. Be cautious enabling it for tasks that read private notes, since full results and operational error details leave the machine by email.
 
 ## Distinguish reports from monitors
 

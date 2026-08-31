@@ -15,9 +15,10 @@ pub struct ScheduledTask {
     pub title: String,
     pub model: String,
     pub enabled: bool,
-    /// When true, a delivered result (completed/triggered) is also emailed via
-    /// the configured Resend service. Opt-in per task; default off so private
-    /// results never leave the machine unless asked. See `crate::notify`.
+    /// When true, delivered results (completed/triggered) and the first error
+    /// in a consecutive failure streak are emailed via the configured Resend
+    /// service. Opt-in per task; default off so private results and operational
+    /// details never leave the machine unless asked. See `crate::notify`.
     #[serde(default)]
     pub email: bool,
     pub prompt: String,

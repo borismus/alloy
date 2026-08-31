@@ -46,7 +46,7 @@ test('positions creation actions responsively and keeps the riff command reachab
   await expect(page.getByRole('menuitem', { name: 'New riff' })).toBeVisible();
 });
 
-test('opens a conversation and shows the composer and model picker', async ({ page }) => {
+test('opens a conversation and shows the composer and model picker', async ({ page }, testInfo) => {
   await page.getByText('Welcome to Alloy').click();
 
   await expect(page.locator('.input-row textarea')).toBeVisible();
@@ -56,9 +56,21 @@ test('opens a conversation and shows the composer and model picker', async ({ pa
   await expect(picker).toBeVisible();
   await picker.click();
   await expect(page.getByRole('option').filter({ hasText: /Claude/ }).first()).toBeVisible();
-  const defaultStar = page.getByRole('button', { name: /Remove Claude Sonnet.* as default/i });
-  await expect(defaultStar).toBeVisible();
-  await expect(defaultStar).toHaveAttribute('data-preference', 'default');
+  const defaultRow = page.getByRole('option').filter({ hasText: /Claude Sonnet/ });
+  await expect(defaultRow).toHaveAttribute('data-default', 'true');
+  await expect(defaultRow.getByRole('img', { name: 'Default model' })).toBeVisible();
+  await expect(defaultRow.getByRole('button', { name: /favorites/i })).toHaveCount(0);
+
+  await page.getByRole('searchbox', { name: 'Search models' }).fill('opus');
+  const opusRow = page.getByRole('option').filter({ hasText: /Claude Opus/ }).first();
+  const setDefault = opusRow.getByRole('button', { name: /Set Claude Opus.* as default/i });
+  await expect(setDefault).toBeAttached();
+  if (testInfo.project.name === 'mobile') {
+    await expect(setDefault).toHaveCSS('opacity', '1');
+  } else {
+    await opusRow.hover();
+    await expect(setDefault).toHaveCSS('opacity', '1');
+  }
 });
 
 test('new conversations use the configured default before and after discovery', async ({ page }) => {

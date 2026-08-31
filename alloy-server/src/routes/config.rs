@@ -210,8 +210,8 @@ fn splice_model_preferences(
     default_model: &str,
     favorite_models: &[String],
 ) -> String {
-    // Cycling the default off sends an empty string; write it as an explicit
-    // quoted empty scalar rather than a bare dangling key.
+    // A directly edited config may intentionally clear the default; preserve an
+    // explicit empty string rather than writing a bare dangling YAML key.
     let default_value = if default_model.is_empty() {
         "\"\""
     } else {
@@ -285,16 +285,12 @@ mod tests {
 
     #[test]
     fn splices_model_preferences_together_without_losing_comments() {
-        let existing = "version: 2\n# preferred models\ndefaultModel: old/default\nfavoriteModels:\n  - old/default\n# providers stay put\nproviders: []\n";
-        let next = splice_model_preferences(
-            existing,
-            "new/default",
-            &["old/default".into(), "new/default".into()],
-        );
+        let existing = "version: 2\n# preferred models\ndefaultModel: old/default\nfavoriteModels:\n  - favorite/one\n# providers stay put\nproviders: []\n";
+        let next = splice_model_preferences(existing, "new/default", &["favorite/one".into()]);
 
         assert!(next.contains("defaultModel: new/default"), "{next}");
         assert!(
-            next.contains("favoriteModels:\n  - old/default\n  - new/default\n"),
+            next.contains("favoriteModels:\n  - favorite/one\n"),
             "{next}"
         );
         assert!(next.contains("# preferred models"), "{next}");
@@ -304,7 +300,7 @@ mod tests {
         );
         assert!(!next.contains("defaultModel: old/default"), "{next}");
 
-        // Unsetting the default (red → hollow) writes a quoted empty scalar.
+        // Directly clearing the default writes a quoted empty scalar.
         let cleared = splice_model_preferences(existing, "", &[]);
         assert!(cleared.contains("defaultModel: \"\""), "{cleared}");
         assert!(cleared.contains("favoriteModels: []"), "{cleared}");

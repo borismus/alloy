@@ -122,6 +122,12 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
   },
 );
 
+function latestTaskError(item: TimelineItem): string | null {
+  const attempt = item.type === 'task' ? item.task?.history?.[0] : undefined;
+  if (attempt?.result !== 'error') return null;
+  return attempt.error?.trim() || attempt.reasoning?.trim() || 'Task execution failed';
+}
+
 // FLIP animation helper - stores previous positions of items
 function useFLIPAnimation(items: TimelineItem[]) {
   const positionsRef = useRef<Map<string, DOMRect>>(new Map());
@@ -575,7 +581,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               data-item-id={item.id}
               className={`timeline-item ${item.type} ${
                 item.id === selectedItemId ? 'active' : ''
-              }${streamingConversationIds.includes(item.id) ? ' streaming' : ''}`}
+              }${streamingConversationIds.includes(item.id) ? ' streaming' : ''}${
+                latestTaskError(item) ? ' task-failed' : ''
+              }`}
               onClick={() => {
                 // A long-press already opened the menu; don't also select.
                 if (didLongPress.current) {
@@ -606,7 +614,16 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 {streamingConversationIds.includes(item.id) && (
                   <span className="streaming-indicator" title="Streaming...">●</span>
                 )}
+                {latestTaskError(item) && (
+                  <span
+                    className="task-error-indicator"
+                    role="img"
+                    aria-label="Latest task run failed"
+                    title={latestTaskError(item) ?? undefined}
+                  >!</span>
+                )}
                 {!streamingConversationIds.includes(item.id) &&
+                 !latestTaskError(item) &&
                  (unreadConversationIds.includes(item.id) || deliveredTaskIds.includes(item.id)) && (
                   <span className="unread-indicator" title={deliveredTaskIds.includes(item.id) ? "Task result delivered" : "New response"}>●</span>
                 )}

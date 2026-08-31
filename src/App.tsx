@@ -28,7 +28,8 @@ import { isTauri } from './services/api';
 import { openInEditor, type ExternalEditor } from './utils/openInEditor';
 import { chooseDefaultModel } from './utils/models';
 import {
-  cycleModelPreference,
+  setDefaultPreference,
+  toggleFavoritePreference,
   persistModelPreferencesOptimistically,
   type ModelPreferences,
 } from './utils/modelPreferences';
@@ -1025,12 +1026,20 @@ function AppContent() {
     }
   }, [markSelfWrite, showToast]);
 
-  const handleCycleModelPreference = useCallback(async (modelKey: string) => {
+  const handleToggleFavorite = useCallback(async (modelKey: string) => {
     const current: ModelPreferences = {
       defaultModel: config?.defaultModel ?? '',
       favoriteModels: config?.favoriteModels ?? [],
     };
-    await persistModelPreferences(current, cycleModelPreference(current, modelKey));
+    await persistModelPreferences(current, toggleFavoritePreference(current, modelKey));
+  }, [config?.defaultModel, config?.favoriteModels, persistModelPreferences]);
+
+  const handleSetDefaultModel = useCallback(async (modelKey: string) => {
+    const current: ModelPreferences = {
+      defaultModel: config?.defaultModel ?? '',
+      favoriteModels: config?.favoriteModels ?? [],
+    };
+    await persistModelPreferences(current, setDefaultPreference(current, modelKey));
   }, [config?.defaultModel, config?.favoriteModels, persistModelPreferences]);
 
   const handleModelChange = (modelKey: string) => {
@@ -1336,7 +1345,8 @@ function AppContent() {
                   task={selectedTask}
                   availableModels={availableModels}
                   favoriteModels={config?.favoriteModels}
-                  onCycleModelPreference={handleCycleModelPreference}
+                  onToggleFavorite={handleToggleFavorite}
+                  onSetDefault={handleSetDefaultModel}
                   defaultModel={config?.defaultModel}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
@@ -1382,7 +1392,8 @@ function AppContent() {
                   onSaveNote={handleSaveNoteEdit}
                   availableModels={availableModels}
                   favoriteModels={config?.favoriteModels}
-                  onCycleModelPreference={handleCycleModelPreference}
+                  onToggleFavorite={handleToggleFavorite}
+                  onSetDefault={handleSetDefaultModel}
                   defaultModel={config?.defaultModel}
                   conversations={conversations}
                   onBack={() => setMobileView('list')}
@@ -1419,7 +1430,8 @@ function AppContent() {
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
                 favoriteModels={config?.favoriteModels}
-                onCycleModelPreference={handleCycleModelPreference}
+                onToggleFavorite={handleToggleFavorite}
+                onSetDefault={handleSetDefaultModel}
                 defaultModel={config?.defaultModel}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
@@ -1478,7 +1490,8 @@ function AppContent() {
               task={selectedTask}
               availableModels={availableModels}
               favoriteModels={config?.favoriteModels}
-              onCycleModelPreference={handleCycleModelPreference}
+              onToggleFavorite={handleToggleFavorite}
+              onSetDefault={handleSetDefaultModel}
               defaultModel={config?.defaultModel}
               onBack={goBack}
               canGoBack={canGoBack}
@@ -1510,7 +1523,8 @@ function AppContent() {
             onSaveNote={handleSaveNoteEdit}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
-            onCycleModelPreference={handleCycleModelPreference}
+            onToggleFavorite={handleToggleFavorite}
+            onSetDefault={handleSetDefaultModel}
             defaultModel={config?.defaultModel}
             conversations={conversations}
             onBack={goBack}
@@ -1528,7 +1542,8 @@ function AppContent() {
             onModelChange={handleModelChange}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
-            onCycleModelPreference={handleCycleModelPreference}
+            onToggleFavorite={handleToggleFavorite}
+            onSetDefault={handleSetDefaultModel}
             defaultModel={config?.defaultModel}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}

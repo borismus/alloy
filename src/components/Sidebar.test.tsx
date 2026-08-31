@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TaskProvider } from '../contexts/TaskContext';
-import type { TimelineItem } from '../types';
+import type { ScheduledTask, TimelineItem } from '../types';
 import { Sidebar } from './Sidebar';
 
 const ITEM: TimelineItem = {
@@ -24,11 +24,13 @@ function renderSidebar(overrides: {
   onNewConversation?: () => void;
   onNewRiff?: () => void;
   fullScreen?: boolean;
+  timelineItems?: TimelineItem[];
+  tasks?: ScheduledTask[];
 } = {}) {
   return render(
-    <TaskProvider tasks={[]}>
+    <TaskProvider tasks={overrides.tasks ?? []}>
       <Sidebar
-        timelineItems={[ITEM]}
+        timelineItems={overrides.timelineItems ?? [ITEM]}
         activeFilter="all"
         onFilterChange={vi.fn()}
         selectedItemId={null}
@@ -87,6 +89,39 @@ it('does not rerender timeline rows for each search-field keystroke', () => {
 
   act(() => vi.advanceTimersByTime(200));
   expect(formatDate).toHaveBeenCalled();
+});
+
+it('shows a persistent red state when the latest task run failed', () => {
+  const failedTask: ScheduledTask = {
+    id: 'task-failed',
+    created: '2026-08-01T08:00:00Z',
+    updated: '2026-08-02T08:00:00Z',
+    title: 'Morning report',
+    model: 'mlx-local/Qwen',
+    enabled: true,
+    prompt: 'Prepare report',
+    schedule: { cron: '0 8 * * *', timezone: 'UTC' },
+    history: [{
+      timestamp: '2026-08-02T08:00:00Z',
+      result: 'error',
+      reasoning: '',
+      error: 'Model host is offline',
+    }],
+    messages: [],
+  };
+  const failedItem: TimelineItem = {
+    type: 'task',
+    id: failedTask.id,
+    title: failedTask.title,
+    lastUpdated: new Date(failedTask.updated).getTime(),
+    task: failedTask,
+  };
+
+  renderSidebar({ timelineItems: [failedItem], tasks: [failedTask] });
+
+  const indicator = screen.getByRole('img', { name: 'Latest task run failed' });
+  expect(indicator.getAttribute('title')).toBe('Model host is offline');
+  expect(indicator.closest('.timeline-item')?.classList.contains('task-failed')).toBe(true);
 });
 
 it('creates one conversation directly from the plus button', () => {
