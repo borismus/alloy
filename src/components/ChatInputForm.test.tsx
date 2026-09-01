@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRef } from 'react';
-import { cleanup, render, screen, act } from '@testing-library/react';
+import { cleanup, render, screen, act, fireEvent } from '@testing-library/react';
 import { ChatInputForm, type ChatInputFormHandle } from './ChatInputForm';
 import type { ModelInfo } from '../types';
 
@@ -46,6 +46,29 @@ afterEach(() => {
 });
 
 const attachButton = () => screen.getByRole('button', { name: /Attach image|can't accept images/ });
+
+describe('message submission', () => {
+  it('keeps composed text when the parent cannot accept the send', () => {
+    const onSubmit = vi.fn(() => false);
+    render(
+      <ChatInputForm
+        onSubmit={onSubmit}
+        onStop={vi.fn()}
+        isStreaming={false}
+        model={VISION.key}
+        onModelChange={vi.fn()}
+        availableModels={[VISION]}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText('Send a message...');
+    fireEvent.change(textarea, { target: { value: 'Do not lose this draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(onSubmit).toHaveBeenCalledWith('Do not lose this draft', []);
+    expect((textarea as HTMLTextAreaElement).value).toBe('Do not lose this draft');
+  });
+});
 
 describe('image attachment gating', () => {
   it('disables attaching when the model cannot accept images', () => {

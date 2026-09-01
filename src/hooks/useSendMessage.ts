@@ -226,10 +226,5 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     return { base64, mimeType };
   }, []);
 
-  // Manual compaction needs a server endpoint; not implemented yet.
-  const handleCompactNow = useCallback(async (_currentConversation: Conversation): Promise<void> => {
-    depsRef.current.showToast('Manual compaction is not yet supported with the embedded server', 'warning');
-  }, []);
-
-  return { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow };
+  return { handleSendMessage, handleSaveImage, handleLoadImageAsBase64 };
 }

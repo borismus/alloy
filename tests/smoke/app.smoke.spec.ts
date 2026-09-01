@@ -282,6 +282,40 @@ test('restores the open conversation after the tab session ends', async ({ page 
   await expect(page.getByText('What can Alloy do?')).toBeVisible();
 });
 
+test('mobile can send from a new conversation after iOS-style restoration', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'mobile-only lifecycle regression');
+
+  await page.getByRole('button', { name: 'New conversation' }).click();
+  await expect(page.locator('.input-row textarea')).toBeVisible();
+  const selected = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('alloy.selectedItem') ?? 'null') as { id?: string } | null
+  );
+  expect(selected?.id).toBeTruthy();
+
+  // iOS may terminate the web-content process while the app is backgrounded.
+  // The selected id survives in localStorage, but an empty conversation has no
+  // vault file yet and its backing draft previously existed only in React state.
+  await page.reload();
+  const textarea = page.locator('.input-row textarea');
+  await expect(textarea).toBeVisible();
+
+  // Stop before any real provider call. A 503 also exercises the existing error
+  // recovery, which should put the accepted prompt back into the composer.
+  await page.route('**/api/stream/start', route => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'intentional lifecycle regression response' }),
+  }));
+
+  const prompt = 'This restored draft must reach the send pipeline';
+  await textarea.fill(prompt);
+  const startRequest = page.waitForRequest(request => request.url().endsWith('/api/stream/start'));
+  await page.getByRole('button', { name: 'Send message' }).click();
+  const request = await startRequest;
+  expect(request.postDataJSON().conversationId).toBe(selected?.id);
+  await expect(textarea).toHaveValue(prompt);
+});
+
 test('search finds text inside conversation bodies', async ({ page }) => {
   // Regression: the sidebar filter searched `conversation.messages`, but
   // conversations load as metadata-only summaries with messages: [], so the

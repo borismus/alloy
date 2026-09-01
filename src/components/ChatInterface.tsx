@@ -117,7 +117,6 @@ interface ChatInterfaceProps {
   onSendMessage: (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal) => Promise<void>;
   onSaveImage: (conversationId: string, imageData: Uint8Array, mimeType: string) => Promise<Attachment>;
   loadImageAsBase64: (relativePath: string) => Promise<{ base64: string; mimeType: string }>;
-  onCompactNow?: () => void | Promise<void>;
   hasProvider: boolean;
   onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
   availableModels: ModelInfo[];
@@ -162,7 +161,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onSendMessage,
   onSaveImage,
   loadImageAsBase64,
-  onCompactNow,
   hasProvider,
   onModelChange,
   availableModels,
@@ -516,8 +514,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }, [conversation, onSaveImage, onSendMessage, startStreaming, updateContent, completeStreaming]);
 
-  const handleFormSubmit = useCallback(async (message: string, pendingImages: PendingImage[]) => {
-    if (!conversation) return;
+  const handleFormSubmit = useCallback((message: string, pendingImages: PendingImage[]): boolean => {
+    // Mobile intentionally renders the conversation shell during restoration.
+    // Rejecting here keeps the composer intact until App reconstructs a missing
+    // unsaved draft; previously this silent return happened after the text was
+    // already cleared.
+    if (!conversation) return false;
 
     // Queue during preparation too — attachment saves haven't started the
     // stream yet, and a second concurrent processAndSend would race it.
@@ -527,10 +529,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         content: message,
         pendingImages,
       });
-      return;
+      return true;
     }
 
-    processAndSend(message, pendingImages);
+    void processAndSend(message, pendingImages);
+    return true;
   }, [conversation, isStreaming, isPreparingImages, enqueue, processAndSend]);
 
   // Process queued messages when streaming completes. Everything queued during
@@ -667,7 +670,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         {conversation && conversation.messages.length > 0 && (
           <>
             <ThreadCostChip conversation={conversation} />
-            <ContextUsageChip conversation={conversation} availableModels={availableModels} onCompactNow={onCompactNow} />
+            <ContextUsageChip conversation={conversation} availableModels={availableModels} />
           </>
         )}
       </ItemHeader>

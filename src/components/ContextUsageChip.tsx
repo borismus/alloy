@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Button, Dialog, DialogTrigger, Popover } from 'react-aria-components';
 import { Conversation, Message, ModelInfo } from '../types';
 import './ContextUsageChip.css';
@@ -6,7 +6,6 @@ import './ContextUsageChip.css';
 interface ContextUsageChipProps {
   conversation: Conversation;
   availableModels: ModelInfo[];
-  onCompactNow?: () => void | Promise<void>;
 }
 
 // Rough JS-side token estimate: ~4 chars/token + per-message overhead +
@@ -40,9 +39,7 @@ function formatRelative(iso: string): string {
 export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
   conversation,
   availableModels,
-  onCompactNow,
 }) => {
-  const [busy, setBusy] = useState(false);
 
   const { used, contextWindow, level } = useMemo(() => {
     const tokens = conversation.messages
@@ -62,17 +59,6 @@ export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
 
   if (!contextWindow) return null; // Unknown context window — don't render rather than mislead
 
-  const handleCompact = async (close: () => void) => {
-    if (!onCompactNow || busy) return;
-    setBusy(true);
-    try {
-      await onCompactNow();
-    } finally {
-      setBusy(false);
-      close();
-    }
-  };
-
   return (
     <div className={`ctx-chip ctx-chip-${level}`}>
       <DialogTrigger>
@@ -81,7 +67,7 @@ export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
         </Button>
         <Popover className="ctx-chip-popover" placement="bottom end">
           <Dialog className="ctx-chip-dialog" aria-label="Context usage">
-            {({ close }) => (
+            {() => (
               <>
                 <div className="ctx-chip-row">
                   <span>Estimated context</span>
@@ -97,16 +83,6 @@ export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
                     {conversation.lastCompactedAt ? formatRelative(conversation.lastCompactedAt) : '—'}
                   </strong>
                 </div>
-                {onCompactNow && (
-                  <button
-                    type="button"
-                    className="ctx-chip-action"
-                    onClick={() => handleCompact(close)}
-                    disabled={busy}
-                  >
-                    {busy ? 'Compacting…' : 'Compact now'}
-                  </button>
-                )}
               </>
             )}
           </Dialog>

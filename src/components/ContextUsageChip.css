@@ -75,29 +75,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ctx-chip-action {
-  margin-top: 0.25rem;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  border-radius: 6px;
-  font-size: 0.82rem;
-  cursor: pointer;
-  color: var(--color-text);
-}
-
-.ctx-chip-action:hover:not(:disabled) {
-  background: var(--color-surface-hover);
-}
-
 @keyframes ctx-chip-appear {
   from {
     opacity: 0;
     transform: translateY(-3px);
   }
-}
-
-.ctx-chip-action:disabled {
-  opacity: 0.6;
-  cursor: default;
 }

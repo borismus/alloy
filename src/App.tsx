@@ -593,7 +593,7 @@ function AppContent() {
   }, [config?.externalEditor, markSelfWrite]);
 
   // Extracted hook: handles message sending, streaming, saving, error recovery
-  const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64, handleCompactNow } = useSendMessage({
+  const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64 } = useSendMessage({
     config, memory, markSelfWrite, showToast, chatInterfaceRef,
     setDraftConversation, setConversations,
     setStreamingThinkingState, updateStreamingThinking, finishStreamingThinking,
@@ -854,6 +854,32 @@ function AppContent() {
         setTasks(loadedTasks);
         setNotes(loadedNotes);
         setMemory(loadedMemory);
+
+        // Empty conversations do not have vault files yet. If iOS terminated
+        // the web content process in the background, selectionStorage restores
+        // the selected id but React state cannot restore the draft object. Do
+        // that before first paint so the mobile composer has somewhere to send.
+        const restoredSelection = selectedItemRef.current;
+        if (
+          restoredSelection?.type === 'conversation'
+          && !loadedConversations.some(conversation => conversation.id === restoredSelection.id)
+        ) {
+          const model = chooseDefaultModel(
+            loadedConfig.defaultModel,
+            loadedConfig.favoriteModels,
+            cachedModels,
+          );
+          if (model) {
+            const now = new Date().toISOString();
+            setDraftConversation(previous => previous?.id === restoredSelection.id ? previous : {
+              id: restoredSelection.id,
+              created: now,
+              updated: now,
+              model,
+              messages: [],
+            });
+          }
+        }
 
         // Reconnect to any in-flight streaming sessions.
         reconnectToActiveSessions({
@@ -1449,7 +1475,6 @@ function AppContent() {
                 onSendMessage={handleSendMessageForChat}
                 onSaveImage={handleSaveImage}
                 loadImageAsBase64={handleLoadImageAsBase64}
-                onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
                 hasProvider={hasProvider}
                 onModelChange={handleModelChange}
                 availableModels={availableModels}
@@ -1561,7 +1586,6 @@ function AppContent() {
             onSendMessage={handleSendMessageForChat}
             onSaveImage={handleSaveImage}
             loadImageAsBase64={handleLoadImageAsBase64}
-            onCompactNow={async () => { if (currentConversation) await handleCompactNow(currentConversation); }}
             hasProvider={hasProvider}
             onModelChange={handleModelChange}
             availableModels={availableModels}

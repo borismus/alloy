@@ -18,7 +18,8 @@ export interface PendingImage {
 }
 
 interface ChatInputFormProps {
-  onSubmit: (message: string, pendingImages: PendingImage[]) => Promise<void>;
+  /** Return true once the message was accepted for sending or queueing. */
+  onSubmit: (message: string, pendingImages: PendingImage[]) => boolean;
   onStop: () => void;
   isStreaming: boolean;
   model: string;
@@ -171,10 +172,13 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     const message = input.trim();
     const images = [...pendingImages];
 
+    // A restored mobile screen can briefly have no backing conversation while
+    // its draft is reconstructed. Never erase a composed prompt unless the
+    // parent actually accepted it for sending or queueing.
+    if (!onSubmit(message, images)) return;
+
     setInput('');
     setPendingImages([]);
-
-    onSubmit(message, images);
   }, [input, pendingImages, onSubmit]);
 
   const handleSubmit = (e: React.FormEvent) => {

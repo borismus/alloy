@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ContextUsageChip } from './ContextUsageChip';
@@ -17,15 +17,13 @@ const models: ModelInfo[] = [
 afterEach(cleanup);
 
 describe('ContextUsageChip', () => {
-  it('opens a popover and triggers compaction', async () => {
-    const onCompactNow = vi.fn();
+  it('opens an informational popover without an unimplemented action', async () => {
     const user = userEvent.setup();
-    render(<ContextUsageChip conversation={conversation} availableModels={models} onCompactNow={onCompactNow} />);
+    render(<ContextUsageChip conversation={conversation} availableModels={models} />);
     await user.click(screen.getByRole('button', { name: 'Context usage' }));
     expect(await screen.findByText('Estimated context')).toBeTruthy();
     expect(screen.getByText('Model window')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'Compact now' }));
-    expect(onCompactNow).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Compact now' })).toBeNull();
   });
 
   it('renders nothing when the model context window is unknown', () => {
