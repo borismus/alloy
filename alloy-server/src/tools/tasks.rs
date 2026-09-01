@@ -434,6 +434,7 @@ mod tests {
                 timestamp: "2026-01-02T16:00:02.000Z".into(),
                 result: crate::tasks::model::TaskVerdict::Completed,
                 reasoning: "Delivered".into(),
+                runner: Some("legomenon".into()),
                 error: None,
                 usage: None,
             }]),

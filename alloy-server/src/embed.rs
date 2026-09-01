@@ -47,6 +47,9 @@ struct EmbeddedInner {
     /// The single axum listener task. Same task whether share is on or off;
     /// `set_share` aborts it and rebinds with the new interface.
     listener_task: Option<JoinHandle<()>>,
+    /// Scheduled-task loop for the currently bound vault. Aborted on vault
+    /// switches so it releases its host lock and cannot keep running old tasks.
+    scheduler_task: Option<JoinHandle<()>>,
     /// Most recent AppState (kept around so we can rebuild a router on
     /// rebind without rebuilding all the registries).
     state: Option<AppState>,
@@ -124,11 +127,6 @@ impl EmbeddedServer {
         let state = build_app_state(&vault_path).await?;
         let config = state.config.clone();
 
-        // Kick off the scheduled-task runner against this AppState. On a vault
-        // swap we currently leave the old task orphaned with its old AppState;
-        // vault swapping is manual and rare.
-        spawn_scheduler(state.clone(), state.tasks.inflight.clone());
-
         // Stash state+config first so `bind_listener` can read share state
         // out of the cached config.
         {
@@ -136,10 +134,16 @@ impl EmbeddedServer {
             if let Some(prev) = inner.listener_task.take() {
                 prev.abort();
             }
+            if let Some(prev) = inner.scheduler_task.take() {
+                prev.abort();
+            }
             inner.vault_path = Some(vault_path);
-            inner.state = Some(state);
+            inner.state = Some(state.clone());
             inner.config = Some(config);
         }
+
+        let scheduler_task = spawn_scheduler(state);
+        self.inner.lock().unwrap().scheduler_task = Some(scheduler_task);
 
         let url = self.bind_listener().await?;
         Ok(url)
@@ -334,6 +338,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
     ));
     let model_cache = Arc::new(ModelCache::new());
     let tasks = Arc::new(SchedulerHandle::new());
+    let runner_host = Arc::new(crate::host::current_hostname());
     let share_on_network = Arc::new(std::sync::atomic::AtomicBool::new(config.share_on_network));
 
     Ok(AppState {
@@ -346,6 +351,7 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         share_on_network,
         model_cache,
         tasks,
+        runner_host,
         // Populated once the listener binds (see `bind_listener`).
         self_base_url: Arc::new(std::sync::RwLock::new(None)),
     })

@@ -212,6 +212,9 @@ pub struct Usage {
     /// message footer.
     #[serde(rename = "durationMs", skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Number of pre-response connection retries recovered during this turn.
+    #[serde(rename = "connectionRetries", default, skip_serializing_if = "is_zero")]
+    pub connection_retries: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -231,12 +234,19 @@ pub enum ProviderStreamEvent {
     Thinking(String),
 }
 
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 pub struct StreamRequest {
     pub messages: Vec<ChatMessage>,
     pub model: String,
     pub tools: Vec<ToolDefinition>,
     pub delta_tx: mpsc::UnboundedSender<ProviderStreamEvent>,
     pub cancel: tokio::sync::watch::Receiver<bool>,
+    /// Retry only failures that occur while establishing the provider HTTP
+    /// connection. Enabled for task execution, never ordinary chat.
+    pub retry_connect: bool,
     /// Sink for providers that run their own tool loop (the Claude Code CLI) to
     /// surface `tool_use`/`tool_result` events. HTTP providers ignore it — their
     /// tool calls are executed and emitted by `tool_loop::execute_with_tools`.

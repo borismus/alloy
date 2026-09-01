@@ -65,6 +65,10 @@
   color: var(--color-text-muted);
 }
 
+.settings-warning {
+  color: var(--color-danger);
+}
+
 .settings-row {
   display: flex;
   align-items: flex-start;

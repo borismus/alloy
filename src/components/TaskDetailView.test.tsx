@@ -21,12 +21,15 @@ const task: ScheduledTask = {
       timestamp: '2026-08-02T08:00:00Z',
       result: 'error',
       reasoning: '',
+      runner: 'smusmini',
       error: 'Model host is offline',
     },
     {
       timestamp: '2026-08-01T08:00:00Z',
       result: 'completed',
       reasoning: 'Yesterday report',
+      runner: 'smusmini',
+      usage: { inputTokens: 10, outputTokens: 20, connectionRetries: 1 },
     },
   ],
   messages: [
@@ -64,6 +67,8 @@ describe('TaskDetailView failure state', () => {
     const completedBadge = screen.getByText('Completed', { selector: '.history-result' });
     expect(completedBadge.closest('button')?.getAttribute('aria-expanded')).toBe('false');
 
+    expect(screen.getAllByText('Runner: smusmini')).toHaveLength(2);
+    expect(screen.getByText('Recovered after 1 connection retry')).toBeTruthy();
     expect(screen.getByTitle('Delivered results and first-failure alerts are emailed via Resend'))
       .toBeTruthy();
   });

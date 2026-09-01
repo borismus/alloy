@@ -32,6 +32,8 @@ pub struct LoopRequest {
     pub tools: Vec<ToolDefinition>,
     pub delta_tx: mpsc::UnboundedSender<ProviderStreamEvent>,
     pub cancel: watch::Receiver<bool>,
+    /// Task executions retry only pre-response connection establishment.
+    pub retry_connect: bool,
     pub tool_ctx: ToolContext,
     /// MCP bridge coordinates for the Claude Code provider (see `McpBridge`).
     pub mcp: Option<McpBridge>,
@@ -49,12 +51,14 @@ pub async fn execute_with_tools(
         tools,
         delta_tx,
         cancel,
+        retry_connect,
         tool_ctx,
         mcp,
     } = req;
 
     let mut total_input: u32 = 0;
     let mut total_output: u32 = 0;
+    let mut total_connection_retries: u32 = 0;
     let mut first_response_id: Option<String> = None;
     let mut final_content = String::new();
     let mut final_stop_reason = "end_turn".to_string();
@@ -75,6 +79,7 @@ pub async fn execute_with_tools(
             tools: tools.clone(),
             delta_tx: delta_tx.clone(),
             cancel: cancel.clone(),
+            retry_connect,
             tool_sink: sink.clone(),
             mcp: mcp.clone(),
         };
@@ -83,6 +88,7 @@ pub async fn execute_with_tools(
         if let Some(usage) = &result.usage {
             total_input += usage.input_tokens;
             total_output += usage.output_tokens;
+            total_connection_retries += usage.connection_retries;
             if first_response_id.is_none() {
                 first_response_id = usage.response_id.clone();
             }
@@ -167,6 +173,7 @@ pub async fn execute_with_tools(
             tools: vec![],
             delta_tx: delta_tx.clone(),
             cancel: cancel.clone(),
+            retry_connect,
             tool_sink: sink.clone(),
             mcp: mcp.clone(),
         };
@@ -174,6 +181,7 @@ pub async fn execute_with_tools(
             if let Some(usage) = &wrap.usage {
                 total_input += usage.input_tokens;
                 total_output += usage.output_tokens;
+                total_connection_retries += usage.connection_retries;
                 if first_response_id.is_none() {
                     first_response_id = usage.response_id.clone();
                 }
@@ -183,13 +191,14 @@ pub async fn execute_with_tools(
         }
     }
 
-    let usage = if total_input > 0 || total_output > 0 {
+    let usage = if total_input > 0 || total_output > 0 || total_connection_retries > 0 {
         Some(Usage {
             input_tokens: total_input,
             output_tokens: total_output,
             response_id: first_response_id,
             cost: None,
             duration_ms: None,
+            connection_retries: total_connection_retries,
         })
     } else {
         None
@@ -244,6 +253,7 @@ mod tests {
             response_id: None,
             cost: None,
             duration_ms: None,
+            connection_retries: 0,
         })
     }
 
@@ -293,6 +303,7 @@ mod tests {
             tools: vec![],
             delta_tx,
             cancel,
+            retry_connect: false,
             tool_ctx: ToolContext {
                 message_id: None,
                 conversation_id: None,

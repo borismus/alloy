@@ -39,6 +39,11 @@ pub struct RawConfig {
     #[serde(default)]
     pub share_port: Option<u16>,
 
+    /// Hostname of the single Alloy server that owns automatic cron execution
+    /// for this synced vault. Manual Run now remains available on every host.
+    #[serde(default)]
+    pub scheduled_task_runner: Option<String>,
+
     /// External directories that local (on-device / trusted) models may read
     /// but cloud models may not — see [`PrivateDir`] and `tools::private`.
     #[serde(default)]
@@ -192,6 +197,10 @@ pub struct Config {
     pub share_on_network: bool,
     /// Port for the public listener when `share_on_network` is true.
     pub share_port: u16,
+    /// Normalized hostname assigned to automatic scheduled-task execution.
+    /// None preserves legacy behavior (every host schedules) until an owner is
+    /// explicitly selected.
+    pub scheduled_task_runner: Option<String>,
     /// External read-only dirs local models may read (mounted at `private/<alias>/`).
     /// Validated against the vault root at bootstrap (see `validate_private_dirs`).
     pub private_read_only_dirs: Vec<PrivateDir>,
@@ -209,6 +218,7 @@ impl Default for Config {
             email: None,
             share_on_network: false,
             share_port: 3001,
+            scheduled_task_runner: None,
             private_read_only_dirs: Vec::new(),
             compaction: crate::compaction::CompactionSettings::default(),
         }
@@ -414,6 +424,10 @@ impl Config {
             email,
             share_on_network: raw.share_on_network.unwrap_or(false),
             share_port: raw.share_port.unwrap_or(3001),
+            scheduled_task_runner: raw
+                .scheduled_task_runner
+                .map(|value| crate::host::normalize_hostname(&value))
+                .filter(|value| !value.is_empty()),
             private_read_only_dirs,
             compaction,
         }
@@ -530,6 +544,16 @@ mod tests {
         assert_eq!(cfg.providers[0].api_key, "sk-or-test");
         assert_eq!(cfg.providers[0].local, None);
         assert_eq!(cfg.providers[1].local, Some(true));
+    }
+
+    #[test]
+    fn scheduled_task_runner_normalizes_shared_hostname() {
+        let raw = parse_raw_config(
+            "version: 2\nscheduledTaskRunner: SMUSMINI.local.\nproviders: []\n",
+        )
+        .unwrap();
+        let cfg = Config::from_raw(raw);
+        assert_eq!(cfg.scheduled_task_runner.as_deref(), Some("smusmini"));
     }
 
     #[test]

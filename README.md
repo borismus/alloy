@@ -97,6 +97,15 @@ The `web_search` tool uses [Serper](https://serper.dev/). Add its API key as
 `serperApiKey` in your vault's `config.yaml`; see [SEARCH.md](SEARCH.md). Codex
 and Claude subscription models may additionally use their own native web tools.
 
+### Scheduled Task Runner
+
+When multiple Alloy servers use synchronized copies of the same vault, assign
+one machine to automatic cron execution in **Settings → Scheduled tasks**. Alloy
+stores that hostname as `scheduledTaskRunner` in the shared `config.yaml`; other
+machines stand down while retaining **Run now**. Task-only DNS/connect failures
+retry twice before becoming visible errors, without changing providers or
+falling back from local to cloud.
+
 ## Supported Providers
 
 All models are configured under a single `providers:` list in config v2

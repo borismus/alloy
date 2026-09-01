@@ -56,6 +56,7 @@ export interface Usage {
   cost?: number;        // Estimated USD (omitted for free/unknown models)
   responseId?: string;  // Provider response ID for billing cross-reference
   durationMs?: number;  // Wall-clock time to produce the response (model + tool loop)
+  connectionRetries?: number; // Pre-response connection failures recovered during task execution
 }
 
 // Sub-agent response stored on completed messages
@@ -136,6 +137,7 @@ export interface TaskAttempt {
   timestamp: string;
   result: 'completed' | 'triggered' | 'skipped' | 'error';
   reasoning: string;
+  runner?: string;
   error?: string;
   usage?: Usage;
 }
@@ -212,6 +214,11 @@ export interface Config {
   providers?: ProviderConfig[];
   shareOnNetwork?: boolean;
   sharePort?: number;
+  /** Hostname assigned to automatic cron execution for this synced vault. */
+  scheduledTaskRunner?: string;
+  /** Runtime identity of the Alloy server serving this UI. */
+  currentHost?: string;
+  schedulerActive?: boolean;
   serperApiKey?: string;
   sonioxApiKey?: string;
 }

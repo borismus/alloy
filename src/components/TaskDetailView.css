@@ -534,6 +534,15 @@
   opacity: 1;
 }
 
+.history-run-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+  margin-top: 0.6rem;
+  color: var(--text-tertiary, var(--color-text-muted));
+  font-size: 0.72rem;
+}
+
 .history-delivered-content {
   margin-top: 0.6rem;
   padding-top: 0.6rem;

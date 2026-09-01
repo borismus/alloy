@@ -259,6 +259,10 @@ pub struct StartParams {
     /// don't have a conversation file at all.
     #[serde(rename = "skipPersist", default)]
     pub skip_persist: bool,
+    /// Internal execution policy. HTTP clients cannot opt ordinary chats into
+    /// delayed retries; scheduled-task execution sets this after construction.
+    #[serde(skip)]
+    pub retry_connect: bool,
 }
 
 /// Start a new streaming session. Returns the registered session immediately;
@@ -461,6 +465,7 @@ async fn run_stream(
         tools: tools_for_stream(provider.supports_tools(&upstream_model), model_is_local),
         delta_tx,
         cancel: cancel.clone(),
+        retry_connect: params.retry_connect,
         tool_ctx: ToolContext {
             message_id: Some(session.inner.lock().unwrap().assistant_message_id.clone()),
             conversation_id: Some(format!("conversations/{}", params.conversation_id)),
@@ -910,6 +915,19 @@ mod tests {
     }
 
     #[test]
+    fn interactive_clients_cannot_enable_task_connection_retries() {
+        let params: StartParams = serde_json::from_value(json!({
+            "sessionId": "s",
+            "conversationId": "c",
+            "model": "mlx/test",
+            "messages": [],
+            "retryConnect": true
+        }))
+        .unwrap();
+        assert!(!params.retry_connect);
+    }
+
+    #[test]
     fn local_model_toolset_excludes_subagents() {
         let local = tools_for_stream(true, true);
         assert!(!local.iter().any(|tool| tool.name == "spawn_subagent"));
@@ -1036,6 +1054,7 @@ mod tests {
                 user_message_content: "why is naming broken?".into(),
                 invoke_skill: None,
                 skip_persist: false,
+                retry_connect: false,
             },
         )
         .await
@@ -1098,6 +1117,7 @@ mod tests {
                 user_message_content: "hello".into(),
                 invoke_skill: None,
                 skip_persist: false,
+                retry_connect: false,
             },
         )
         .await

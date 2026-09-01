@@ -9,6 +9,7 @@ use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::Duration;
 
 use crate::config::ProviderConfig;
 use crate::providers::{
@@ -16,6 +17,8 @@ use crate::providers::{
     Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 use crate::types::{to_openai_tools, ToolCall};
+
+const TASK_CONNECT_RETRY_DELAYS: [Duration; 2] = [Duration::from_secs(15), Duration::from_secs(60)];
 
 pub struct OpenAICompatibleProvider {
     base_url: String,
@@ -61,6 +64,62 @@ impl OpenAICompatibleProvider {
                 .header("X-Title", "Alloy");
         }
         builder.json(&body)
+    }
+
+    /// Send one model request, retrying only failures reqwest identifies as
+    /// connection establishment errors. Once a response exists—or streaming
+    /// could have begun—we never replay the request.
+    async fn send_chat(
+        &self,
+        body: Value,
+        model: &str,
+        retry_connect: bool,
+    ) -> anyhow::Result<(reqwest::Response, u32)> {
+        let delays: &[Duration] = if retry_connect {
+            &TASK_CONNECT_RETRY_DELAYS
+        } else {
+            &[]
+        };
+        self.send_chat_with_delays(body, model, delays).await
+    }
+
+    async fn send_chat_with_delays(
+        &self,
+        body: Value,
+        model: &str,
+        delays: &[Duration],
+    ) -> anyhow::Result<(reqwest::Response, u32)> {
+        let mut retries = 0usize;
+        loop {
+            match self.post_chat(body.clone()).send().await {
+                Ok(response) => return Ok((response, retries as u32)),
+                Err(error) if error.is_connect() && retries < delays.len() => {
+                    let delay = delays[retries];
+                    retries += 1;
+                    tracing::warn!(
+                        "task model connection failed for {} at {}; retrying attempt {} of {} in {}s: {}",
+                        model,
+                        self.base_url,
+                        retries + 1,
+                        delays.len() + 1,
+                        delay.as_secs(),
+                        error_chain(&error)
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(error) => {
+                    let detail = error_chain(&error);
+                    if retries > 0 {
+                        anyhow::bail!(
+                            "connection failed after {} attempts: {}",
+                            retries + 1,
+                            detail
+                        );
+                    }
+                    return Err(anyhow::anyhow!(detail));
+                }
+            }
+        }
     }
 }
 
@@ -160,11 +219,8 @@ impl Provider for OpenAICompatibleProvider {
             body["tools"] = Value::Array(to_openai_tools(&req.tools));
         }
 
-        let response = self
-            .post_chat(body)
-            .send()
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", error_chain(&e)))?;
+        let (response, connection_retries) =
+            self.send_chat(body, &req.model, req.retry_connect).await?;
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
@@ -311,13 +367,14 @@ impl Provider for OpenAICompatibleProvider {
             stop_reason = "tool_use".into();
         }
 
-        let usage = if input_tokens > 0 || output_tokens > 0 {
+        let usage = if input_tokens > 0 || output_tokens > 0 || connection_retries > 0 {
             Some(Usage {
                 input_tokens,
                 output_tokens,
                 response_id,
                 cost: None,
                 duration_ms: None,
+                connection_retries,
             })
         } else {
             None
@@ -733,5 +790,49 @@ mod tests {
         assert_eq!(content[0]["type"], "text");
         assert_eq!(content[1]["type"], "image_url");
         assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,AAAA");
+    }
+
+    fn unavailable_provider() -> OpenAICompatibleProvider {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        OpenAICompatibleProvider {
+            base_url: format!("http://127.0.0.1:{port}/v1"),
+            api_key: "test".into(),
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(2))
+                .build()
+                .unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn task_connection_policy_exhausts_all_attempts() {
+        let provider = unavailable_provider();
+        let error = provider
+            .send_chat_with_delays(
+                json!({"model":"test","messages":[]}),
+                "test",
+                &[Duration::ZERO, Duration::ZERO],
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("connection failed after 3 attempts"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ordinary_chat_connection_policy_does_not_retry() {
+        let provider = unavailable_provider();
+        let error = provider
+            .send_chat_with_delays(json!({"model":"test","messages":[]}), "test", &[])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!error.contains("after 2 attempts"), "{error}");
+        assert!(!error.contains("after 3 attempts"), "{error}");
     }
 }

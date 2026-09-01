@@ -6,7 +6,7 @@
  * can disconnect (tab backgrounded) and reconnect without losing data.
  */
 
-import type { Message, ToolUse } from '../types';
+import type { Message, ToolUse, Usage } from '../types';
 
 // API configuration. Inside Tauri the embedded server's URL is injected at
 // boot by `src/services/tauri-bootstrap.ts`; in standalone browser mode we
@@ -39,7 +39,7 @@ function getAuthHeaders(): Record<string, string> {
 
 export interface ServerStreamResult {
   content: string;
-  usage?: { inputTokens: number; outputTokens: number; cost?: number; responseId?: string; durationMs?: number };
+  usage?: Usage;
   stopReason?: string;
   title?: string; // Generated title for first messages
   toolUse?: ToolUse[]; // Tool uses observed during this turn (M4+ server-side tools)

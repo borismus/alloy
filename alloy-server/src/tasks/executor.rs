@@ -108,6 +108,7 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
         user_message_content: task.prompt.clone(),
         invoke_skill: None,
         skip_persist: true,
+        retry_connect: true,
     };
 
     // Pass the server's own URL so tool-capable providers that reach back in
@@ -221,7 +222,7 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
     }
 }
 
-pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome) -> String {
+pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome, runner: &str) -> String {
     use crate::tasks::model::{push_delivery_messages, push_history, TaskAttempt};
 
     let now = now_iso();
@@ -238,6 +239,7 @@ pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome) -> Stri
                     timestamp: now.clone(),
                     result: outcome.result,
                     reasoning: outcome.response.chars().take(200).collect(),
+                    runner: Some(runner.to_string()),
                     error: None,
                     usage: outcome.usage.clone(),
                 },
@@ -249,6 +251,7 @@ pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome) -> Stri
                 timestamp: now.clone(),
                 result: TaskVerdict::Skipped,
                 reasoning: outcome.response.clone(),
+                runner: Some(runner.to_string()),
                 error: None,
                 usage: outcome.usage.clone(),
             },
@@ -259,6 +262,7 @@ pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome) -> Stri
                 timestamp: now.clone(),
                 result: TaskVerdict::Error,
                 reasoning: String::new(),
+                runner: Some(runner.to_string()),
                 error: outcome.error.clone(),
                 usage: outcome.usage.clone(),
             },
@@ -372,10 +376,15 @@ mod tests {
                     error: None,
                     usage: None,
                 },
+                "legomenon",
             );
             assert!(value.last_delivered_at.is_some());
             assert_eq!(value.messages.len(), 2);
             assert_eq!(value.history.as_ref().unwrap()[0].result, verdict);
+            assert_eq!(
+                value.history.as_ref().unwrap()[0].runner.as_deref(),
+                Some("legomenon")
+            );
         }
     }
 
@@ -390,6 +399,7 @@ mod tests {
                 error: None,
                 usage: None,
             },
+            "smusmini",
         );
         assert!(value.last_delivered_at.is_none());
         assert!(value.messages.is_empty());

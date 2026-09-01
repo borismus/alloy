@@ -2,6 +2,8 @@
 
 use std::{
     collections::HashSet,
+    fs::{File, OpenOptions},
+    path::{Path, PathBuf},
     str::FromStr,
     sync::{Arc, Mutex},
     time::Duration,
@@ -40,23 +42,87 @@ impl InflightSet {
     }
 }
 
-pub fn spawn(state: AppState, inflight: InflightSet) {
+pub fn spawn(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         tracing::info!(
-            "scheduled-task scheduler started ({}s tick)",
+            "scheduled-task scheduler started on {} ({}s tick)",
+            state.runner_host,
             TICK_INTERVAL.as_secs()
         );
         let mut tick = interval(TICK_INTERVAL);
         loop {
             tick.tick().await;
-            if let Err(e) = run_tick(&state, &inflight).await {
+            if let Err(e) = run_tick(&state).await {
                 tracing::warn!("scheduled-task scheduler tick error: {}", e);
             }
         }
-    });
+    })
 }
 
-async fn run_tick(state: &AppState, inflight: &InflightSet) -> anyhow::Result<()> {
+async fn configured_runner(state: &AppState) -> anyhow::Result<Option<String>> {
+    let path = state.vault.resolve("config.yaml")?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = tokio::fs::read_to_string(&path).await?;
+    let raw = crate::config::parse_raw_config(&text)?;
+    Ok(raw
+        .scheduled_task_runner
+        .map(|value| crate::host::normalize_hostname(&value))
+        .filter(|value| !value.is_empty()))
+}
+
+async fn scheduler_is_active(state: &AppState) -> anyhow::Result<bool> {
+    let assigned = configured_runner(state).await?;
+    let current = state.runner_host.as_str();
+
+    if let Some(assigned) = assigned.as_deref() {
+        if !crate::host::is_current_host(assigned, current) {
+            state.tasks.release_host_lock();
+            if state.tasks.status_changed(format!("assigned:{assigned}")) {
+                tracing::info!(
+                    "scheduled tasks assigned to {}; scheduler inactive on {}",
+                    assigned,
+                    current
+                );
+            }
+            return Ok(false);
+        }
+    }
+
+    if !state.tasks.ensure_host_lock(state.vault.root())? {
+        if state.tasks.status_changed("local-lock-held".into()) {
+            tracing::warn!(
+                "scheduled-task scheduler inactive: another Alloy process on {} owns this vault",
+                current
+            );
+        }
+        return Ok(false);
+    }
+
+    let legacy_assignment = assigned.is_none();
+    let status = assigned
+        .map(|host| format!("active:{host}"))
+        .unwrap_or_else(|| "active:legacy".into());
+    if state.tasks.status_changed(status) {
+        if legacy_assignment {
+            tracing::warn!(
+                "scheduledTaskRunner is not configured; {} will run tasks using legacy multi-host behavior",
+                current
+            );
+        } else {
+            tracing::info!("scheduled-task scheduler active on {}", current);
+        }
+    }
+    Ok(true)
+}
+
+async fn run_tick(state: &AppState) -> anyhow::Result<()> {
+    if !scheduler_is_active(state).await? {
+        return Ok(());
+    }
+
+    let inflight = &state.tasks.inflight;
     let tasks_dir = state.vault.resolve("tasks")?;
     let tasks = model::load_all(&tasks_dir).await?;
     let now = Utc::now();
@@ -163,7 +229,7 @@ pub async fn run_once(
 
     let outcome = executor::run(&task, state).await;
     model::update(path, |current| {
-        executor::apply_outcome(current, &outcome);
+        executor::apply_outcome(current, &outcome, state.runner_host.as_str());
     })
     .await?;
 
@@ -238,6 +304,7 @@ async fn maybe_email_result(
         task_id: &task.id,
         task_title: &task.title,
         model: &task.model,
+        runner: state.runner_host.as_str(),
         content_markdown: &content,
         occurred_at: &occurred_at,
         idempotency_key: &idempotency_key,
@@ -299,12 +366,73 @@ pub async fn run_by_id(
 #[derive(Clone)]
 pub struct SchedulerHandle {
     pub inflight: InflightSet,
+    host_lock: Arc<Mutex<Option<File>>>,
+    last_status: Arc<Mutex<Option<String>>>,
 }
 
 impl SchedulerHandle {
     pub fn new() -> Self {
         Self {
             inflight: InflightSet::new(),
+            host_lock: Arc::new(Mutex::new(None)),
+            last_status: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn lock_path(vault_root: &Path) -> PathBuf {
+        let identity = vault_root
+            .canonicalize()
+            .unwrap_or_else(|_| vault_root.to_path_buf());
+        // Stable FNV-1a rather than DefaultHasher: production and development
+        // binaries built with different Rust versions must derive the same lock.
+        let mut hash = 0xcbf29ce484222325u64;
+        for byte in identity.to_string_lossy().as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        std::env::temp_dir().join(format!("alloy-scheduler-{hash:016x}.lock"))
+    }
+
+    /// Hold an OS-local, per-vault advisory lock for the lifetime of this
+    /// scheduler. The shared runner hostname prevents cross-machine races; this
+    /// lock prevents a production and development Alloy on the same host from
+    /// both matching that hostname.
+    fn ensure_host_lock(&self, vault_root: &Path) -> anyhow::Result<bool> {
+        let mut slot = self.host_lock.lock().unwrap();
+        if slot.is_some() {
+            return Ok(true);
+        }
+        let path = Self::lock_path(vault_root);
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&path)?;
+        match fs2::FileExt::try_lock_exclusive(&file) {
+            Ok(()) => {
+                *slot = Some(file);
+                Ok(true)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn release_host_lock(&self) {
+        self.host_lock.lock().unwrap().take();
+    }
+
+    pub fn host_lock_held(&self) -> bool {
+        self.host_lock.lock().unwrap().is_some()
+    }
+
+    fn status_changed(&self, next: String) -> bool {
+        let mut current = self.last_status.lock().unwrap();
+        if current.as_deref() == Some(next.as_str()) {
+            false
+        } else {
+            *current = Some(next);
+            true
         }
     }
 }
@@ -478,6 +606,7 @@ mod tests {
             timestamp: "2026-07-20T01:00:00Z".into(),
             result: TaskVerdict::Error,
             reasoning: String::new(),
+            runner: Some("legomenon".into()),
             error: Some("still unavailable".into()),
             usage: None,
         }]);
@@ -508,5 +637,17 @@ mod tests {
         assert!(!set.try_claim("a"));
         set.release("a");
         assert!(set.try_claim("a"));
+    }
+
+    #[test]
+    fn host_lock_allows_only_one_local_scheduler_per_vault() {
+        let vault = tempfile::tempdir().unwrap();
+        let first = SchedulerHandle::new();
+        let second = SchedulerHandle::new();
+
+        assert!(first.ensure_host_lock(vault.path()).unwrap());
+        assert!(!second.ensure_host_lock(vault.path()).unwrap());
+        first.release_host_lock();
+        assert!(second.ensure_host_lock(vault.path()).unwrap());
     }
 }

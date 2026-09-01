@@ -64,6 +64,9 @@ pub struct TaskAttempt {
     pub timestamp: String,
     pub result: TaskVerdict,
     pub reasoning: String,
+    /// Alloy server hostname that executed this attempt. Older history omits it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runner: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -10,6 +10,7 @@ pub mod compaction;
 pub mod config;
 pub mod embed;
 pub mod error;
+pub mod host;
 pub mod local;
 pub mod notify;
 pub mod providers;
@@ -55,6 +56,9 @@ pub struct AppState {
     /// Holds the scheduler's currently-running set so manual and scheduled
     /// execution cannot overlap for the same task.
     pub tasks: Arc<SchedulerHandle>,
+    /// Normalized hostname identifying this Alloy runner in task ownership,
+    /// history, and failure reports.
+    pub runner_host: Arc<String>,
     /// This server's own loopback base URL (e.g. `http://127.0.0.1:3001`), set
     /// once the listener binds. The `claude-cli` provider needs it to point the
     /// Claude Code MCP client back at our `/api/mcp` endpoint. `None` until bound.

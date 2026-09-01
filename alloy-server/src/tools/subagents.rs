@@ -164,6 +164,7 @@ async fn run_one_agent(
         tools,
         delta_tx,
         cancel: cancel_rx,
+        retry_connect: false,
         tool_ctx: ToolContext {
             message_id: None,
             conversation_id: None,

@@ -456,6 +456,7 @@ export function TaskDetailView({
                 // The run's "output": the delivered result if it was delivered,
                 // otherwise the skip/error reasoning.
                 const output = (deliveredContent ?? detail ?? '').trim();
+                const connectionRetries = attempt.usage?.connectionRetries ?? 0;
                 const isExpanded = expandedKey === key;
                 return (
                   <div key={key} className={`history-entry ${attempt.result} ${isExpanded ? 'expanded' : ''}`}>
@@ -477,6 +478,14 @@ export function TaskDetailView({
                     </button>
                     <div className="history-entry-expand">
                       <div className="history-entry-expand-inner">
+                        {(attempt.runner || connectionRetries > 0) && (
+                          <div className="history-run-metadata">
+                            {attempt.runner && <span>Runner: {attempt.runner}</span>}
+                            {connectionRetries > 0 && (
+                              <span>Recovered after {connectionRetries} connection {connectionRetries === 1 ? 'retry' : 'retries'}</span>
+                            )}
+                          </div>
+                        )}
                         <MarkdownContent content={output} className="history-delivered-content" />
                       </div>
                     </div>

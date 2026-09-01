@@ -1268,6 +1268,7 @@ mod tests {
             tools: Vec::new(),
             delta_tx,
             cancel,
+            retry_connect: false,
             tool_sink: std::sync::Arc::new(crate::types::NullSink),
             mcp: None,
         }

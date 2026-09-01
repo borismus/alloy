@@ -3,7 +3,7 @@ import { readTextFile, writeTextFile, exists, mkdir, readDir, remove, readFile, 
 import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
 import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, ScheduledTask, TimelineItem } from '../types';
-import { getApiBase } from './server-streaming';
+import { getApiBase, getAuthHeadersForApi } from './server-streaming';
 
 /**
  * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/task filename.
@@ -211,11 +211,14 @@ providers:
    */
   async updateConfigValue(key: string, value: string): Promise<void> {
     if (!this.vaultPath) return;
-    await fetch(`${getApiBase()}/api/config/value`, {
+    const res = await fetch(`${getApiBase()}/api/config/value`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeadersForApi(),
       body: JSON.stringify({ key, value }),
     });
+    if (!res.ok) {
+      throw new Error(`Failed to update config value: HTTP ${res.status}`);
+    }
   }
 
   /**

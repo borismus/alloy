@@ -47,6 +47,9 @@ struct ClientConfig {
     external_editor: Option<String>,
     soniox_api_key: Option<String>,
     providers: Vec<ClientProvider>,
+    scheduled_task_runner: Option<String>,
+    current_host: String,
+    scheduler_active: bool,
 }
 
 fn kind_str(kind: ProviderKind) -> &'static str {
@@ -90,6 +93,15 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
             local: local::provider_is_local(p),
         })
         .collect();
+    let scheduled_task_runner = raw
+        .scheduled_task_runner
+        .map(|value| crate::host::normalize_hostname(&value))
+        .filter(|value| !value.is_empty());
+    let scheduler_active = scheduled_task_runner
+        .as_deref()
+        .map(|runner| crate::host::is_current_host(runner, state.runner_host.as_str()))
+        .unwrap_or(true)
+        && state.tasks.host_lock_held();
     Ok(Json(Some(ClientConfig {
         version: raw.version,
         default_model: raw.default_model,
@@ -97,6 +109,9 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
         external_editor: raw.external_editor,
         soniox_api_key: raw.soniox_api_key,
         providers,
+        scheduled_task_runner,
+        current_host: state.runner_host.as_ref().clone(),
+        scheduler_active,
     })))
 }
 

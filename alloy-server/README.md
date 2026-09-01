@@ -80,6 +80,9 @@ serperApiKey: ...       # web_search
 # Expose the embedded server to other devices on the network.
 shareOnNetwork: false   # default off
 sharePort: 3001         # only used when shareOnNetwork is true
+
+# Exactly one host owns automatic cron execution for a synced vault.
+scheduledTaskRunner: smusmini
 ```
 
 There is no legacy flat-key format: 0.4 dropped the pre-0.4 schema (per-vendor
@@ -92,6 +95,15 @@ models only via an explicitly trusted `local: true` OpenAI-compatible endpoint
 CLI adapters (always cloud). Interactive Codex turns use app-server for token
 streaming, interruption, image data URLs, and scoped Alloy tools over MCP; the
 process runs from a temporary working directory.
+
+When several Alloy servers open synchronized copies of the same vault, set
+`scheduledTaskRunner` to the normalized hostname of the one server that should
+execute cron schedules. Settings shows each server's hostname and can assign the
+current one. A host-local per-vault lock also prevents production and development
+Alloy processes on that machine from scheduling concurrently. **Run now** remains
+available from every server. Task HTTP calls retry only pre-response DNS/connect
+failures (three attempts total, after 15- and 60-second delays); they never replay
+tools, switch models, or fall back from local to cloud.
 
 ## Layout
 

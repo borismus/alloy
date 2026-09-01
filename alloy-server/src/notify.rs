@@ -28,6 +28,8 @@ pub struct TaskEmail<'a> {
     pub task_id: &'a str,
     pub task_title: &'a str,
     pub model: &'a str,
+    /// Normalized hostname of the Alloy server that executed the task.
+    pub runner: &'a str,
     pub content_markdown: &'a str,
     /// ISO timestamp the result or failure occurred.
     pub occurred_at: &'a str,
@@ -76,10 +78,11 @@ pub async fn send_task_email(cfg: &EmailConfig, email: TaskEmail<'_>) -> anyhow:
 
 fn failure_report(email: &TaskEmail<'_>) -> String {
     format!(
-        "ALLOY SCHEDULED TASK FAILURE\n\nTask: {}\nTask ID: {}\nModel: {}\nTime: {}\n\n{}",
+        "ALLOY SCHEDULED TASK FAILURE\n\nTask: {}\nTask ID: {}\nModel: {}\nRunner: {}\nTime: {}\n\n{}",
         email.task_title,
         email.task_id,
         email.model,
+        email.runner,
         email.occurred_at,
         email.content_markdown.trim(),
     )
@@ -102,8 +105,9 @@ fn render_result_markdown(markdown: &str) -> String {
 /// selected and pasted into feedback without copying surrounding email chrome.
 fn render_html(email: &TaskEmail<'_>) -> String {
     let footer = format!(
-        "{} &middot; {}",
+        "{} &middot; {} &middot; {}",
         escape_html(email.model),
+        escape_html(email.runner),
         escape_html(email.occurred_at)
     );
     let (status, body) = match email.kind {
@@ -146,8 +150,8 @@ fn render_html(email: &TaskEmail<'_>) -> String {
 fn render_text(email: &TaskEmail<'_>) -> String {
     match email.kind {
         TaskEmailKind::Result => format!(
-            "{}\n\n---\n{} · {}\n",
-            email.content_markdown, email.model, email.occurred_at
+            "{}\n\n---\n{} · {} · {}\n",
+            email.content_markdown, email.model, email.runner, email.occurred_at
         ),
         TaskEmailKind::Error => format!(
             "{}\n\n---\nReview the report for private details, then paste it into a new Alloy GitHub issue:\n{}\n",
@@ -180,6 +184,7 @@ mod tests {
             task_id: "task-nightly-digest",
             task_title: "Nightly Digest",
             model: "mlx/Qwen",
+            runner: "smusmini",
             content_markdown: "# Interests\n\n- **local-first** software\n",
             occurred_at: "2026-07-20T09:00:00Z",
             idempotency_key: "task-abc-2026-07-20T02:00:00Z",
@@ -192,6 +197,7 @@ mod tests {
         assert!(html.contains("<h1>Interests</h1>"));
         assert!(html.contains("<strong>local-first</strong>"));
         assert!(html.contains("mlx/Qwen"));
+        assert!(html.contains("smusmini"));
         assert!(html.contains("2026-07-20T09:00:00Z"));
     }
 
@@ -199,7 +205,7 @@ mod tests {
     fn text_fallback_keeps_markdown_and_footer() {
         let text = render_text(&sample());
         assert!(text.contains("# Interests"));
-        assert!(text.ends_with("mlx/Qwen · 2026-07-20T09:00:00Z\n"));
+        assert!(text.ends_with("mlx/Qwen · smusmini · 2026-07-20T09:00:00Z\n"));
     }
 
     #[test]
@@ -221,6 +227,7 @@ mod tests {
         assert!(text.starts_with("ALLOY SCHEDULED TASK FAILURE"));
         assert!(text.contains("Task: Nightly Digest"));
         assert!(text.contains("Task ID: task-nightly-digest"));
+        assert!(text.contains("Runner: smusmini"));
         assert!(text.contains(ALLOY_ISSUES_URL));
     }
 

@@ -72,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
 
     let model_cache = Arc::new(ModelCache::new());
     let tasks = Arc::new(SchedulerHandle::new());
+    let runner_host = Arc::new(alloy_server::host::current_hostname());
 
     let share_on_network = Arc::new(AtomicBool::new(config.share_on_network));
 
@@ -85,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
         share_on_network,
         model_cache,
         tasks: tasks.clone(),
+        runner_host,
         self_base_url: Arc::new(std::sync::RwLock::new(Some(format!(
             "http://127.0.0.1:{}",
             args.port
@@ -92,7 +94,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Scheduled tasks run regardless of client presence.
-    spawn_scheduler(state.clone(), tasks.inflight.clone());
+    let _scheduler_task = spawn_scheduler(state.clone());
 
     let app = build_router(state);
 

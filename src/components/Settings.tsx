@@ -6,6 +6,7 @@ import { isTauri } from '../services/api';
 import { useTheme, type ThemePreference } from '../theme';
 import { AlloyDialog, Switch } from './ui';
 import { CheckResult } from './UpdateChecker';
+import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { getAutoUpdate, setAutoUpdate } from '../services/autoUpdate';
 import packageInfo from '../../package.json';
 import './Settings.css';
@@ -26,6 +27,12 @@ interface ShareStatus {
 async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const mod = await import('@tauri-apps/api/core');
   return mod.invoke<T>(cmd, args);
+}
+
+interface SchedulerStatus {
+  scheduledTaskRunner?: string;
+  currentHost?: string;
+  schedulerActive?: boolean;
 }
 
 interface SettingsProps {
@@ -73,6 +80,8 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
 
   const [shareStatus, setShareStatus] = useState<ShareStatus | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [schedulerBusy, setSchedulerBusy] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -80,6 +89,36 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
       .then(setShareStatus)
       .catch((e) => console.warn('[Settings] get_share_status failed:', e));
   }, []);
+
+  useEffect(() => {
+    if (!vaultPath) return;
+    fetch(`${getApiBase()}/api/config`, { headers: getAuthHeadersForApi() })
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<SchedulerStatus | null>;
+      })
+      .then(setSchedulerStatus)
+      .catch((e) => console.warn('[Settings] scheduler status failed:', e));
+  }, [vaultPath]);
+
+  const handleAssignScheduler = async () => {
+    const host = schedulerStatus?.currentHost;
+    if (!host || schedulerBusy) return;
+    setSchedulerBusy(true);
+    try {
+      await vaultService.updateConfigValue('scheduledTaskRunner', host);
+      setSchedulerStatus(previous => previous ? {
+        ...previous,
+        scheduledTaskRunner: host,
+        schedulerActive: false,
+      } : previous);
+    } catch (e) {
+      console.error('[Settings] scheduled task runner update failed:', e);
+      alert(`Failed to assign scheduled tasks: ${e}`);
+    } finally {
+      setSchedulerBusy(false);
+    }
+  };
 
   const handleToggleShare = async () => {
     if (!shareStatus || shareBusy) return;
@@ -175,6 +214,50 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               </button>
             </div>
           </div>
+
+          {schedulerStatus?.currentHost && (
+            <div className="settings-section">
+              <h3>Scheduled tasks</h3>
+              {schedulerStatus.scheduledTaskRunner ? (
+                schedulerStatus.scheduledTaskRunner === schedulerStatus.currentHost ? (
+                  <p className="settings-description">
+                    This machine, <strong>{schedulerStatus.currentHost}</strong>, runs this vault&apos;s scheduled tasks.
+                  </p>
+                ) : (
+                  <p className="settings-description">
+                    Scheduled tasks run on <strong>{schedulerStatus.scheduledTaskRunner}</strong>. This server is{' '}
+                    <strong>{schedulerStatus.currentHost}</strong>.
+                  </p>
+                )
+              ) : (
+                <p className="settings-description settings-warning">
+                  No runner is assigned. Every Alloy machine using this vault may execute the same task.
+                </p>
+              )}
+              {schedulerStatus.scheduledTaskRunner === schedulerStatus.currentHost &&
+               schedulerStatus.schedulerActive === false && (
+                <p className="settings-hint">
+                  Assignment saved. Activation can take up to a minute; if this persists, another Alloy process
+                  on this machine holds the scheduler lock.
+                </p>
+              )}
+              {schedulerStatus.scheduledTaskRunner !== schedulerStatus.currentHost && (
+                <div className="settings-button-group">
+                  <button
+                    type="button"
+                    onClick={handleAssignScheduler}
+                    className="settings-button settings-button-secondary"
+                    disabled={schedulerBusy}
+                  >
+                    {schedulerBusy ? 'Assigning…' : 'Run scheduled tasks on this machine'}
+                  </button>
+                </div>
+              )}
+              <p className="settings-hint">
+                The assignment is stored in the shared vault. Run now remains available from every Alloy server.
+              </p>
+            </div>
+          )}
 
           <div className="settings-section">
             <h3>External editor</h3>
