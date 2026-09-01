@@ -4,6 +4,21 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.19
+
+- **Synced vaults now have one scheduled-task runner.** Settings assigns a shared
+  `scheduledTaskRunner` hostname, non-owner Alloy servers stand down, and a
+  host-local vault lock prevents production and development processes on the
+  owner machine from executing the same cron occurrence. Manual **Run now**
+  remains available everywhere.
+- **Scheduled tasks recover from transient local-network failures.** HTTP model
+  calls retry only pre-response DNS/connect failures after 15 and 60 seconds,
+  always using the same model and endpoint. Interactive chats, tools, HTTP
+  responses, and CLI providers are never replayed.
+- Task history and notification emails identify the Alloy runner. Successful
+  recovery records its connection retry count; exhausted retries remain visible
+  as a single actionable failure in Alloy and email.
+
 ## 0.4.18
 
 - **New mobile conversations survive an iOS-style process reload.** If Alloy is
