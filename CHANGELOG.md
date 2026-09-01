@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.18
+
+- **New mobile conversations survive an iOS-style process reload.** If Alloy is
+  backgrounded before the first message creates a vault file, it reconstructs
+  the selected draft on return and sends normally. The composer also keeps its
+  text whenever a submission cannot be accepted instead of clearing silently.
+- Removed the nonfunctional **Compact now** action until the server-backed manual
+  compaction flow is implemented.
+
 ## 0.4.17
 
 - **Model choices are available immediately after startup.** Alloy now keeps the
