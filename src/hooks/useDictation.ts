@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { SonioxClient, type RecorderState } from '@soniox/speech-to-text-web';
 
 export type DictationState = 'idle' | 'starting' | 'recording' | 'stopping';
+export type DictationMode = 'continuous' | 'one-shot' | 'push-to-talk';
 
 interface UseDictationOptions {
   apiKey: string | undefined;
@@ -11,7 +12,10 @@ interface UseDictationOptions {
 
 interface UseDictationReturn {
   dictationState: DictationState;
+  dictationMode: DictationMode | null;
   error: string | null;
+  startDictation: (mode?: DictationMode) => void;
+  finishDictation: () => void;
   toggleDictation: () => void;
   cancelDictation: () => void;
 }
@@ -56,12 +60,20 @@ function mapState(state: RecorderState): DictationState {
 
 export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationOptions): UseDictationReturn {
   const [dictationState, setDictationState] = useState<DictationState>('idle');
+  const [dictationMode, setDictationMode] = useState<DictationMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<SonioxClient | null>(null);
+  const modeRef = useRef<DictationMode | null>(null);
+  const finishRequestedRef = useRef(false);
+  const endpointSubmittedRef = useRef(false);
+  const latestTextRef = useRef('');
   const onTranscriptRef = useRef(onTranscript);
-  onTranscriptRef.current = onTranscript;
   const onEndpointRef = useRef(onEndpoint);
-  onEndpointRef.current = onEndpoint;
+
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript;
+    onEndpointRef.current = onEndpoint;
+  }, [onTranscript, onEndpoint]);
 
   // Accumulate finalized tokens that Soniox drops from its rolling window.
   // Without this, long speech gets truncated as older final tokens fall out
@@ -79,14 +91,24 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     };
   }, []);
 
-  const startDictation = useCallback(() => {
+  const startDictation = useCallback((mode: DictationMode = 'continuous') => {
     if (!apiKey) {
       setError('Soniox API key not configured. Add sonioxApiKey to config.yaml.');
       return;
     }
+    if (!SonioxClient.isSupported) {
+      setError('Voice input requires microphone access in the Alloy app or a secure browser connection.');
+      return;
+    }
+    if (clientRef.current) return;
 
     setError(null);
     setDictationState('starting');
+    setDictationMode(mode);
+    modeRef.current = mode;
+    finishRequestedRef.current = false;
+    endpointSubmittedRef.current = false;
+    latestTextRef.current = '';
 
     // Reset accumulators for new session
     accFinalTextRef.current = '';
@@ -97,8 +119,19 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       apiKey,
       onStateChange: ({ newState }) => {
         setDictationState(mapState(newState));
+        // Push-to-talk can be released while microphone permission or the
+        // websocket is still starting. Honor that release as soon as Soniox
+        // reaches a state where stop() can finalize the buffered audio.
+        if (newState === 'Running' && finishRequestedRef.current) {
+          clientRef.current?.stop();
+        }
       },
       onPartialResult: (result) => {
+        // Stopping a one-shot session can produce trailing final-result events.
+        // The turn was already accepted at <end>; never put it back into the
+        // freshly-cleared composer or submit it twice.
+        if (modeRef.current === 'one-shot' && endpointSubmittedRef.current) return;
+
         const tokens = result.tokens ?? [];
         const hasEndpoint = tokens.some(t => t.text === '<end>');
 
@@ -110,13 +143,23 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
             (t.start_ms ?? 0) > accFinalEndMsRef.current
           );
           const fullText = accFinalTextRef.current + tokensToText(newTokens, accSpeakerRef, !!accFinalTextRef.current);
+          latestTextRef.current = fullText;
           console.log('[Dictation] <end>, fullText:', JSON.stringify(fullText));
           onTranscriptRef.current(fullText);
-          onEndpointRef.current(fullText);
 
-          // Reset accumulators for next segment
-          accFinalTextRef.current = '';
-          accFinalEndMsRef.current = -1;
+          if (modeRef.current !== 'push-to-talk') {
+            onEndpointRef.current(fullText);
+            if (modeRef.current === 'one-shot') {
+              endpointSubmittedRef.current = true;
+              finishRequestedRef.current = true;
+              clientRef.current?.stop();
+            }
+
+            // Continuous Riff dictation treats each endpoint as a new segment.
+            accFinalTextRef.current = '';
+            accFinalEndMsRef.current = -1;
+            latestTextRef.current = '';
+          }
         } else {
           // Streaming partial — accumulate final tokens, show accumulated + non-final
           const finalTokens = tokens.filter(t => t.is_final);
@@ -135,7 +178,11 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
           // Use a temporary speaker copy so non-final tokens don't permanently advance speaker state
           const tempSpeaker = { current: accSpeakerRef.current };
           const displayText = accFinalTextRef.current + tokensToText(nonFinalTokens, tempSpeaker, !!accFinalTextRef.current);
+          // A terminal Soniox packet can contain no tokens. Keep the last
+          // visible partial so push-to-talk release still submits what the user
+          // just dictated instead of replacing it with an empty string.
           if (displayText) {
+            latestTextRef.current = displayText;
             onTranscriptRef.current(displayText);
           }
         }
@@ -144,27 +191,47 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
         console.error('[Dictation] error:', _status, message);
         setError(message || 'Dictation error');
         setDictationState('idle');
+        setDictationMode(null);
+        modeRef.current = null;
         clientRef.current = null;
       },
       onFinished: () => {
+        const mode = modeRef.current;
+        const finalText = latestTextRef.current;
+        if (
+          (mode === 'one-shot' || mode === 'push-to-talk')
+          && !endpointSubmittedRef.current
+          && finalText.trim()
+        ) {
+          endpointSubmittedRef.current = true;
+          onTranscriptRef.current(finalText);
+          onEndpointRef.current(finalText);
+        }
         setDictationState('idle');
+        setDictationMode(null);
+        modeRef.current = null;
+        finishRequestedRef.current = false;
         clientRef.current = null;
       },
     });
 
     clientRef.current = client;
 
-    client.start({
+    void client.start({
       model: 'stt-rt-preview',
       languageHints: ['en'],
-      enableEndpointDetection: true,
+      enableEndpointDetection: mode !== 'push-to-talk',
       enableSpeakerDiarization: true,
     });
   }, [apiKey]);
 
-  const stopDictation = useCallback(() => {
-    if (clientRef.current) {
-      clientRef.current.stop();
+  const finishDictation = useCallback(() => {
+    const client = clientRef.current;
+    if (!client) return;
+
+    finishRequestedRef.current = true;
+    if (client.state === 'Running') {
+      client.stop();
     }
   }, []);
 
@@ -172,21 +239,27 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     if (clientRef.current) {
       clientRef.current.cancel();
       clientRef.current = null;
-      setDictationState('idle');
     }
+    finishRequestedRef.current = false;
+    modeRef.current = null;
+    setDictationState('idle');
+    setDictationMode(null);
   }, []);
 
   const toggleDictation = useCallback(() => {
     if (dictationState === 'idle') {
-      startDictation();
+      startDictation('continuous');
     } else if (dictationState === 'recording') {
-      stopDictation();
+      finishDictation();
     }
-  }, [dictationState, startDictation, stopDictation]);
+  }, [dictationState, startDictation, finishDictation]);
 
   return {
     dictationState,
+    dictationMode,
     error,
+    startDictation,
+    finishDictation,
     toggleDictation,
     cancelDictation,
   };

@@ -54,8 +54,8 @@ jobs:
         with:
           workspaces: alloy-server
       - run: npm ci
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
       # test:smoke builds dist-web first, then Playwright's webServer
       # (scripts/smoke-server.sh) compiles alloy-serve against it (embedding the
       # SPA) and boots. The first run does a cold cargo build, cached by

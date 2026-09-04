@@ -1482,6 +1482,7 @@ function AppContent() {
                 onToggleFavorite={handleToggleFavorite}
                 onSetDefault={handleSetDefaultModel}
                 defaultModel={config?.defaultModel}
+                sonioxApiKey={config?.sonioxApiKey}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                 scrollToMessageId={pendingScrollToMessageId}
@@ -1593,6 +1594,7 @@ function AppContent() {
             onToggleFavorite={handleToggleFavorite}
             onSetDefault={handleSetDefaultModel}
             defaultModel={config?.defaultModel}
+            sonioxApiKey={config?.sonioxApiKey}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             scrollToMessageId={pendingScrollToMessageId}

@@ -114,6 +114,21 @@
   font-size: 1rem;
 }
 
+.composer[data-recording] {
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(239 68 68 / 40%); }
+  50% { box-shadow: 0 0 0 6px rgb(239 68 68 / 0%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer[data-recording] {
+    animation: none;
+  }
+}
+
 .composer[data-disabled] {
   opacity: 0.35;
   box-shadow: none;

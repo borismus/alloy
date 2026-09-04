@@ -248,6 +248,12 @@
   line-height: 1.4;
 }
 
+.dictation-error {
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
 /* Pending images preview */
 .pending-images {
   display: flex;
@@ -1025,8 +1031,12 @@
     max-width: none;
   }
 
-  .input-form .input-row [data-composer-control="send"] {
+  .input-form .input-row [data-composer-control="mic"] {
     order: 4;
+  }
+
+  .input-form .input-row [data-composer-control="send"] {
+    order: 5;
   }
 }
 

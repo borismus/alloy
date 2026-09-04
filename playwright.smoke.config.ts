@@ -29,12 +29,11 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
+      testIgnore: /voice-mobile\.smoke\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1100, height: 800 } },
     },
     {
-      // Mobile-emulated Chromium (viewport + touch + hover:none) so we only need
-      // the chromium install; catches the layout/touch regressions that unit
-      // tests miss.
+      // Mobile-emulated Chromium catches responsive layout and touch regressions.
       name: 'mobile',
       use: {
         ...devices['Desktop Chrome'],
@@ -42,6 +41,14 @@ export default defineConfig({
         isMobile: true,
         hasTouch: true,
       },
+    },
+    {
+      // Keep a narrow WebKit lane for interactions where iPhone is the primary
+      // target. Voice tests mock microphone audio and Soniox, but exercise the
+      // production browser SDK, touch-sized UI, and submission path.
+      name: 'mobile-webkit',
+      testMatch: /voice-mobile\.smoke\.spec\.ts/,
+      use: { ...devices['iPhone 13'] },
     },
   ],
   webServer: {

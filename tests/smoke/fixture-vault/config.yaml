@@ -1,5 +1,8 @@
 version: 2
 defaultModel: claude-cli/sonnet
+# Dummy credential: smoke tests only assert that voice input is present; they
+# never open a microphone or contact Soniox.
+sonioxApiKey: smoke-test-key
 
 # CI has no Claude CLI, so model discovery falls back to the built-in aliases.
 # This keeps smoke tests credential-free while exercising the same API/UI path.

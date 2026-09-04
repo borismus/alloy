@@ -2,8 +2,11 @@ import React, { useState, useRef, useMemo, useEffect, forwardRef, useImperativeH
 import { ModelInfo } from '../types';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
+import { useDictation, type DictationMode } from '../hooks/useDictation';
+import { useVoiceInputPress } from '../hooks/useVoiceInputPress';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
+import { DictationButton } from './DictationButton';
 import { AlloyTooltip, Button } from './ui';
 import { SlashCommandMenu, SlashCommandItem } from './SlashCommandMenu';
 import { skillRegistry } from '../services/skills';
@@ -29,6 +32,7 @@ interface ChatInputFormProps {
   defaultModel?: string;
   onToggleFavorite?: (modelKey: string) => void;
   onSetDefault?: (modelKey: string) => void;
+  sonioxApiKey?: string;
 }
 
 export interface ChatInputFormHandle {
@@ -48,6 +52,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   defaultModel,
   onToggleFavorite,
   onSetDefault,
+  sonioxApiKey,
 }, ref) => {
   const [input, setInput] = useState('');
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -61,6 +66,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   const modelLabel = selectedModelInfo?.name ?? 'This model';
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const preDictationTextRef = useRef('');
   const textareaProps = useTextareaProps();
 
   // Slash-command (`/skill_name`) autocomplete.
@@ -166,20 +172,68 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     fileInputRef.current?.click();
   };
 
-  const doSubmit = useCallback(() => {
-    if (!input.trim() && pendingImages.length === 0) return;
+  const doSubmit = useCallback((textOverride?: string): boolean => {
+    const sourceText = textOverride ?? input;
+    if (!sourceText.trim() && pendingImages.length === 0) return false;
 
-    const message = input.trim();
+    const message = sourceText.trim();
     const images = [...pendingImages];
 
     // A restored mobile screen can briefly have no backing conversation while
     // its draft is reconstructed. Never erase a composed prompt unless the
     // parent actually accepted it for sending or queueing.
-    if (!onSubmit(message, images)) return;
+    if (!onSubmit(message, images)) return false;
 
     setInput('');
     setPendingImages([]);
+    return true;
   }, [input, pendingImages, onSubmit]);
+
+  const transcriptWithPrefix = useCallback((text: string) => {
+    const pre = preDictationTextRef.current;
+    if (!pre) return text;
+    return `${pre}${/\s$/.test(pre) ? '' : ' '}${text}`;
+  }, []);
+
+  const handleTranscript = useCallback((text: string) => {
+    setInput(transcriptWithPrefix(text));
+  }, [transcriptWithPrefix]);
+
+  const handleDictationEndpoint = useCallback((finalText: string) => {
+    const fullText = transcriptWithPrefix(finalText);
+    // Set the completed transcript first. If the parent rejects submission,
+    // doSubmit deliberately leaves this text available for a later retry.
+    setInput(fullText);
+    if (doSubmit(fullText)) {
+      preDictationTextRef.current = '';
+    }
+  }, [doSubmit, transcriptWithPrefix]);
+
+  const {
+    dictationState,
+    dictationMode,
+    error: dictationError,
+    startDictation,
+    finishDictation,
+    cancelDictation,
+  } = useDictation({
+    apiKey: sonioxApiKey,
+    onTranscript: handleTranscript,
+    onEndpoint: handleDictationEndpoint,
+  });
+
+  const startVoiceInput = useCallback((mode: DictationMode) => {
+    preDictationTextRef.current = input;
+    startDictation(mode);
+  }, [input, startDictation]);
+
+  const voicePress = useVoiceInputPress({
+    isActive: dictationState !== 'idle',
+    onStartAutomatic: () => startVoiceInput('one-shot'),
+    onStartPushToTalk: () => startVoiceInput('push-to-talk'),
+    onFinish: finishDictation,
+    onCancel: cancelDictation,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,6 +273,18 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     }
     handleKeyDown(e);
   };
+
+  const isDictating = dictationState !== 'idle';
+  const voiceLabel = dictationMode === 'push-to-talk'
+    ? 'Release to send voice input'
+    : isDictating
+      ? 'Finish and send voice input'
+      : 'Start voice input';
+  const voiceHint = dictationMode === 'push-to-talk'
+    ? 'Release to send'
+    : isDictating
+      ? 'Listening — press to send'
+      : 'Tap to speak · hold for push-to-talk';
 
   return (
     <form onSubmit={handleSubmit} className="input-form">
@@ -284,7 +350,8 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           }}
           onKeyDown={handleTextareaKeyDown}
           onPaste={handlePaste}
-          placeholder="Send a message..."
+          placeholder={isDictating ? 'Listening...' : 'Send a message...'}
+          disabled={isDictating}
           rows={1}
           {...textareaProps}
         />
@@ -300,6 +367,18 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
             onSetDefault={onSetDefault}
           />
         </div>
+        {sonioxApiKey && (
+          <AlloyTooltip content={voiceHint}>
+            <DictationButton
+              dictationState={dictationState}
+              data-dictation-mode={dictationMode ?? undefined}
+              {...voicePress}
+              isDisabled={dictationState === 'stopping'}
+              aria-label={voiceLabel}
+              title={voiceHint}
+            />
+          </AlloyTooltip>
+        )}
         {isStreaming && !input.trim() && pendingImages.length === 0 ? (
           <AlloyTooltip content="Stop generating">
             <Button
@@ -328,6 +407,9 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           </AlloyTooltip>
         )}
       </div>
+      {dictationError && (
+        <div className="dictation-error" role="alert">{dictationError}</div>
+      )}
     </form>
   );
 }));

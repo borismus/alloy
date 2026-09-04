@@ -11,6 +11,7 @@ import { MarkdownContent } from './MarkdownContent';
 import { MermaidDiagram } from './MermaidDiagram';
 import { ItemHeader } from './ItemHeader';
 import { InterventionCard } from './InterventionCard';
+import { DictationButton } from './DictationButton';
 import { Button } from './ui';
 import type { ConversationInfo } from '../types';
 import { parseFrontmatter } from '../utils/frontmatter';
@@ -385,30 +386,13 @@ export const RiffView: React.FC<RiffViewProps> = ({
             {...textareaProps}
           />
           {sonioxApiKey && (
-            <Button
-              type="button"
-              variant={isRecording ? 'danger' : 'secondary'}
-              size="composer"
-              data-composer-control="mic"
-              data-recording={isRecording || undefined}
+            <DictationButton
+              dictationState={dictationState}
               onPress={handleToggleDictation}
               isDisabled={isProcessing || isDictationBusy}
               aria-label={isRecording ? 'Stop dictation' : 'Start dictation'}
               title={isRecording ? 'Stop dictation' : 'Start dictation'}
-            >
-              {isRecording ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                  <rect x="4" y="4" width="16" height="16" rx="2" />
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="1" width="6" height="13" rx="3" />
-                  <path d="M5 10a7 7 0 0 0 14 0" />
-                  <line x1="12" y1="17" x2="12" y2="21" />
-                  <line x1="8" y1="21" x2="16" y2="21" />
-                </svg>
-              )}
-            </Button>
+            />
           )}
           <Button
             type="submit"

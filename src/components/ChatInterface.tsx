@@ -128,6 +128,7 @@ interface ChatInterfaceProps {
   /** Configured default model from config.yaml. Used to seed the picker on
    *  the empty-state welcome screen; ignored if not in availableModels. */
   defaultModel?: string;
+  sonioxApiKey?: string;
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   scrollToMessageId?: string | null;  // Message ID to scroll to (from provenance links)
@@ -168,6 +169,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   onToggleFavorite,
   onSetDefault,
   defaultModel,
+  sonioxApiKey,
   onNavigateToNote,
   onNavigateToConversation,
   scrollToMessageId,
@@ -646,6 +648,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             defaultModel={defaultModel}
             onToggleFavorite={onToggleFavorite}
             onSetDefault={onSetDefault}
+            sonioxApiKey={sonioxApiKey}
           />
         </div>
       );
@@ -785,6 +788,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         defaultModel={defaultModel}
         onToggleFavorite={onToggleFavorite}
         onSetDefault={onSetDefault}
+        sonioxApiKey={sonioxApiKey}
       />
     </div>
   );

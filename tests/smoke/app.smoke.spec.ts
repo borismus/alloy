@@ -50,6 +50,7 @@ test('opens a conversation and shows the composer and model picker', async ({ pa
   await page.getByText('Welcome to Alloy').click();
 
   await expect(page.locator('.input-row textarea')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start voice input' })).toBeVisible();
   await expect(page.getByText('What can Alloy do?')).toBeVisible();
 
   const picker = page.locator('.model-selector-container button');

@@ -279,16 +279,6 @@
   color: var(--text-secondary, var(--color-text-secondary));
 }
 
-/* Preserve the recording pulse while shared Button owns mic geometry/colors. */
-.riff-view [data-composer-control="mic"][data-recording] {
-  animation: pulse-recording 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-recording {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-}
-
 .riff-dictation-error {
   padding: 0.25rem 1.5rem;
   font-size: 0.75rem;

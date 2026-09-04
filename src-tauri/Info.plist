@@ -3,6 +3,8 @@
 <plist version="1.0">
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Alloy uses the microphone for voice dictation in draft notes.</string>
+	<string>Alloy uses the microphone for voice input in conversations and draft notes.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Alloy connects to AI model servers and other services you configure on your local network.</string>
 </dict>
 </plist>
