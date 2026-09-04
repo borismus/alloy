@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.21
+
+- **Scheduled-task models can now be changed directly.** Task details use the
+  same searchable model picker as the conversation composer, and selections are
+  saved immediately without altering the schedule or run history.
+- **Task email delivery now has an On/Off switch**, with a mobile-sized touch
+  target and immediate persistence.
+- Failure messages, schedules, run output, prompts, and other informational task
+  details are now selectable for copying into diagnostics or follow-up chats.
+
 ## 0.4.20
 
 - **Conversations now support mobile-first voice input.** Tap the microphone for
