@@ -317,6 +317,51 @@ test('mobile can send from a new conversation after iOS-style restoration', asyn
   await expect(textarea).toHaveValue(prompt);
 });
 
+test('task model and email controls persist direct changes', async ({ page }) => {
+  await page.locator('.timeline-item').filter({ hasText: 'Daily standup prompt' }).click();
+  await expect(page.getByRole('button', { name: 'Run now' })).toBeVisible();
+
+  expect(await page.locator('.task-detail-content').evaluate(
+    element => getComputedStyle(element).userSelect,
+  )).toBe('text');
+
+  const modelPicker = page.locator('.task-model-row').first().getByRole('button', { name: /^Model:/ });
+  const currentModel = await modelPicker.getAttribute('aria-label');
+  const target = currentModel?.includes('Haiku') ? 'Opus' : 'Haiku';
+  await modelPicker.click();
+  await page.getByRole('searchbox', { name: 'Search models' }).fill(target);
+  await page.getByRole('option').filter({ hasText: target }).first().click();
+  await expect(modelPicker).toHaveAttribute('aria-label', new RegExp(target));
+
+  const emailSwitch = page.getByRole('switch', { name: 'Email task results' });
+  const emailToggle = page.locator('.task-email-control label');
+  const emailBox = await emailToggle.boundingBox();
+  expect(emailBox?.width).toBeGreaterThanOrEqual(44);
+  expect(emailBox?.height).toBeGreaterThanOrEqual(44);
+  const emailWasOn = await emailSwitch.isChecked();
+  await emailToggle.click();
+  if (emailWasOn) {
+    await expect(emailSwitch).not.toBeChecked();
+  } else {
+    await expect(emailSwitch).toBeChecked();
+  }
+
+  // Both controls write the task file rather than changing only local UI state.
+  await page.reload();
+  await expect(page.locator('.task-detail-view, .timeline-item').first()).toBeVisible();
+  if (await page.getByRole('button', { name: 'Run now' }).count() === 0) {
+    await page.locator('.timeline-item').filter({ hasText: 'Daily standup prompt' }).click();
+  }
+  await expect(page.locator('.task-model-row').first().getByRole('button', { name: /^Model:/ }))
+    .toHaveAttribute('aria-label', new RegExp(target));
+  const persistedEmail = page.getByRole('switch', { name: 'Email task results' });
+  if (emailWasOn) {
+    await expect(persistedEmail).not.toBeChecked();
+  } else {
+    await expect(persistedEmail).toBeChecked();
+  }
+});
+
 test('search finds text inside conversation bodies', async ({ page }) => {
   // Regression: the sidebar filter searched `conversation.messages`, but
   // conversations load as metadata-only summaries with messages: [], so the

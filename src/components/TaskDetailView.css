@@ -13,6 +13,17 @@
   overflow-x: hidden;
   padding: 1.5rem;
   min-width: 0;
+  /* Task failures, schedules, run output, and prompts are often copied into
+     diagnostics or follow-up conversations. Override the app chrome's
+     native-style selection lock for this informational content. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.task-detail-content button,
+.task-detail-content [role="switch"] {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .task-failure-banner {
@@ -170,14 +181,6 @@
   min-width: 0;
 }
 
-.task-model-name {
-  font-size: 0.9rem;
-  font-weight: 650;
-  color: var(--text-primary, var(--color-text));
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .task-model-provider {
   font-size: 0.72rem;
   color: var(--text-tertiary, var(--color-text-muted));
@@ -225,6 +228,16 @@
   margin-bottom: 1rem;
 }
 
+.task-email-control {
+  flex-wrap: nowrap;
+}
+
+.task-email-control > label {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
+
 .task-email-tag {
   display: inline-flex;
   align-items: center;
@@ -246,6 +259,12 @@
   background: var(--color-code-bg);
   color: var(--color-text-secondary);
   border: 1px solid rgba(107, 114, 128, 0.25);
+}
+
+.task-config-update-error {
+  margin: -0.25rem 0 0.75rem;
+  color: var(--color-danger);
+  font-size: var(--text-sm);
 }
 
 .task-condition {

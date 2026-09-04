@@ -3,7 +3,9 @@ created: 2024-01-10T09:00:00.000Z
 updated: 2024-01-10T09:00:00.000Z
 title: Daily standup prompt
 model: claude-cli/sonnet
-enabled: true
+# Keep fixture scheduling disabled: smoke tests edit this task but must never
+# execute a real provider call in the background.
+enabled: false
 email: false
 prompt: |-
   Summarize what changed in the vault yesterday and suggest one focus for today.

@@ -7,7 +7,8 @@ import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { AiEditPanel } from './AiEditPanel';
-import { Button } from './ui';
+import { ModelSelector } from './ModelSelector';
+import { Button, Switch } from './ui';
 import { describeTaskSchedule, parseTaskCron } from '../utils/taskSchedule';
 import { providerLabel, isLocalModel } from '../utils/models';
 import './TaskDetailView.css';
@@ -142,7 +143,6 @@ export function TaskDetailView({
   defaultModel,
 }: TaskDetailViewProps) {
   const modelInfo = availableModels.find(m => m.key === task.model);
-  const modelName = modelInfo?.name ?? (task.model.split('/').slice(1).join('/') || task.model);
   const modelProvider = providerLabel(modelInfo?.provider, task.model);
   const modelIsLocal = isLocalModel(task.model, availableModels);
   // Unknown = not in the reachable list AND not a known-local provider (mlx is
@@ -152,6 +152,8 @@ export function TaskDetailView({
   const [isRunning, setIsRunning] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
+  const [updatingField, setUpdatingField] = useState<'model' | 'email' | null>(null);
+  const [configUpdateError, setConfigUpdateError] = useState<string | null>(null);
   const schedule = useMemo(() => describeTaskSchedule(task), [task]);
   const isChecking = activeRuns.includes(task.id) || isRunning;
 
@@ -235,6 +237,37 @@ export function TaskDetailView({
       setIsToggling(false);
     }
   };
+
+  const updateTaskField = useCallback(async (
+    field: 'model' | 'email',
+    update: (fresh: ScheduledTask) => ScheduledTask,
+  ) => {
+    if (updatingField !== null) return;
+    setUpdatingField(field);
+    setConfigUpdateError(null);
+    try {
+      const updated = await vaultService.updateTask(task.id, fresh => ({
+        ...update(fresh),
+        updated: new Date().toISOString(),
+      }));
+      if (!updated) throw new Error('Task not found');
+      onTaskUpdated(updated);
+    } catch (error) {
+      console.error(`Failed to update task ${field}:`, error);
+      setConfigUpdateError(`Couldn’t save the task’s ${field}. Try again.`);
+    } finally {
+      setUpdatingField(null);
+    }
+  }, [onTaskUpdated, task.id, updatingField]);
+
+  const handleModelChange = useCallback((model: string) => {
+    if (model === task.model) return;
+    void updateTaskField('model', fresh => ({ ...fresh, model }));
+  }, [task.model, updateTaskField]);
+
+  const handleEmailChange = useCallback((email: boolean) => {
+    void updateTaskField('email', fresh => ({ ...fresh, email }));
+  }, [updateTaskField]);
 
   // AI edit: diff the editable config subset (as YAML), then merge the confirmed
   // values back into the fresh task, preserving history/messages/ids.
@@ -399,7 +432,16 @@ export function TaskDetailView({
           <div className="task-model-row">
             <span className="task-field-label">Model</span>
             <div className="task-model-value">
-              <span className="task-model-name" title={task.model}>{modelName}</span>
+              <ModelSelector
+                value={task.model}
+                onChange={handleModelChange}
+                disabled={updatingField !== null || availableModels.length === 0}
+                models={availableModels}
+                favoriteModels={favoriteModels}
+                defaultModel={defaultModel}
+                onToggleFavorite={onToggleFavorite}
+                onSetDefault={onSetDefault}
+              />
               {modelIsLocal ? (
                 <span className="task-model-tag local" title="Runs on a local model — prompts stay on your device">
                   <LocalLockIcon /> Local
@@ -415,15 +457,24 @@ export function TaskDetailView({
           </div>
           <div className="task-model-row">
             <span className="task-field-label">Email</span>
-            <div className="task-model-value">
-              <span
-                className={`task-email-tag ${task.email ? 'on' : 'off'}`}
-                title={task.email ? 'Delivered results and first-failure alerts are emailed via Resend' : 'This task does not send email'}
-              >
+            <div
+              className="task-model-value task-email-control"
+              title={task.email ? 'Delivered results and first-failure alerts are emailed via Resend' : 'This task does not send email'}
+            >
+              <Switch
+                aria-label="Email task results"
+                isSelected={task.email === true}
+                onChange={handleEmailChange}
+                isDisabled={updatingField !== null}
+              />
+              <span className={`task-email-tag ${task.email ? 'on' : 'off'}`}>
                 {task.email ? 'On' : 'Off'}
               </span>
             </div>
           </div>
+          {configUpdateError && (
+            <div className="task-config-update-error" role="alert">{configUpdateError}</div>
+          )}
           {task.trigger && (
             <div className="task-condition">
               <span className="task-field-label">Deliver when</span>
