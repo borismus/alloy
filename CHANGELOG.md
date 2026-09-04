@@ -4,6 +4,19 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.20
+
+- **Conversations now support mobile-first voice input.** Tap the microphone for
+  one-shot speech that sends when Soniox detects the endpoint, or hold it for
+  push-to-talk and release to send. Voice creates textual turns only, combines
+  with existing composer text, and retains the transcript if submission fails.
+- Riff keeps its existing continuous dictation behavior while sharing the same
+  accessible microphone control. Push-to-talk also preserves the last partial
+  transcript when Soniox finishes with an empty terminal packet.
+- Added clear macOS permission descriptions for microphone and configured local
+  network access. Mobile voice interactions now run in both Chromium and an
+  iPhone-sized WebKit smoke lane.
+
 ## 0.4.19
 
 - **Synced vaults now have one scheduled-task runner.** Settings assigns a shared
