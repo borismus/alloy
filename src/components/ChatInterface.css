@@ -55,6 +55,15 @@
   overscroll-behavior: contain;
 }
 
+/* Keep complete turns in one calm reading column rather than stretching
+   prose to the full window width. Streaming responses are centered below in
+   the equivalent top-level response rule. */
+.messages-container > [data-message-id] {
+  width: 100%;
+  max-width: 800px;
+  margin-inline: auto;
+}
+
 .welcome-message,
 .no-conversation,
 .no-provider,
@@ -96,7 +105,7 @@
 }
 
 .model-name {
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--color-text-secondary);
 }
 
@@ -116,6 +125,8 @@
 }
 
 .message.user {
+  width: fit-content;
+  max-width: min(82%, 680px);
   margin-left: auto;
 }
 
@@ -478,153 +489,15 @@
   color: var(--color-text);
 }
 
-/* Shared Markdown Styles - applies to all markdown-rendered content */
-.message-content p,
-.response-summary-content p {
-  margin: 0 0 1rem 0;
-}
-
-.message-content p:last-child,
-.response-summary-content p:last-child {
-  margin-bottom: 0;
-}
-
-.message-content h1,
-.message-content h2,
-.message-content h3,
-.message-content h4,
-.message-content h5,
-.message-content h6,
-.response-summary-content h1,
-.response-summary-content h2,
-.response-summary-content h3,
-.response-summary-content h4,
-.response-summary-content h5,
-.response-summary-content h6 {
-  margin: 1.5rem 0 0.75rem 0;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.message-content h1:first-child,
-.message-content h2:first-child,
-.message-content h3:first-child,
-.response-summary-content h1:first-child,
-.response-summary-content h2:first-child,
-.response-summary-content h3:first-child {
-  margin-top: 0;
-}
-
-.message-content h1,
-.response-summary-content h1 {
-  font-size: 1.75rem;
-}
-
-.message-content h2,
-.response-summary-content h2 {
-  font-size: 1.5rem;
-}
-
-.message-content h3,
-.response-summary-content h3 {
-  font-size: 1.25rem;
-}
-
-.message-content code,
-.response-summary-content code {
-  background: rgba(0, 0, 0, 0.08);
-  padding: 0.2em 0.4em;
-  border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  font-size: 0.9em;
-}
-
+/* User-message Markdown overrides. Shared element styling lives in
+   MarkdownContent.css; this block only adapts it to the accent bubble. */
 .message.user .message-content code {
   background: rgba(255, 255, 255, 0.2);
-}
-
-.message-content pre,
-.response-summary-content pre {
-  margin: 1rem 0;
-  border-radius: 8px;
-  overflow-x: auto;
-  background: var(--color-surface-hover);
-  border: 1px solid var(--color-border-strong);
-}
-
-.message-content pre code,
-.response-summary-content pre code {
-  display: block;
-  padding: 1rem;
-  background: transparent;
-  color: var(--color-text);
-  font-size: 0.875rem;
-  line-height: 1.5;
-}
-
-.message-content ul,
-.message-content ol,
-.response-summary-content ul,
-.response-summary-content ol {
-  margin: 0.5rem 0;
-  padding-left: 1.5rem;
-}
-
-.message-content li,
-.response-summary-content li {
-  margin: 0.25rem 0;
-}
-
-.message-content li > p,
-.response-summary-content li > p {
-  margin: 0;
-}
-
-.message-content li > p + p,
-.response-summary-content li > p + p {
-  margin-top: 0.5rem;
-}
-
-.message-content blockquote,
-.response-summary-content blockquote {
-  margin: 1rem 0;
-  padding-left: 1rem;
-  border-left: 3px solid var(--color-border);
-  color: var(--color-text-secondary);
 }
 
 .message.user .message-content blockquote {
   border-left-color: rgba(255, 255, 255, 0.5);
   color: rgba(255, 255, 255, 0.9);
-}
-
-.message-content table,
-.response-summary-content table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 1rem 0;
-  table-layout: fixed;
-}
-
-.message-content th,
-.message-content td,
-.response-summary-content th,
-.response-summary-content td {
-  border: 1px solid var(--color-border);
-  padding: 0.5rem;
-  text-align: left;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-}
-
-.message-content th,
-.response-summary-content th {
-  background: var(--color-surface);
-  font-weight: 600;
-}
-
-.message.user .message-content table {
-  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .message.user .message-content th,
@@ -638,37 +511,9 @@
   background: rgba(255, 255, 255, 0.95);
 }
 
-.message-content a,
-.response-summary-content a {
-  color: var(--color-accent);
-  text-decoration: none;
-}
-
-.message-content a:hover,
-.response-summary-content a:hover {
-  text-decoration: underline;
-}
-
 .message.user .message-content a {
   color: white;
   text-decoration: underline;
-}
-
-/* Wiki-links - internal links to notes and conversations */
-.message-content a.wiki-link,
-.response-summary-content a.wiki-link {
-  color: var(--color-accent-strong);
-  background: var(--color-accent-soft);
-  padding: 0.125em 0.375em;
-  border-radius: 4px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.message-content a.wiki-link:hover,
-.response-summary-content a.wiki-link:hover {
-  background: var(--color-accent-soft);
-  text-decoration: none;
 }
 
 .message.user .message-content a.wiki-link {
@@ -680,23 +525,6 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Provenance markers - style them subtly as superscript links */
-.message-content a.provenance-link,
-.response-summary-content a.provenance-link {
-  color: var(--color-text-muted);
-  font-size: 0.7em;
-  vertical-align: super;
-  text-decoration: none;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-}
-
-.message-content a.provenance-link:hover,
-.response-summary-content a.provenance-link:hover {
-  opacity: 1;
-  color: var(--color-accent);
-}
-
 .message.user .message-content a.provenance-link {
   color: rgba(255, 255, 255, 0.7);
 }
@@ -705,20 +533,8 @@
   color: white;
 }
 
-.message-content hr,
-.response-summary-content hr {
-  margin: 1.5rem 0;
-  border: none;
-  border-top: 1px solid var(--color-border);
-}
-
 .message.user .message-content hr {
   border-top-color: rgba(255, 255, 255, 0.3);
-}
-
-.message-content strong,
-.response-summary-content strong {
-  font-weight: 600;
 }
 
 /* Log messages */
@@ -907,6 +723,57 @@
   margin-bottom: 2rem;
 }
 
+/* Top-level answers read like documents on the canvas. Nested response cards
+   (Comparison/Council subagents) retain the bordered base treatment above. */
+.messages-container > [data-message-id] > .response-summary,
+.messages-container > .response-summary {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.messages-container > [data-message-id] > .response-summary .markdown-content,
+.messages-container > .response-summary .markdown-content {
+  font-family: var(--font-ui);
+  font-size: 1.035rem;
+  font-weight: 400;
+  line-height: 1.68;
+}
+
+.messages-container > [data-message-id] > .response-summary .markdown-content :is(h1, h2, h3, h4, h5, h6, table),
+.messages-container > .response-summary .markdown-content :is(h1, h2, h3, h4, h5, h6, table) {
+  font-family: var(--font-ui);
+}
+
+.messages-container > [data-message-id] > .response-summary .markdown-content h1,
+.messages-container > .response-summary .markdown-content h1 {
+  font-size: 1.375rem;
+}
+
+.messages-container > [data-message-id] > .response-summary .markdown-content h2,
+.messages-container > .response-summary .markdown-content h2 {
+  font-size: 1.2rem;
+}
+
+.messages-container > [data-message-id] > .response-summary .markdown-content h3,
+.messages-container > .response-summary .markdown-content h3 {
+  font-size: 1.0625rem;
+}
+
+.messages-container > [data-message-id] > .response-summary .markdown-content :is(h2, h3),
+.messages-container > .response-summary .markdown-content :is(h2, h3) {
+  margin-top: 1.85rem;
+}
+
+.messages-container > [data-message-id] > .response-summary .markdown-content table,
+.messages-container > .response-summary .markdown-content table {
+  font-size: 0.92rem;
+}
+
 .response-summary-header {
   font-weight: 600;
   font-size: 0.85rem;
@@ -926,6 +793,12 @@
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.25rem;
+}
+
+.messages-container > [data-message-id] > .response-summary .response-footer,
+.messages-container > .response-summary .response-footer {
+  margin-top: 0.65rem;
+  opacity: 0.75;
 }
 
 .response-summary .usage-badge {
@@ -998,6 +871,10 @@
    landscape is ~874px wide, above any width-only breakpoint, but is still a
    phone. Keep in sync with MOBILE_MEDIA_QUERY in src/hooks/useIsMobile.ts. */
 @media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  .message.user {
+    max-width: 92%;
+  }
+
   .input-form {
     padding: 12px 16px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));

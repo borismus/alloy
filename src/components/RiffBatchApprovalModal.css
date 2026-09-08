@@ -56,7 +56,8 @@
 .riff-change-path {
   font-size: 13px;
   color: var(--text-primary, #333);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
 }
 
 .riff-change-description {

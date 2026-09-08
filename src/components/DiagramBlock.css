@@ -13,8 +13,9 @@
   left: 1rem;
   z-index: 2;
   color: var(--text-tertiary, #7e8593);
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.68rem;
+  font-variant-ligatures: none;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;

@@ -45,6 +45,7 @@
     "generate-icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "@soniox/speech-to-text-web": "^1.4.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.5.0",

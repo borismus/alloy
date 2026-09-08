@@ -133,7 +133,8 @@
   background: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
   font-size: 11px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 100px;

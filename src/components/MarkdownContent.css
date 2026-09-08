@@ -51,8 +51,9 @@
   background: var(--color-code-bg);
   padding: 0.2em 0.4em;
   border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
+  font-variant-ligatures: none;
 }
 
 .markdown-content pre {
@@ -187,29 +188,54 @@
 .markdown-content blockquote {
   margin: 1rem 0;
   padding-left: 1rem;
-  border-left: 3px solid var(--color-border);
+  border-left: 2px solid var(--color-accent);
   color: var(--color-text-secondary);
+}
+
+.markdown-content .markdown-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  margin: 1rem 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar) transparent;
+}
+
+.markdown-content .markdown-table-scroll:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .markdown-content table {
   border-collapse: collapse;
   width: 100%;
-  margin: 1rem 0;
-  table-layout: fixed;
+  margin: 0;
+  table-layout: auto;
 }
 
 .markdown-content th,
 .markdown-content td {
-  border: 1px solid var(--color-border);
-  padding: 0.5rem;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.625rem 0.85rem 0.625rem 0;
   text-align: left;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
+  vertical-align: top;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 .markdown-content th {
-  background: var(--color-surface);
+  background: transparent;
+  border-bottom: 2px solid var(--color-border-strong);
   font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .markdown-content th,
+  .markdown-content td {
+    min-width: 9.5rem;
+  }
 }
 
 .markdown-content a {
@@ -287,7 +313,14 @@
   font-style: italic;
 }
 
-/* Hide KaTeX MathML duplicate (normally hidden by katex.css which we can't import) */
-.markdown-content .katex-mathml {
-  display: none;
+/* Long equations scroll horizontally instead of widening the chat column.
+   These guards are what make importing katex.min.css safe: KaTeX display
+   blocks are wide inline content that otherwise stretch the message card and
+   put a horizontal scrollbar on the whole conversation (the "scroll layout
+   bugs" that kept katex.css out originally). */
+.markdown-content .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 0.25rem 0;
 }

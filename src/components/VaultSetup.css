@@ -135,7 +135,8 @@
   border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 1rem;
-  font-family: monospace;
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
   box-sizing: border-box;
 }
 

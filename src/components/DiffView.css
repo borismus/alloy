@@ -1,6 +1,7 @@
 .diff-view {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
+  font-variant-ligatures: none;
   line-height: 1.55;
   border: 1px solid var(--color-border);
   border-radius: 10px;

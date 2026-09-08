@@ -194,6 +194,18 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
       if (!src) return null;
       return React.createElement('img', { src, alt, ...props });
     },
+    // Preserve the table's native semantics while giving wide GFM tables an
+    // independently focusable horizontal scroller on narrow screens.
+    table: ({ children }: { children?: React.ReactNode }) => React.createElement(
+      'div',
+      {
+        className: 'markdown-table-scroll',
+        role: 'region',
+        'aria-label': 'Scrollable table',
+        tabIndex: 0,
+      },
+      React.createElement('table', {}, children),
+    ),
     // Inline code passes through; fenced blocks are handled by `pre` below (a
     // fenced block is a `code` element wrapped in `pre`).
     code: ({ className, children, ...props }: { className?: string; children?: React.ReactNode; [key: string]: any }) => {

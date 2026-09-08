@@ -106,7 +106,8 @@
   min-width: 0;
   font-size: 13px;
   color: var(--color-text);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
   word-break: break-all;
   background: transparent;
 }
@@ -136,7 +137,8 @@
   background: var(--color-code-bg);
   padding: 8px 12px;
   border-radius: 6px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
