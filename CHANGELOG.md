@@ -4,6 +4,20 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.22
+
+- **Model output now reads like a document.** Conversations use a centered
+  reading column, compact user bubbles, borderless assistant responses, refined
+  heading rhythm, and cleaner rule-based tables. Wide tables scroll locally on
+  mobile instead of crushing words or widening the conversation.
+- **LaTeX renders with complete typography.** Standard `\\(...\\)` and
+  `\\[...\\]` delimiters work in historical and future messages, while the
+  KaTeX stylesheet and fonts restore proper radicals, fractions, spacing, and
+  mobile-safe display equations.
+- **Fixed-width content now uses self-hosted Geist Mono** consistently across
+  code, diagrams, diffs, model IDs, paths, and diagnostics, with programming
+  ligatures disabled where literal source fidelity matters.
+
 ## 0.4.21
 
 - **Scheduled-task models can now be changed directly.** Task details use the
