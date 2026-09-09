@@ -253,10 +253,19 @@ providers:
     if (!this.vaultPath) return;
 
     // Filter out empty or undefined messages (can happen when aborting a streaming response).
-    // Keep messages that carry attachments even when their text content is empty
-    // (e.g. an image sent with no accompanying text).
+    // "Empty" means carries no information at all. A message with attachments,
+    // tool history, sub-agent output, or a recorded failure is meaningful even
+    // with no text: a failed turn is persisted as empty content plus `error`
+    // (and usually toolUse), and dropping it here silently erased the previous
+    // failure — and the tool calls the user watched run — on the next save.
     const filteredMessages = conversation.messages.filter(
-      m => m && (m.content?.trim() !== '' || (m.attachments?.length ?? 0) > 0),
+      m => m && (
+        m.content?.trim() !== ''
+        || (m.attachments?.length ?? 0) > 0
+        || (m.toolUse?.length ?? 0) > 0
+        || (m.subagentResponses?.length ?? 0) > 0
+        || !!m.error
+      ),
     );
 
     // Don't save conversations with no actual messages

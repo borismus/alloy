@@ -259,6 +259,52 @@ describe('VaultService', () => {
       );
       expect(mdCall).toBeDefined();
     });
+
+    // Regression: a failed turn is stored as empty content plus `error` (and
+    // usually toolUse). The empty-message filter used to drop it, so the next
+    // save silently erased the previous failure and its tool history.
+    it('keeps text-less messages that carry an error, tools, or attachments', async () => {
+      vaultService.setVaultPath('/test/vault');
+      const mockConversation = createMockConversation({
+        id: 'conv-keep',
+        messages: [
+          { role: 'user', content: 'Do the thing', timestamp: '2024-01-01T10:00:00Z' },
+          {
+            id: 'msg-failed',
+            role: 'assistant',
+            content: '',
+            timestamp: '2024-01-01T10:01:00Z',
+            error: 'model used tools but returned no final text',
+            toolUse: [{ type: 'search_directory', result: 'nothing' }],
+          },
+          {
+            id: 'msg-tools-only',
+            role: 'assistant',
+            content: '',
+            timestamp: '2024-01-01T10:02:00Z',
+            toolUse: [{ type: 'web_search', result: 'partial' }],
+          },
+          // Genuinely empty: still dropped.
+          { role: 'assistant', content: '   ', timestamp: '2024-01-01T10:03:00Z' },
+        ],
+      });
+      vi.mocked(fs.writeTextFile).mockResolvedValue();
+      vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([]);
+
+      await vaultService.saveConversation(mockConversation);
+
+      const yamlCall = vi.mocked(fs.writeTextFile).mock.calls.find(
+        call => (call[0] as string).includes('conv-keep') && (call[0] as string).endsWith('.yaml')
+      );
+      expect(yamlCall).toBeDefined();
+      const written = yamlCall![1] as string;
+      expect(written).toContain('msg-failed');
+      expect(written).toContain('model used tools but returned no final text');
+      expect(written).toContain('msg-tools-only');
+      // The content-less, tool-less, error-less message is still filtered out.
+      expect(written).not.toContain('10:03:00Z');
+    });
   });
 
   describe('loadConversations', () => {

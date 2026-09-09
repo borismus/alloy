@@ -317,14 +317,27 @@ test('mobile can send from a new conversation after iOS-style restoration', asyn
   await expect(textarea).toHaveValue(prompt);
 });
 
+/**
+ * Open the failing-model conversation and wait until its message body has
+ * actually rendered. The composer becomes visible before the body loads, so
+ * counting error bubbles any earlier yields a bogus baseline (the vault is
+ * shared across tests and projects, so baselines matter).
+ */
+async function openFailureConversation(page: import('@playwright/test').Page) {
+  const item = page.locator('.timeline-item').filter({ hasText: 'Model failure reporting' });
+  if (await item.count() > 0) await item.click();
+  await expect(page.locator('.input-row textarea')).toBeVisible();
+  await expect(page.locator('.message.user').first())
+    .toContainText('Seeded so this conversation keeps its title');
+}
+
 test('a failed turn shows the error and survives reload', async ({ page }) => {
   // Real backend failure: the conversation's model points at the unreachable
   // `deadend` provider, so the turn dies in the provider stream. The failure
   // must land on the assistant record (with any tool history) and be visible —
   // an empty "successful" bubble made a dead turn look like it was still going.
-  await page.locator('.timeline-item').filter({ hasText: 'Model failure reporting' }).click();
+  await openFailureConversation(page);
   const textarea = page.locator('.input-row textarea');
-  await expect(textarea).toBeVisible();
 
   // Projects share one vault, so assert the delta: a failed turn must add
   // exactly one error record — never a duplicate or a blank "complete" bubble.
@@ -343,16 +356,33 @@ test('a failed turn shows the error and survives reload', async ({ page }) => {
   // The backend owns this write; the client must not overwrite it with a stale
   // pre-error copy. Reloading reads the vault back.
   await page.reload();
-  // Selection persists, so mobile restores straight into the conversation and
-  // has no timeline to click; desktop may land on the list.
-  await expect(page.locator('.input-row textarea, .timeline-item').first()).toBeVisible();
-  if (await failed.count() === 0
-    && await page.locator('.timeline-item').filter({ hasText: 'Model failure reporting' }).count() > 0) {
-    await page.locator('.timeline-item').filter({ hasText: 'Model failure reporting' }).click();
-  }
+  await openFailureConversation(page);
   await expect(page.locator('.message.user').last()).toContainText('This turn cannot succeed.');
   await expect(failed).toHaveCount(before + 1);
   await expect(failed.last().locator('.error-text')).toContainText('127.0.0.1:1');
+});
+
+test('a second failed turn does not erase the first', async ({ page }) => {
+  // The client saves the user message before streaming. A failed turn has no
+  // text — only an error and tool history — so an over-eager "drop empty
+  // messages" filter used to delete the previous failure on that save, leaving
+  // two prompts and one error.
+  await openFailureConversation(page);
+  const textarea = page.locator('.input-row textarea');
+  const failed = page.locator('.response-summary.status-error');
+
+  const before = await failed.count();
+  for (const attempt of ['first', 'second']) {
+    const seen = await failed.count();
+    await textarea.fill(`Consecutive failure: ${attempt}`);
+    await page.getByRole('button', { name: 'Send message' }).click();
+    await expect(failed).toHaveCount(seen + 1, { timeout: 15_000 });
+  }
+
+  // Both must survive a reload, i.e. both are really in the vault.
+  await page.reload();
+  await openFailureConversation(page);
+  await expect(failed).toHaveCount(before + 2);
 });
 
 test('task model and email controls persist direct changes', async ({ page }) => {
