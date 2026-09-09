@@ -4,6 +4,14 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.24
+
+- **Fixed failed turns disappearing when you send again.** Saving a
+  conversation dropped messages with no text, which is exactly what a failed
+  turn looks like — so the next message silently deleted the previous failure
+  and the tool calls you watched run. Messages carrying an error, tool history,
+  or sub-agent output are now kept.
+
 ## 0.4.23
 
 - **Conversation dictation is now manual on both ends.** The microphone is a
