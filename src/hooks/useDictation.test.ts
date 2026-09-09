@@ -79,7 +79,7 @@ describe('useDictation modes', () => {
     expect(client.stop).not.toHaveBeenCalled();
   });
 
-  it('submits one-shot speech once and stops after automatic endpoint detection', () => {
+  it('keeps manual dictation running until explicitly stopped', () => {
     const onTranscript = vi.fn();
     const onEndpoint = vi.fn();
     const { result } = renderHook(() => useDictation({
@@ -88,22 +88,24 @@ describe('useDictation modes', () => {
       onEndpoint,
     }));
 
-    act(() => result.current.startDictation('one-shot'));
+    act(() => result.current.startDictation('manual'));
     const client = sonioxMock.instances[0];
+    expect(client.audioOptions.enableEndpointDetection).toBe(false);
     act(() => client.emitState('Running'));
-    act(() => client.emitTokens([token('one turn', 0), token('<end>', 10)]));
 
-    expect(onEndpoint).toHaveBeenCalledTimes(1);
-    expect(onEndpoint).toHaveBeenCalledWith('one turn');
+    // Even an unexpected endpoint packet must update the visible transcript
+    // without stopping or submitting the conversation turn.
+    act(() => client.emitTokens([token('keep listening', 0), token('<end>', 10)]));
+    expect(onTranscript).toHaveBeenLastCalledWith('keep listening');
+    expect(onEndpoint).not.toHaveBeenCalled();
+    expect(client.stop).not.toHaveBeenCalled();
+
+    act(() => result.current.finishDictation());
     expect(client.stop).toHaveBeenCalledTimes(1);
-
-    // Soniox may deliver a trailing result while stop() finishes. It must not
-    // repopulate the composer after the accepted turn cleared it.
-    act(() => client.emitTokens([token('one turn', 0)]));
-    expect(onTranscript).toHaveBeenCalledTimes(1);
-
     act(() => client.finish());
+
     expect(onEndpoint).toHaveBeenCalledTimes(1);
+    expect(onEndpoint).toHaveBeenCalledWith('keep listening');
   });
 
   it('disables automatic endpoints for push-to-talk and submits on release', () => {

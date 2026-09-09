@@ -28,8 +28,9 @@ export default defineConfig({
   },
   projects: [
     {
+      // Desktop also runs conversation voice coverage because held-Space
+      // push-to-talk is primarily a hardware-keyboard interaction.
       name: 'desktop',
-      testIgnore: /voice-mobile\.smoke\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1100, height: 800 } },
     },
     {
@@ -45,7 +46,7 @@ export default defineConfig({
     {
       // Keep a narrow WebKit lane for interactions where iPhone is the primary
       // target. Voice tests mock microphone audio and Soniox, but exercise the
-      // production browser SDK, touch-sized UI, and submission path.
+      // production browser SDK, touch-sized UI, manual stop, and submission path.
       name: 'mobile-webkit',
       testMatch: /voice-mobile\.smoke\.spec\.ts/,
       use: { ...devices['iPhone 13'] },

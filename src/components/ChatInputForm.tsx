@@ -3,7 +3,7 @@ import { ModelInfo } from '../types';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useDictation, type DictationMode } from '../hooks/useDictation';
-import { useVoiceInputPress } from '../hooks/useVoiceInputPress';
+import { useHoldToDictate } from '../hooks/useHoldToDictate';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
 import { DictationButton } from './DictationButton';
@@ -67,6 +67,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const preDictationTextRef = useRef('');
+  const spaceHoldTextRef = useRef('');
   const textareaProps = useTextareaProps();
 
   // Slash-command (`/skill_name`) autocomplete.
@@ -227,10 +228,27 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     startDictation(mode);
   }, [input, startDictation]);
 
-  const voicePress = useVoiceInputPress({
-    isActive: dictationState !== 'idle',
-    onStartAutomatic: () => startVoiceInput('one-shot'),
-    onStartPushToTalk: () => startVoiceInput('push-to-talk'),
+  const handleVoiceToggle = useCallback(() => {
+    if (dictationState === 'idle') {
+      startVoiceInput('manual');
+    } else {
+      finishDictation();
+    }
+  }, [dictationState, finishDictation, startVoiceInput]);
+
+  const startSpaceDictation = useCallback(() => {
+    // The browser inserted the initial Space normally so ordinary typing stays
+    // responsive. Once it becomes a hold gesture, restore the pre-key text and
+    // use that as the prefix for the transcript.
+    const textBeforeSpace = spaceHoldTextRef.current;
+    preDictationTextRef.current = textBeforeSpace;
+    setInput(textBeforeSpace);
+    startDictation('push-to-talk');
+  }, [startDictation]);
+
+  const spaceDictation = useHoldToDictate({
+    enabled: Boolean(sonioxApiKey) && dictationState === 'idle' && !slashOpen,
+    onStart: startSpaceDictation,
     onFinish: finishDictation,
     onCancel: cancelDictation,
   });
@@ -271,20 +289,36 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
         return;
       }
     }
+
+    if (
+      e.key === ' '
+      && !e.repeat
+      && !e.altKey
+      && !e.ctrlKey
+      && !e.metaKey
+      && !e.shiftKey
+      && !e.nativeEvent.isComposing
+      && sonioxApiKey
+      && dictationState === 'idle'
+      && !slashOpen
+    ) {
+      spaceHoldTextRef.current = input;
+    }
+    spaceDictation.onKeyDown(e);
     handleKeyDown(e);
   };
 
   const isDictating = dictationState !== 'idle';
   const voiceLabel = dictationMode === 'push-to-talk'
-    ? 'Release to send voice input'
+    ? 'Release Space to send voice input'
     : isDictating
-      ? 'Finish and send voice input'
+      ? 'Stop and send voice input'
       : 'Start voice input';
   const voiceHint = dictationMode === 'push-to-talk'
-    ? 'Release to send'
+    ? 'Release Space to send'
     : isDictating
-      ? 'Listening — press to send'
-      : 'Tap to speak · hold for push-to-talk';
+      ? 'Listening — press to stop and send'
+      : 'Press to dictate · hold Space for push-to-talk';
 
   return (
     <form onSubmit={handleSubmit} className="input-form">
@@ -372,7 +406,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
             <DictationButton
               dictationState={dictationState}
               data-dictation-mode={dictationMode ?? undefined}
-              {...voicePress}
+              onPress={handleVoiceToggle}
               isDisabled={dictationState === 'stopping'}
               aria-label={voiceLabel}
               title={voiceHint}

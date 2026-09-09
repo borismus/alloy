@@ -7,19 +7,19 @@ interface DictationButtonProps extends Omit<ButtonProps, 'children' | 'variant' 
 
 /** Shared microphone/stop control used by Riff and conversation composers. */
 export function DictationButton({ dictationState, ...props }: DictationButtonProps) {
-  const isRecording = dictationState === 'recording';
+  const isActive = dictationState !== 'idle';
 
   return (
     <Button
       type="button"
-      variant={isRecording ? 'danger' : 'secondary'}
+      variant={isActive ? 'danger' : 'secondary'}
       size="composer"
       data-composer-control="mic"
-      data-recording={isRecording || undefined}
+      data-recording={isActive || undefined}
       data-dictation-state={dictationState}
       {...props}
     >
-      {isRecording ? (
+      {isActive ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
           <rect x="4" y="4" width="16" height="16" rx="2" />
         </svg>

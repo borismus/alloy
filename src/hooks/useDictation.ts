@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { SonioxClient, type RecorderState } from '@soniox/speech-to-text-web';
 
 export type DictationState = 'idle' | 'starting' | 'recording' | 'stopping';
-export type DictationMode = 'continuous' | 'one-shot' | 'push-to-talk';
+export type DictationMode = 'continuous' | 'manual' | 'push-to-talk';
 
 interface UseDictationOptions {
   apiKey: string | undefined;
@@ -65,7 +65,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
   const clientRef = useRef<SonioxClient | null>(null);
   const modeRef = useRef<DictationMode | null>(null);
   const finishRequestedRef = useRef(false);
-  const endpointSubmittedRef = useRef(false);
+  const submissionCompletedRef = useRef(false);
   const latestTextRef = useRef('');
   const onTranscriptRef = useRef(onTranscript);
   const onEndpointRef = useRef(onEndpoint);
@@ -107,7 +107,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     setDictationMode(mode);
     modeRef.current = mode;
     finishRequestedRef.current = false;
-    endpointSubmittedRef.current = false;
+    submissionCompletedRef.current = false;
     latestTextRef.current = '';
 
     // Reset accumulators for new session
@@ -119,19 +119,14 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       apiKey,
       onStateChange: ({ newState }) => {
         setDictationState(mapState(newState));
-        // Push-to-talk can be released while microphone permission or the
-        // websocket is still starting. Honor that release as soon as Soniox
+        // Manual recording can be stopped while microphone permission or the
+        // websocket is still starting. Honor that request as soon as Soniox
         // reaches a state where stop() can finalize the buffered audio.
         if (newState === 'Running' && finishRequestedRef.current) {
           clientRef.current?.stop();
         }
       },
       onPartialResult: (result) => {
-        // Stopping a one-shot session can produce trailing final-result events.
-        // The turn was already accepted at <end>; never put it back into the
-        // freshly-cleared composer or submit it twice.
-        if (modeRef.current === 'one-shot' && endpointSubmittedRef.current) return;
-
         const tokens = result.tokens ?? [];
         const hasEndpoint = tokens.some(t => t.text === '<end>');
 
@@ -147,15 +142,11 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
           console.log('[Dictation] <end>, fullText:', JSON.stringify(fullText));
           onTranscriptRef.current(fullText);
 
-          if (modeRef.current !== 'push-to-talk') {
+          // Continuous Riff dictation still treats each endpoint as a new
+          // segment. Conversation modes disable endpoint detection and submit
+          // only after an explicit button press or Space release.
+          if (modeRef.current === 'continuous') {
             onEndpointRef.current(fullText);
-            if (modeRef.current === 'one-shot') {
-              endpointSubmittedRef.current = true;
-              finishRequestedRef.current = true;
-              clientRef.current?.stop();
-            }
-
-            // Continuous Riff dictation treats each endpoint as a new segment.
             accFinalTextRef.current = '';
             accFinalEndMsRef.current = -1;
             latestTextRef.current = '';
@@ -199,11 +190,11 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
         const mode = modeRef.current;
         const finalText = latestTextRef.current;
         if (
-          (mode === 'one-shot' || mode === 'push-to-talk')
-          && !endpointSubmittedRef.current
+          (mode === 'manual' || mode === 'push-to-talk')
+          && !submissionCompletedRef.current
           && finalText.trim()
         ) {
-          endpointSubmittedRef.current = true;
+          submissionCompletedRef.current = true;
           onTranscriptRef.current(finalText);
           onEndpointRef.current(finalText);
         }
@@ -220,7 +211,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     void client.start({
       model: 'stt-rt-preview',
       languageHints: ['en'],
-      enableEndpointDetection: mode !== 'push-to-talk',
+      enableEndpointDetection: mode === 'continuous',
       enableSpeakerDiarization: true,
     });
   }, [apiKey]);

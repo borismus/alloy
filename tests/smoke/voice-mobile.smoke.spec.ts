@@ -116,7 +116,9 @@ async function openConversation(page: Page) {
   ]);
   expect(micBox?.width).toBeGreaterThanOrEqual(44);
   expect(micBox?.height).toBeGreaterThanOrEqual(44);
-  expect(textareaBox!.y).toBeLessThan(micBox!.y);
+  if (viewportWidth <= 768) {
+    expect(textareaBox!.y).toBeLessThan(micBox!.y);
+  }
   expect(micBox!.x + micBox!.width).toBeLessThanOrEqual(viewportWidth);
 }
 
@@ -128,47 +130,55 @@ async function rejectModelRequest(page: Page) {
   }));
 }
 
-test('mobile voice: tap uses automatic endpoint detection and sends once', async ({ page }) => {
-  const transcript = 'Automatic mobile voice turn';
-  const session = await installMockMicrophone(page, transcript, true);
+test('conversation voice: microphone toggles manual recording and sends once', async ({ page }) => {
+  const transcript = 'Manual voice turn';
+  const session = await installMockMicrophone(page, transcript, false);
   await rejectModelRequest(page);
+  let startRequests = 0;
+  page.on('request', request => {
+    if (request.url().endsWith('/api/stream/start')) startRequests++;
+  });
   await openConversation(page);
 
-  const startRequest = page.waitForRequest(request => request.url().endsWith('/api/stream/start'));
   await page.getByRole('button', { name: 'Start voice input' }).click();
+  await expect.poll(() => session.configs.length).toBe(1);
+  expect(session.configs[0].enable_endpoint_detection).toBe(false);
+  await expect(page.locator('.input-row textarea')).toHaveValue(transcript);
+  expect(startRequests).toBe(0);
+
+  await page.getByRole('button', { name: 'Stop and send voice input' }).click();
+  await expect.poll(() => session.stopSignals.length).toBe(1);
+
+  const startRequest = page.waitForRequest(request => request.url().endsWith('/api/stream/start'));
+  session.finish();
   const request = await startRequest;
 
-  expect(session.configs).toHaveLength(1);
-  expect(session.configs[0].enable_endpoint_detection).toBe(true);
   expect(request.postDataJSON().userMessageContent).toBe(transcript);
-  await expect.poll(() => session.stopSignals.length).toBe(1);
-  session.finish();
   await expect(page.locator('.input-row textarea')).toHaveValue(transcript);
 });
 
-test('mobile voice: holding disables automatic endpoints and release sends', async ({ page }) => {
-  const transcript = 'Explicit mobile voice turn';
+test('conversation voice: holding Space records and release sends', async ({ page }) => {
+  const transcript = 'Space push to talk turn';
   const session = await installMockMicrophone(page, transcript, false);
   await rejectModelRequest(page);
   await openConversation(page);
 
-  const mic = page.getByRole('button', { name: 'Start voice input' });
-  const box = await mic.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await page.mouse.down();
+  const textarea = page.locator('.input-row textarea');
+  await textarea.fill('Existing context');
+  await textarea.focus();
+  await page.keyboard.down(' ');
 
   await expect.poll(() => session.configs.length).toBe(1);
   expect(session.configs[0].enable_endpoint_detection).toBe(false);
-  await expect(page.locator('.input-row textarea')).toHaveValue(transcript);
+  await expect(textarea).toHaveValue(`Existing context ${transcript}`);
 
-  await page.mouse.up();
+  await page.keyboard.up(' ');
   await expect.poll(() => session.stopSignals.length).toBe(1);
 
   const startRequest = page.waitForRequest(request => request.url().endsWith('/api/stream/start'));
   session.finish();
   const request = await startRequest;
 
-  expect(request.postDataJSON().userMessageContent).toBe(transcript);
-  await expect(page.locator('.input-row textarea')).toHaveValue(transcript);
+  expect(request.postDataJSON().userMessageContent).toBe(`Existing context ${transcript}`);
+  await expect(textarea).toHaveValue(`Existing context ${transcript}`);
 });

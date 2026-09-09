@@ -6,6 +6,8 @@ import type { ModelInfo } from '../types';
 const dictationMock = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   options: null as any,
+  state: 'idle',
+  mode: null as string | null,
   start: vi.fn(),
   finish: vi.fn(),
   cancel: vi.fn(),
@@ -15,8 +17,8 @@ vi.mock('../hooks/useDictation', () => ({
   useDictation: (options: unknown) => {
     dictationMock.options = options;
     return {
-      dictationState: 'idle',
-      dictationMode: null,
+      dictationState: dictationMock.state,
+      dictationMode: dictationMock.mode,
       error: null,
       startDictation: dictationMock.start,
       finishDictation: dictationMock.finish,
@@ -47,6 +49,8 @@ describe('ChatInputForm voice input', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     dictationMock.options = null;
+    dictationMock.state = 'idle';
+    dictationMock.mode = null;
     dictationMock.start.mockReset();
     dictationMock.finish.mockReset();
     dictationMock.cancel.mockReset();
@@ -57,16 +61,14 @@ describe('ChatInputForm voice input', () => {
     vi.useRealTimers();
   });
 
-  it('starts one-shot dictation on a short press and submits the combined transcript', () => {
+  it('starts manual dictation on press and submits the combined transcript after stop', () => {
     const { onSubmit } = renderForm();
     const textarea = screen.getByPlaceholderText('Send a message...');
     const mic = screen.getByRole('button', { name: 'Start voice input' });
     fireEvent.change(textarea, { target: { value: 'Existing context' } });
 
-    fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
-    act(() => vi.advanceTimersByTime(200));
-    fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
-    expect(dictationMock.start).toHaveBeenCalledWith('one-shot');
+    fireEvent.click(mic);
+    expect(dictationMock.start).toHaveBeenCalledWith('manual');
 
     act(() => dictationMock.options.onTranscript('spoken words'));
     expect((textarea as HTMLTextAreaElement).value).toBe('Existing context spoken words');
@@ -76,17 +78,34 @@ describe('ChatInputForm voice input', () => {
     expect((textarea as HTMLTextAreaElement).value).toBe('');
   });
 
-  it('uses release as the endpoint after a long press', () => {
+  it('uses held Space as push-to-talk without retaining its initial space', () => {
     renderForm();
-    const mic = screen.getByRole('button', { name: 'Start voice input' });
+    const textarea = screen.getByPlaceholderText('Send a message...');
+    fireEvent.change(textarea, { target: { value: 'Existing context' } });
 
-    fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
+    fireEvent.keyDown(textarea, { key: ' ', code: 'Space' });
+    // fireEvent does not perform the browser's default text insertion, so
+    // reproduce the onChange that follows a real Space keydown.
+    fireEvent.change(textarea, { target: { value: 'Existing context ' } });
     act(() => vi.advanceTimersByTime(450));
+
     expect(dictationMock.start).toHaveBeenCalledWith('push-to-talk');
+    expect((textarea as HTMLTextAreaElement).value).toBe('Existing context');
     expect(dictationMock.finish).not.toHaveBeenCalled();
 
-    fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
+    fireEvent.keyUp(window, { key: ' ', code: 'Space' });
     expect(dictationMock.finish).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the microphone as a stop toggle while manual dictation is active', () => {
+    dictationMock.state = 'recording';
+    dictationMock.mode = 'manual';
+    renderForm();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop and send voice input' }));
+
+    expect(dictationMock.finish).toHaveBeenCalledTimes(1);
+    expect(dictationMock.start).not.toHaveBeenCalled();
   });
 
   it('retains the final transcript when the parent rejects voice submission', () => {
