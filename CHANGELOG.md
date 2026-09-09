@@ -4,6 +4,25 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.23
+
+- **Conversation dictation is now manual on both ends.** The microphone is a
+  start/stop toggle and holding Space is push-to-talk, so automatic endpoint
+  detection can no longer cut you off mid-sentence and send a partial thought.
+  Riff keeps its continuous dictation.
+- **Turns that fail now say so.** A model turn that ends without an answer is
+  recorded as a failure on the assistant message — keeping its tool history and
+  the real upstream cause — and shown in the conversation, instead of being
+  saved as an empty reply that made a finished turn look like it was still
+  running. The backend writes that record atomically and the app no longer
+  overwrites it.
+- **Tool-using turns are much more likely to produce an answer.** When a turn
+  ends without prose, Alloy now tells the model its tool phase is over rather
+  than only withholding tools — which several models ignore, emitting another
+  tool call and no text. In testing this turned blank responses into usable
+  answers on Claude, Gemini, and local MLX models, with no loss of accuracy
+  when the tool results were already sufficient.
+
 ## 0.4.22
 
 - **Model output now reads like a document.** Conversations use a centered
