@@ -79,6 +79,7 @@ async fn events(State(state): State<AppState>, Path(id): Path<String>) -> Respon
         final_result,
         final_title,
         error_message,
+        error_persisted,
         tool_history,
         live,
     ) = {
@@ -101,6 +102,7 @@ async fn events(State(state): State<AppState>, Path(id): Path<String>) -> Respon
             inner.final_result.clone(),
             inner.final_title.clone(),
             inner.error_message.clone(),
+            inner.error_persisted,
             inner.tool_history.clone(),
             live,
         )
@@ -169,7 +171,10 @@ async fn events(State(state): State<AppState>, Path(id): Path<String>) -> Respon
                 yield Ok(
                     Event::default()
                         .event("error")
-                        .data(json!({ "message": msg }).to_string()),
+                        .data(json!({
+                            "message": msg,
+                            "persisted": error_persisted,
+                        }).to_string()),
                 );
                 return;
             }
@@ -229,9 +234,12 @@ async fn events(State(state): State<AppState>, Path(id): Path<String>) -> Respon
                         }).to_string()));
                         return;
                     }
-                    SessionEvent::Error(msg) => {
+                    SessionEvent::Error { message, persisted } => {
                         yield Ok(Event::default().event("error").data(
-                            json!({ "message": msg }).to_string()
+                            json!({
+                                "message": message,
+                                "persisted": persisted,
+                            }).to_string()
                         ));
                         return;
                     }

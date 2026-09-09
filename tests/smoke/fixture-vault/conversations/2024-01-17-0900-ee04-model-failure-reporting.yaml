@@ -1,0 +1,18 @@
+id: 2024-01-17-0900-ee04
+title: Model failure reporting
+# Points at the deliberately unreachable `deadend` provider in config.yaml so a
+# smoke test can drive a real backend turn failure end to end. The seeded
+# exchange keeps this from being a "first message", so sending in one project
+# does not retitle the conversation out from under the next one.
+model: deadend/broken-model
+created: 2024-01-17T09:00:00.000Z
+updated: 2024-01-17T09:00:00.000Z
+messages:
+- id: msg-ee04-1
+  role: user
+  timestamp: 2024-01-17T09:00:10.000Z
+  content: Seeded so this conversation keeps its title.
+- id: msg-ee04-2
+  role: assistant
+  timestamp: 2024-01-17T09:00:20.000Z
+  content: Seeded reply.

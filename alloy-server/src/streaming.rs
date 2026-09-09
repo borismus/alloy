@@ -68,6 +68,9 @@ pub struct SessionInner {
     pub final_result: Option<StreamResult>,
     pub final_title: Option<String>,
     pub error_message: Option<String>,
+    /// Whether the backend atomically persisted the conversation error before
+    /// notifying clients. Prevents the frontend from racing it with a rewrite.
+    pub error_persisted: bool,
     /// Tool calls/results observed during this session — replayed to late
     /// subscribers along with the accumulated text content.
     pub tool_history: Vec<ToolHistoryEntry>,
@@ -105,7 +108,10 @@ pub enum SessionEvent {
         usage: Option<Usage>,
         stop_reason: String,
     },
-    Error(String),
+    Error {
+        message: String,
+        persisted: bool,
+    },
 }
 
 pub struct Session {
@@ -207,6 +213,7 @@ impl SessionRegistry {
                 final_result: None,
                 final_title: None,
                 error_message: None,
+                error_persisted: false,
                 tool_history: Vec::new(),
                 mcp_token: mcp_token.into(),
             }),
@@ -302,6 +309,7 @@ pub fn start_session(
             final_result: None,
             final_title: None,
             error_message: None,
+            error_persisted: false,
             tool_history: Vec::new(),
             mcp_token: uuid::Uuid::new_v4().to_string(),
         }),
@@ -348,7 +356,8 @@ async fn run_stream(
     let (provider, upstream_model) = match providers.resolve(&params.model) {
         Ok(r) => r,
         Err(msg) => {
-            mark_error(&session, msg);
+            let persisted = persist_conversation_error(&session, &vault, &params, &msg).await;
+            mark_error(&session, msg, persisted);
             return;
         }
     };
@@ -508,6 +517,7 @@ async fn run_stream(
                     conversation_id: params.conversation_id.clone(),
                     assistant_message_id,
                     content: stream_result.content.clone(),
+                    error: None,
                     usage: stream_result.usage.clone(),
                     compacted: new_compacted,
                     tool_use,
@@ -559,44 +569,11 @@ async fn run_stream(
         Err(e) => {
             let msg = e.to_string();
 
-            // Persist whatever the turn produced so it isn't lost — only if
-            // we'd normally persist this session at all. The model often emits
-            // tool calls (e.g. web_search) with no prose yet; if the turn then
-            // ends early (the user hits escape, or the follow-up provider call
-            // errors), gating on text alone would discard the whole turn —
-            // including the tool calls the user already watched run — and leave
-            // a dangling user message. Persist when there's partial text OR any
-            // tool history.
-            //
-            // Do this BEFORE signalling the error: the client reacts to the
-            // error event by reloading this file, so the turn must already be
-            // written or the client would reload a stale file (and could
-            // overwrite this turn).
-            if !params.skip_persist {
-                let (partial, assistant_message_id, tool_use) = {
-                    let inner = session.inner.lock().unwrap();
-                    (
-                        inner.full_content.clone(),
-                        inner.assistant_message_id.clone(),
-                        collect_tool_uses(&inner.tool_history),
-                    )
-                };
-                if !partial.trim().is_empty() || !tool_use.is_empty() {
-                    let write = AssistantWrite {
-                        conversation_id: params.conversation_id.clone(),
-                        assistant_message_id,
-                        content: partial,
-                        usage: None,
-                        compacted: None,
-                        tool_use,
-                    };
-                    if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
-                        tracing::warn!("failed to persist partial content: {}", e);
-                    }
-                }
-            }
-
-            mark_error(&session, msg);
+            // Persist partial content, tool history, and the error on one
+            // assistant record before signalling the client. The backend owns
+            // this write; the frontend must not race it with a stale reload.
+            let persisted = persist_conversation_error(&session, &vault, &params, &msg).await;
+            mark_error(&session, msg, persisted);
         }
     }
 }
@@ -685,15 +662,60 @@ fn strip_invocation_prefix(
     messages
 }
 
-fn mark_error(session: &Session, msg: String) {
+async fn persist_conversation_error(
+    session: &Session,
+    vault: &Vault,
+    params: &StartParams,
+    message: &str,
+) -> bool {
+    if params.skip_persist {
+        return false;
+    }
+
+    let (content, assistant_message_id, tool_use) = {
+        let inner = session.inner.lock().unwrap();
+        let content = if inner.full_content.trim().is_empty() {
+            String::new()
+        } else {
+            inner.full_content.clone()
+        };
+        (
+            content,
+            inner.assistant_message_id.clone(),
+            collect_tool_uses(&inner.tool_history),
+        )
+    };
+    let write = AssistantWrite {
+        conversation_id: params.conversation_id.clone(),
+        assistant_message_id,
+        content,
+        error: Some(message.to_string()),
+        usage: None,
+        compacted: None,
+        tool_use,
+    };
+    match vault_writer::append_assistant_message(vault, write).await {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!("failed to persist conversation error: {}", error);
+            false
+        }
+    }
+}
+
+fn mark_error(session: &Session, msg: String, persisted: bool) {
     tracing::error!("session error: {}", msg);
     {
         let mut inner = session.inner.lock().unwrap();
         inner.status = SessionStatus::Error;
         inner.full_thinking.clear();
         inner.error_message = Some(msg.clone());
+        inner.error_persisted = persisted;
     }
-    let _ = session.tx.send(SessionEvent::Error(msg));
+    let _ = session.tx.send(SessionEvent::Error {
+        message: msg,
+        persisted,
+    });
 }
 
 /// Fold a session's `tool_history` (interleaved Use/Result entries) into the
@@ -855,7 +877,9 @@ pub async fn run_to_completion(
                     stop_reason,
                 });
             }
-            Ok(SessionEvent::Error(msg)) => anyhow::bail!("session error: {}", msg),
+            Ok(SessionEvent::Error { message, .. }) => {
+                anyhow::bail!("session error: {}", message)
+            }
             // Ignore chunks, tool events, title.
             Ok(_) => continue,
             Err(broadcast::error::RecvError::Lagged(_)) => continue,

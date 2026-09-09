@@ -22,13 +22,14 @@ interface Deferred {
 function renderChat(overrides: {
   onSaveImage: (id: string, data: Uint8Array, mime: string) => Promise<Attachment>;
   onSendMessage?: () => Promise<void>;
+  conversation?: Conversation;
 }) {
   const onSendMessage = overrides.onSendMessage ?? vi.fn(async () => {});
   render(
     <StreamingProvider>
       <MessageQueueProvider>
         <ChatInterface
-          conversation={conversation}
+          conversation={overrides.conversation ?? conversation}
           onSendMessage={onSendMessage}
           onSaveImage={overrides.onSaveImage}
           loadImageAsBase64={vi.fn(async () => ({ base64: '', mimeType: 'image/png' }))}
@@ -67,6 +68,29 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe('ChatInterface persisted errors', () => {
+  it('renders an assistant error together with its tool history', () => {
+    renderChat({
+      onSaveImage: vi.fn(),
+      conversation: {
+        ...conversation,
+        messages: [{
+          id: 'assistant-error',
+          role: 'assistant',
+          timestamp: '2024-01-01T10:01:00Z',
+          content: '',
+          error: 'Model returned no final text after using tools.',
+          toolUse: [{ type: 'search_directory', input: { query: 'cost basis' }, result: 'none' }],
+        }],
+      },
+    });
+
+    expect(screen.getByText('Model returned no final text after using tools.')).toBeTruthy();
+    expect(document.querySelector('.response-summary.status-error')).toBeTruthy();
+    expect(document.querySelector('.tool-use-indicator')).toBeTruthy();
+  });
 });
 
 describe('ChatInterface image preparation feedback', () => {

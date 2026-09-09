@@ -845,6 +845,9 @@
 
 .response-summary .error-text {
   color: var(--color-danger);
+  -webkit-user-select: text;
+  user-select: text;
+  white-space: pre-wrap;
 }
 
 .response-summary .streaming-indicator {

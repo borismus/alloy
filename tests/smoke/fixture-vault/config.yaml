@@ -10,3 +10,11 @@ providers:
   - id: claude-cli
     kind: cli
     adapter: claude
+  # Deliberately unreachable (port 1 refuses immediately). Lets a smoke test
+  # drive a real failing turn — the backend must persist the failure onto the
+  # assistant record and the UI must show it. Model discovery for this provider
+  # fails too, which is fine: one dead provider must not break the catalog.
+  - id: deadend
+    kind: openai_compatible
+    baseUrl: http://127.0.0.1:1/v1
+    apiKey: smoke-test-key

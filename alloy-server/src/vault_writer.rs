@@ -44,6 +44,9 @@ pub struct AssistantWrite {
     pub conversation_id: String,
     pub assistant_message_id: String,
     pub content: String,
+    /// Present when the turn failed. Persisting this on the same assistant
+    /// record as partial content and tool history keeps the failure atomic.
+    pub error: Option<String>,
     pub usage: Option<Usage>,
     /// A compaction summary to insert at its boundary in the same write.
     pub compacted: Option<NewCompacted>,
@@ -75,6 +78,9 @@ pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyho
     msg.insert(Value::String("role".into()), Value::String("assistant".into()));
     msg.insert(Value::String("timestamp".into()), Value::String(now.clone()));
     msg.insert(Value::String("content".into()), Value::String(w.content));
+    if let Some(error) = w.error {
+        msg.insert(Value::String("error".into()), Value::String(error));
+    }
     if let Some(usage) = w.usage {
         msg.insert(
             Value::String("usage".into()),
@@ -91,12 +97,12 @@ pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyho
     conversation.updated = now;
 
     let yaml = serde_yaml::to_string(&conversation)?;
-    fs::write(&file_path, yaml).await?;
+    write_atomic(&file_path, &yaml).await?;
 
     // Also write the markdown preview that the SPA reads in some views.
     let md = render_markdown_preview(&conversation);
     let md_path = file_path.with_extension("md");
-    let _ = fs::write(&md_path, md).await;
+    let _ = write_atomic(&md_path, &md).await;
 
     tracing::info!(
         "vault_writer: appended assistant message to {}",
@@ -145,6 +151,20 @@ fn insert_compacted_message(conversation: &mut Conversation, nc: NewCompacted, n
     tracing::info!("compaction: inserted compacted message before {}", anchor_id);
 }
 
+/// Write via a unique temp file + rename so a reader never observes a partially
+/// written conversation. A failed turn persists content, tool history, and its
+/// error in one record; a torn write would strand that turn mid-file. The temp
+/// name never ends in `.yaml`, so listing/search skip it while it exists.
+async fn write_atomic(path: &Path, contents: &str) -> anyhow::Result<()> {
+    let temp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+    fs::write(&temp, contents).await?;
+    if let Err(e) = fs::rename(&temp, path).await {
+        let _ = fs::remove_file(&temp).await;
+        return Err(e.into());
+    }
+    Ok(())
+}
+
 /// Update the conversation title and rename the file to include a slug.
 pub async fn update_title(vault: &Vault, conversation_id: &str, new_title: &str) -> anyhow::Result<()> {
     let file_path = find_conversation_file(vault, conversation_id).await?;
@@ -161,11 +181,11 @@ pub async fn update_title(vault: &Vault, conversation_id: &str, new_title: &str)
         .join(new_filename);
 
     let yaml = serde_yaml::to_string(&conversation)?;
-    fs::write(&new_path, yaml).await?;
+    write_atomic(&new_path, &yaml).await?;
 
     let md = render_markdown_preview(&conversation);
     let md_path = new_path.with_extension("md");
-    let _ = fs::write(&md_path, md).await;
+    let _ = write_atomic(&md_path, &md).await;
 
     if new_path != file_path {
         let _ = fs::remove_file(&file_path).await;
@@ -253,12 +273,20 @@ fn render_markdown_preview(c: &Conversation) -> String {
                 return None;
             }
             let content = m.get(Value::String("content".into()))?.as_str().unwrap_or("");
+            let error = m
+                .get(Value::String("error".into()))
+                .and_then(Value::as_str);
             let label = if role == "user" {
                 "You".to_string()
             } else {
                 assistant_name.clone()
             };
-            Some(format!("### {}\n\n{}", label, content))
+            let rendered = match error {
+                Some(error) if content.trim().is_empty() => format!("**Error:** {}", error),
+                Some(error) => format!("{}\n\n**Error:** {}", content, error),
+                None => content.to_string(),
+            };
+            Some(format!("### {}\n\n{}", label, rendered))
         })
         .collect::<Vec<_>>()
         .join("\n\n---\n\n");
@@ -286,6 +314,72 @@ mod tests {
         assert_eq!(generate_filename("abc123", Some("Hello!")), "abc123-hello.yaml");
         // Title that slugs to empty should fall back to id-only.
         assert_eq!(generate_filename("abc123", Some("!!!")), "abc123.yaml");
+    }
+
+    #[tokio::test]
+    async fn assistant_error_is_atomic_with_partial_content_and_tools() {
+        let temp = tempfile::tempdir().unwrap();
+        let conversations = temp.path().join("conversations");
+        fs::create_dir_all(&conversations).await.unwrap();
+        let path = conversations.join("conv-error.yaml");
+        fs::write(
+            &path,
+            "id: conv-error\nmodel: mlx/test\ncreated: 2024-01-01T00:00:00Z\nupdated: 2024-01-01T00:00:00Z\nmessages: []\n",
+        )
+        .await
+        .unwrap();
+        let vault = Vault::new(temp.path().to_path_buf()).unwrap();
+
+        append_assistant_message(
+            &vault,
+            AssistantWrite {
+                conversation_id: "conv-error".into(),
+                assistant_message_id: "assistant-error".into(),
+                content: "Partial research.".into(),
+                error: Some("model returned no final text".into()),
+                usage: None,
+                compacted: None,
+                tool_use: vec![PersistedToolUse {
+                    tool_type: "search_directory".into(),
+                    input: Some(serde_json::json!({ "query": "cost basis" })),
+                    result: Some("no result".into()),
+                    is_error: None,
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+        let saved: Conversation = serde_yaml::from_str(&fs::read_to_string(&path).await.unwrap())
+            .unwrap();
+        let message = saved.messages.last().unwrap().as_mapping().unwrap();
+        assert_eq!(
+            message
+                .get(Value::String("error".into()))
+                .and_then(Value::as_str),
+            Some("model returned no final text")
+        );
+        assert!(message.contains_key(Value::String("toolUse".into())));
+        assert_eq!(
+            message
+                .get(Value::String("content".into()))
+                .and_then(Value::as_str),
+            Some("Partial research.")
+        );
+
+        let preview = fs::read_to_string(path.with_extension("md")).await.unwrap();
+        assert!(preview.contains("Partial research."));
+        assert!(preview.contains("**Error:** model returned no final text"));
+
+        // The temp file used for the atomic rename must not survive the write,
+        // or the vault would accumulate junk beside every conversation.
+        let mut entries = fs::read_dir(&conversations).await.unwrap();
+        let mut names = Vec::new();
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            names.push(entry.file_name().to_string_lossy().into_owned());
+        }
+        names.sort();
+        assert_eq!(names, vec!["conv-error.md", "conv-error.yaml"]);
     }
 }
 

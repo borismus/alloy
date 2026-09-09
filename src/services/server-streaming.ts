@@ -37,6 +37,16 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+export class ServerStreamError extends Error {
+  readonly persisted: boolean;
+
+  constructor(message: string, persisted: boolean) {
+    super(message);
+    this.name = 'ServerStreamError';
+    this.persisted = persisted;
+  }
+}
+
 export interface ServerStreamResult {
   content: string;
   usage?: Usage;
@@ -265,7 +275,10 @@ export async function executeViaServer(
         // SSE error event — could be a connection drop or a server error
         if ('data' in e && e.data) {
           const data = JSON.parse((e as MessageEvent).data);
-          settle(() => reject(new Error(data.message || 'Stream error')));
+          settle(() => reject(new ServerStreamError(
+            data.message || 'Stream error',
+            data.persisted === true,
+          )));
         }
         // Connection error — EventSource will auto-reconnect, but on mobile
         // it might not. We handle reconnection via visibilitychange.

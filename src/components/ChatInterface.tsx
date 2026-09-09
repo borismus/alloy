@@ -323,7 +323,8 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           )}
           <AgentResponseView
             content={message.content}
-            status="complete"
+            status={message.error ? 'error' : 'complete'}
+            error={message.error}
             toolUses={message.subagentResponses?.length ? undefined : message.toolUse}
             skillUses={message.skillUse}
             onNavigateToNote={onNavigateToNote}

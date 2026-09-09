@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { vaultService } from '../services/vault';
 import { skillRegistry } from '../services/skills';
-import { executeViaServer } from '../services/server-streaming';
+import { executeViaServer, ServerStreamError } from '../services/server-streaming';
 import { generateMessageId } from '../utils/ids';
 import { parseSlashCommand } from '../utils/slashCommand';
 import { Conversation, Config, Message, Attachment, ToolUse } from '../types';
@@ -180,36 +180,60 @@ export function useSendMessage(deps: UseSendMessageDeps) {
         errorMessage = 'Network error. Please check your internet connection.';
       }
 
-      const logMessage: Message = {
-        id: generateMessageId(),
-        role: 'log',
-        timestamp: new Date().toISOString(),
-        content: `Error: ${error?.message || errorMessage}`,
-      };
-      // The server persists this turn (including any tool calls) before it
-      // emits the error, so reload the file and append the log to *that*.
-      // Overwriting with our own copy would drop the assistant turn the server
-      // just saved, leaving a dangling user message.
       const persisted = await vaultService.loadConversation(updatedConversation.id);
-      const base = persisted ?? updatedConversation;
-      const errorConversation: Conversation = {
-        ...base,
-        messages: [...base.messages, logMessage],
-        updated: new Date().toISOString(),
-      };
-      setDraftConversation(prev => prev?.id === errorConversation.id ? errorConversation : prev);
-      setConversations(prev => prev.map(c => c.id === errorConversation.id ? errorConversation : c));
-      try {
-        const vaultPathForSave = vaultService.getVaultPath();
-        if (vaultPathForSave) {
-          const filename = vaultService.generateFilename(errorConversation.id, errorConversation.title);
-          markSelfWrite(`${vaultPathForSave}/conversations/${filename}`);
+      let errorConversation: Conversation;
+
+      if (error instanceof ServerStreamError && error.persisted) {
+        // The backend atomically wrote partial content, tool history, and this
+        // error before emitting SSE. Never save from the client here: doing so
+        // can overwrite that record with a stale pre-error conversation.
+        const base = persisted ?? updatedConversation;
+        const hasPersistedError = base.messages.some(message =>
+          message.id === assistantMessageId && message.role === 'assistant' && message.error
+        );
+        errorConversation = hasPersistedError ? base : {
+          ...base,
+          messages: [
+            ...base.messages,
+            {
+              id: assistantMessageId,
+              role: 'assistant',
+              timestamp: new Date().toISOString(),
+              content: '',
+              error: error.message,
+            },
+          ],
+          updated: new Date().toISOString(),
+        };
+      } else {
+        // Start-up errors and older servers do not own an atomic error write.
+        // Preserve the legacy copyable log fallback for those cases only.
+        const logMessage: Message = {
+          id: generateMessageId(),
+          role: 'log',
+          timestamp: new Date().toISOString(),
+          content: `Error: ${error?.message || errorMessage}`,
+        };
+        const base = persisted ?? updatedConversation;
+        errorConversation = {
+          ...base,
+          messages: [...base.messages, logMessage],
+          updated: new Date().toISOString(),
+        };
+        try {
+          const vaultPathForSave = vaultService.getVaultPath();
+          if (vaultPathForSave) {
+            const filename = vaultService.generateFilename(errorConversation.id, errorConversation.title);
+            markSelfWrite(`${vaultPathForSave}/conversations/${filename}`);
+          }
+          await vaultService.saveConversation(errorConversation);
+        } catch (saveError) {
+          console.error('Error saving error log (non-fatal):', saveError);
         }
-        await vaultService.saveConversation(errorConversation);
-      } catch (saveError) {
-        console.error('Error saving error log (non-fatal):', saveError);
       }
 
+      setDraftConversation(prev => prev?.id === errorConversation.id ? errorConversation : prev);
+      setConversations(prev => prev.map(c => c.id === errorConversation.id ? errorConversation : c));
       chatInterfaceRef.current?.setInputText(content);
       showToast(errorMessage, 'error');
     }

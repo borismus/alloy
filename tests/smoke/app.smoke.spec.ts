@@ -317,6 +317,44 @@ test('mobile can send from a new conversation after iOS-style restoration', asyn
   await expect(textarea).toHaveValue(prompt);
 });
 
+test('a failed turn shows the error and survives reload', async ({ page }) => {
+  // Real backend failure: the conversation's model points at the unreachable
+  // `deadend` provider, so the turn dies in the provider stream. The failure
+  // must land on the assistant record (with any tool history) and be visible —
+  // an empty "successful" bubble made a dead turn look like it was still going.
+  await page.locator('.timeline-item').filter({ hasText: 'Model failure reporting' }).click();
+  const textarea = page.locator('.input-row textarea');
+  await expect(textarea).toBeVisible();
+
+  // Projects share one vault, so assert the delta: a failed turn must add
+  // exactly one error record — never a duplicate or a blank "complete" bubble.
+  const failed = page.locator('.response-summary.status-error');
+  const before = await failed.count();
+
+  await textarea.fill('This turn cannot succeed.');
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  await expect(failed).toHaveCount(before + 1);
+  // The real upstream cause, not a generic placeholder.
+  await expect(failed.last().locator('.error-text')).toContainText('127.0.0.1:1');
+  // A failed turn is not a finished one: no copy/usage footer.
+  await expect(failed.last().locator('.response-footer')).toHaveCount(0);
+
+  // The backend owns this write; the client must not overwrite it with a stale
+  // pre-error copy. Reloading reads the vault back.
+  await page.reload();
+  // Selection persists, so mobile restores straight into the conversation and
+  // has no timeline to click; desktop may land on the list.
+  await expect(page.locator('.input-row textarea, .timeline-item').first()).toBeVisible();
+  if (await failed.count() === 0
+    && await page.locator('.timeline-item').filter({ hasText: 'Model failure reporting' }).count() > 0) {
+    await page.locator('.timeline-item').filter({ hasText: 'Model failure reporting' }).click();
+  }
+  await expect(page.locator('.message.user').last()).toContainText('This turn cannot succeed.');
+  await expect(failed).toHaveCount(before + 1);
+  await expect(failed.last().locator('.error-text')).toContainText('127.0.0.1:1');
+});
+
 test('task model and email controls persist direct changes', async ({ page }) => {
   await page.locator('.timeline-item').filter({ hasText: 'Daily standup prompt' }).click();
   await expect(page.getByRole('button', { name: 'Run now' })).toBeVisible();

@@ -25,6 +25,24 @@ const MAX_ITERATIONS: u32 = 10;
 /// answer from what it already has instead of burning more iterations.
 const MAX_WEB_SEARCHES: u32 = 3;
 
+/// Told to the model when a tool-using turn produced no prose (see the forced
+/// wrap-up below). Dropping `tools` from the request is not enough on its own:
+/// the model is mid-pattern (assistant tool_call → tool result → repeat) and
+/// has no way to know its tool budget is gone, so it just emits another tool
+/// call and returns empty content. Measured against gemini-3.5-flash,
+/// claude-sonnet-4.6, gpt-5.4-nano and a local MLX model: without this, three
+/// of the four return a completely blank turn when the tool results don't
+/// contain the answer; with it, all four answer or say what's missing, and
+/// none of them lose accuracy when the results *were* sufficient.
+///
+/// This is ephemeral: it is appended to a clone of the send view for this one
+/// call, so it never reaches the vault or any later turn.
+const WRAP_UP_INSTRUCTION: &str = concat!(
+    "Stop using tools. You have no tools available for this reply. ",
+    "Using ONLY what you already found above, write the final answer now in plain text. ",
+    "If something required is missing, say exactly what is missing and what you need from the user.",
+);
+
 pub struct LoopRequest {
     pub provider: Arc<dyn Provider>,
     pub model: String,
@@ -164,11 +182,20 @@ pub async fn execute_with_tools(
     // final post-tool response carried empty content or because we hit
     // MAX_ITERATIONS while it still wanted tools. Either way the persisted
     // message would be empty and the conversation would appear to stall. Make
-    // one more call *without* tools to force a written answer from the tool
-    // results already accumulated in `messages`.
+    // one more call with no tools AND an explicit instruction (see
+    // WRAP_UP_INSTRUCTION) to force a written answer from the tool results
+    // already accumulated in `messages`.
+    //
+    // Only reachable when the whole turn produced zero prose, so a turn that
+    // answered normally is never affected (see `nonblank_turn_skips_wrap_up`).
     if final_content.trim().is_empty() && any_tool_executed && !*cancel.borrow() {
+        let mut wrap_up_messages = messages.clone();
+        wrap_up_messages.push(ChatMessage::User {
+            content: WRAP_UP_INSTRUCTION.to_string(),
+            images: Vec::new(),
+        });
         let req = StreamRequest {
-            messages: messages.clone(),
+            messages: wrap_up_messages,
             model: model.clone(),
             tools: vec![],
             delta_tx: delta_tx.clone(),
@@ -177,18 +204,27 @@ pub async fn execute_with_tools(
             tool_sink: sink.clone(),
             mcp: mcp.clone(),
         };
-        if let Ok(wrap) = provider.stream(req).await {
-            if let Some(usage) = &wrap.usage {
-                total_input += usage.input_tokens;
-                total_output += usage.output_tokens;
-                total_connection_retries += usage.connection_retries;
-                if first_response_id.is_none() {
-                    first_response_id = usage.response_id.clone();
-                }
-            }
-            final_content.push_str(&wrap.content);
-            final_stop_reason = wrap.stop_reason;
+        let wrap = provider.stream(req).await.map_err(|error| {
+            anyhow::anyhow!(
+                "model used tools but final answer generation failed: {}",
+                error
+            )
+        })?;
+        if wrap.content.trim().is_empty() {
+            anyhow::bail!(
+                "model used tools but returned no final text, including after a tool-free wrap-up"
+            );
         }
+        if let Some(usage) = &wrap.usage {
+            total_input += usage.input_tokens;
+            total_output += usage.output_tokens;
+            total_connection_retries += usage.connection_retries;
+            if first_response_id.is_none() {
+                first_response_id = usage.response_id.clone();
+            }
+        }
+        final_content.push_str(&wrap.content);
+        final_stop_reason = wrap.stop_reason;
     }
 
     let usage = if total_input > 0 || total_output > 0 || total_connection_retries > 0 {
@@ -229,17 +265,29 @@ mod tests {
     /// `stream()` call — lets us simulate a multi-turn agentic exchange.
     struct ScriptedProvider {
         steps: Mutex<VecDeque<StreamResult>>,
+        /// Messages seen by each `stream()` call, so tests can assert what the
+        /// loop actually sent (not just what it returned).
+        seen: Mutex<Vec<Vec<ChatMessage>>>,
+    }
+
+    impl ScriptedProvider {
+        fn new(steps: Vec<StreamResult>) -> Self {
+            Self {
+                steps: Mutex::new(steps.into()),
+                seen: Mutex::new(Vec::new()),
+            }
+        }
     }
 
     #[async_trait]
     impl Provider for ScriptedProvider {
-        async fn stream(&self, _req: StreamRequest) -> anyhow::Result<StreamResult> {
-            Ok(self
-                .steps
+        async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
+            self.seen.lock().unwrap().push(req.messages.clone());
+            self.steps
                 .lock()
                 .unwrap()
                 .pop_front()
-                .expect("stream() called more times than scripted"))
+                .ok_or_else(|| anyhow::anyhow!("scripted provider exhausted"))
         }
         async fn generate_title(&self, _u: &str, _a: &str, _m: &str) -> String {
             String::new()
@@ -291,13 +339,16 @@ mod tests {
         ))
     }
 
-    async fn run(steps: Vec<StreamResult>) -> StreamResult {
+    /// Run the loop and also hand back the provider, so a test can inspect the
+    /// requests the loop made.
+    async fn run_capturing(
+        steps: Vec<StreamResult>,
+    ) -> (anyhow::Result<StreamResult>, Arc<ScriptedProvider>) {
+        let provider = Arc::new(ScriptedProvider::new(steps));
         let (delta_tx, _rx) = mpsc::unbounded_channel();
         let (_cancel_tx, cancel) = watch::channel(false);
         let req = LoopRequest {
-            provider: Arc::new(ScriptedProvider {
-                steps: Mutex::new(steps.into()),
-            }),
+            provider: provider.clone(),
             model: "test/model".into(),
             messages: vec![],
             tools: vec![],
@@ -312,9 +363,49 @@ mod tests {
             },
             mcp: None,
         };
-        execute_with_tools(req, test_registry(), Arc::new(NullSink))
-            .await
+        let result = execute_with_tools(req, test_registry(), Arc::new(NullSink)).await;
+        (result, provider)
+    }
+
+    /// Every `ChatMessage::User` body the provider was sent, flattened.
+    fn user_texts(provider: &ScriptedProvider) -> Vec<String> {
+        provider
+            .seen
+            .lock()
             .unwrap()
+            .iter()
+            .flatten()
+            .filter_map(|m| match m {
+                ChatMessage::User { content, .. } => Some(content.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    async fn run_result(steps: Vec<StreamResult>) -> anyhow::Result<StreamResult> {
+        let (delta_tx, _rx) = mpsc::unbounded_channel();
+        let (_cancel_tx, cancel) = watch::channel(false);
+        let req = LoopRequest {
+            provider: Arc::new(ScriptedProvider::new(steps)),
+            model: "test/model".into(),
+            messages: vec![],
+            tools: vec![],
+            delta_tx,
+            cancel,
+            retry_connect: false,
+            tool_ctx: ToolContext {
+                message_id: None,
+                conversation_id: None,
+                inside_subagent: false,
+                model_is_local: false,
+            },
+            mcp: None,
+        };
+        execute_with_tools(req, test_registry(), Arc::new(NullSink)).await
+    }
+
+    async fn run(steps: Vec<StreamResult>) -> StreamResult {
+        run_result(steps).await.unwrap()
     }
 
     /// Regression: the model emits its answer in the same turn as a tool call,
@@ -371,9 +462,90 @@ mod tests {
         assert_eq!(result.content, "Wrapped up.");
     }
 
+    /// Regression: a tool-using turn that stays blank even after the no-tools
+    /// wrap-up must enter the stream error path. Returning Ok here persists an
+    /// empty assistant message and makes a completed turn look stuck.
+    #[tokio::test]
+    async fn blank_wrap_up_is_an_error() {
+        let error = run_result(vec![
+            tool_turn("", 100),
+            final_turn("", 5),
+            final_turn("   ", 40),
+        ])
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "model used tools but returned no final text, including after a tool-free wrap-up"
+        );
+    }
+
+    /// Dropping `tools` is not enough for every model: mid-pattern it just
+    /// emits another tool call and returns nothing. The wrap-up must SAY the
+    /// tool phase is over, and only on the wrap-up call.
+    #[tokio::test]
+    async fn wrap_up_tells_the_model_the_tool_phase_is_over() {
+        let (result, provider) = run_capturing(vec![
+            tool_turn("", 100),
+            final_turn("", 5),
+            final_turn("Here is the answer.", 40),
+        ])
+        .await;
+        assert_eq!(result.unwrap().content, "Here is the answer.");
+
+        let seen = provider.seen.lock().unwrap();
+        assert_eq!(seen.len(), 3, "two loop turns plus one wrap-up");
+        // The wrap-up carries the instruction and no tools...
+        assert!(
+            matches!(seen[2].last(), Some(ChatMessage::User { content, .. })
+                if content == WRAP_UP_INSTRUCTION),
+            "wrap-up must end with the instruction, got: {:?}",
+            seen[2].last()
+        );
+        // ...and the ordinary loop turns are left completely untouched.
+        drop(seen);
+        let instructions = user_texts(&provider)
+            .into_iter()
+            .filter(|t| t == WRAP_UP_INSTRUCTION)
+            .count();
+        assert_eq!(
+            instructions, 1,
+            "instruction must not leak into other turns"
+        );
+    }
+
+    /// A normal turn never sees the instruction, because the wrap-up never runs.
+    #[tokio::test]
+    async fn nonblank_turn_never_sees_the_wrap_up_instruction() {
+        let (result, provider) =
+            run_capturing(vec![tool_turn("Looking.", 5), final_turn("Answer.", 10)]).await;
+        assert_eq!(result.unwrap().content, "Looking. Answer.");
+        assert!(
+            !user_texts(&provider)
+                .iter()
+                .any(|t| t == WRAP_UP_INSTRUCTION),
+            "a turn that produced prose must be sent exactly as-is"
+        );
+    }
+
+    /// A failed final-answer request must retain its cause in the stream error
+    /// that the conversation layer persists.
+    #[tokio::test]
+    async fn failed_wrap_up_is_an_error() {
+        let error = run_result(vec![tool_turn("", 100), final_turn("", 5)])
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "model used tools but final answer generation failed: scripted provider exhausted"
+        );
+    }
+
     /// Regression: a turn that produces text normally must NOT trigger an extra
     /// wrap-up call. The script holds exactly the expected number of turns;
-    /// `ScriptedProvider` panics if `stream()` is called once more.
+    /// an extra call would return an error and fail `run()`.
     #[tokio::test]
     async fn nonblank_turn_skips_wrap_up() {
         let result = run(vec![tool_turn("Looking.", 5), final_turn("Answer.", 10)]).await;

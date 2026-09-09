@@ -97,6 +97,8 @@ export interface Message {
   role: 'user' | 'assistant' | 'log' | 'compacted';
   timestamp: string;
   content: string;
+  /** Persisted backend failure for an assistant turn. May accompany partial content/tools. */
+  error?: string;
   // Which model generated this assistant response
   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   model?: string;
