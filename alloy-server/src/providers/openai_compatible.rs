@@ -5,7 +5,7 @@
 //! and custom compatible endpoints.
 
 use async_trait::async_trait;
-use eventsource_stream::Eventsource;
+use eventsource_stream::{EventStreamError, Eventsource};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -19,6 +19,11 @@ use crate::providers::{
 use crate::types::{to_openai_tools, ToolCall};
 
 const TASK_CONNECT_RETRY_DELAYS: [Duration; 2] = [Duration::from_secs(15), Duration::from_secs(60)];
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Maximum silence between response body chunks. This is deliberately an idle
+/// timeout, not a total request deadline: a healthy long-running generation may
+/// continue for as long as it keeps producing data.
+const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub struct OpenAICompatibleProvider {
     base_url: String,
@@ -36,7 +41,8 @@ impl OpenAICompatibleProvider {
             base_url: base.trim_end_matches('/').to_string(),
             api_key: cfg.api_key.clone(),
             http: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(180))
+                .connect_timeout(CONNECT_TIMEOUT)
+                .read_timeout(STREAM_IDLE_TIMEOUT)
                 .build()
                 .expect("reqwest client"),
         }
@@ -233,6 +239,7 @@ impl Provider for OpenAICompatibleProvider {
         let mut output_tokens: u32 = 0;
         let mut stop_reason = "end_turn".to_string();
         let mut stream_error: Option<String> = None;
+        let mut saw_terminal = false;
 
         let mut tool_buf: Vec<ToolCallBuf> = Vec::new();
 
@@ -244,19 +251,44 @@ impl Provider for OpenAICompatibleProvider {
             let event = match event {
                 Ok(e) => e,
                 Err(e) => {
-                    tracing::warn!("SSE parse error: {}", e);
-                    continue;
+                    // Once a finish_reason arrived, the answer itself is
+                    // complete; a trailing framing/connection error can at
+                    // worst omit optional usage metadata. Before that marker,
+                    // continuing would persist partial text as a finished turn.
+                    if saw_terminal {
+                        tracing::warn!("SSE ended with a trailing error after completion: {}", e);
+                    } else {
+                        stream_error = Some(match &e {
+                            EventStreamError::Transport(error) => {
+                                format!("transport error: {}", error_chain(error))
+                            }
+                            _ => format!("SSE parse error: {e}"),
+                        });
+                    }
+                    break;
                 }
             };
             let data = event.data;
-            if data.is_empty() || data == "[DONE]" {
+            if data.is_empty() {
                 continue;
+            }
+            if data == "[DONE]" {
+                saw_terminal = true;
+                break;
             }
             let chunk: StreamChunk = match serde_json::from_str(&data) {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::warn!("SSE JSON parse error: {} (data: {})", e, data);
-                    continue;
+                    if saw_terminal {
+                        tracing::warn!("ignoring invalid SSE JSON after completion: {e}");
+                    } else {
+                        // A malformed event may have contained content. Skipping
+                        // it and accepting a later finish marker would still
+                        // produce a silently truncated answer, so fail without
+                        // logging the potentially private event data.
+                        stream_error = Some(format!("invalid SSE JSON: {e}"));
+                    }
+                    break;
                 }
             };
 
@@ -266,7 +298,7 @@ impl Provider for OpenAICompatibleProvider {
                 } else {
                     error.message
                 });
-                continue;
+                break;
             }
             if let Some(id) = chunk.id {
                 if response_id.is_none() {
@@ -284,6 +316,7 @@ impl Provider for OpenAICompatibleProvider {
 
             for choice in chunk.choices {
                 if let Some(fr) = choice.finish_reason {
+                    saw_terminal = true;
                     if fr == "error" {
                         stream_error.get_or_insert_with(|| {
                             "upstream ended the stream with an error".into()
@@ -335,6 +368,12 @@ impl Provider for OpenAICompatibleProvider {
 
         if let Some(error) = stream_error {
             anyhow::bail!("upstream {} stream failed: {}", self.base_url, error);
+        }
+        if !*req.cancel.borrow() && !saw_terminal {
+            anyhow::bail!(
+                "upstream {} stream ended before a completion marker",
+                self.base_url
+            );
         }
 
         // Finalize tool calls — parse the accumulated arguments JSON.
@@ -790,6 +829,177 @@ mod tests {
         assert_eq!(content[0]["type"], "text");
         assert_eq!(content[1]["type"], "image_url");
         assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,AAAA");
+    }
+
+    async fn provider_for_app(
+        app: axum::Router,
+        http: reqwest::Client,
+    ) -> OpenAICompatibleProvider {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        OpenAICompatibleProvider {
+            base_url: format!("http://127.0.0.1:{port}/v1"),
+            api_key: "test".into(),
+            http,
+        }
+    }
+
+    async fn provider_serving_sse(body: &'static str) -> OpenAICompatibleProvider {
+        use axum::{http::header, routing::post, Router};
+
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post(move || async move { ([(header::CONTENT_TYPE, "text/event-stream")], body) }),
+        );
+        provider_for_app(app, reqwest::Client::new()).await
+    }
+
+    fn test_stream_request(
+        cancel: tokio::sync::watch::Receiver<bool>,
+        delta_tx: tokio::sync::mpsc::UnboundedSender<ProviderStreamEvent>,
+    ) -> StreamRequest {
+        StreamRequest {
+            messages: vec![],
+            model: "test-model".into(),
+            tools: vec![],
+            delta_tx,
+            cancel,
+            retry_connect: false,
+            tool_sink: std::sync::Arc::new(crate::types::NullSink),
+            mcp: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn incomplete_stream_is_an_error_instead_of_a_partial_success() {
+        let provider = provider_serving_sse(concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"partial answer\"},",
+            "\"finish_reason\":null}]}\n\n",
+        ))
+        .await;
+        let (_cancel_tx, cancel) = tokio::sync::watch::channel(false);
+        let (delta_tx, mut delta_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let error = provider
+            .stream(test_stream_request(cancel, delta_tx))
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("stream ended before a completion marker"),
+            "{error}"
+        );
+        assert_eq!(
+            delta_rx.try_recv().unwrap(),
+            ProviderStreamEvent::Content("partial answer".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn idle_transport_timeout_is_an_error_instead_of_a_partial_success() {
+        use axum::{
+            body::{Body, Bytes},
+            http::{header, Response},
+            routing::post,
+            Router,
+        };
+        use std::convert::Infallible;
+
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post(|| async {
+                let stream = async_stream::stream! {
+                    yield Ok::<_, Infallible>(Bytes::from_static(
+                        b"data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n"
+                    ));
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    yield Ok::<_, Infallible>(Bytes::from_static(b"data: [DONE]\n\n"));
+                };
+                Response::builder()
+                    .header(header::CONTENT_TYPE, "text/event-stream")
+                    .body(Body::from_stream(stream))
+                    .unwrap()
+            }),
+        );
+        let http = reqwest::Client::builder()
+            .read_timeout(Duration::from_millis(30))
+            .build()
+            .unwrap();
+        let provider = provider_for_app(app, http).await;
+        let (_cancel_tx, cancel) = tokio::sync::watch::channel(false);
+        let (delta_tx, _delta_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let error = provider
+            .stream(test_stream_request(cancel, delta_tx))
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("stream failed: transport error"), "{error}");
+        assert!(error.contains("timed out"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn finish_reason_completes_a_stream_without_done_marker() {
+        let provider = provider_serving_sse(concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"complete\"},",
+            "\"finish_reason\":null}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        ))
+        .await;
+        let (_cancel_tx, cancel) = tokio::sync::watch::channel(false);
+        let (delta_tx, _delta_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let result = provider
+            .stream(test_stream_request(cancel, delta_tx))
+            .await
+            .unwrap();
+
+        assert_eq!(result.content, "complete");
+        assert_eq!(result.stop_reason, "end_turn");
+    }
+
+    #[tokio::test]
+    async fn done_marker_completes_a_stream_without_finish_reason() {
+        let provider = provider_serving_sse(concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"complete\"},",
+            "\"finish_reason\":null}]}\n\n",
+            "data: [DONE]\n\n",
+        ))
+        .await;
+        let (_cancel_tx, cancel) = tokio::sync::watch::channel(false);
+        let (delta_tx, _delta_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let result = provider
+            .stream(test_stream_request(cancel, delta_tx))
+            .await
+            .unwrap();
+
+        assert_eq!(result.content, "complete");
+    }
+
+    #[tokio::test]
+    async fn cancellation_does_not_turn_an_incomplete_stream_into_an_error() {
+        let provider = provider_serving_sse(concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},",
+            "\"finish_reason\":null}]}\n\n",
+        ))
+        .await;
+        let (cancel_tx, cancel) = tokio::sync::watch::channel(false);
+        cancel_tx.send(true).unwrap();
+        let (delta_tx, _delta_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let result = provider
+            .stream(test_stream_request(cancel, delta_tx))
+            .await
+            .unwrap();
+
+        assert!(result.content.is_empty());
     }
 
     fn unavailable_provider() -> OpenAICompatibleProvider {
