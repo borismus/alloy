@@ -176,6 +176,11 @@ async fn run_one_agent(
         // Sub-agents use whatever provider they're given via Alloy's own loop;
         // no Claude Code MCP bridge.
         mcp: None,
+        // The tool registry has no model catalog, so a sub-agent's window isn't
+        // known here and its turn stays unbudgeted — bounded, as before, by
+        // MAX_ITERATIONS and the per-result caps. The parent's own budget still
+        // covers the summary the sub-agent returns.
+        context_window: None,
     };
 
     // Sub-agents don't emit tool events to the parent session — the parent's

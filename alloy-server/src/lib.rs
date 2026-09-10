@@ -20,6 +20,7 @@ pub mod streaming;
 pub mod tasks;
 pub mod tool_loop;
 pub mod tools;
+pub mod turn_budget;
 pub mod types;
 pub mod vault;
 pub mod vault_writer;

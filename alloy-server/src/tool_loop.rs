@@ -7,6 +7,7 @@
 //!    tool + append tool results, then loop.
 //! 4. Cap iterations to prevent runaway loops.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
@@ -15,7 +16,8 @@ use crate::providers::{
     ChatMessage, McpBridge, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 use crate::tools::{ToolContext, ToolRegistry};
-use crate::types::{ToolDefinition, ToolEventSink};
+use crate::turn_budget::TokenLedger;
+use crate::types::{ToolCall, ToolDefinition, ToolEventSink};
 
 const MAX_ITERATIONS: u32 = 10;
 
@@ -43,6 +45,35 @@ const WRAP_UP_INSTRUCTION: &str = concat!(
     "If something required is missing, say exactly what is missing and what you need from the user.",
 );
 
+/// Tools whose result is a pure function of their arguments for the duration of
+/// one turn, so running the identical call twice can only burn context and time.
+/// Everything else — writes, task mutations, sub-agents — must always execute:
+/// suppressing a repeated write would silently drop the user's second edit, and
+/// a sub-agent's answer is not reproducible from its prompt.
+fn is_repeatable_read(name: &str) -> bool {
+    matches!(
+        name,
+        "web_search"
+            | "web_fetch"
+            | "http_get"
+            | "read_file"
+            | "list_directory"
+            | "search_directory"
+            | "use_skill"
+    )
+}
+
+/// Identity of a tool call for duplicate detection. `serde_json`'s maps are
+/// key-sorted (the `preserve_order` feature is off), so two calls that differ
+/// only in argument order produce the same key.
+fn call_signature(call: &ToolCall) -> String {
+    format!(
+        "{}\u{1f}{}",
+        call.name,
+        serde_json::to_string(&call.input).unwrap_or_default()
+    )
+}
+
 pub struct LoopRequest {
     pub provider: Arc<dyn Provider>,
     pub model: String,
@@ -55,6 +86,9 @@ pub struct LoopRequest {
     pub tool_ctx: ToolContext,
     /// MCP bridge coordinates for the Claude Code provider (see `McpBridge`).
     pub mcp: Option<McpBridge>,
+    /// Context window of the selected model, when discovery knows it. Drives the
+    /// per-turn budget; `None` disables budgeting rather than inventing a limit.
+    pub context_window: Option<u64>,
 }
 
 pub async fn execute_with_tools(
@@ -72,6 +106,7 @@ pub async fn execute_with_tools(
         retry_connect,
         tool_ctx,
         mcp,
+        context_window,
     } = req;
 
     let mut total_input: u32 = 0;
@@ -86,10 +121,55 @@ pub async fn execute_with_tools(
     // that legitimately produced no text is left alone.
     let mut any_tool_executed = false;
 
+    let mut ledger = TokenLedger::new(context_window, &tools);
+    // Signature -> the 1-based call number that already produced this exact
+    // result, so a repeat can point the model at evidence it already has.
+    let mut completed_reads: HashMap<String, usize> = HashMap::new();
+    let mut executed_calls: usize = 0;
+    let mut duplicate_calls: usize = 0;
+    // Set when the turn must stop gathering and write its conclusion, either
+    // because the budget is spent or because a result would not fit at all.
+    let mut budget_exhausted = false;
+
     for iteration in 0..MAX_ITERATIONS {
         if *cancel.borrow() {
             break;
         }
+
+        // A conversation that cannot fit before a single tool has run will never
+        // fit; fail here rather than after minutes of generation and an upstream
+        // rejection. Once evidence exists we instead wrap up with what we have.
+        if ledger.over_hard_limit(&messages) {
+            if !any_tool_executed {
+                let budget = ledger.budget().expect("limit implies a budget");
+                anyhow::bail!(
+                    "this turn needs about {} tokens, more than the {} usable from {}'s {}-token \
+                     context window; shorten the request or choose a model with a larger window",
+                    ledger.projected(&messages),
+                    budget.hard_limit,
+                    model,
+                    budget.window,
+                );
+            }
+            budget_exhausted = true;
+        }
+        if !budget_exhausted && any_tool_executed && ledger.over_soft_limit(&messages) {
+            budget_exhausted = true;
+        }
+        if budget_exhausted {
+            tracing::info!(
+                iteration,
+                projected_tokens = ledger.projected(&messages),
+                executed_calls,
+                duplicate_calls,
+                "turn budget spent; forcing a conclusion"
+            );
+            break;
+        }
+
+        // Taken before the call so reported usage can be compared against the
+        // estimate of the very prompt that produced it.
+        let estimate_at_send = ledger.raw_estimate(&messages);
 
         let req = StreamRequest {
             messages: messages.clone(),
@@ -110,6 +190,7 @@ pub async fn execute_with_tools(
             if first_response_id.is_none() {
                 first_response_id = usage.response_id.clone();
             }
+            ledger.calibrate(estimate_at_send, usage.input_tokens);
         }
         // Accumulate — do NOT overwrite. The model often emits its answer text
         // in the same turn as a tool call and then a final empty tool-only/
@@ -156,14 +237,59 @@ pub async fn execute_with_tools(
                 }
             }
 
+            // Suppress an exact repeat of a read this turn already performed.
+            // Nothing runs and no pill is emitted — the earlier result is still
+            // in `messages`, so the model is pointed back at evidence it has
+            // rather than paying for the same bytes a second time.
+            let signature = is_repeatable_read(&call.name).then(|| call_signature(call));
+            if let Some(previous) = signature.as_ref().and_then(|key| completed_reads.get(key)) {
+                duplicate_calls += 1;
+                messages.push(ChatMessage::tool_result(
+                    call.id.clone(),
+                    format!(
+                        "Duplicate call: `{}` already ran with these exact arguments earlier in \
+                         this turn (tool call #{}). Its result is already above — reuse it \
+                         instead of calling it again.",
+                        call.name, previous
+                    ),
+                ));
+                continue;
+            }
+
+            // Don't spend time fetching a result that cannot fit in the window.
+            if budget_exhausted {
+                messages.push(ChatMessage::tool_result(
+                    call.id.clone(),
+                    "Context budget for this turn is exhausted, so this tool was not run. \
+                     Write your final answer now from the evidence already gathered."
+                        .into(),
+                ));
+                continue;
+            }
+
             sink.on_tool_use(call);
             let tool_result = registry.execute(call, &tool_ctx).await;
             sink.on_tool_result(&tool_result);
+            let failed = tool_result.is_error.unwrap_or(false);
             messages.push(ChatMessage::tool_result(
                 tool_result.tool_use_id.clone(),
                 tool_result.content.clone(),
             ));
             any_tool_executed = true;
+            executed_calls += 1;
+            // Only successful reads are memoized — a transient failure has to
+            // stay retryable within the same turn.
+            if let Some(signature) = signature {
+                if !failed {
+                    completed_reads.insert(signature, executed_calls);
+                }
+            }
+            // Re-check inside the round: a single batch of parallel calls can
+            // add tens of thousands of tokens, so waiting for the next iteration
+            // would let the turn sail past the limit it is meant to respect.
+            if ledger.over_soft_limit(&messages) {
+                budget_exhausted = true;
+            }
         }
 
         // Separator between tool-call rounds in streamed text — matches the
@@ -173,27 +299,59 @@ pub async fn execute_with_tools(
         let _ = delta_tx.send(ProviderStreamEvent::Content(" ".into()));
         final_content.push(' ');
 
-        tracing::debug!("tool loop iteration {} complete", iteration);
+        tracing::debug!(
+            iteration,
+            projected_tokens = ledger.projected(&messages),
+            executed_calls,
+            duplicate_calls,
+            "tool loop iteration complete"
+        );
+
+        if budget_exhausted {
+            break;
+        }
     }
 
-    // Forced wrap-up. The model can use tools but never emit a text answer:
-    // some providers (e.g. Gemini) emit tool calls with no narration and expect
-    // to answer only at the end, and the turn can end blank either because the
-    // final post-tool response carried empty content or because we hit
-    // MAX_ITERATIONS while it still wanted tools. Either way the persisted
-    // message would be empty and the conversation would appear to stall. Make
-    // one more call with no tools AND an explicit instruction (see
-    // WRAP_UP_INSTRUCTION) to force a written answer from the tool results
-    // already accumulated in `messages`.
+    // Forced wrap-up. Two situations need one more, tool-free call:
     //
-    // Only reachable when the whole turn produced zero prose, so a turn that
-    // answered normally is never affected (see `nonblank_turn_skips_wrap_up`).
-    if final_content.trim().is_empty() && any_tool_executed && !*cancel.borrow() {
+    // 1. The model used tools but never emitted any text — some providers (e.g.
+    //    Gemini) emit tool calls with no narration and expect to answer at the
+    //    end, and the turn can end blank either because the final post-tool
+    //    response was empty or because MAX_ITERATIONS ran out while it still
+    //    wanted tools. The persisted message would be empty and the
+    //    conversation would appear to stall.
+    // 2. The context budget ran out, so the loop stopped gathering evidence.
+    //    Here the model may well have narrated its progress, and saving that
+    //    narration as the answer would persist a mid-plan sentence as if it
+    //    were a conclusion.
+    //
+    // Dropping `tools` is not enough on its own, hence WRAP_UP_INSTRUCTION. A
+    // turn that finished on its own is never affected (see
+    // `nonblank_turn_skips_wrap_up`).
+    let needs_wrap_up = !*cancel.borrow()
+        && ((final_content.trim().is_empty() && any_tool_executed) || budget_exhausted);
+    if needs_wrap_up {
         let mut wrap_up_messages = messages.clone();
         wrap_up_messages.push(ChatMessage::User {
             content: WRAP_UP_INSTRUCTION.to_string(),
             images: Vec::new(),
         });
+        // Last guard before the wire. If even a tool-free conclusion doesn't
+        // fit, fail here: the alternative is a multi-minute wait for the
+        // provider to reject the prompt, with nothing to show for it. The
+        // partial content and tool history are still persisted by the caller.
+        if ledger.over_hard_limit(&wrap_up_messages) {
+            let budget = ledger.budget().expect("limit implies a budget");
+            anyhow::bail!(
+                "the evidence gathered this turn reached about {} tokens, more than the {} \
+                 usable from {}'s {}-token context window, so no final answer could be \
+                 written; ask for a narrower scope or use a model with a larger window",
+                ledger.projected(&wrap_up_messages),
+                budget.hard_limit,
+                model,
+                budget.window,
+            );
+        }
         let req = StreamRequest {
             messages: wrap_up_messages,
             model: model.clone(),
@@ -211,6 +369,12 @@ pub async fn execute_with_tools(
             )
         })?;
         if wrap.content.trim().is_empty() {
+            if budget_exhausted {
+                anyhow::bail!(
+                    "the context budget for this turn was exhausted and the tool-free wrap-up \
+                     produced no final answer"
+                );
+            }
             anyhow::bail!(
                 "model used tools but returned no final text, including after a tool-free wrap-up"
             );
@@ -254,7 +418,7 @@ mod tests {
     use crate::config::Config;
     use crate::providers::ProviderRegistry;
     use crate::skill_registry::SkillRegistry;
-    use crate::types::{NullSink, ToolCall};
+    use crate::types::{NullSink, ToolCall, ToolResult};
     use crate::vault::Vault;
     use async_trait::async_trait;
     use serde_json::json;
@@ -339,32 +503,86 @@ mod tests {
         ))
     }
 
+    /// Records the tool calls that actually reached execution, so a test can
+    /// tell a suppressed duplicate from a re-run.
+    #[derive(Default)]
+    struct RecordingSink {
+        uses: Mutex<Vec<ToolCall>>,
+    }
+
+    impl ToolEventSink for RecordingSink {
+        fn on_tool_use(&self, call: &ToolCall) {
+            self.uses.lock().unwrap().push(call.clone());
+        }
+        fn on_tool_result(&self, _result: &ToolResult) {}
+    }
+
+    /// A vault with real notes, for tests that need tools that genuinely run.
+    fn vault_registry() -> (Arc<ToolRegistry>, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("alloy-loop-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("notes")).unwrap();
+        std::fs::write(root.join("notes/a.md"), "alpha body").unwrap();
+        std::fs::write(root.join("notes/b.md"), "beta body").unwrap();
+        let registry = Arc::new(ToolRegistry::new(
+            Arc::new(Config::default()),
+            Arc::new(Vault::new(root.clone()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ));
+        (registry, root)
+    }
+
+    struct LoopCase {
+        steps: Vec<StreamResult>,
+        messages: Vec<ChatMessage>,
+        context_window: Option<u64>,
+        registry: Arc<ToolRegistry>,
+        sink: Arc<dyn ToolEventSink>,
+    }
+
+    impl LoopCase {
+        fn new(steps: Vec<StreamResult>) -> Self {
+            Self {
+                steps,
+                messages: vec![],
+                context_window: None,
+                registry: test_registry(),
+                sink: Arc::new(NullSink),
+            }
+        }
+
+        async fn run(self) -> (anyhow::Result<StreamResult>, Arc<ScriptedProvider>) {
+            let provider = Arc::new(ScriptedProvider::new(self.steps));
+            let (delta_tx, _rx) = mpsc::unbounded_channel();
+            let (_cancel_tx, cancel) = watch::channel(false);
+            let req = LoopRequest {
+                provider: provider.clone(),
+                model: "test/model".into(),
+                messages: self.messages,
+                tools: vec![],
+                delta_tx,
+                cancel,
+                retry_connect: false,
+                tool_ctx: ToolContext {
+                    message_id: None,
+                    conversation_id: None,
+                    inside_subagent: false,
+                    model_is_local: false,
+                },
+                mcp: None,
+                context_window: self.context_window,
+            };
+            let result = execute_with_tools(req, self.registry, self.sink).await;
+            (result, provider)
+        }
+    }
+
     /// Run the loop and also hand back the provider, so a test can inspect the
     /// requests the loop made.
     async fn run_capturing(
         steps: Vec<StreamResult>,
     ) -> (anyhow::Result<StreamResult>, Arc<ScriptedProvider>) {
-        let provider = Arc::new(ScriptedProvider::new(steps));
-        let (delta_tx, _rx) = mpsc::unbounded_channel();
-        let (_cancel_tx, cancel) = watch::channel(false);
-        let req = LoopRequest {
-            provider: provider.clone(),
-            model: "test/model".into(),
-            messages: vec![],
-            tools: vec![],
-            delta_tx,
-            cancel,
-            retry_connect: false,
-            tool_ctx: ToolContext {
-                message_id: None,
-                conversation_id: None,
-                inside_subagent: false,
-                model_is_local: false,
-            },
-            mcp: None,
-        };
-        let result = execute_with_tools(req, test_registry(), Arc::new(NullSink)).await;
-        (result, provider)
+        LoopCase::new(steps).run().await
     }
 
     /// Every `ChatMessage::User` body the provider was sent, flattened.
@@ -383,25 +601,7 @@ mod tests {
     }
 
     async fn run_result(steps: Vec<StreamResult>) -> anyhow::Result<StreamResult> {
-        let (delta_tx, _rx) = mpsc::unbounded_channel();
-        let (_cancel_tx, cancel) = watch::channel(false);
-        let req = LoopRequest {
-            provider: Arc::new(ScriptedProvider::new(steps)),
-            model: "test/model".into(),
-            messages: vec![],
-            tools: vec![],
-            delta_tx,
-            cancel,
-            retry_connect: false,
-            tool_ctx: ToolContext {
-                message_id: None,
-                conversation_id: None,
-                inside_subagent: false,
-                model_is_local: false,
-            },
-            mcp: None,
-        };
-        execute_with_tools(req, test_registry(), Arc::new(NullSink)).await
+        LoopCase::new(steps).run().await.0
     }
 
     async fn run(steps: Vec<StreamResult>) -> StreamResult {
@@ -550,5 +750,239 @@ mod tests {
     async fn nonblank_turn_skips_wrap_up() {
         let result = run(vec![tool_turn("Looking.", 5), final_turn("Answer.", 10)]).await;
         assert_eq!(result.content, "Looking. Answer.");
+    }
+
+    /// A turn that calls one tool per round with the given argument.
+    fn read_turn(id: &str, path: &str) -> StreamResult {
+        StreamResult {
+            content: String::new(),
+            usage: usage(1),
+            stop_reason: "tool_use".into(),
+            tool_calls: vec![ToolCall {
+                id: id.into(),
+                name: "read_file".into(),
+                input: json!({ "path": path }),
+            }],
+        }
+    }
+
+    fn tool_results(provider: &ScriptedProvider) -> Vec<String> {
+        provider
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .flatten()
+            .filter_map(|m| match m {
+                ChatMessage::Tool { content, .. } => Some(content.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The observed overflow turn re-ran searches and reads it had already done.
+    /// An identical read must execute once and send the model back to the result
+    /// it already has, instead of paying for the same bytes again.
+    #[tokio::test]
+    async fn an_identical_read_runs_once_and_points_back_at_the_first_result() {
+        let (registry, root) = vault_registry();
+        let sink = Arc::new(RecordingSink::default());
+        let (result, provider) = LoopCase {
+            registry,
+            sink: sink.clone(),
+            ..LoopCase::new(vec![
+                read_turn("t1", "notes/a.md"),
+                read_turn("t2", "notes/a.md"),
+                final_turn("Done.", 5),
+            ])
+        }
+        .run()
+        .await;
+        assert_eq!(result.unwrap().content, "Done.");
+
+        assert_eq!(
+            sink.uses.lock().unwrap().len(),
+            1,
+            "the repeat must not reach the tool"
+        );
+        let results = tool_results(&provider);
+        assert!(
+            results.iter().any(|r| r.contains("alpha body")),
+            "first read returns real content: {results:?}"
+        );
+        let duplicate = results
+            .iter()
+            .find(|r| r.contains("Duplicate call"))
+            .expect("repeat is answered with a reference");
+        assert!(duplicate.contains("tool call #1"), "got: {duplicate}");
+        // Every tool_use still has a matching tool_result: providers reject an
+        // unpaired call, so suppression must never skip the reply.
+        assert!(!duplicate.contains("alpha body"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Suppression keys on the arguments, so different reads still run — and
+    /// argument order must not create a false miss.
+    #[tokio::test]
+    async fn different_reads_still_execute() {
+        let (registry, root) = vault_registry();
+        let sink = Arc::new(RecordingSink::default());
+        let (result, _) = LoopCase {
+            registry,
+            sink: sink.clone(),
+            ..LoopCase::new(vec![
+                read_turn("t1", "notes/a.md"),
+                read_turn("t2", "notes/b.md"),
+                final_turn("Done.", 5),
+            ])
+        }
+        .run()
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(sink.uses.lock().unwrap().len(), 2);
+
+        assert_eq!(
+            call_signature(&ToolCall {
+                id: "a".into(),
+                name: "read_file".into(),
+                input: json!({ "path": "x", "limit": 1 }),
+            }),
+            call_signature(&ToolCall {
+                id: "b".into(),
+                name: "read_file".into(),
+                input: json!({ "limit": 1, "path": "x" }),
+            }),
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Writes and other side-effecting tools must always run: suppressing a
+    /// repeated append would silently drop the user's second edit.
+    #[tokio::test]
+    async fn repeated_writes_are_never_suppressed() {
+        let (registry, root) = vault_registry();
+        let sink = Arc::new(RecordingSink::default());
+        let append = |id: &str| StreamResult {
+            content: String::new(),
+            usage: usage(1),
+            stop_reason: "tool_use".into(),
+            tool_calls: vec![ToolCall {
+                id: id.into(),
+                name: "append_to_note".into(),
+                input: json!({ "path": "notes/a.md", "content": "same line" }),
+            }],
+        };
+        let (result, provider) = LoopCase {
+            registry,
+            sink: sink.clone(),
+            ..LoopCase::new(vec![append("t1"), append("t2"), final_turn("Done.", 5)])
+        }
+        .run()
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(
+            sink.uses.lock().unwrap().len(),
+            2,
+            "both writes must execute"
+        );
+        assert!(!tool_results(&provider)
+            .iter()
+            .any(|r| r.contains("Duplicate call")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Evidence keeps accumulating until it approaches the window. The loop must
+    /// stop gathering while a conclusion still fits, rather than continuing to
+    /// MAX_ITERATIONS and overflowing.
+    #[tokio::test]
+    async fn a_spent_budget_stops_gathering_and_forces_a_conclusion() {
+        // 20k window -> ~14k usable, soft limit ~11.2k. One round of narration
+        // worth ~12k tokens lands between the two.
+        let (result, provider) = LoopCase {
+            context_window: Some(20_000),
+            ..LoopCase::new(vec![
+                tool_turn(&"x".repeat(48_000), 10),
+                final_turn("Conclusion.", 20),
+            ])
+        }
+        .run()
+        .await;
+
+        let content = result.unwrap().content;
+        assert!(content.ends_with("Conclusion."), "conclusion is appended");
+        assert!(content.contains("xxx"), "narration is preserved");
+
+        let seen = provider.seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "one gathering round, then the wrap-up");
+        assert!(
+            matches!(seen[1].last(), Some(ChatMessage::User { content, .. })
+                if content == WRAP_UP_INSTRUCTION),
+            "the forced conclusion carries the tool-free instruction"
+        );
+    }
+
+    /// The real failure: a prompt far past the window was sent anyway and came
+    /// back as an upstream 400 after minutes. It must fail here, before the
+    /// wire, with the partial work left for the caller to persist.
+    #[tokio::test]
+    async fn evidence_past_the_window_fails_locally_instead_of_being_sent() {
+        let (result, provider) = LoopCase {
+            context_window: Some(20_000),
+            ..LoopCase::new(vec![
+                tool_turn(&"x".repeat(80_000), 10),
+                final_turn("never reached", 20),
+            ])
+        }
+        .run()
+        .await;
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("20000-token context window"), "got: {error}");
+        assert!(
+            error.contains("no final answer could be written"),
+            "got: {error}"
+        );
+        assert_eq!(
+            provider.seen.lock().unwrap().len(),
+            1,
+            "the oversized prompt must never reach the provider"
+        );
+    }
+
+    /// A conversation that cannot fit before any tool has run will never fit.
+    /// Say so immediately rather than after a long generation.
+    #[tokio::test]
+    async fn an_oversized_conversation_fails_before_the_first_call() {
+        let (result, provider) = LoopCase {
+            context_window: Some(20_000),
+            messages: vec![ChatMessage::User {
+                content: "x".repeat(200_000),
+                images: vec![],
+            }],
+            ..LoopCase::new(vec![final_turn("never reached", 5)])
+        }
+        .run()
+        .await;
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("larger window"), "got: {error}");
+        assert!(
+            provider.seen.lock().unwrap().is_empty(),
+            "nothing is sent when the request cannot fit"
+        );
+    }
+
+    /// Budgeting must be invisible to ordinary turns: same calls, same text, no
+    /// extra wrap-up. The script holds exactly two turns, so a third call fails.
+    #[tokio::test]
+    async fn a_known_window_leaves_an_ordinary_turn_untouched() {
+        let (result, provider) = LoopCase {
+            context_window: Some(262_144),
+            ..LoopCase::new(vec![tool_turn("Looking.", 5), final_turn("Answer.", 10)])
+        }
+        .run()
+        .await;
+        assert_eq!(result.unwrap().content, "Looking. Answer.");
+        assert_eq!(provider.seen.lock().unwrap().len(), 2);
     }
 }

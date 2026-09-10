@@ -487,6 +487,7 @@ async fn run_stream(
             model_is_local,
         },
         mcp,
+        context_window: cw,
     };
 
     let started = std::time::Instant::now();
