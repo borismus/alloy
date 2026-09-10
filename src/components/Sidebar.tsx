@@ -7,6 +7,7 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useLongPress } from '../hooks/useLongPress';
+import { useWindowedList } from '../hooks/useWindowedList';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
@@ -127,6 +128,13 @@ function latestTaskError(item: TimelineItem): string | null {
   if (attempt?.result !== 'error') return null;
   return attempt.error?.trim() || attempt.reasoning?.trim() || 'Task execution failed';
 }
+
+/**
+ * Above this many rows the list is windowed. Below it, every row stays in the
+ * DOM exactly as before — short lists were never slow, and the reorder
+ * animation needs the rows it animates to be present.
+ */
+const WINDOW_THRESHOLD = 80;
 
 // FLIP animation helper - stores previous positions of items
 function useFLIPAnimation(items: TimelineItem[]) {
@@ -494,6 +502,18 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     // be a dependency — otherwise the list keeps the pre-search result.
   }, [timelineItems, activeFilter, searchQuery, serverMatches]);
 
+  // Render only the visible slice once the list gets long.
+  const windowingEnabled = filteredItems.length > WINDOW_THRESHOLD;
+  const { startIndex, endIndex, topPadding, bottomPadding } = useWindowedList({
+    containerRef,
+    itemCount: filteredItems.length,
+    enabled: windowingEnabled,
+  });
+  const visibleItems = useMemo(
+    () => (windowingEnabled ? filteredItems.slice(startIndex, endIndex) : filteredItems),
+    [filteredItems, windowingEnabled, startIndex, endIndex],
+  );
+
   const renderSearchSnippet = (item: TimelineItem) => {
     if (!searchQuery.trim() || item.type === 'task') return null;
     const match = serverMatches.get(vaultSearchHitKey(item.type, item.id));
@@ -575,7 +595,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             {!searchLoading && <p className="hint">Try a different search or filter</p>}
           </div>
         ) : (
-          filteredItems.map((item) => (
+          <>
+          {topPadding > 0 && <div style={{ height: topPadding }} aria-hidden="true" />}
+          {visibleItems.map((item) => (
             <div
               key={item.id}
               data-item-id={item.id}
@@ -645,7 +667,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 )}
               </div>
             </div>
-          ))
+          ))}
+          {bottomPadding > 0 && <div style={{ height: bottomPadding }} aria-hidden="true" />}
+          </>
         )}
       </div>
 
