@@ -27,6 +27,14 @@ const MEASURE_SAMPLE = 10;
 /** Ignore sub-pixel noise; only react to a materially different row height. */
 const HEIGHT_EPSILON = 0.5;
 
+/**
+ * Weight of a fresh measurement when refining the estimate. Rows vary in height
+ * (a title may wrap to one line or two), so each window measures a slightly
+ * different average; smoothing converges instead of chasing whichever rows are
+ * currently on screen.
+ */
+const HEIGHT_SMOOTHING = 0.3;
+
 export interface WindowedRange {
   /** First rendered index. */
   startIndex: number;
@@ -53,6 +61,7 @@ export function useWindowedList({
   overscan = DEFAULT_OVERSCAN,
 }: Options): WindowedRange {
   const rowHeightRef = useRef(DEFAULT_ROW_HEIGHT);
+  const calibratedRef = useRef(false);
   const frameRef = useRef<number | null>(null);
   const [range, setRange] = useState({ start: 0, end: itemCount });
 
@@ -94,9 +103,20 @@ export function useWindowedList({
     }
     if (measured <= 0) return;
 
-    if (Math.abs(measured - rowHeightRef.current) > HEIGHT_EPSILON) {
-      rowHeightRef.current = measured;
-      recompute();
+    const next = calibratedRef.current
+      ? rowHeightRef.current * (1 - HEIGHT_SMOOTHING) + measured * HEIGHT_SMOOTHING
+      : measured;
+    const changed = Math.abs(next - rowHeightRef.current) > HEIGHT_EPSILON;
+    rowHeightRef.current = next;
+
+    // Measuring must not drive a render, or variable row heights loop forever:
+    // recomputing swaps in a different set of rows, whose average differs, which
+    // recomputes again. Only the very first calibration corrects the range
+    // directly; later refinements are picked up by the next scroll or resize,
+    // which is exactly when they matter.
+    if (!calibratedRef.current) {
+      calibratedRef.current = true;
+      if (changed) recompute();
     }
   });
 

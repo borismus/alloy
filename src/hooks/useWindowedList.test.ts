@@ -128,4 +128,51 @@ describe('useWindowedList', () => {
     expect(result.current.endIndex).toBe(1000);
     expect(result.current.bottomPadding).toBe(0);
   });
+
+  // Regression: rows are not uniform — a title may wrap to one line or two — so
+  // each window measures a different average pitch. When measurement fed
+  // straight back into the range, recomputing swapped in rows of a different
+  // average and recomputed again, which React reports as "Maximum update depth
+  // exceeded" on a fast scroll. Model that by giving each distinct window its
+  // own pitch, so the estimate has no fixed point.
+  it('settles when every window measures a different row pitch', async () => {
+    const pitchByWindow = new Map<number, number>();
+    let renderedStart = 0;
+    const listeners = new Map<string, () => void>();
+    const el = {
+      scrollTop: 5000,
+      clientHeight: VIEWPORT,
+      addEventListener: (t: string, fn: () => void) => listeners.set(t, fn),
+      removeEventListener: (t: string) => listeners.delete(t),
+      querySelectorAll: () => {
+        if (!pitchByWindow.has(renderedStart)) {
+          pitchByWindow.set(renderedStart, pitchByWindow.size % 2 === 0 ? 92 : 112);
+        }
+        const pitch = pitchByWindow.get(renderedStart)!;
+        return Array.from({ length: 20 }, (_, i) => ({
+          offsetHeight: pitch - 8,
+          getBoundingClientRect: () => ({ top: i * pitch }),
+        })) as unknown as NodeListOf<HTMLElement>;
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ref = { current: el as any };
+
+    const { result } = renderHook(() => {
+      const r = useWindowedList({ containerRef: ref, itemCount: 2000, enabled: true });
+      renderedStart = r.startIndex; // what the DOM would be showing
+      return r;
+    });
+    await settle();
+
+    for (const top of [5200, 5400, 5600]) {
+      el.scrollTop = top;
+      listeners.get('scroll')?.();
+      await settle();
+    }
+
+    const { startIndex, endIndex } = result.current;
+    expect(endIndex - startIndex).toBeLessThan(60);
+    expect(startIndex).toBeGreaterThan(0);
+  });
 });
