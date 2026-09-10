@@ -14,6 +14,7 @@ const TOOL_LABELS: Record<string, { active: string; complete: string; icon?: str
   write_file: { active: 'Writing', complete: 'Wrote file', icon: 'file' },
   append_file: { active: 'Appending', complete: 'Appended to file', icon: 'file' },
   append_to_note: { active: 'Appending', complete: 'Append', icon: 'file' },
+  web_fetch: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
   http_get: { active: 'Fetching URL', complete: 'Fetched URL', icon: 'globe' },
   web_search: { active: 'Searching', complete: 'Searched', icon: 'search' },
   command_execution: { active: 'Running command', complete: 'Ran command', icon: 'tool' },

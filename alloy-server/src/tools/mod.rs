@@ -31,7 +31,8 @@ pub struct ToolContext {
     pub inside_subagent: bool,
     /// True when the model driving this tool loop runs on local/trusted hardware
     /// (see `crate::local::model_is_local`). Gates read access to the private
-    /// mount (`private/<alias>/`); cloud models are denied and can't see it.
+    /// mount (`private/<alias>/`) and private-network web fetches; cloud models
+    /// are denied both.
     pub model_is_local: bool,
 }
 
@@ -62,7 +63,7 @@ impl ToolRegistry {
     pub async fn execute(self: &Arc<Self>, call: &ToolCall, ctx: &ToolContext) -> ToolResult {
         let result = match call.name.as_str() {
             "web_search" => websearch::execute(self, &call.input).await,
-            "http_get" => http::execute_get(self, &call.input).await,
+            "web_fetch" | "http_get" => http::execute_fetch(ctx, &call.input).await,
             "read_file" => files::execute_read(self, ctx, &call.input).await,
             "write_file" => files::execute_write(self, &call.input).await,
             "list_directory" => files::execute_list_directory(self, ctx, &call.input).await,

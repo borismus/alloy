@@ -18,6 +18,19 @@ it('labels a completed Codex-native command as a tool pill', () => {
   expect(screen.getByText('Ran command')).toBeTruthy();
 });
 
+it('labels current and legacy URL fetches consistently', () => {
+  render(
+    <ToolUseIndicator
+      toolUse={[
+        { type: 'web_fetch', input: { url: 'https://example.com/new' }, result: 'new' },
+        { type: 'http_get', input: { url: 'https://example.com/old' }, result: 'old' },
+      ]}
+    />,
+  );
+
+  expect(screen.getAllByText('Fetched URL')).toHaveLength(2);
+});
+
 it('does not quote an unavailable web query and shows it once supplied', () => {
   const { rerender } = render(
     <ToolUseIndicator

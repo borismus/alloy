@@ -142,7 +142,7 @@ src/
 └── tools/
     ├── mod.rs           Dispatch
     ├── websearch.rs     Serper client
-    ├── http.rs          http_get
+    ├── http.rs          web_fetch (`http_get` compatibility alias)
     ├── files.rs         read/write/list/append with safe-path allowlist
     ├── search.rs        search_directory
     ├── skills.rs        use_skill
@@ -176,7 +176,7 @@ Tauri WKWebView and browser-mode shims can use the same surface.
 | Tool | Status | Notes |
 |---|---|---|
 | `web_search` | ✓ | Serper; reads top-level `serperApiKey` from config |
-| `http_get` | ✓ | 30s timeout, 2MB body cap |
+| `web_fetch` | ✓ | Readable Markdown/text, 30s timeout, streaming 2MB download cap, paged output; private-network URLs require a trusted local model |
 | `read_file` | ✓ | notes/, skills/, conversations/, tasks/, root files |
 | `list_directory` | ✓ | Same allowlist |
 | `write_file` | ✓ | Only `notes/*` and `memory.md`; other paths are rejected |

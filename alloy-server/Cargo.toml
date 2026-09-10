@@ -36,8 +36,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 chrono-tz = "0.10"
 cron = "0.15"
 iana-time-zone = "0.1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "gzip", "brotli", "deflate"] }
 eventsource-stream = "0.2"
+dom_smoothie = "0.18.1"
+encoding_rs = "0.8"
 async-trait = "0.1"
 uuid = { version = "1", features = ["v4"] }
 async-stream = "0.3"

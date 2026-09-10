@@ -86,7 +86,7 @@ best-effort.
 | `append_to_note` | Append to notes with provenance tracking |
 | `list_directory` | List files in vault directories |
 | `search_directory` | Search files and content |
-| `http_get` | Fetch data from URLs |
+| `web_fetch` | Extract readable Markdown or text from URLs |
 | `web_search` | Search the web through Serper |
 | `use_skill` | Load another skill on-demand |
 | `spawn_subagent` | Run 1-3 parallel sub-agents |

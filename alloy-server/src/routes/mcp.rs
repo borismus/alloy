@@ -284,5 +284,19 @@ mod tests {
         assert!(tools.iter().any(|t| {
             t.get("name").and_then(Value::as_str) == Some("update_scheduled_task")
         }));
+        let web_fetch = tools
+            .iter()
+            .find(|t| t.get("name").and_then(Value::as_str) == Some("web_fetch"))
+            .expect("web_fetch must be advertised");
+        let fetch_properties = &web_fetch["inputSchema"]["properties"];
+        assert!(fetch_properties.get("url").is_some());
+        assert!(fetch_properties.get("start_index").is_some());
+        assert!(fetch_properties.get("max_chars").is_some());
+        assert!(
+            !tools
+                .iter()
+                .any(|t| t.get("name").and_then(Value::as_str) == Some("http_get")),
+            "legacy alias must remain executable but unadvertised"
+        );
     }
 }
