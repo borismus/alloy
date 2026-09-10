@@ -118,6 +118,7 @@ export interface ModelInfo {
   key: string;   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   name: string;  // Human-readable display name (e.g., "Sonnet 4.5")
   contextWindow?: number; // Max input tokens (e.g., 200000 for Claude, 1000000 for Gemini)
+  contextWindowSource?: 'context_length' | 'max_model_len' | 'max_context_length' | 'context_window' | 'model_alias' | 'assumed';
   provider?: string;      // Provider id (e.g., "mlx", "openrouter") for unambiguous labeling
   local?: boolean;        // True when served from this machine (loopback) — prompts stay on-device
   // False only for providers that cannot accept images at all (e.g. codex exec,

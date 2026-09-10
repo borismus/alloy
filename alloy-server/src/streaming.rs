@@ -436,7 +436,12 @@ async fn run_stream(
     // over budget). Returns the messages to send plus an optional summary to
     // persist at completion. Never compact when there's no conversation file to
     // persist into (skip_persist) — but the in-memory send view is still built.
-    let cw = model_cache.context_window_for(&params.model);
+    // Discover the selected provider on demand. Scheduled tasks can run before
+    // any browser has requested `/api/models`, so context safety must not rely
+    // on that route having populated the cache as a side effect.
+    let cw = model_cache
+        .context_window_for_or_discover(&params.model, &tools.config)
+        .await;
     let prepared = compaction::prepare(
         &messages,
         system_prompt.as_deref(),

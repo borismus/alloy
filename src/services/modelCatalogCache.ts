@@ -16,6 +16,14 @@ function isModelInfo(value: unknown): value is ModelInfo {
     && (model.provider === undefined || typeof model.provider === 'string')
     && (model.local === undefined || typeof model.local === 'boolean')
     && (model.contextWindow === undefined || typeof model.contextWindow === 'number')
+    && (model.contextWindowSource === undefined || [
+      'context_length',
+      'max_model_len',
+      'max_context_length',
+      'context_window',
+      'model_alias',
+      'assumed',
+    ].includes(model.contextWindowSource))
     && (model.supportsImages === undefined || typeof model.supportsImages === 'boolean');
 }
 

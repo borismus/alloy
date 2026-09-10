@@ -3,7 +3,14 @@ import { loadCachedModelCatalog, saveCachedModelCatalog } from './modelCatalogCa
 
 const models = [
   { key: 'provider/default', name: 'Default', provider: 'provider' },
-  { key: 'local/model', name: 'Local model', provider: 'local', local: true },
+  {
+    key: 'local/model',
+    name: 'Local model',
+    provider: 'local',
+    local: true,
+    contextWindow: 262_144,
+    contextWindowSource: 'max_model_len' as const,
+  },
 ];
 
 beforeEach(() => localStorage.clear());
@@ -28,6 +35,13 @@ describe('model catalog cache', () => {
     expect(loadCachedModelCatalog('/vault/a')).toEqual([]);
 
     localStorage.setItem('alloy.modelCatalog.v1:/vault/a', JSON.stringify([{ key: 'missing-name' }]));
+    expect(loadCachedModelCatalog('/vault/a')).toEqual([]);
+
+    localStorage.setItem('alloy.modelCatalog.v1:/vault/a', JSON.stringify([{
+      key: 'provider/model',
+      name: 'Model',
+      contextWindowSource: 'guessed-by-client',
+    }]));
     expect(loadCachedModelCatalog('/vault/a')).toEqual([]);
   });
 });
