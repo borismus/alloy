@@ -264,6 +264,10 @@ fn incomplete_note(reason: &str) -> Option<&'static str> {
             "Stopped early: this turn reached the model's context limit, so the answer uses \
              only the material gathered before that point.",
         ),
+        "output_limit" => Some(
+            "Cut off: the model reached its maximum reply length, so this answer stops \
+             mid-thought.",
+        ),
         _ => None,
     }
 }

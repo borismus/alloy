@@ -120,6 +120,19 @@ describe('ChatInterface incomplete answers', () => {
     expect(notice?.textContent).toContain('context limit');
   });
 
+  it('says an answer was cut off when the model hit its reply limit', () => {
+    // Observed in a real 621s research turn: 27k characters ending mid-word,
+    // presented as a finished answer.
+    renderChat({
+      onSaveImage: vi.fn(),
+      conversation: answer({ incompleteReason: 'output_limit' }),
+    });
+
+    const notice = document.querySelector('.response-incomplete-notice');
+    expect(notice?.textContent).toContain('Cut off');
+    expect(notice?.textContent).toContain('maximum reply length');
+  });
+
   it('leaves an ordinary answer unlabelled', () => {
     renderChat({ onSaveImage: vi.fn(), conversation: answer({}) });
 

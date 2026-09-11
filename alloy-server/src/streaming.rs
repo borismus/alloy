@@ -716,9 +716,16 @@ async fn persist_conversation_error(
 /// Map a terminal stop reason onto the marker persisted with the message. Only
 /// outcomes that shipped a real answer built on incomplete work qualify — an
 /// ordinary completion, a cancellation, and a failure are all left unmarked.
+///
+/// `max_tokens` is included because it is the same silent truncation seen from
+/// the user's side: a real 621s research turn ended mid-word at 27k characters
+/// and read as a finished answer. Codes are product-facing, not provider-facing.
 fn incomplete_reason(stop_reason: &str) -> Option<String> {
-    (stop_reason == crate::tool_loop::STOP_REASON_CONTEXT_BUDGET)
-        .then(|| stop_reason.to_string())
+    match stop_reason {
+        crate::tool_loop::STOP_REASON_CONTEXT_BUDGET => Some("context_budget".to_string()),
+        "max_tokens" => Some("output_limit".to_string()),
+        _ => None,
+    }
 }
 
 fn mark_error(session: &Session, msg: String, persisted: bool) {
@@ -969,16 +976,22 @@ mod tests {
         assert!(!params.retry_connect);
     }
 
-    /// Only an answer built on work that was cut short gets a marker. A normal
-    /// completion, a cancellation, or an output-length stop must stay unlabelled
-    /// so the notice keeps meaning something when it does appear.
+    /// Only an answer whose work was cut short gets a marker. A normal
+    /// completion and a cancellation stay unlabelled so the notice keeps meaning
+    /// something when it does appear.
     #[test]
-    fn only_a_budget_cut_turn_is_labelled_incomplete() {
+    fn truncated_turns_are_labelled_and_ordinary_ones_are_not() {
         assert_eq!(
             incomplete_reason(crate::tool_loop::STOP_REASON_CONTEXT_BUDGET),
             Some("context_budget".to_string())
         );
-        for ordinary in ["end_turn", "tool_use", "cancelled", "max_tokens"] {
+        // Observed in a real 621s research turn: the answer ended mid-word and
+        // looked complete.
+        assert_eq!(
+            incomplete_reason("max_tokens"),
+            Some("output_limit".to_string())
+        );
+        for ordinary in ["end_turn", "tool_use", "cancelled"] {
             assert_eq!(incomplete_reason(ordinary), None, "{ordinary}");
         }
     }

@@ -34,6 +34,19 @@ function generateFallbackTitle(firstMessage: string): string {
   return lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated;
 }
 
+/**
+ * Mirror of `incomplete_reason` in alloy-server/src/streaming.rs: which stop
+ * reasons mean "this answer is real but was cut short". Kept in sync so the
+ * label survives whichever of the two writers saves last.
+ */
+function incompleteReasonFor(stopReason: string | undefined): string | undefined {
+  switch (stopReason) {
+    case 'context_budget': return 'context_budget';
+    case 'max_tokens': return 'output_limit';
+    default: return undefined;
+  }
+}
+
 export function useSendMessage(deps: UseSendMessageDeps) {
   const depsRef = useRef(deps);
   depsRef.current = deps;
@@ -144,9 +157,10 @@ export function useSendMessage(deps: UseSendMessageDeps) {
         usage: serverResult.usage,
         toolUse: serverResult.toolUse,
         // The backend stamps the same marker on its own write; mirroring it here
-        // keeps the label whichever save lands last.
-        ...(serverResult.stopReason === 'context_budget'
-          ? { incompleteReason: serverResult.stopReason }
+        // keeps the label whichever save lands last. Codes are product-facing,
+        // so `max_tokens` becomes `output_limit` (see streaming.rs).
+        ...(incompleteReasonFor(serverResult.stopReason)
+          ? { incompleteReason: incompleteReasonFor(serverResult.stopReason) }
           : {}),
       };
 

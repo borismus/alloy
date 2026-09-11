@@ -62,6 +62,9 @@ function incompleteNotice(reason: string): string {
     case 'context_budget':
       return 'Stopped early \u2014 this turn reached the model\u2019s context limit, so the answer '
         + 'uses only what it gathered before that point.';
+    case 'output_limit':
+      return 'Cut off \u2014 the model reached its maximum reply length, so this answer stops '
+        + 'mid-thought. Ask it to continue.';
     default:
       return 'Stopped early \u2014 this answer may be based on incomplete work.';
   }
