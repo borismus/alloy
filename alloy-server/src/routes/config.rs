@@ -50,6 +50,17 @@ struct ClientConfig {
     scheduled_task_runner: Option<String>,
     current_host: String,
     scheduler_active: bool,
+    compaction: ClientCompaction,
+}
+
+/// Resolved compaction settings. The SPA shows the threshold at which older
+/// turns start being folded into a summary — the limit a conversation actually
+/// runs into, which is usually far below the model's context window.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClientCompaction {
+    enabled: bool,
+    trigger_tokens: u64,
 }
 
 fn kind_str(kind: ProviderKind) -> &'static str {
@@ -112,6 +123,18 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
         scheduled_task_runner,
         current_host: state.runner_host.as_ref().clone(),
         scheduler_active,
+        compaction: ClientCompaction {
+            enabled: raw
+                .compaction
+                .as_ref()
+                .and_then(|c| c.enabled)
+                .unwrap_or(true),
+            trigger_tokens: raw
+                .compaction
+                .as_ref()
+                .and_then(|c| c.trigger_tokens)
+                .unwrap_or(crate::compaction::DEFAULT_TRIGGER_TOKENS),
+        },
     })))
 }
 

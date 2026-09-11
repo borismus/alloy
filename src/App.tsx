@@ -1484,6 +1484,7 @@ function AppContent() {
                 onSetDefault={handleSetDefaultModel}
                 defaultModel={config?.defaultModel}
                 sonioxApiKey={config?.sonioxApiKey}
+                compaction={config?.compaction}
                 onNavigateToNote={handleSelectNote}
                 onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                 scrollToMessageId={pendingScrollToMessageId}
@@ -1596,6 +1597,7 @@ function AppContent() {
             onSetDefault={handleSetDefaultModel}
             defaultModel={config?.defaultModel}
             sonioxApiKey={config?.sonioxApiKey}
+            compaction={config?.compaction}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             scrollToMessageId={pendingScrollToMessageId}

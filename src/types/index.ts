@@ -228,6 +228,12 @@ export interface Config {
   /** Runtime identity of the Alloy server serving this UI. */
   currentHost?: string;
   schedulerActive?: boolean;
+  /**
+   * Resolved auto-compaction settings. `triggerTokens` is the size at which the
+   * server starts folding older turns into a summary — the limit a conversation
+   * actually meets, typically far below the model's context window.
+   */
+  compaction?: { enabled: boolean; triggerTokens: number };
   serperApiKey?: string;
   sonioxApiKey?: string;
 }

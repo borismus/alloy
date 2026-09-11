@@ -120,6 +120,8 @@ interface ChatInterfaceProps {
   hasProvider: boolean;
   onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
   availableModels: ModelInfo[];
+  /** Resolved server compaction settings, for the context-usage chip. */
+  compaction?: { enabled: boolean; triggerTokens: number };
   favoriteModels?: string[];  // Format: "provider/model-id"
   /** Toggle a non-default model's favorite state in config.yaml. */
   onToggleFavorite?: (modelKey: string) => void;
@@ -165,6 +167,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   hasProvider,
   onModelChange,
   availableModels,
+  compaction,
   favoriteModels,
   onToggleFavorite,
   onSetDefault,
@@ -675,7 +678,11 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         {conversation && conversation.messages.length > 0 && (
           <>
             <ThreadCostChip conversation={conversation} />
-            <ContextUsageChip conversation={conversation} availableModels={availableModels} />
+            <ContextUsageChip
+              conversation={conversation}
+              availableModels={availableModels}
+              compaction={compaction}
+            />
           </>
         )}
       </ItemHeader>

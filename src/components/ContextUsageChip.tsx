@@ -6,6 +6,8 @@ import './ContextUsageChip.css';
 interface ContextUsageChipProps {
   conversation: Conversation;
   availableModels: ModelInfo[];
+  /** Resolved server compaction settings (see Config.compaction). */
+  compaction?: { enabled: boolean; triggerTokens: number };
 }
 
 // Rough JS-side token estimate: ~4 chars/token + per-message overhead +
@@ -39,31 +41,47 @@ function formatRelative(iso: string): string {
 export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
   conversation,
   availableModels,
+  compaction,
 }) => {
 
-  const { used, contextWindow, level } = useMemo(() => {
+  const { used, limit, limitLabel, level } = useMemo(() => {
     const tokens = conversation.messages
       .filter(m => m.role !== 'log')
       .reduce((sum, m) => sum + estimateMessageTokens(m), 0);
     const cw = availableModels.find(m => m.key === conversation.model)?.contextWindow;
-    // Mirrors useSendMessage: messageBudget = contextWindow * 0.5; threshold = budget * 0.7
-    const messageBudget = cw ? Math.floor(cw * 0.5) : Infinity;
-    const threshold = messageBudget * 0.7;
-    let lvl: 'ok' | 'warn' | 'hot' = 'ok';
-    if (Number.isFinite(threshold)) {
-      if (tokens >= threshold) lvl = 'hot';
-      else if (tokens >= threshold * 0.8) lvl = 'warn';
-    }
-    return { used: tokens, contextWindow: cw, level: lvl };
-  }, [conversation.messages, conversation.model, availableModels]);
 
-  if (!contextWindow) return null; // Unknown context window — don't render rather than mislead
+    // The limit a conversation actually meets is the compaction trigger, not the
+    // context window: the server folds older turns into a summary above it, and
+    // with the default 16k trigger that happens at ~6% of a 262k window. Showing
+    // the window left the chip calm while compaction was already running.
+    // Mirrors `effective_budget` in alloy-server/src/compaction.rs, including its
+    // 0.6x clamp for models whose window is smaller than the trigger.
+    const compacts = compaction?.enabled !== false && compaction != null;
+    const effective = compacts
+      ? (cw ? Math.min(compaction.triggerTokens, Math.floor(cw * 0.6)) : compaction.triggerTokens)
+      : cw;
+
+    let lvl: 'ok' | 'warn' | 'compacting' = 'ok';
+    if (effective) {
+      if (tokens >= effective) lvl = compacts ? 'compacting' : 'warn';
+      else if (tokens >= effective * 0.8) lvl = 'warn';
+    }
+    return {
+      used: tokens,
+      limit: effective,
+      limitLabel: compacts ? 'Compacts above' : 'Model window',
+      level: lvl,
+    };
+  }, [conversation.messages, conversation.model, availableModels, compaction]);
+
+  // Nothing reliable to divide by — don't render rather than mislead.
+  if (!limit) return null;
 
   return (
     <div className={`ctx-chip ctx-chip-${level}`}>
       <DialogTrigger>
         <Button className="ctx-chip-button" aria-label="Context usage">
-          {formatTokens(used)} / {formatTokens(contextWindow)}
+          {formatTokens(used)} / {formatTokens(limit)}
         </Button>
         <Popover className="ctx-chip-popover" placement="bottom end">
           <Dialog className="ctx-chip-dialog" aria-label="Context usage">
@@ -74,9 +92,15 @@ export const ContextUsageChip: React.FC<ContextUsageChipProps> = ({
                   <strong>{formatTokens(used)} tok</strong>
                 </div>
                 <div className="ctx-chip-row">
-                  <span>Model window</span>
-                  <strong>{formatTokens(contextWindow)} tok</strong>
+                  <span>{limitLabel}</span>
+                  <strong>{formatTokens(limit)} tok</strong>
                 </div>
+                {level === 'compacting' && (
+                  <p className="ctx-chip-note">
+                    Older turns are being summarised so the conversation keeps fitting.
+                    Everything stays in the transcript.
+                  </p>
+                )}
                 <div className="ctx-chip-row">
                   <span>Last compacted</span>
                   <strong>

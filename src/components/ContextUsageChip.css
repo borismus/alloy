@@ -34,10 +34,25 @@
   color: var(--color-warning);
 }
 
+/* Compaction is normal operation, not a fault — inform, don't alarm. The danger
+   styling is kept for genuine problems. */
+.ctx-chip-compacting .ctx-chip-button {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
 .ctx-chip-hot .ctx-chip-button {
   background: var(--color-danger-soft);
   border-color: var(--color-danger-soft);
   color: var(--color-danger);
+}
+
+.ctx-chip-note {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 .ctx-chip-popover {
