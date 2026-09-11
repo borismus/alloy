@@ -127,6 +127,7 @@ function modelListsMatch(a: ModelInfo[], b: ModelInfo[]): boolean {
       && model.provider === other.provider
       && model.local === other.local
       && model.contextWindow === other.contextWindow
+      && model.contextWindowSource === other.contextWindowSource
       && model.supportsImages === other.supportsImages;
   });
 }
