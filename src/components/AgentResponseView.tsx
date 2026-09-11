@@ -65,6 +65,9 @@ function incompleteNotice(reason: string): string {
     case 'output_limit':
       return 'Cut off \u2014 the model reached its maximum reply length, so this answer stops '
         + 'mid-thought. Ask it to continue.';
+    case 'iteration_limit':
+      return 'Stopped early \u2014 this turn reached Alloy\u2019s tool-use safety limit, so the answer '
+        + 'uses only what it gathered before that point.';
     default:
       return 'Stopped early \u2014 this answer may be based on incomplete work.';
   }

@@ -42,6 +42,7 @@ function generateFallbackTitle(firstMessage: string): string {
 function incompleteReasonFor(stopReason: string | undefined): string | undefined {
   switch (stopReason) {
     case 'context_budget': return 'context_budget';
+    case 'iteration_limit': return 'iteration_limit';
     case 'max_tokens': return 'output_limit';
     default: return undefined;
   }

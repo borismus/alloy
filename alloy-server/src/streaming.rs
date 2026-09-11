@@ -723,6 +723,7 @@ async fn persist_conversation_error(
 fn incomplete_reason(stop_reason: &str) -> Option<String> {
     match stop_reason {
         crate::tool_loop::STOP_REASON_CONTEXT_BUDGET => Some("context_budget".to_string()),
+        crate::tool_loop::STOP_REASON_ITERATION_LIMIT => Some("iteration_limit".to_string()),
         "max_tokens" => Some("output_limit".to_string()),
         _ => None,
     }
@@ -984,6 +985,10 @@ mod tests {
         assert_eq!(
             incomplete_reason(crate::tool_loop::STOP_REASON_CONTEXT_BUDGET),
             Some("context_budget".to_string())
+        );
+        assert_eq!(
+            incomplete_reason(crate::tool_loop::STOP_REASON_ITERATION_LIMIT),
+            Some("iteration_limit".to_string())
         );
         // Observed in a real 621s research turn: the answer ended mid-word and
         // looked complete.

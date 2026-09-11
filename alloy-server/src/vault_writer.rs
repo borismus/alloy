@@ -268,6 +268,10 @@ fn incomplete_note(reason: &str) -> Option<&'static str> {
             "Cut off: the model reached its maximum reply length, so this answer stops \
              mid-thought.",
         ),
+        "iteration_limit" => Some(
+            "Stopped early: this turn reached Alloy's tool-use safety limit, so the answer \
+             uses only the material gathered before that point.",
+        ),
         _ => None,
     }
 }
@@ -469,6 +473,8 @@ mod tests {
     #[test]
     fn unknown_incomplete_codes_are_not_guessed_at() {
         assert!(incomplete_note("context_budget").is_some());
+        assert!(incomplete_note("output_limit").is_some());
+        assert!(incomplete_note("iteration_limit").is_some());
         assert!(incomplete_note("something_new").is_none());
     }
 }

@@ -133,6 +133,17 @@ describe('ChatInterface incomplete answers', () => {
     expect(notice?.textContent).toContain('maximum reply length');
   });
 
+  it('says an answer stopped when the tool-use safety limit was reached', () => {
+    renderChat({
+      onSaveImage: vi.fn(),
+      conversation: answer({ incompleteReason: 'iteration_limit' }),
+    });
+
+    const notice = document.querySelector('.response-incomplete-notice');
+    expect(notice?.textContent).toContain('Stopped early');
+    expect(notice?.textContent).toContain('tool-use safety limit');
+  });
+
   it('leaves an ordinary answer unlabelled', () => {
     renderChat({ onSaveImage: vi.fn(), conversation: answer({}) });
 

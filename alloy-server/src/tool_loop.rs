@@ -27,6 +27,11 @@ const MAX_ITERATIONS: u32 = 10;
 /// completion.
 pub const STOP_REASON_CONTEXT_BUDGET: &str = "context_budget";
 
+/// Stop reason for a turn that reached the independent tool-round safety cap.
+/// Context budgeting bounds prompt size, but not elapsed time, cost, repeated
+/// side effects, models with unknown windows, or currently unbudgeted subagents.
+pub const STOP_REASON_ITERATION_LIMIT: &str = "iteration_limit";
+
 /// Per-turn cap on `web_search` calls. The model otherwise tends to fire off
 /// far more searches than a question warrants; once this budget is spent, the
 /// remaining calls short-circuit with an error result that tells the model to
@@ -136,6 +141,10 @@ pub async fn execute_with_tools(
     // Set when the turn must stop gathering and write its conclusion, either
     // because the budget is spent or because a result would not fit at all.
     let mut budget_exhausted = false;
+    // Independent runaway-loop backstop. Token budgeting cannot replace this:
+    // unknown windows are deliberately unbudgeted, and many tiny tool rounds can
+    // consume substantial time or repeat side effects without filling a window.
+    let mut iteration_limit_reached = false;
 
     for iteration in 0..MAX_ITERATIONS {
         if *cancel.borrow() {
@@ -317,26 +326,36 @@ pub async fn execute_with_tools(
         if budget_exhausted {
             break;
         }
+        if iteration + 1 == MAX_ITERATIONS {
+            iteration_limit_reached = true;
+            tracing::warn!(
+                iteration,
+                projected_tokens = ledger.projected(&messages),
+                executed_calls,
+                duplicate_calls,
+                "tool-round safety limit reached; forcing a conclusion"
+            );
+        }
     }
 
-    // Forced wrap-up. Two situations need one more, tool-free call:
+    // Forced wrap-up. Three situations need one more, tool-free call:
     //
     // 1. The model used tools but never emitted any text — some providers (e.g.
     //    Gemini) emit tool calls with no narration and expect to answer at the
-    //    end, and the turn can end blank either because the final post-tool
-    //    response was empty or because MAX_ITERATIONS ran out while it still
-    //    wanted tools. The persisted message would be empty and the
-    //    conversation would appear to stall.
+    //    end. The persisted message would be empty and the conversation would
+    //    appear to stall.
     // 2. The context budget ran out, so the loop stopped gathering evidence.
-    //    Here the model may well have narrated its progress, and saving that
-    //    narration as the answer would persist a mid-plan sentence as if it
-    //    were a conclusion.
+    // 3. The independent tool-round safety cap was reached. The model may have
+    //    narrated its progress in both cases, and saving that narration as the
+    //    answer would persist a mid-plan sentence as if it were a conclusion.
     //
     // Dropping `tools` is not enough on its own, hence WRAP_UP_INSTRUCTION. A
     // turn that finished on its own is never affected (see
     // `nonblank_turn_skips_wrap_up`).
     let needs_wrap_up = !*cancel.borrow()
-        && ((final_content.trim().is_empty() && any_tool_executed) || budget_exhausted);
+        && ((final_content.trim().is_empty() && any_tool_executed)
+            || budget_exhausted
+            || iteration_limit_reached);
     if needs_wrap_up {
         let mut wrap_up_messages = messages.clone();
         wrap_up_messages.push(ChatMessage::User {
@@ -382,6 +401,12 @@ pub async fn execute_with_tools(
                      answer when asked to conclude."
                 );
             }
+            if iteration_limit_reached {
+                anyhow::bail!(
+                    "This turn reached its tool-use safety limit, and the model produced no \
+                     final answer when asked to conclude."
+                );
+            }
             anyhow::bail!(
                 "model used tools but returned no final text, including after a tool-free wrap-up"
             );
@@ -400,6 +425,8 @@ pub async fn execute_with_tools(
         // this and the UI tells the user the answer is based on partial work.
         final_stop_reason = if budget_exhausted {
             STOP_REASON_CONTEXT_BUDGET.to_string()
+        } else if iteration_limit_reached {
+            STOP_REASON_ITERATION_LIMIT.to_string()
         } else {
             wrap.stop_reason
         };
@@ -552,6 +579,7 @@ mod tests {
         context_window: Option<u64>,
         registry: Arc<ToolRegistry>,
         sink: Arc<dyn ToolEventSink>,
+        cancelled: bool,
     }
 
     impl LoopCase {
@@ -562,13 +590,14 @@ mod tests {
                 context_window: None,
                 registry: test_registry(),
                 sink: Arc::new(NullSink),
+                cancelled: false,
             }
         }
 
         async fn run(self) -> (anyhow::Result<StreamResult>, Arc<ScriptedProvider>) {
             let provider = Arc::new(ScriptedProvider::new(self.steps));
             let (delta_tx, _rx) = mpsc::unbounded_channel();
-            let (_cancel_tx, cancel) = watch::channel(false);
+            let (_cancel_tx, cancel) = watch::channel(self.cancelled);
             let req = LoopRequest {
                 provider: provider.clone(),
                 model: "test/model".into(),
@@ -674,6 +703,54 @@ mod tests {
         steps.push(final_turn("Wrapped up.", 20));
         let result = run(steps).await;
         assert_eq!(result.content, "Wrapped up.");
+        assert_eq!(result.stop_reason, STOP_REASON_ITERATION_LIMIT);
+    }
+
+    /// Regression: narration is not a conclusion. The historical failure ended
+    /// with "Several strong candidates. Reading the most promising ones now."
+    /// at the cap and saved it as an ordinary complete answer because only a
+    /// *blank* capped turn triggered wrap-up.
+    #[tokio::test]
+    async fn narrated_iteration_cap_still_wraps_up_and_is_labelled() {
+        let mut steps: Vec<StreamResult> = (0..MAX_ITERATIONS)
+            .map(|_| tool_turn("Several strong candidates. Reading them now.", 10))
+            .collect();
+        steps.push(final_turn("Here is the conclusion from the evidence gathered.", 20));
+
+        let (result, provider) = run_capturing(steps).await;
+        let result = result.unwrap();
+        assert!(result.content.ends_with("Here is the conclusion from the evidence gathered."));
+        assert_eq!(result.stop_reason, STOP_REASON_ITERATION_LIMIT);
+        let seen = provider.seen.lock().unwrap();
+        assert_eq!(seen.len(), MAX_ITERATIONS as usize + 1);
+        assert!(matches!(
+            seen.last().unwrap().last(),
+            Some(ChatMessage::User { content, images })
+                if content == WRAP_UP_INSTRUCTION && images.is_empty()
+        ));
+    }
+
+    #[tokio::test]
+    async fn iteration_cap_with_a_blank_wrap_up_is_an_error() {
+        let mut steps: Vec<StreamResult> = (0..MAX_ITERATIONS).map(|_| tool_turn("", 10)).collect();
+        steps.push(final_turn("   ", 20));
+        let error = run_result(steps).await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "This turn reached its tool-use safety limit, and the model produced no final answer \
+             when asked to conclude."
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_does_not_call_the_provider_or_force_a_wrap_up() {
+        let mut case = LoopCase::new(vec![final_turn("Must not be sent.", 10)]);
+        case.cancelled = true;
+        let (result, provider) = case.run().await;
+        let result = result.unwrap();
+        assert!(result.content.is_empty());
+        assert_eq!(result.stop_reason, "end_turn");
+        assert!(provider.seen.lock().unwrap().is_empty());
     }
 
     /// Regression: a tool-using turn that stays blank even after the no-tools
