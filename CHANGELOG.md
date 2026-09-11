@@ -4,6 +4,41 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.25
+
+- **The sidebar handles a real vault.** On ~1,300 conversations it rendered
+  every row: 13,065 DOM nodes, a one-second load, and a 284ms stall while
+  typing. Only the visible rows are built now — 24 instead of 1,302 — taking
+  load to 412ms and conversation switching from 80–206ms to 17–44ms. Search and
+  filtering still run over everything; short lists keep their reorder animation.
+- **A turn can no longer blow past the model's context window.** One research
+  turn built a 560,157-token prompt for a 262,144-token model and came back as
+  an error after minutes of work, with no answer. Turns are now measured as they
+  gather, against the real window, and stop while there is still room to write a
+  conclusion. If a turn genuinely cannot fit, it says so immediately instead of
+  waiting for the provider to reject it.
+- **Answers that were cut short now say so.** A turn stopped by its context
+  limit, or by the model's maximum reply length, used to be presented as a
+  finished answer — in one 10-minute run, 27,000 characters ending mid-word. Both
+  now carry a short note explaining what happened, in the app and in the
+  generated Markdown.
+- **Repeated work is skipped.** A model that asks for the same page, file, or
+  search twice in one turn is pointed back at the result it already has instead
+  of fetching it again.
+- **Reading a web page returns the article, not the HTML.** `web_fetch` extracts
+  readable content as Markdown — titles, authors and dates included — rather than
+  handing the model raw markup. Long pages can be read in parts.
+- **A dropped connection is no longer saved as an answer.** If a response stops
+  arriving partway, the turn now fails with the real cause instead of storing the
+  half-written text as if the model had finished. Slow local models are no longer
+  cut off at three minutes; only a genuinely stalled connection is.
+- **Local models show their context limits.** Alloy was only reading the field
+  OpenRouter uses, so every oMLX model appeared to have no known limit. The usage
+  chip now works for them, and compaction can size itself correctly.
+- **The context chip shows the limit that applies.** It divided by the model's
+  full window, so it read "18.0K / 262.1K" and looked calm while older turns were
+  already being summarised. It now counts against the point where that starts.
+
 ## 0.4.24
 
 - **Fixed failed turns disappearing when you send again.** Saving a
