@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.26
+
+- **Long tool-using turns now end with an answer.** If a model was still calling
+  tools after ten rounds, Alloy stopped the loop but could save its latest
+  progress narration — such as “Reading the most promising ones now” — as an
+  ordinary finished answer. Alloy now makes one final tool-free call and clearly
+  labels the result as based on the evidence gathered before the safety limit.
+  If the model still cannot produce an answer, the turn fails visibly instead.
+
 ## 0.4.25
 
 - **The sidebar handles a real vault.** On ~1,300 conversations it rendered
