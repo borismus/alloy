@@ -143,6 +143,11 @@ export function useSendMessage(deps: UseSendMessageDeps) {
         content: serverResult.content,
         usage: serverResult.usage,
         toolUse: serverResult.toolUse,
+        // The backend stamps the same marker on its own write; mirroring it here
+        // keeps the label whichever save lands last.
+        ...(serverResult.stopReason === 'context_budget'
+          ? { incompleteReason: serverResult.stopReason }
+          : {}),
       };
 
       const finalConversation: Conversation = {

@@ -524,6 +524,7 @@ async fn run_stream(
                     assistant_message_id,
                     content: stream_result.content.clone(),
                     error: None,
+                    incomplete_reason: incomplete_reason(&stream_result.stop_reason),
                     usage: stream_result.usage.clone(),
                     compacted: new_compacted,
                     tool_use,
@@ -696,6 +697,9 @@ async fn persist_conversation_error(
         assistant_message_id,
         content,
         error: Some(message.to_string()),
+        // A failed turn is already labelled by its error; the two markers are
+        // mutually exclusive by construction.
+        incomplete_reason: None,
         usage: None,
         compacted: None,
         tool_use,
@@ -707,6 +711,14 @@ async fn persist_conversation_error(
             false
         }
     }
+}
+
+/// Map a terminal stop reason onto the marker persisted with the message. Only
+/// outcomes that shipped a real answer built on incomplete work qualify — an
+/// ordinary completion, a cancellation, and a failure are all left unmarked.
+fn incomplete_reason(stop_reason: &str) -> Option<String> {
+    (stop_reason == crate::tool_loop::STOP_REASON_CONTEXT_BUDGET)
+        .then(|| stop_reason.to_string())
 }
 
 fn mark_error(session: &Session, msg: String, persisted: bool) {
@@ -955,6 +967,20 @@ mod tests {
         }))
         .unwrap();
         assert!(!params.retry_connect);
+    }
+
+    /// Only an answer built on work that was cut short gets a marker. A normal
+    /// completion, a cancellation, or an output-length stop must stay unlabelled
+    /// so the notice keeps meaning something when it does appear.
+    #[test]
+    fn only_a_budget_cut_turn_is_labelled_incomplete() {
+        assert_eq!(
+            incomplete_reason(crate::tool_loop::STOP_REASON_CONTEXT_BUDGET),
+            Some("context_budget".to_string())
+        );
+        for ordinary in ["end_turn", "tool_use", "cancelled", "max_tokens"] {
+            assert_eq!(incomplete_reason(ordinary), None, "{ordinary}");
+        }
     }
 
     #[test]

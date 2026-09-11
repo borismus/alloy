@@ -21,6 +21,12 @@ use crate::types::{ToolCall, ToolDefinition, ToolEventSink};
 
 const MAX_ITERATIONS: u32 = 10;
 
+/// Stop reason for a turn that stopped gathering because it filled its context
+/// budget and was made to conclude. The answer is real, but it rests on partial
+/// evidence, so it is persisted and labelled rather than presented as a normal
+/// completion.
+pub const STOP_REASON_CONTEXT_BUDGET: &str = "context_budget";
+
 /// Per-turn cap on `web_search` calls. The model otherwise tends to fire off
 /// far more searches than a question warrants; once this budget is spent, the
 /// remaining calls short-circuit with an error result that tells the model to
@@ -143,8 +149,9 @@ pub async fn execute_with_tools(
             if !any_tool_executed {
                 let budget = ledger.budget().expect("limit implies a budget");
                 anyhow::bail!(
-                    "this turn needs about {} tokens, more than the {} usable from {}'s {}-token \
-                     context window; shorten the request or choose a model with a larger window",
+                    "This turn needs about {} tokens, but only {} of {}'s {}-token context \
+                     window are usable. Shorten the request, or switch to a model with a \
+                     larger context window.",
                     ledger.projected(&messages),
                     budget.hard_limit,
                     model,
@@ -343,9 +350,9 @@ pub async fn execute_with_tools(
         if ledger.over_hard_limit(&wrap_up_messages) {
             let budget = ledger.budget().expect("limit implies a budget");
             anyhow::bail!(
-                "the evidence gathered this turn reached about {} tokens, more than the {} \
-                 usable from {}'s {}-token context window, so no final answer could be \
-                 written; ask for a narrower scope or use a model with a larger window",
+                "This turn gathered about {} tokens of material, more than the {} usable from \
+                 {}'s {}-token context window, so there was no room left to write an answer. \
+                 Narrow the request, or switch to a model with a larger context window.",
                 ledger.projected(&wrap_up_messages),
                 budget.hard_limit,
                 model,
@@ -371,8 +378,8 @@ pub async fn execute_with_tools(
         if wrap.content.trim().is_empty() {
             if budget_exhausted {
                 anyhow::bail!(
-                    "the context budget for this turn was exhausted and the tool-free wrap-up \
-                     produced no final answer"
+                    "This turn reached its context limit, and the model produced no final \
+                     answer when asked to conclude."
                 );
             }
             anyhow::bail!(
@@ -388,7 +395,14 @@ pub async fn execute_with_tools(
             }
         }
         final_content.push_str(&wrap.content);
-        final_stop_reason = wrap.stop_reason;
+        // The wrap-up call's own stop reason describes that one request, not the
+        // turn. When the budget cut the turn short, say so: the caller persists
+        // this and the UI tells the user the answer is based on partial work.
+        final_stop_reason = if budget_exhausted {
+            STOP_REASON_CONTEXT_BUDGET.to_string()
+        } else {
+            wrap.stop_reason
+        };
     }
 
     let usage = if total_input > 0 || total_output > 0 || total_connection_retries > 0 {
@@ -908,9 +922,15 @@ mod tests {
         .run()
         .await;
 
-        let content = result.unwrap().content;
-        assert!(content.ends_with("Conclusion."), "conclusion is appended");
-        assert!(content.contains("xxx"), "narration is preserved");
+        let result = result.unwrap();
+        assert!(
+            result.content.ends_with("Conclusion."),
+            "conclusion is appended"
+        );
+        assert!(result.content.contains("xxx"), "narration is preserved");
+        // Labelled, so the UI can say the answer rests on partial evidence
+        // instead of presenting it as an ordinary completion.
+        assert_eq!(result.stop_reason, STOP_REASON_CONTEXT_BUDGET);
 
         let seen = provider.seen.lock().unwrap();
         assert_eq!(seen.len(), 2, "one gathering round, then the wrap-up");
@@ -939,7 +959,7 @@ mod tests {
         let error = result.unwrap_err().to_string();
         assert!(error.contains("20000-token context window"), "got: {error}");
         assert!(
-            error.contains("no final answer could be written"),
+            error.contains("no room left to write an answer"),
             "got: {error}"
         );
         assert_eq!(
@@ -965,7 +985,7 @@ mod tests {
         .await;
 
         let error = result.unwrap_err().to_string();
-        assert!(error.contains("larger window"), "got: {error}");
+        assert!(error.contains("larger context window"), "got: {error}");
         assert!(
             provider.seen.lock().unwrap().is_empty(),
             "nothing is sent when the request cannot fit"
@@ -982,7 +1002,10 @@ mod tests {
         }
         .run()
         .await;
-        assert_eq!(result.unwrap().content, "Looking. Answer.");
+        let result = result.unwrap();
+        assert_eq!(result.content, "Looking. Answer.");
         assert_eq!(provider.seen.lock().unwrap().len(), 2);
+        // An ordinary turn must never be labelled as cut short.
+        assert_ne!(result.stop_reason, STOP_REASON_CONTEXT_BUDGET);
     }
 }

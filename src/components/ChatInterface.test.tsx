@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { ChatInterface } from './ChatInterface';
 import { StreamingProvider } from '../contexts/StreamingContext';
 import { MessageQueueProvider } from '../contexts/MessageQueueContext';
-import type { Attachment, Conversation } from '../types';
+import type { Attachment, Conversation, Message } from '../types';
 
 const conversation: Conversation = {
   id: 'conv-1',
@@ -90,6 +90,41 @@ describe('ChatInterface persisted errors', () => {
     expect(screen.getByText('Model returned no final text after using tools.')).toBeTruthy();
     expect(document.querySelector('.response-summary.status-error')).toBeTruthy();
     expect(document.querySelector('.tool-use-indicator')).toBeTruthy();
+  });
+});
+
+describe('ChatInterface incomplete answers', () => {
+  const answer = (extra: Partial<Message>) => ({
+    ...conversation,
+    messages: [{
+      id: 'assistant-partial',
+      role: 'assistant' as const,
+      timestamp: '2024-01-01T10:01:00Z',
+      content: 'Here is what I found so far.',
+      ...extra,
+    }],
+  });
+
+  it('says an answer was cut short when the turn ran out of context', () => {
+    renderChat({
+      onSaveImage: vi.fn(),
+      conversation: answer({ incompleteReason: 'context_budget' }),
+    });
+
+    // The answer itself is still shown as a real answer, not an error.
+    expect(screen.getByText('Here is what I found so far.')).toBeTruthy();
+    expect(document.querySelector('.response-summary.status-error')).toBeNull();
+
+    const notice = document.querySelector('.response-incomplete-notice');
+    expect(notice?.textContent).toContain('Stopped early');
+    expect(notice?.textContent).toContain('context limit');
+  });
+
+  it('leaves an ordinary answer unlabelled', () => {
+    renderChat({ onSaveImage: vi.fn(), conversation: answer({}) });
+
+    expect(screen.getByText('Here is what I found so far.')).toBeTruthy();
+    expect(document.querySelector('.response-incomplete-notice')).toBeNull();
   });
 });
 

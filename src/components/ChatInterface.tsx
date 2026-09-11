@@ -331,6 +331,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             onNavigateToConversation={onNavigateToConversation}
             headerContent={message.subagentResponses?.length ? undefined : assistantName}
             usage={message.usage}
+            incompleteReason={message.incompleteReason}
           />
         </div>
       );

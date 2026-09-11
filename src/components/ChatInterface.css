@@ -850,6 +850,22 @@
   white-space: pre-wrap;
 }
 
+/* An answer the model was forced to cut short. Deliberately quieter than an
+   error — the content above it is real — but attached to the answer, not the
+   footer, so it reads as a qualifier on what was just said. */
+.response-summary .response-incomplete-notice {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--warning-text);
+  border-radius: var(--radius-sm);
+  background: var(--warning-bg);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .response-summary .streaming-indicator {
   display: inline-block;
   width: 8px;

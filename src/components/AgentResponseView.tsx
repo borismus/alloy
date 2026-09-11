@@ -48,6 +48,23 @@ interface AgentResponseViewProps {
   thinkingDurationMs?: number;
   /** Token usage and cost for this response */
   usage?: Usage;
+  /**
+   * Stable code set by the backend when the turn produced a real answer but had
+   * to stop short of finishing its work. Rendered as a notice above the footer
+   * so a partial answer is never mistaken for a complete one.
+   */
+  incompleteReason?: string;
+}
+
+/** Wording for each `incompleteReason`. Unknown codes get a neutral fallback. */
+function incompleteNotice(reason: string): string {
+  switch (reason) {
+    case 'context_budget':
+      return 'Stopped early \u2014 this turn reached the model\u2019s context limit, so the answer '
+        + 'uses only what it gathered before that point.';
+    default:
+      return 'Stopped early \u2014 this answer may be based on incomplete work.';
+  }
 }
 
 /**
@@ -72,6 +89,7 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
   thinkingElapsedMs,
   thinkingDurationMs,
   usage,
+  incompleteReason,
 }) => {
   // Use provided skillUses, or derive from use_skill tool calls
   const skillUses: SkillUse[] = skillUsesProp ?? toolUses
@@ -129,6 +147,11 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
             onNavigateToNote={onNavigateToNote}
             onNavigateToConversation={onNavigateToConversation}
           />
+        )}
+        {status === 'complete' && content && incompleteReason && (
+          <p className="response-incomplete-notice" role="note">
+            {incompleteNotice(incompleteReason)}
+          </p>
         )}
         {status === 'complete' && content && (
           <div className="response-footer">

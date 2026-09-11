@@ -47,6 +47,10 @@ pub struct AssistantWrite {
     /// Present when the turn failed. Persisting this on the same assistant
     /// record as partial content and tool history keeps the failure atomic.
     pub error: Option<String>,
+    /// Present when the turn produced a real answer but had to stop short (for
+    /// example because it filled its context budget). Stored as a stable code so
+    /// the UI owns the wording; absence means an ordinary complete answer.
+    pub incomplete_reason: Option<String>,
     pub usage: Option<Usage>,
     /// A compaction summary to insert at its boundary in the same write.
     pub compacted: Option<NewCompacted>,
@@ -80,6 +84,9 @@ pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyho
     msg.insert(Value::String("content".into()), Value::String(w.content));
     if let Some(error) = w.error {
         msg.insert(Value::String("error".into()), Value::String(error));
+    }
+    if let Some(reason) = w.incomplete_reason {
+        msg.insert(Value::String("incompleteReason".into()), Value::String(reason));
     }
     if let Some(usage) = w.usage {
         msg.insert(
@@ -249,6 +256,18 @@ fn generate_slug(title: &str) -> String {
     trimmed.chars().take(50).collect()
 }
 
+/// Human wording for an `incompleteReason` code in the generated preview. The
+/// SPA renders its own copy; unknown codes are skipped rather than guessed at.
+fn incomplete_note(reason: &str) -> Option<&'static str> {
+    match reason {
+        "context_budget" => Some(
+            "Stopped early: this turn reached the model's context limit, so the answer uses \
+             only the material gathered before that point.",
+        ),
+        _ => None,
+    }
+}
+
 fn render_markdown_preview(c: &Conversation) -> String {
     let frontmatter = {
         let mut m = serde_yaml::Mapping::new();
@@ -281,11 +300,20 @@ fn render_markdown_preview(c: &Conversation) -> String {
             } else {
                 assistant_name.clone()
             };
-            let rendered = match error {
+            let mut rendered = match error {
                 Some(error) if content.trim().is_empty() => format!("**Error:** {}", error),
                 Some(error) => format!("{}\n\n**Error:** {}", content, error),
                 None => content.to_string(),
             };
+            // The preview is read in Obsidian, where there is no UI to carry the
+            // badge — so an answer built on partial work has to say so here.
+            if let Some(note) = m
+                .get(Value::String("incompleteReason".into()))
+                .and_then(Value::as_str)
+                .and_then(incomplete_note)
+            {
+                rendered = format!("{}\n\n_{}_", rendered, note);
+            }
             Some(format!("### {}\n\n{}", label, rendered))
         })
         .collect::<Vec<_>>()
@@ -337,6 +365,7 @@ mod tests {
                 assistant_message_id: "assistant-error".into(),
                 content: "Partial research.".into(),
                 error: Some("model returned no final text".into()),
+                incomplete_reason: None,
                 usage: None,
                 compacted: None,
                 tool_use: vec![PersistedToolUse {
@@ -380,6 +409,63 @@ mod tests {
         }
         names.sort();
         assert_eq!(names, vec!["conv-error.md", "conv-error.yaml"]);
+    }
+
+    /// A turn cut short by its context budget is a real answer, so it is stored
+    /// as content plus a marker — never as an error — and the Obsidian preview
+    /// has to carry the caveat too, since it has no UI to show a badge.
+    #[tokio::test]
+    async fn an_answer_cut_short_is_labelled_in_both_the_yaml_and_the_preview() {
+        let temp = tempfile::tempdir().unwrap();
+        let conversations = temp.path().join("conversations");
+        fs::create_dir_all(&conversations).await.unwrap();
+        let path = conversations.join("conv-partial.yaml");
+        fs::write(
+            &path,
+            "id: conv-partial\nmodel: mlx/test\ncreated: 2024-01-01T00:00:00Z\nupdated: 2024-01-01T00:00:00Z\nmessages: []\n",
+        )
+        .await
+        .unwrap();
+        let vault = Vault::new(temp.path().to_path_buf()).unwrap();
+
+        append_assistant_message(
+            &vault,
+            AssistantWrite {
+                conversation_id: "conv-partial".into(),
+                assistant_message_id: "assistant-partial".into(),
+                content: "Here is what I found.".into(),
+                error: None,
+                incomplete_reason: Some("context_budget".into()),
+                usage: None,
+                compacted: None,
+                tool_use: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+        let saved: Conversation = serde_yaml::from_str(&fs::read_to_string(&path).await.unwrap())
+            .unwrap();
+        let message = saved.messages.last().unwrap().as_mapping().unwrap();
+        assert_eq!(
+            message
+                .get(Value::String("incompleteReason".into()))
+                .and_then(Value::as_str),
+            Some("context_budget")
+        );
+        assert!(!message.contains_key(Value::String("error".into())));
+
+        let preview = fs::read_to_string(path.with_extension("md")).await.unwrap();
+        assert!(preview.contains("Here is what I found."));
+        assert!(preview.contains("Stopped early"), "got: {preview}");
+        assert!(!preview.contains("**Error:**"));
+    }
+
+    /// An unrecognized code must not invent wording in the preview.
+    #[test]
+    fn unknown_incomplete_codes_are_not_guessed_at() {
+        assert!(incomplete_note("context_budget").is_some());
+        assert!(incomplete_note("something_new").is_none());
     }
 }
 

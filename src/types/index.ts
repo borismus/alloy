@@ -99,6 +99,12 @@ export interface Message {
   content: string;
   /** Persisted backend failure for an assistant turn. May accompany partial content/tools. */
   error?: string;
+  /**
+   * Stable code set by the backend when the turn answered but had to stop short
+   * of finishing its work (currently only `context_budget`). Distinct from
+   * `error`: the content is a real answer, just built on partial evidence.
+   */
+  incompleteReason?: string;
   // Which model generated this assistant response
   // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   model?: string;
