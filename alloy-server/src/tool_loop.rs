@@ -359,6 +359,23 @@ pub async fn execute_with_tools(
             || budget_exhausted
             || iteration_limit_reached);
     if needs_wrap_up {
+        // Which of the three conditions fired is the single most useful fact
+        // when an answer later looks truncated or unlike the model's normal
+        // output; a past investigation could not tell these apart at all.
+        let wrap_up_reason = if budget_exhausted {
+            "context_budget"
+        } else if iteration_limit_reached {
+            "iteration_limit"
+        } else {
+            "blank_content"
+        };
+        tracing::info!(
+            reason = wrap_up_reason,
+            executed_calls,
+            duplicate_calls,
+            projected_tokens = ledger.projected(&messages),
+            "forcing a tool-free conclusion"
+        );
         let mut wrap_up_messages = messages.clone();
         wrap_up_messages.push(ChatMessage::User {
             content: WRAP_UP_INSTRUCTION.to_string(),
@@ -422,6 +439,12 @@ pub async fn execute_with_tools(
                 first_response_id = usage.response_id.clone();
             }
         }
+        tracing::info!(
+            reason = wrap_up_reason,
+            content_chars = wrap.content.chars().count(),
+            content_shape = crate::logging::classify_content(&wrap.content),
+            "forced conclusion returned"
+        );
         final_content.push_str(&wrap.content);
         // The wrap-up call's own stop reason describes that one request, not the
         // turn. When the budget cut the turn short, say so: the caller persists

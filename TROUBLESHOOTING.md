@@ -177,8 +177,35 @@ must be restarted. Config and CLI capability changes also require a restart.
 
 ## Diagnostics and support
 
-Desktop development logs appear in the terminal running `npm run tauri dev`.
-For more detail:
+### Log files
+
+Alloy writes rotating daily logs, so a failure leaves a record even when the app
+was launched from Finder and has no terminal. The desktop shell and the
+standalone server share one location, keeping seven days:
+
+```bash
+ls -1 ~/Library/Logs/Alloy            # macOS (Linux: ~/.local/state/alloy)
+tail -f ~/Library/Logs/Alloy/alloy.$(date +%F).log
+```
+
+Set `ALLOY_LOG_DIR` to write elsewhere, and `ALLOY_LOG=debug` for more detail.
+
+Each finished turn logs one `turn finished` line explaining what happened:
+provider and model, message count, tool-call count and tool names, stop reason,
+answer length and shape, token usage, connection retries, and duration. A forced
+tool-free conclusion logs why it fired (`context_budget`, `iteration_limit`, or
+`blank_content`). To see the last few turns:
+
+```bash
+grep 'turn finished' ~/Library/Logs/Alloy/*.log | tail -5
+```
+
+These files sit unencrypted beside a private vault, so they deliberately record
+**metadata only** — never message text, prompts, tool arguments or results, note
+contents, URLs, model reasoning, or credentials. Answer *shape* is logged as a
+classification (`prose`, `empty`, `tool_call_markup`) rather than the text.
+
+Desktop development logs also appear in the terminal running `npm run tauri dev`:
 
 ```bash
 ALLOY_LOG=debug RUST_BACKTRACE=1 npm run tauri dev

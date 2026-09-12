@@ -127,26 +127,12 @@ fn hostname() -> Option<String> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// Install a tracing subscriber for the desktop build.
-///
-/// Without this the embedded server's `tracing::info!/warn!/error!` calls go
-/// nowhere, so a failure to bind the vault produced no diagnostic anywhere —
-/// not on stdout, not in a file, not in the UI. Defaults to `info`; override
-/// with `ALLOY_LOG` (e.g. `ALLOY_LOG=debug`). Launch the binary directly
-/// (`/Applications/Alloy.app/Contents/MacOS/Alloy`) to read it.
-fn init_logging() {
-    let filter = tracing_subscriber::EnvFilter::try_from_env("ALLOY_LOG")
-        .or_else(|_| tracing_subscriber::EnvFilter::try_new("info"))
-        .unwrap_or_default();
-    // `try_init` so a second call (tests, repeated init) can't panic.
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .try_init();
-}
-
 pub fn run() {
-    init_logging();
+    // Shared with the standalone binary (see alloy_server::logging), so both
+    // launch paths write the same rotating file. A Finder launch has no
+    // terminal, so stderr alone left production failures with no record at all.
+    // Defaults to `info`; override with `ALLOY_LOG=debug`.
+    alloy_server::logging::init("desktop");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

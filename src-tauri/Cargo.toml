@@ -35,9 +35,7 @@ tauri-plugin-process = "2"
 alloy-server = { path = "../alloy-server" }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
-# The desktop build had NO tracing subscriber, so every log line from the
-# embedded server was discarded — a failing vault bind produced no output at all,
-# on stdout or anywhere else.
+# The subscriber itself now lives in alloy_server::logging, shared with the
+# standalone binary; the shell only emits events.
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

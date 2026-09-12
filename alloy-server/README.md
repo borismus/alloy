@@ -138,6 +138,7 @@ src/
 ├── skill_registry.rs    Loads vault/skills/*/SKILL.md frontmatter
 ├── tool_loop.rs         execute_with_tools — multi-turn tool dispatch
 ├── execution_policy.rs  Interactive vs unattended-task turn limits
+├── logging.rs           Shared subscriber, rotating files, turn diagnostics
 ├── streaming.rs         Session manager with broadcast SSE fan-out
 ├── types.rs             Tool definitions, BUILTIN_TOOLS, OpenAI shapes
 ├── providers/

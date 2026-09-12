@@ -580,6 +580,17 @@ async fn run_stream(
                 }
             }
 
+            turn_summary(
+                "complete",
+                &params,
+                &session,
+                &stream_result.stop_reason,
+                &stream_result.content,
+                stream_result.usage.as_ref(),
+                duration_ms,
+            )
+            .record();
+
             {
                 let mut inner = session.inner.lock().unwrap();
                 inner.status = SessionStatus::Complete;
@@ -596,6 +607,21 @@ async fn run_stream(
         Err(e) => {
             let msg = e.to_string();
 
+            // The failure reason is Alloy's own message, not model or user
+            // text, so it is safe to log and is the whole point of the record.
+            let partial = session.inner.lock().unwrap().full_content.clone();
+            turn_summary(
+                "error",
+                &params,
+                &session,
+                "error",
+                &partial,
+                None,
+                duration_ms,
+            )
+            .record();
+            tracing::warn!(error = %msg, "turn failed");
+
             // Persist partial content, tool history, and the error on one
             // assistant record before signalling the client. The backend owns
             // this write; the frontend must not race it with a stale reload.
@@ -603,6 +629,57 @@ async fn run_stream(
             mark_error(&session, msg, persisted);
         }
     }
+}
+
+/// Build the metadata-only record of a finished turn. Reads counts and names
+/// out of the session; deliberately never touches message text, tool arguments,
+/// or tool results (see the privacy note in `crate::logging`).
+fn turn_summary(
+    outcome: &'static str,
+    params: &StartParams,
+    session: &Session,
+    stop_reason: &str,
+    content: &str,
+    usage: Option<&Usage>,
+    duration_ms: u64,
+) -> crate::logging::TurnSummary {
+    let (provider, model) = crate::logging::TurnSummary::split_model(&params.model);
+    let (tool_calls, tool_names) = {
+        let inner = session.inner.lock().unwrap();
+        tool_call_metadata(&inner.tool_history)
+    };
+    crate::logging::TurnSummary {
+        outcome,
+        provider,
+        model,
+        messages: params.messages.len(),
+        tool_calls,
+        tool_names,
+        stop_reason: stop_reason.to_string(),
+        incomplete_reason: incomplete_reason(stop_reason),
+        content_chars: content.chars().count(),
+        content_shape: crate::logging::classify_content(content),
+        input_tokens: usage.map(|u| u.input_tokens).unwrap_or(0),
+        output_tokens: usage.map(|u| u.output_tokens).unwrap_or(0),
+        connection_retries: usage.map(|u| u.connection_retries).unwrap_or(0),
+        duration_ms,
+    }
+}
+
+/// Count tool invocations and collect their unique names in call order. Names
+/// are metadata; `input` (paths, queries, URLs) and results never leave here.
+fn tool_call_metadata(history: &[ToolHistoryEntry]) -> (usize, Vec<String>) {
+    let mut count = 0;
+    let mut names: Vec<String> = Vec::new();
+    for entry in history {
+        if let ToolHistoryEntry::Use { name, .. } = entry {
+            count += 1;
+            if !names.iter().any(|seen| seen == name) {
+                names.push(name.clone());
+            }
+        }
+    }
+    (count, names)
 }
 
 /// Append an explicitly-invoked (`/skill_name`) skill's instructions to a turn's
@@ -1296,6 +1373,108 @@ mod tests {
             role: "user".into(),
             content: content.into(),
             attachments: vec![],
+        }
+    }
+
+    /// The logs sit unencrypted beside a private vault, so the per-turn record
+    /// must describe the turn without quoting any of it. Built from a session
+    /// whose messages, tool arguments, and tool results all contain private
+    /// material, none of which may survive into the record.
+    #[test]
+    fn a_turn_summary_records_metadata_without_conversation_content() {
+        let sessions = SessionRegistry::new();
+        sessions.insert_test_session("s", "conv", "msg", "tok");
+        let session = sessions.get("s").unwrap();
+        {
+            let mut inner = session.inner.lock().unwrap();
+            inner.tool_history.push(ToolHistoryEntry::Use {
+                id: "t1".into(),
+                name: "read_file".into(),
+                input: json!({ "path": "private/obsidian/Etrade AAPL cost basis.md" }),
+            });
+            inner.tool_history.push(ToolHistoryEntry::Result {
+                tool_use_id: "t1".into(),
+                content: "AAPL 2000 shares, basis $123.45".into(),
+                is_error: false,
+            });
+            inner.tool_history.push(ToolHistoryEntry::Use {
+                id: "t2".into(),
+                name: "read_file".into(),
+                input: json!({ "path": "notes/Therapy.md" }),
+            });
+            inner.tool_history.push(ToolHistoryEntry::Use {
+                id: "t3".into(),
+                name: "web_fetch".into(),
+                input: json!({ "url": "https://broker.example.com/account/9912" }),
+            });
+        }
+
+        let params = StartParams {
+            session_id: "s".into(),
+            conversation_id: "conv".into(),
+            assistant_message_id: None,
+            model: "mlx/Qwen3.8-27B-MLX-4bit".into(),
+            messages: vec![user_msg("my bank balance is 12345"), user_msg("and?")],
+            system_prompt: Some("secret system prompt".into()),
+            is_first_message: false,
+            user_message_content: "my bank balance is 12345".into(),
+            invoke_skill: None,
+            skip_persist: false,
+            retry_connect: false,
+            execution_policy: ExecutionPolicy::interactive(),
+        };
+        let usage = Usage {
+            input_tokens: 900,
+            output_tokens: 120,
+            connection_retries: 2,
+            ..Default::default()
+        };
+
+        let summary = turn_summary(
+            "complete",
+            &params,
+            &session,
+            "end_turn",
+            "Your balance is $12,345 as of today.",
+            Some(&usage),
+            4_200,
+        );
+
+        // Useful metadata is present...
+        assert_eq!(summary.provider, "mlx");
+        assert_eq!(summary.model, "Qwen3.8-27B-MLX-4bit");
+        assert_eq!(summary.messages, 2);
+        assert_eq!(summary.tool_calls, 3, "every invocation counts");
+        assert_eq!(
+            summary.tool_names,
+            vec!["read_file", "web_fetch"],
+            "names only, de-duplicated, in call order"
+        );
+        assert_eq!(summary.content_shape, "prose");
+        assert_eq!(summary.content_chars, 36);
+        assert_eq!(summary.input_tokens, 900);
+        assert_eq!(summary.connection_retries, 2);
+        assert_eq!(summary.duration_ms, 4_200);
+
+        // ...and nothing from the conversation itself is.
+        let rendered = format!("{summary:?}");
+        for private in [
+            "bank balance",
+            "12345",
+            "12,345",
+            "Etrade",
+            "cost basis",
+            "2000 shares",
+            "123.45",
+            "Therapy",
+            "broker.example.com",
+            "9912",
+            "secret system prompt",
+            "private/",
+            "notes/",
+            "https://",
+        ] {
+            assert!(!rendered.contains(private), "leaked {private}: {rendered}");
         }
     }
 
