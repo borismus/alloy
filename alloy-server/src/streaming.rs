@@ -194,6 +194,18 @@ impl SessionRegistry {
             .collect()
     }
 
+    /// Sessions actively producing a turn. Completed and failed sessions are
+    /// deliberately retained for `SESSION_TTL` so a reconnect can replay them,
+    /// so counting the map would report a quiet server as busy for minutes.
+    pub fn streaming_count(&self) -> usize {
+        self.sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.inner.lock().unwrap().status == SessionStatus::Streaming)
+            .count()
+    }
+
     fn insert(&self, id: String, session: Arc<Session>) {
         self.sessions.lock().unwrap().insert(id, session);
     }
@@ -1374,6 +1386,24 @@ mod tests {
             content: content.into(),
             attachments: vec![],
         }
+    }
+
+    /// Only live turns count as activity; a finished session lingers for replay
+    /// and must not keep an unattended machine from applying an update.
+    #[test]
+    fn streaming_count_ignores_sessions_kept_only_for_replay() {
+        let sessions = SessionRegistry::new();
+        assert_eq!(sessions.streaming_count(), 0);
+
+        sessions.insert_test_session("live", "conv-a", "msg-a", "tok");
+        sessions.insert_test_session("done", "conv-b", "msg-b", "tok");
+        assert_eq!(sessions.streaming_count(), 2);
+
+        sessions.get("done").unwrap().inner.lock().unwrap().status = SessionStatus::Complete;
+        assert_eq!(sessions.streaming_count(), 1);
+
+        sessions.get("live").unwrap().inner.lock().unwrap().status = SessionStatus::Error;
+        assert_eq!(sessions.streaming_count(), 0);
     }
 
     /// The logs sit unencrypted beside a private vault, so the per-turn record

@@ -40,6 +40,16 @@ impl InflightSet {
     pub fn release(&self, id: &str) {
         self.inner.lock().unwrap().remove(id);
     }
+
+    /// Tasks executing right now, from cron or a manual **Run now**. Read by
+    /// `/api/activity` so an unattended update can't restart mid-task.
+    pub fn len(&self) -> usize {
+        self.inner.lock().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub fn spawn(state: AppState) -> tokio::task::JoinHandle<()> {
@@ -638,6 +648,22 @@ mod tests {
         assert!(!set.try_claim("a"));
         set.release("a");
         assert!(set.try_claim("a"));
+    }
+
+    /// `/api/activity` reports this, so a running task must be visible and a
+    /// released one must not linger.
+    #[test]
+    fn inflight_reports_how_many_tasks_are_running() {
+        let set = InflightSet::new();
+        assert!(set.is_empty());
+        assert!(set.try_claim("a"));
+        assert!(set.try_claim("b"));
+        assert_eq!(set.len(), 2);
+        assert!(!set.is_empty());
+        set.release("a");
+        set.release("b");
+        assert_eq!(set.len(), 0);
+        assert!(set.is_empty());
     }
 
     #[test]

@@ -319,7 +319,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 <div className="settings-row">
                   <div className="settings-row-text">
                     <p className="settings-description">
-                      Install updates automatically on launch
+                      Install updates automatically when idle
                     </p>
                   </div>
                   <Switch
@@ -330,8 +330,9 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 </div>
                 <p className="settings-hint">
                   Applies to this machine only, not your other devices. Useful for an
-                  always-on Mac that shares Alloy on the network; updates install at
-                  startup, never mid-session.
+                  always-on Mac that shares Alloy on the network. Alloy checks
+                  periodically and restarts to apply an update only when no
+                  conversation or scheduled task is running.
                 </p>
               </>
             )}

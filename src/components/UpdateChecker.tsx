@@ -1,8 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { getAutoUpdate } from '../services/autoUpdate';
+import { getAutoUpdate, isServerIdle, runAutoUpdateCycle } from '../services/autoUpdate';
+import { isTauri } from '../services/api';
 import './UpdateChecker.css';
+
+/** Let the app settle before the first unattended attempt. */
+const FIRST_CHECK_MS = 10_000;
+/** Between ordinary checks. An always-on machine has no launch to piggyback on,
+ *  but the release cadence doesn't justify polling harder than this. */
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** After deferring for a busy server. Short enough to catch a quiet window,
+ *  long enough not to re-ask constantly during a long task. */
+const BUSY_RETRY_MS = 10 * 60 * 1000;
+/** After a failure, so a broken download can't become a retry loop. */
+const ERROR_RETRY_MS = 60 * 60 * 1000;
 
 // Export for use in Settings
 export type CheckResult = { available: true; version: string } | { available: false } | { error: string };
@@ -14,27 +26,64 @@ export function UpdateChecker() {
   const [dismissed, setDismissed] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  /** An update already written to disk, still waiting for an idle moment to
+   *  restart into. Survives cycles so the bytes are fetched only once. */
+  const pendingInstall = useRef(false);
 
   useEffect(() => {
-    // Check for updates on mount (silent). When this machine opts into
-    // automatic updates, install right here instead of waiting for someone to
-    // click the banner — the whole point is an always-on box that nobody is
-    // sitting in front of. Only ever on this startup check: auto-relaunching
-    // mid-session would interrupt whatever is on screen.
-    findUpdate(false)
-      .catch((err) => {
-        console.error('[Updater] Failed to check for updates:', err);
-        return null;
-      })
-      .then((found) => {
-        if (found && getAutoUpdate()) {
-          console.info(`[Updater] auto-installing ${found.version}`);
-          void downloadAndInstall(found);
-        }
-      });
+    // Silent check on mount so the banner is available to everyone, including
+    // machines that have not opted into unattended updates.
+    findUpdate(false).catch((err) => {
+      console.error('[Updater] Failed to check for updates:', err);
+      return null;
+    });
 
     // Expose for manual checks from Settings, which wants the CheckResult shape.
     (window as any).checkForUpdates = () => checkForUpdates();
+  }, []);
+
+  // Unattended updates for an opted-in always-on machine. Browser clients are
+  // excluded: they can't install anything, and "restart" there would just be a
+  // page reload of someone else's session.
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const tick = async () => {
+      const outcome = await runAutoUpdateCycle<Update>({
+        // Re-read each cycle so toggling the setting takes effect without a
+        // restart, and so a machine that opts out stops immediately.
+        enabled: getAutoUpdate,
+        findUpdate: () => check().then((u) => u ?? null),
+        isIdle: isServerIdle,
+        install: async (update) => {
+          await update.downloadAndInstall();
+          pendingInstall.current = true;
+        },
+        relaunch,
+        pendingInstall: pendingInstall.current,
+      });
+      if (cancelled) return;
+
+      if (outcome !== 'disabled' && outcome !== 'none') {
+        console.info(`[Updater] unattended update: ${outcome}`);
+      }
+      const delay =
+        outcome === 'busy-before-install' || outcome === 'busy-after-install' ? BUSY_RETRY_MS
+          : outcome === 'error' ? ERROR_RETRY_MS
+          : CHECK_INTERVAL_MS;
+      // A self-scheduling timeout rather than an interval: a slow download must
+      // never overlap with the next attempt.
+      timer = setTimeout(tick, delay);
+    };
+
+    timer = setTimeout(tick, FIRST_CHECK_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   // Returns the Update itself so the auto-install path can act on it
