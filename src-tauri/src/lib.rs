@@ -132,7 +132,10 @@ pub fn run() {
     // launch paths write the same rotating file. A Finder launch has no
     // terminal, so stderr alone left production failures with no record at all.
     // Defaults to `info`; override with `ALLOY_LOG=debug`.
-    alloy_server::logging::init("desktop");
+    // This crate's version is the shipped app version (bump-version.sh keeps it
+    // in step with package.json and tauri.conf.json); the server library's is
+    // not, so it must be passed in rather than read inside the initializer.
+    alloy_server::logging::init("desktop", env!("CARGO_PKG_VERSION"));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

@@ -52,10 +52,14 @@ pub fn log_directory() -> Option<PathBuf> {
 /// rotating file (for every other launch). `component` distinguishes the
 /// desktop shell from the standalone server in a shared vault's logs.
 ///
+/// `version` must be the *caller's* `CARGO_PKG_VERSION`. Reading it here would
+/// report this library's version (0.1.0) rather than the product's, which is
+/// worse than useless in a log whose job is to identify the running build.
+///
 /// Safe to call more than once; later calls are ignored rather than panicking.
 /// A log directory that cannot be created degrades to stderr only — logging
 /// must never prevent Alloy from starting.
-pub fn init(component: &str) {
+pub fn init(component: &str, version: &str) {
     let filter = tracing_subscriber::EnvFilter::try_from_env("ALLOY_LOG")
         .or_else(|_| tracing_subscriber::EnvFilter::try_from_default_env())
         .or_else(|_| tracing_subscriber::EnvFilter::try_new("info,tower_http=warn"))
@@ -94,7 +98,7 @@ pub fn init(component: &str) {
             if ok {
                 tracing::info!(
                     component,
-                    version = env!("CARGO_PKG_VERSION"),
+                    version,
                     directory = %dir.display(),
                     retained_days = MAX_LOG_FILES,
                     "logging started"

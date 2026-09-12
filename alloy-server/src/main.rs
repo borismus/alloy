@@ -14,7 +14,7 @@ use clap::Parser;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    alloy_server::logging::init("server");
+    alloy_server::logging::init("server", env!("CARGO_PKG_VERSION"));
 
     let args = Args::parse();
 
