@@ -4,6 +4,20 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.28
+
+- **`memory.md` can no longer be destroyed by a careless rewrite.** It is
+  injected into every prompt and hand-curated, but was saved with a plain
+  overwrite — so a model that summarised it, or stopped generating halfway,
+  silently replaced it with less, and nothing in the vault could restore it.
+  Alloy now keeps the last ten versions in `.memory-backups/`, replaces the file
+  atomically, and refuses a write that would empty it or cut it in half unless
+  that turn actually read what it was replacing. Ordinary notes are unchanged.
+- **Long titles stay inside their card.** A conversation titled with a bare URL
+  ran past the edge of the sidebar; it now wraps.
+- **Logs name the running version correctly.** The new log file reported the
+  internal library version instead of the app's.
+
 ## 0.4.27
 
 - **Scheduled tasks get room to finish.** A cron run was held to the same limits
