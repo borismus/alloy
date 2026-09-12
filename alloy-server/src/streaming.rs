@@ -20,10 +20,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::compaction::{self, CompactionSettings, NewCompacted};
+use crate::execution_policy::ExecutionPolicy;
 use crate::routes::models::ModelCache;
 use crate::tool_loop::{execute_with_tools, LoopRequest};
 use crate::tools::{ToolContext, ToolRegistry};
-use crate::types::{builtin_tools, ToolCall, ToolDefinition, ToolEventSink, ToolResult};
+use crate::types::{ToolCall, ToolDefinition, ToolEventSink, ToolResult};
 use crate::{
     providers::{
         McpBridge, ProviderRegistry, ProviderStreamEvent, StreamResult, Usage, WireMessage,
@@ -77,6 +78,9 @@ pub struct SessionInner {
     /// Per-session secret the `/api/mcp` endpoint checks before executing tools
     /// on this session's behalf (used by the Claude Code MCP bridge).
     pub mcp_token: String,
+    /// Internal limits for this turn. Kept with the session so providers that
+    /// own their tool loop and call back over MCP inherit task-specific limits.
+    pub execution_policy: ExecutionPolicy,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -129,11 +133,15 @@ impl Session {
 /// Local models can read private mounts, so they must not be able to pass
 /// arbitrary context to another model through a sub-agent prompt. Omit the
 /// tool from their schema; `tools::subagents` also rejects direct calls.
-fn tools_for_stream(provider_supports_tools: bool, model_is_local: bool) -> Vec<ToolDefinition> {
+fn tools_for_stream(
+    provider_supports_tools: bool,
+    model_is_local: bool,
+    policy: ExecutionPolicy,
+) -> Vec<ToolDefinition> {
     if !provider_supports_tools {
         return Vec::new();
     }
-    let mut tools = builtin_tools();
+    let mut tools = crate::types::builtin_tools_with_subagent_limit(policy.max_subagents);
     if model_is_local {
         tools.retain(|tool| tool.name != "spawn_subagent");
     }
@@ -216,6 +224,7 @@ impl SessionRegistry {
                 error_persisted: false,
                 tool_history: Vec::new(),
                 mcp_token: mcp_token.into(),
+                execution_policy: ExecutionPolicy::interactive(),
             }),
             tx,
             cancel,
@@ -270,6 +279,10 @@ pub struct StartParams {
     /// delayed retries; scheduled-task execution sets this after construction.
     #[serde(skip)]
     pub retry_connect: bool,
+    /// Internal turn limits. `serde(skip)` is a trust boundary: request bodies
+    /// cannot opt ordinary chat into the more expensive unattended-task policy.
+    #[serde(skip)]
+    pub execution_policy: ExecutionPolicy,
 }
 
 /// Start a new streaming session. Returns the registered session immediately;
@@ -312,6 +325,7 @@ pub fn start_session(
             error_persisted: false,
             tool_history: Vec::new(),
             mcp_token: uuid::Uuid::new_v4().to_string(),
+            execution_policy: params.execution_policy,
         }),
         tx: tx.clone(),
         cancel: cancel_tx,
@@ -476,7 +490,11 @@ async fn run_stream(
         provider: provider.clone(),
         model: upstream_model.clone(),
         messages,
-        tools: tools_for_stream(provider.supports_tools(&upstream_model), model_is_local),
+        tools: tools_for_stream(
+            provider.supports_tools(&upstream_model),
+            model_is_local,
+            params.execution_policy,
+        ),
         delta_tx,
         cancel: cancel.clone(),
         retry_connect: params.retry_connect,
@@ -485,9 +503,11 @@ async fn run_stream(
             conversation_id: Some(format!("conversations/{}", params.conversation_id)),
             inside_subagent: false,
             model_is_local,
+            execution_policy: params.execution_policy,
         },
         mcp,
         context_window: cw,
+        execution_policy: params.execution_policy,
     };
 
     let started = std::time::Instant::now();
@@ -965,16 +985,23 @@ mod tests {
     }
 
     #[test]
-    fn interactive_clients_cannot_enable_task_connection_retries() {
+    fn interactive_clients_cannot_enable_internal_task_policy() {
         let params: StartParams = serde_json::from_value(json!({
             "sessionId": "s",
             "conversationId": "c",
             "model": "mlx/test",
             "messages": [],
-            "retryConnect": true
+            "retryConnect": true,
+            "executionPolicy": {
+                "maxIterations": 100,
+                "maxWebSearches": 50,
+                "maxSubagents": 12,
+                "maxOutputTokens": 32768
+            }
         }))
         .unwrap();
         assert!(!params.retry_connect);
+        assert_eq!(params.execution_policy, ExecutionPolicy::interactive());
     }
 
     /// Only an answer whose work was cut short gets a marker. A normal
@@ -1003,13 +1030,13 @@ mod tests {
 
     #[test]
     fn local_model_toolset_excludes_subagents() {
-        let local = tools_for_stream(true, true);
+        let local = tools_for_stream(true, true, ExecutionPolicy::interactive());
         assert!(!local.iter().any(|tool| tool.name == "spawn_subagent"));
 
-        let cloud = tools_for_stream(true, false);
+        let cloud = tools_for_stream(true, false, ExecutionPolicy::interactive());
         assert!(cloud.iter().any(|tool| tool.name == "spawn_subagent"));
 
-        assert!(tools_for_stream(false, true).is_empty());
+        assert!(tools_for_stream(false, true, ExecutionPolicy::interactive()).is_empty());
     }
 
     #[test]
@@ -1129,6 +1156,7 @@ mod tests {
                 invoke_skill: None,
                 skip_persist: false,
                 retry_connect: false,
+                execution_policy: ExecutionPolicy::interactive(),
             },
         )
         .await
@@ -1192,6 +1220,7 @@ mod tests {
                 invoke_skill: None,
                 skip_persist: false,
                 retry_connect: false,
+                execution_policy: ExecutionPolicy::interactive(),
             },
         )
         .await

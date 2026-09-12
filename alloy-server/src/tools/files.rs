@@ -492,6 +492,7 @@ mod tests {
             conversation_id: None,
             inside_subagent: false,
             model_is_local,
+            execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
         }
     }
 

@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 use crate::AppState;
 use crate::streaming::SessionRegistry;
 use crate::tools::{ToolContext, ToolRegistry};
-use crate::types::{ToolCall, builtin_tools};
+use crate::types::ToolCall;
 
 /// Protocol version we advertise if the client doesn't send one.
 const DEFAULT_PROTOCOL: &str = "2025-06-18";
@@ -62,7 +62,12 @@ async fn handle(
 
     match method {
         "initialize" => rpc_ok(id, initialize_result(req.get("params"))),
-        "tools/list" => rpc_ok(id, json!({ "tools": tool_list() })),
+        "tools/list" => {
+            let max_subagents = authorize(&state.sessions, &q)
+                .map(|ctx| ctx.execution_policy.max_subagents)
+                .unwrap_or(crate::execution_policy::INTERACTIVE_MAX_SUBAGENTS);
+            rpc_ok(id, json!({ "tools": tool_list(max_subagents) }))
+        }
         "tools/call" => {
             // Authenticate this session before doing any work.
             let Some(ctx) = authorize(&state.sessions, &q) else {
@@ -142,12 +147,13 @@ fn authorize(sessions: &SessionRegistry, q: &McpQuery) -> Option<ToolContext> {
         // The MCP bridge serves the Claude Code CLI provider, which is cloud —
         // never grant it private-mount access.
         model_is_local: false,
+        execution_policy: inner.execution_policy,
     })
 }
 
 /// Map `builtin_tools()` to MCP tool descriptors (`inputSchema`, camelCase).
-fn tool_list() -> Vec<Value> {
-    builtin_tools()
+fn tool_list(max_subagents: u32) -> Vec<Value> {
+    crate::types::builtin_tools_with_subagent_limit(max_subagents)
         .into_iter()
         .map(|t| {
             json!({
@@ -230,6 +236,7 @@ mod tests {
             conversation_id: Some("conversations/c".into()),
             inside_subagent: false,
             model_is_local: false,
+            execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
         };
         let params = json!({ "name": "read_file", "arguments": { "path": "notes/x.md" } });
         let out = execute_tool_call(&tools, &params, &ctx).await;
@@ -246,6 +253,7 @@ mod tests {
             conversation_id: None,
             inside_subagent: false,
             model_is_local: false,
+            execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
         };
         // Missing required `path` → the tool returns an error result.
         let params = json!({ "name": "read_file", "arguments": {} });
@@ -265,8 +273,8 @@ mod tests {
 
     #[test]
     fn tool_list_exposes_builtins_as_mcp_schemas() {
-        let tools = tool_list();
-        assert_eq!(tools.len(), builtin_tools().len());
+        let tools = tool_list(crate::execution_policy::INTERACTIVE_MAX_SUBAGENTS);
+        assert_eq!(tools.len(), crate::types::builtin_tools().len());
         // Every entry has the MCP shape: name, description, camelCase inputSchema.
         for t in &tools {
             assert!(t.get("name").and_then(Value::as_str).is_some());

@@ -25,10 +25,6 @@
 use crate::providers::ChatMessage;
 use crate::types::ToolDefinition;
 
-/// Output tokens held back for the model's reply. Mirrors the `max_tokens` the
-/// OpenAI-compatible provider asks for (`providers/openai_compatible.rs`), so a
-/// turn that fits the budget still has room to answer.
-const RESERVED_OUTPUT_TOKENS: u64 = 8_192;
 
 /// Extra headroom for framing we can't measure: provider-side system additions,
 /// role scaffolding, and tokenizer disagreement the calibration hasn't seen yet.
@@ -69,7 +65,17 @@ pub struct TurnBudget {
 
 impl TurnBudget {
     pub fn new(window: u64) -> Self {
-        let reserve = RESERVED_OUTPUT_TOKENS.min(window / MIN_USABLE_FRACTION);
+        Self::with_output_limit(
+            window,
+            crate::execution_policy::INTERACTIVE_MAX_OUTPUT_TOKENS,
+        )
+    }
+
+    /// Reserve the actual reply allowance for this execution policy. Task runs
+    /// can ask for a longer final report, so retaining the old fixed 8192-token
+    /// reserve would let evidence crowd out the extra answer space.
+    pub fn with_output_limit(window: u64, max_output_tokens: u32) -> Self {
+        let reserve = u64::from(max_output_tokens).min(window / MIN_USABLE_FRACTION);
         let margin = (window as f64 * SAFETY_FRACTION) as u64;
         let hard_limit = window
             .saturating_sub(reserve + margin)
@@ -95,8 +101,22 @@ pub struct TokenLedger {
 
 impl TokenLedger {
     pub fn new(context_window: Option<u64>, tools: &[ToolDefinition]) -> Self {
+        Self::with_output_limit(
+            context_window,
+            tools,
+            crate::execution_policy::INTERACTIVE_MAX_OUTPUT_TOKENS,
+        )
+    }
+
+    pub fn with_output_limit(
+        context_window: Option<u64>,
+        tools: &[ToolDefinition],
+        max_output_tokens: u32,
+    ) -> Self {
         Self {
-            budget: context_window.filter(|w| *w > 0).map(TurnBudget::new),
+            budget: context_window
+                .filter(|w| *w > 0)
+                .map(|window| TurnBudget::with_output_limit(window, max_output_tokens)),
             tools_overhead: estimate_tools(tools),
             calibration: MIN_CALIBRATION,
         }
@@ -207,6 +227,10 @@ mod tests {
         let small = TurnBudget::new(131_072);
         assert!(small.hard_limit < 131_072);
         assert!(small.soft_limit < small.hard_limit);
+
+        let task = TurnBudget::with_output_limit(262_144, 16_384);
+        assert!(task.hard_limit < budget.hard_limit);
+        assert!(task.soft_limit < budget.soft_limit);
     }
 
     #[test]

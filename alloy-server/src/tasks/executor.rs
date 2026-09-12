@@ -4,6 +4,7 @@ use chrono::Utc;
 use regex::Regex;
 use serde_yaml::Value;
 
+use crate::execution_policy::ExecutionPolicy;
 use crate::providers::WireMessage;
 use crate::streaming::{run_to_completion, StartParams};
 use crate::tasks::model::{ScheduledTask, TaskRunOutcome, TaskVerdict};
@@ -97,6 +98,15 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
         None => unconditional_system_prompt(),
     };
     let session_id = format!("task-{}-{}", task.id, Utc::now().timestamp_millis());
+    let execution_policy = resolve_policy(&state.config, task);
+    tracing::info!(
+        task_id = %task.id,
+        max_iterations = execution_policy.max_iterations,
+        max_web_searches = execution_policy.max_web_searches,
+        max_subagents = execution_policy.max_subagents,
+        max_output_tokens = execution_policy.max_output_tokens,
+        "task execution policy resolved"
+    );
     let params = StartParams {
         session_id,
         conversation_id: task.id.clone(),
@@ -109,6 +119,7 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
         invoke_skill: None,
         skip_persist: true,
         retry_connect: true,
+        execution_policy,
     };
 
     // Pass the server's own URL so tool-capable providers that reach back in
@@ -151,6 +162,14 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
             usage: None,
         },
     }
+}
+
+/// Resolve the limits for one task run. Deliberately a pure function of the
+/// config and the task: cron and **Run now** both reach it through
+/// `scheduler::run_once` -> `executor::run`, and nothing about *why* the run
+/// started is an input, so the two entry points cannot diverge.
+fn resolve_policy(config: &crate::config::Config, task: &ScheduledTask) -> ExecutionPolicy {
+    ExecutionPolicy::task(&config.task_execution, task.execution.as_ref())
 }
 
 pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRunOutcome {
@@ -305,6 +324,7 @@ mod tests {
             trigger: conditional.then(|| TaskTrigger {
                 condition: "When relevant".into(),
             }),
+            execution: None,
             last_scheduled_at: None,
             last_run_at: None,
             last_delivered_at: None,
@@ -312,6 +332,51 @@ mod tests {
             messages: vec![],
             extra: Mapping::new(),
         }
+    }
+
+    #[test]
+    fn task_runs_get_generous_limits_that_config_and_task_can_override() {
+        use crate::execution_policy::ExecutionOverrides;
+
+        let mut config = crate::config::Config::default();
+        let mut value = task(false);
+
+        // Defaults: well above the interactive limits, so an unattended run can
+        // keep working where a chat turn would be cut short.
+        let interactive = ExecutionPolicy::interactive();
+        let defaults = resolve_policy(&config, &value);
+        assert!(defaults.is_task);
+        assert!(defaults.max_iterations > interactive.max_iterations);
+        assert!(defaults.max_web_searches > interactive.max_web_searches);
+        assert!(defaults.max_subagents > interactive.max_subagents);
+        assert!(defaults.max_output_tokens > interactive.max_output_tokens);
+
+        config.task_execution = ExecutionOverrides {
+            max_iterations: Some(35),
+            ..Default::default()
+        };
+        assert_eq!(resolve_policy(&config, &value).max_iterations, 35);
+
+        value.execution = Some(ExecutionOverrides {
+            max_iterations: Some(60),
+            max_web_searches: Some(20),
+            ..Default::default()
+        });
+        let resolved = resolve_policy(&config, &value);
+        assert_eq!(resolved.max_iterations, 60, "per-task wins over global");
+        assert_eq!(resolved.max_web_searches, 20);
+
+        // An interactive conversation is untouched by either override.
+        assert_eq!(ExecutionPolicy::interactive(), interactive);
+    }
+
+    /// Manual **Run now** and cron share `run_once`, so the only inputs to the
+    /// policy are the config and the task itself.
+    #[test]
+    fn manual_and_scheduled_runs_resolve_the_same_policy() {
+        let config = crate::config::Config::default();
+        let value = task(true);
+        assert_eq!(resolve_policy(&config, &value), resolve_policy(&config, &value));
     }
 
     #[test]

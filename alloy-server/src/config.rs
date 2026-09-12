@@ -55,6 +55,11 @@ pub struct RawConfig {
 
     #[serde(default)]
     pub compaction: Option<RawCompaction>,
+
+    /// Global overrides for unattended task turns. Ordinary conversations never
+    /// read these values; individual tasks may override them again.
+    #[serde(default)]
+    pub task_execution: Option<crate::execution_policy::ExecutionOverrides>,
 }
 
 /// `services:` block. Concern-grouped credentials for outbound integrations.
@@ -206,6 +211,8 @@ pub struct Config {
     pub private_read_only_dirs: Vec<PrivateDir>,
     /// Auto-compaction settings (see compaction.rs).
     pub compaction: crate::compaction::CompactionSettings,
+    /// Optional global limits for scheduled and manual task runs.
+    pub task_execution: crate::execution_policy::ExecutionOverrides,
 }
 
 impl Default for Config {
@@ -221,6 +228,7 @@ impl Default for Config {
             scheduled_task_runner: None,
             private_read_only_dirs: Vec::new(),
             compaction: crate::compaction::CompactionSettings::default(),
+            task_execution: crate::execution_policy::ExecutionOverrides::default(),
         }
     }
 }
@@ -430,6 +438,7 @@ impl Config {
                 .filter(|value| !value.is_empty()),
             private_read_only_dirs,
             compaction,
+            task_execution: raw.task_execution.unwrap_or_default(),
         }
     }
 
@@ -691,6 +700,19 @@ mod tests {
         );
         assert!(cfg.compaction.enabled);
         assert_eq!(cfg.compaction.trigger_tokens, 123000);
+    }
+
+    #[test]
+    fn task_execution_overrides_parse_from_camelcase_config() {
+        let raw = parse_raw_config(
+            "version: 2\nproviders: []\ntaskExecution:\n  maxIterations: 45\n  maxWebSearches: 14\n  maxSubagents: 8\n  maxOutputTokens: 20000\n",
+        )
+        .unwrap();
+        let cfg = Config::from_raw(raw);
+        assert_eq!(cfg.task_execution.max_iterations, Some(45));
+        assert_eq!(cfg.task_execution.max_web_searches, Some(14));
+        assert_eq!(cfg.task_execution.max_subagents, Some(8));
+        assert_eq!(cfg.task_execution.max_output_tokens, Some(20_000));
     }
 }
 

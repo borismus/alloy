@@ -12,14 +12,13 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
 
+use crate::execution_policy::ExecutionPolicy;
 use crate::providers::{
     ChatMessage, McpBridge, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 use crate::tools::{ToolContext, ToolRegistry};
 use crate::turn_budget::TokenLedger;
 use crate::types::{ToolCall, ToolDefinition, ToolEventSink};
-
-const MAX_ITERATIONS: u32 = 10;
 
 /// Stop reason for a turn that stopped gathering because it filled its context
 /// budget and was made to conclude. The answer is real, but it rests on partial
@@ -31,12 +30,6 @@ pub const STOP_REASON_CONTEXT_BUDGET: &str = "context_budget";
 /// Context budgeting bounds prompt size, but not elapsed time, cost, repeated
 /// side effects, models with unknown windows, or currently unbudgeted subagents.
 pub const STOP_REASON_ITERATION_LIMIT: &str = "iteration_limit";
-
-/// Per-turn cap on `web_search` calls. The model otherwise tends to fire off
-/// far more searches than a question warrants; once this budget is spent, the
-/// remaining calls short-circuit with an error result that tells the model to
-/// answer from what it already has instead of burning more iterations.
-const MAX_WEB_SEARCHES: u32 = 3;
 
 /// Told to the model when a tool-using turn produced no prose (see the forced
 /// wrap-up below). Dropping `tools` from the request is not enough on its own:
@@ -100,6 +93,9 @@ pub struct LoopRequest {
     /// Context window of the selected model, when discovery knows it. Drives the
     /// per-turn budget; `None` disables budgeting rather than inventing a limit.
     pub context_window: Option<u64>,
+    /// Resolved limits for this turn. Interactive and task callers use distinct
+    /// policies; HTTP request bodies cannot set this value.
+    pub execution_policy: ExecutionPolicy,
 }
 
 pub async fn execute_with_tools(
@@ -118,6 +114,7 @@ pub async fn execute_with_tools(
         tool_ctx,
         mcp,
         context_window,
+        execution_policy,
     } = req;
 
     let mut total_input: u32 = 0;
@@ -132,7 +129,11 @@ pub async fn execute_with_tools(
     // that legitimately produced no text is left alone.
     let mut any_tool_executed = false;
 
-    let mut ledger = TokenLedger::new(context_window, &tools);
+    let mut ledger = TokenLedger::with_output_limit(
+        context_window,
+        &tools,
+        execution_policy.max_output_tokens,
+    );
     // Signature -> the 1-based call number that already produced this exact
     // result, so a repeat can point the model at evidence it already has.
     let mut completed_reads: HashMap<String, usize> = HashMap::new();
@@ -146,7 +147,7 @@ pub async fn execute_with_tools(
     // consume substantial time or repeat side effects without filling a window.
     let mut iteration_limit_reached = false;
 
-    for iteration in 0..MAX_ITERATIONS {
+    for iteration in 0..execution_policy.max_iterations {
         if *cancel.borrow() {
             break;
         }
@@ -196,6 +197,7 @@ pub async fn execute_with_tools(
             retry_connect,
             tool_sink: sink.clone(),
             mcp: mcp.clone(),
+            execution_policy,
         };
         let result = provider.stream(req).await?;
 
@@ -240,13 +242,13 @@ pub async fn execute_with_tools(
             // the pairing).
             if call.name == "web_search" {
                 web_search_count += 1;
-                if web_search_count > MAX_WEB_SEARCHES {
+                if web_search_count > execution_policy.max_web_searches {
                     messages.push(ChatMessage::tool_result(
                         call.id.clone(),
                         format!(
                             "Web search budget exhausted ({} searches this turn). \
                              Do not search again — answer using the results you already have.",
-                            MAX_WEB_SEARCHES
+                            execution_policy.max_web_searches
                         ),
                     ));
                     continue;
@@ -326,7 +328,7 @@ pub async fn execute_with_tools(
         if budget_exhausted {
             break;
         }
-        if iteration + 1 == MAX_ITERATIONS {
+        if iteration + 1 == execution_policy.max_iterations {
             iteration_limit_reached = true;
             tracing::warn!(
                 iteration,
@@ -387,6 +389,7 @@ pub async fn execute_with_tools(
             retry_connect,
             tool_sink: sink.clone(),
             mcp: mcp.clone(),
+            execution_policy,
         };
         let wrap = provider.stream(req).await.map_err(|error| {
             anyhow::anyhow!(
@@ -465,6 +468,8 @@ mod tests {
     use serde_json::json;
     use std::collections::VecDeque;
     use std::sync::Mutex;
+
+    const MAX_ITERATIONS: u32 = crate::execution_policy::INTERACTIVE_MAX_ITERATIONS;
 
     /// Provider that replays a fixed script of `StreamResult`s, one per
     /// `stream()` call — lets us simulate a multi-turn agentic exchange.
@@ -580,6 +585,7 @@ mod tests {
         registry: Arc<ToolRegistry>,
         sink: Arc<dyn ToolEventSink>,
         cancelled: bool,
+        execution_policy: ExecutionPolicy,
     }
 
     impl LoopCase {
@@ -591,6 +597,7 @@ mod tests {
                 registry: test_registry(),
                 sink: Arc::new(NullSink),
                 cancelled: false,
+                execution_policy: ExecutionPolicy::interactive(),
             }
         }
 
@@ -611,9 +618,11 @@ mod tests {
                     conversation_id: None,
                     inside_subagent: false,
                     model_is_local: false,
+                    execution_policy: self.execution_policy,
                 },
                 mcp: None,
                 context_window: self.context_window,
+                execution_policy: self.execution_policy,
             };
             let result = execute_with_tools(req, self.registry, self.sink).await;
             (result, provider)
@@ -728,6 +737,24 @@ mod tests {
             Some(ChatMessage::User { content, images })
                 if content == WRAP_UP_INSTRUCTION && images.is_empty()
         ));
+    }
+
+    #[tokio::test]
+    async fn task_policy_can_finish_after_the_old_interactive_cap() {
+        let rounds = ExecutionPolicy::interactive().max_iterations + 2;
+        let mut steps: Vec<StreamResult> = (0..rounds).map(|_| tool_turn("", 10)).collect();
+        steps.push(final_turn("Full task report.", 20));
+        let (result, provider) = LoopCase {
+            execution_policy: ExecutionPolicy::task(&Default::default(), None),
+            ..LoopCase::new(steps)
+        }
+        .run()
+        .await;
+
+        let result = result.unwrap();
+        assert_eq!(result.content, "Full task report.");
+        assert_eq!(result.stop_reason, "end_turn");
+        assert_eq!(provider.seen.lock().unwrap().len(), rounds as usize + 1);
     }
 
     #[tokio::test]

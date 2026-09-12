@@ -106,6 +106,12 @@ machines stand down while retaining **Run now**. Task-only DNS/connect failures
 retry twice before becoming visible errors, without changing providers or
 falling back from local to cloud.
 
+Unattended runs favour completeness over latency, so they get their own limits —
+more tool rounds, web searches, sub-agents, and reply tokens than an interactive
+chat. Cron and **Run now** resolve identical limits. Tune them globally with
+`taskExecution` in `config.yaml`, or per task with an `execution:` block; both
+are clamped, so a generous value can never become an unbounded one.
+
 ## Supported Providers
 
 All models are configured under a single `providers:` list in config v2

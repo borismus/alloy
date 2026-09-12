@@ -255,6 +255,9 @@ pub struct StreamRequest {
     /// it calls Alloy's built-in tools instead of Claude Code's native ones.
     /// `None` for HTTP providers (and when the server URL isn't known yet).
     pub mcp: Option<McpBridge>,
+    /// Resolved internal limits. Provider adapters use the portions their
+    /// protocol supports (for example OpenAI `max_tokens` and Claude max turns).
+    pub execution_policy: crate::execution_policy::ExecutionPolicy,
 }
 
 /// How the Claude Code CLI reaches back into this server's MCP endpoint for one

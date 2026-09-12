@@ -83,6 +83,23 @@ sharePort: 3001         # only used when shareOnNetwork is true
 
 # Exactly one host owns automatic cron execution for a synced vault.
 scheduledTaskRunner: smusmini
+
+# Optional limits for unattended task runs (cron and Run now). Omitted values
+# use the task defaults; every value is clamped to a hard ceiling.
+taskExecution:
+  maxIterations: 30      # tool rounds per turn (interactive chat: 10)
+  maxWebSearches: 10     # web_search calls per turn (interactive chat: 3)
+  maxSubagents: 6        # sub-agents per spawn (interactive chat: 3)
+  maxOutputTokens: 16384 # reply allowance (interactive chat: 8192)
+```
+
+An individual task may override the same keys under its own `execution:` block,
+which wins over the global values:
+
+```yaml
+# tasks/<id>-<slug>.yaml
+execution:
+  maxIterations: 50
 ```
 
 There is no legacy flat-key format: 0.4 dropped the pre-0.4 schema (per-vendor
@@ -120,6 +137,7 @@ src/
 ├── vault_writer.rs      Conversation YAML append + title rename
 ├── skill_registry.rs    Loads vault/skills/*/SKILL.md frontmatter
 ├── tool_loop.rs         execute_with_tools — multi-turn tool dispatch
+├── execution_policy.rs  Interactive vs unattended-task turn limits
 ├── streaming.rs         Session manager with broadcast SSE fan-out
 ├── types.rs             Tool definitions, BUILTIN_TOOLS, OpenAI shapes
 ├── providers/

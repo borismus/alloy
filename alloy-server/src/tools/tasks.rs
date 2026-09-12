@@ -83,6 +83,7 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
             timezone: timezone.clone(),
         },
         trigger,
+        execution: None,
         last_scheduled_at: None,
         last_run_at: None,
         last_delivered_at: None,
@@ -427,6 +428,7 @@ mod tests {
             trigger: Some(TaskTrigger {
                 condition: "Something changed".into(),
             }),
+            execution: None,
             last_scheduled_at: Some("2026-01-02T16:00:00.000Z".into()),
             last_run_at: Some("2026-01-02T16:00:01.000Z".into()),
             last_delivered_at: Some("2026-01-02T16:00:02.000Z".into()),

@@ -78,7 +78,6 @@ const DISALLOWED_NATIVE_TOOLS: &[&str] = &[
 ];
 
 /// Bound on Claude Code's internal agent loop, so a misbehaving turn can't spin.
-const MAX_AGENT_TURNS: &str = "20";
 
 /// Extended-thinking budget (tokens). Claude Code only surfaces `thinking`
 /// blocks when `MAX_THINKING_TOKENS` is set; without it, the reasoning
@@ -462,7 +461,7 @@ impl Provider for CliClaudeProvider {
             .arg("--include-partial-messages")
             .arg("--verbose")
             .arg("--max-turns")
-            .arg(MAX_AGENT_TURNS);
+            .arg(req.execution_policy.cli_agent_turns.to_string());
         // Tool parity: route tool calls through Alloy's MCP bridge (our built-in
         // tools), and hard-disable Claude Code's native host tools so the model
         // can only act through Alloy. Without an MCP bridge (server URL unknown),

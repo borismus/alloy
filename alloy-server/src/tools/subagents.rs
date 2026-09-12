@@ -1,4 +1,4 @@
-//! `spawn_subagent` tool. Runs 1-3 sub-agents in parallel via the same tool
+//! `spawn_subagent` tool. Runs a bounded policy-defined number of sub-agents in parallel via the same tool
 //! loop used at the top level, with a reduced tool set (no nested
 //! `spawn_subagent`, no writes).
 //!
@@ -69,9 +69,7 @@ pub async fn execute(
     if configs.is_empty() {
         return Err("agents must be a non-empty array".into());
     }
-    if configs.len() > 3 {
-        configs.truncate(3);
-    }
+    configs.truncate(ctx.execution_policy.max_subagents as usize);
 
     let tools = subagent_tools();
 
@@ -95,6 +93,7 @@ pub async fn execute(
             system_prompt,
             tools,
             name,
+            ctx.execution_policy,
         ));
     }
 
@@ -122,6 +121,7 @@ async fn run_one_agent(
     system_prompt: Option<String>,
     tools: Vec<ToolDefinition>,
     name: String,
+    execution_policy: crate::execution_policy::ExecutionPolicy,
 ) -> Result<(String, String, String), (String, String, String)> {
     let (provider, upstream_model) = match parent_registry.providers.resolve(&model) {
         Ok(r) => r,
@@ -172,15 +172,17 @@ async fn run_one_agent(
             // Computed from the sub-agent's own model, so a cloud parent spawning
             // a local sub-agent (or vice versa) is classified correctly.
             model_is_local: crate::local::model_is_local(&parent_registry.config, &model),
+            execution_policy,
         },
         // Sub-agents use whatever provider they're given via Alloy's own loop;
         // no Claude Code MCP bridge.
         mcp: None,
         // The tool registry has no model catalog, so a sub-agent's window isn't
-        // known here and its turn stays unbudgeted — bounded, as before, by
-        // MAX_ITERATIONS and the per-result caps. The parent's own budget still
+        // known here and its turn stays unbudgeted — bounded by the inherited
+        // execution policy and per-result caps. The parent's own budget still
         // covers the summary the sub-agent returns.
         context_window: None,
+        execution_policy,
     };
 
     // Sub-agents don't emit tool events to the parent session — the parent's
@@ -204,6 +206,7 @@ mod tests {
             conversation_id: None,
             inside_subagent,
             model_is_local,
+            execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
         }
     }
 

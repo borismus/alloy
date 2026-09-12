@@ -25,6 +25,10 @@ pub struct ScheduledTask {
     pub schedule: TaskSchedule,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trigger: Option<TaskTrigger>,
+    /// Optional per-task overrides; omitted values inherit top-level
+    /// `taskExecution`, then the generous bounded task defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<crate::execution_policy::ExecutionOverrides>,
     #[serde(
         rename = "lastScheduledAt",
         default,
@@ -231,6 +235,9 @@ prompt: Do it
 schedule:
   cron: '0 8 * * 1'
   timezone: America/Los_Angeles
+execution:
+  maxIterations: 44
+  maxOutputTokens: 20000
 messages: []
 futureField: keep
 "#,
@@ -241,6 +248,9 @@ futureField: keep
             .unwrap();
         let task = load_one(&path).await.unwrap();
         assert_eq!(task.last_run_at.as_deref(), Some("later"));
+        let execution = task.execution.unwrap();
+        assert_eq!(execution.max_iterations, Some(44));
+        assert_eq!(execution.max_output_tokens, Some(20_000));
         assert!(task.extra.contains_key(Value::String("futureField".into())));
     }
 }

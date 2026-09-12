@@ -218,7 +218,7 @@ impl Provider for OpenAICompatibleProvider {
             "model": req.model,
             "messages": messages,
             "stream": true,
-            "max_tokens": 8192,
+            "max_tokens": req.execution_policy.max_output_tokens,
             "stream_options": { "include_usage": true },
         });
         if !req.tools.is_empty() {
@@ -678,6 +678,7 @@ fn apply_anthropic_caching(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn sanitize_title_rejects_leaked_reasoning_narration() {
@@ -871,7 +872,45 @@ mod tests {
             retry_connect: false,
             tool_sink: std::sync::Arc::new(crate::types::NullSink),
             mcp: None,
+            execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
         }
+    }
+
+    /// The reply allowance is policy-owned: an unattended task may write a
+    /// longer final report than an interactive turn, and the value must reach
+    /// the wire rather than staying a local constant.
+    #[tokio::test]
+    async fn max_tokens_on_the_wire_follows_the_execution_policy() {
+        use axum::{extract::Json as AxumJson, http::header, routing::post, Router};
+
+        let seen: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
+        let captured = seen.clone();
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post(move |AxumJson(body): AxumJson<Value>| {
+                let captured = captured.clone();
+                async move {
+                    *captured.lock().unwrap() = Some(body);
+                    (
+                        [(header::CONTENT_TYPE, "text/event-stream")],
+                        "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+                    )
+                }
+            }),
+        );
+        let provider = provider_for_app(app, reqwest::Client::new()).await;
+
+        let (_cancel_tx, cancel) = tokio::sync::watch::channel(false);
+        let (delta_tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut req = test_stream_request(cancel, delta_tx);
+        req.execution_policy =
+            crate::execution_policy::ExecutionPolicy::task(&Default::default(), None);
+        provider.stream(req).await.unwrap();
+
+        assert_eq!(
+            seen.lock().unwrap().as_ref().unwrap()["max_tokens"],
+            crate::execution_policy::TASK_MAX_OUTPUT_TOKENS
+        );
     }
 
     #[tokio::test]

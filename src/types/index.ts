@@ -142,6 +142,18 @@ export interface TaskTrigger {
   condition: string;
 }
 
+/**
+ * Per-task limit overrides. Resolved by the Rust executor over the global
+ * `taskExecution` config and the built-in task defaults, then clamped. Edited
+ * in the task YAML; the SPA only carries it so edits round-trip.
+ */
+export interface TaskExecutionOverrides {
+  maxIterations?: number;
+  maxWebSearches?: number;
+  maxSubagents?: number;
+  maxOutputTokens?: number;
+}
+
 export interface TaskAttempt {
   timestamp: string;
   result: 'completed' | 'triggered' | 'skipped' | 'error';
@@ -166,6 +178,8 @@ export interface ScheduledTask {
   prompt: string;
   schedule: TaskSchedule;
   trigger?: TaskTrigger;
+  /** Optional limit overrides for this task's unattended runs. */
+  execution?: TaskExecutionOverrides;
   lastScheduledAt?: string;
   lastRunAt?: string;
   lastDeliveredAt?: string;

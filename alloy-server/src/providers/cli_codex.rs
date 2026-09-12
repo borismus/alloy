@@ -1271,6 +1271,7 @@ mod tests {
             retry_connect: false,
             tool_sink: std::sync::Arc::new(crate::types::NullSink),
             mcp: None,
+            execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
         }
     }
 

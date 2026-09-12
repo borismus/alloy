@@ -34,6 +34,9 @@ pub struct ToolContext {
     /// mount (`private/<alias>/`) and private-network web fetches; cloud models
     /// are denied both.
     pub model_is_local: bool,
+    /// Limits inherited from the parent turn. Most tools ignore this; subagent
+    /// spawning uses it so task runs can have a larger but still bounded pool.
+    pub execution_policy: crate::execution_policy::ExecutionPolicy,
 }
 
 pub struct ToolRegistry {

@@ -97,6 +97,17 @@ fn def(
 /// All built-in tools. Mirrors `BUILTIN_TOOLS` in
 /// [src/types/tools.ts](src/types/tools.ts) exactly.
 pub fn builtin_tools() -> Vec<ToolDefinition> {
+    builtin_tools_with_subagent_limit(
+        crate::execution_policy::INTERACTIVE_MAX_SUBAGENTS,
+    )
+}
+
+/// Build the same tool catalog with the resolved per-call subagent allowance in
+/// its schema text. Enforcement still happens in `tools::subagents`; advertising
+/// the real task limit lets a scheduled cloud model actually use the added
+/// parallelism instead of being told the interactive 1-3 contract.
+pub fn builtin_tools_with_subagent_limit(max_subagents: u32) -> Vec<ToolDefinition> {
+    let range = format!("1-{max_subagents}");
     vec![
         def(
             "read_file",
@@ -171,11 +182,11 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         ),
         def(
             "spawn_subagent",
-            "Spawn 1-3 sub-agents to work on tasks in parallel. Each sub-agent runs independently with its own context and full tool access. Use when a task can be broken into independent subtasks that benefit from parallel execution (e.g., researching different topics, analyzing from multiple angles). Results from all sub-agents are returned when all complete. Sub-agents cannot spawn their own sub-agents.",
+            &format!("Spawn {range} sub-agents to work on tasks in parallel. Each sub-agent runs independently with its own context and full tool access. Use when a task can be broken into independent subtasks that benefit from parallel execution (e.g., researching different topics, analyzing from multiple angles). Results from all sub-agents are returned when all complete. Sub-agents cannot spawn their own sub-agents."),
             &[(
                 "agents",
                 "string",
-                r#"JSON array of 1-3 sub-agent configs. Each config: {"name": "short label", "prompt": "task description", "model": "optional provider/model-id", "system_prompt": "optional role"}. Example: [{"name": "Research", "prompt": "Find recent papers on X"}, {"name": "Analysis", "prompt": "Analyze the implications of Y", "model": "anthropic/claude-sonnet-4-5-20250929"}]"#,
+                &format!(r#"JSON array of {range} sub-agent configs. Each config: {{"name": "short label", "prompt": "task description", "model": "optional provider/model-id", "system_prompt": "optional role"}}. Example: [{{"name": "Research", "prompt": "Find recent papers on X"}}, {{"name": "Analysis", "prompt": "Analyze the implications of Y", "model": "anthropic/claude-sonnet-4-5-20250929"}}]"#),
             )],
             &["agents"],
         ),

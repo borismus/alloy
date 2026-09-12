@@ -465,6 +465,7 @@ mod tests {
                 timezone: "UTC".into(),
             },
             trigger: None::<TaskTrigger>,
+            execution: None,
             last_scheduled_at: last_scheduled.map(str::to_string),
             last_run_at: None,
             last_delivered_at: None,
