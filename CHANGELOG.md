@@ -4,6 +4,28 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.27
+
+- **Scheduled tasks get room to finish.** A cron run was held to the same limits
+  as a chat message someone is waiting on — 10 tool rounds, 3 web searches, an
+  8k-token reply — so a thorough overnight job could be cut short for no reason.
+  Unattended runs now get roughly triple that, and **Run now** behaves
+  identically. Tune it with `taskExecution` in `config.yaml`, or per task with an
+  `execution:` block. Interactive chat is unchanged.
+- **Alloy keeps logs that explain what happened.** Launched from Finder, it
+  wrote its diagnostics nowhere at all, so anything that went wrong in a real
+  install left no trace. It now keeps a week of daily logs in
+  `~/Library/Logs/Alloy`, with one line per turn: model, tool calls, stop reason,
+  answer length, tokens, and duration — plus why a turn had to conclude early.
+  These sit next to a private vault, so they record **metadata only**: never your
+  messages, prompts, tool results, note contents, URLs, or keys.
+- **An always-on Mac can update itself.** The automatic-update setting only
+  acted at launch, which a machine that never restarts doesn't have. It now
+  checks periodically and restarts to apply an update only when no conversation
+  or scheduled task is running — rechecking right before the restart, so work
+  that starts mid-download is never interrupted. Still per-machine, still off
+  unless you turn it on.
+
 ## 0.4.26
 
 - **Long tool-using turns now end with an answer.** If a model was still calling
