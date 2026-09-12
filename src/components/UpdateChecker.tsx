@@ -1,20 +1,29 @@
 import { useState, useEffect, useRef } from 'react';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { getAutoUpdate, isServerIdle, runAutoUpdateCycle } from '../services/autoUpdate';
+import {
+  AUTO_UPDATE_CHANGED,
+  getAutoUpdate,
+  isServerIdle,
+  runAutoUpdateCycle,
+} from '../services/autoUpdate';
 import { isTauri } from '../services/api';
 import './UpdateChecker.css';
 
 /** Let the app settle before the first unattended attempt. */
 const FIRST_CHECK_MS = 10_000;
-/** Between ordinary checks. An always-on machine has no launch to piggyback on,
- *  but the release cadence doesn't justify polling harder than this. */
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Between ordinary checks. A check is one request for a small static manifest,
+ *  and an always-on machine has no launch to piggyback on, so hourly keeps it
+ *  close to current without hammering the release host. Also limits how far a
+ *  throttled background timer can drift. */
+const CHECK_INTERVAL_MS = 60 * 60 * 1000;
+/** After enabling the setting: near-immediate, but debounced against a toggle. */
+const PREFERENCE_CHECK_MS = 2_000;
 /** After deferring for a busy server. Short enough to catch a quiet window,
  *  long enough not to re-ask constantly during a long task. */
 const BUSY_RETRY_MS = 10 * 60 * 1000;
-/** After a failure, so a broken download can't become a retry loop. */
-const ERROR_RETRY_MS = 60 * 60 * 1000;
+/** After a failure, so a broken download can't retry as often as a clean check. */
+const ERROR_RETRY_MS = 3 * 60 * 60 * 1000;
 
 // Export for use in Settings
 export type CheckResult = { available: true; version: string } | { available: false } | { error: string };
@@ -51,6 +60,11 @@ export function UpdateChecker() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
+    const schedule = (delay: number) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { void tick(); }, delay);
+    };
+
     const tick = async () => {
       const outcome = await runAutoUpdateCycle<Update>({
         // Re-read each cycle so toggling the setting takes effect without a
@@ -76,13 +90,21 @@ export function UpdateChecker() {
           : CHECK_INTERVAL_MS;
       // A self-scheduling timeout rather than an interval: a slow download must
       // never overlap with the next attempt.
-      timer = setTimeout(tick, delay);
+      schedule(delay);
     };
 
-    timer = setTimeout(tick, FIRST_CHECK_MS);
+    // Enabling the setting must not wait out the current interval, which made
+    // switching it on look like it did nothing.
+    const onPreferenceChanged = () => {
+      if (!cancelled && getAutoUpdate()) schedule(PREFERENCE_CHECK_MS);
+    };
+    window.addEventListener(AUTO_UPDATE_CHANGED, onPreferenceChanged);
+
+    schedule(FIRST_CHECK_MS);
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
+      window.removeEventListener(AUTO_UPDATE_CHANGED, onPreferenceChanged);
     };
   }, []);
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  AUTO_UPDATE_CHANGED,
   getAutoUpdate,
   isServerIdle,
   runAutoUpdateCycle,
@@ -30,6 +31,26 @@ describe('auto-update preference', () => {
     // the same behavior everywhere — the opposite of the intent.
     setAutoUpdate(true);
     expect(localStorage.getItem('alloy.autoUpdate')).toBe('true');
+  });
+
+  it('announces a change so the updater need not wait out its interval', () => {
+    // Enabling the setting looked inert for a full cycle without this.
+    const seen: boolean[] = [];
+    const listener = (e: Event) => seen.push((e as CustomEvent).detail.enabled);
+    window.addEventListener(AUTO_UPDATE_CHANGED, listener);
+    setAutoUpdate(true);
+    setAutoUpdate(false);
+    window.removeEventListener(AUTO_UPDATE_CHANGED, listener);
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('still persists when the change cannot be announced', () => {
+    vi.spyOn(window, 'dispatchEvent').mockImplementation(() => {
+      throw new Error('no listeners');
+    });
+    expect(() => setAutoUpdate(true)).not.toThrow();
+    vi.restoreAllMocks();
+    expect(getAutoUpdate()).toBe(true);
   });
 
   it('treats unavailable localStorage as opt-out rather than throwing', () => {

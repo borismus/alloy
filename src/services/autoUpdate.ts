@@ -13,6 +13,13 @@ import { getApiBase, getAuthHeadersForApi } from './server-streaming';
 
 const STORAGE_KEY = 'alloy.autoUpdate';
 
+/**
+ * Fired when the preference changes, so the updater can react at once instead of
+ * waiting out its polling interval. Turning a setting on should visibly do
+ * something; without this, enabling it looked inert for up to a full cycle.
+ */
+export const AUTO_UPDATE_CHANGED = 'alloy:auto-update-changed';
+
 export function getAutoUpdate(): boolean {
   try {
     return localStorage.getItem(STORAGE_KEY) === 'true';
@@ -27,6 +34,11 @@ export function setAutoUpdate(enabled: boolean): void {
     localStorage.setItem(STORAGE_KEY, String(enabled));
   } catch {
     // Non-fatal: the preference simply won't persist.
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(AUTO_UPDATE_CHANGED, { detail: { enabled } }));
+  } catch {
+    // No window (tests, SSR): the next scheduled cycle picks the value up.
   }
 }
 
