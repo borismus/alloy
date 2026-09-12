@@ -285,6 +285,10 @@
   line-height: 1.4;
   /* Leave room for the absolutely-positioned actions button. */
   padding-right: 1.75rem;
+  /* A conversation's fallback title is its first message, which is often a bare
+     URL — one unbreakable token that would otherwise run past the card's right
+     edge and sit under the actions button. Matches `.item-search-snippet`. */
+  overflow-wrap: anywhere;
 }
 
 .item-search-snippet {
