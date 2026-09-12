@@ -148,6 +148,7 @@ fn authorize(sessions: &SessionRegistry, q: &McpQuery) -> Option<ToolContext> {
         // never grant it private-mount access.
         model_is_local: false,
         execution_policy: inner.execution_policy,
+        memory_read_this_turn: Default::default(),
     })
 }
 
@@ -237,6 +238,7 @@ mod tests {
             inside_subagent: false,
             model_is_local: false,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
+            memory_read_this_turn: Default::default(),
         };
         let params = json!({ "name": "read_file", "arguments": { "path": "notes/x.md" } });
         let out = execute_tool_call(&tools, &params, &ctx).await;
@@ -254,6 +256,7 @@ mod tests {
             inside_subagent: false,
             model_is_local: false,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
+            memory_read_this_turn: Default::default(),
         };
         // Missing required `path` → the tool returns an error result.
         let params = json!({ "name": "read_file", "arguments": {} });

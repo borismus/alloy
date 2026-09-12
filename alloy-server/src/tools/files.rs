@@ -45,6 +45,19 @@ fn cap_read(content: String) -> String {
     )
 }
 
+/// The one file injected into every system prompt. It is hand-curated, has no
+/// history in the vault, and a careless model rewrite silently degrades every
+/// later turn in every conversation — so it gets protections ordinary notes
+/// don't: a rolling backup, an atomic replace, and a refusal to shrink it
+/// sharply without having read what it is replacing.
+const MEMORY_FILE: &str = "memory.md";
+/// Kept at the vault root. Dot-prefixed deliberately: `read_file` rejects
+/// unlisted nested directories, while `list_directory`, `search_directory`,
+/// vault search, and the file watcher all skip dotfiles — so backups stay out
+/// of prompts, search results, and the timeline without extra filtering.
+const MEMORY_BACKUP_DIR: &str = ".memory-backups";
+const MEMORY_BACKUPS_KEPT: usize = 10;
+
 #[derive(Copy, Clone, PartialEq)]
 enum Op {
     Read,
@@ -132,13 +145,156 @@ pub async fn execute_read(
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
-    fs::read_to_string(&resolved)
+    let content = fs::read_to_string(&resolved)
         .await
         .map(cap_read)
-        .map_err(|_| format!("File not found: {}", path))
+        .map_err(|_| format!("File not found: {}", path))?;
+    // Remember that this turn has seen the current memory, so a later
+    // rewrite can be trusted to be based on it rather than on a guess.
+    if path.replace('\\', "/") == MEMORY_FILE {
+        ctx.memory_read_this_turn
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    Ok(content)
 }
 
-pub async fn execute_write(registry: &ToolRegistry, input: &Value) -> Result<String, String> {
+/// Decide whether a proposed `memory.md` replacement is safe to apply.
+///
+/// The failure this prevents is silent and unrecoverable: `save-memory` asks
+/// the model to write back the **complete** updated file, so a model that
+/// summarises carelessly, or whose generation is cut short, replaces curated
+/// memory with less than it had — and the vault keeps no history to restore
+/// from. A caller that read the current revision this turn is taken at its
+/// word; one that did not must not be able to discard most of the file.
+pub(crate) fn review_memory_write(
+    current: Option<&str>,
+    next: &str,
+    saw_current_revision: bool,
+) -> Result<(), String> {
+    if next.trim().is_empty() {
+        return Err(format!(
+            "Refused: this would leave {} empty, and it has no history to restore from. \
+             If you meant to remove a section, write the full file with just that section \
+             removed. To clear it deliberately, edit the file directly.",
+            MEMORY_FILE
+        ));
+    }
+    let Some(current) = current.filter(|value| !value.trim().is_empty()) else {
+        return Ok(()); // Nothing to lose.
+    };
+
+    let had = current.chars().count();
+    let kept = next.chars().count();
+    // Losing more than half of a curated file is a summarisation accident far
+    // more often than an intended edit.
+    if kept * 2 < had && !saw_current_revision {
+        return Err(format!(
+            "Refused: this would cut {} from {} to {} characters, and this turn has not read \
+             it, so the shorter text may be missing content you cannot recover. Read {} \
+             first, then write the complete updated file.",
+            MEMORY_FILE, had, kept, MEMORY_FILE
+        ));
+    }
+    Ok(())
+}
+
+/// Replace a file by writing a sibling temp file and renaming it, so a crash or
+/// a short write can never leave the original truncated.
+async fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".into());
+    // Dot-prefixed so a leftover temp from a hard kill stays out of listings.
+    let temp = path.with_file_name(format!(".{}.tmp-{}", name, uuid::Uuid::new_v4()));
+    fs::write(&temp, bytes).await?;
+    fs::rename(&temp, path).await
+}
+
+/// Keep a timestamped copy of the outgoing `memory.md`, then trim the set.
+/// Content is never logged — only sizes and counts.
+async fn back_up_memory(registry: &ToolRegistry, current: &str) -> std::io::Result<()> {
+    let dir = registry
+        .vault
+        .resolve(MEMORY_BACKUP_DIR)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    fs::create_dir_all(&dir).await?;
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ");
+    fs::write(dir.join(format!("memory-{stamp}.md")), current.as_bytes()).await?;
+
+    let mut kept: Vec<String> = Vec::new();
+    let mut entries = fs::read_dir(&dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("memory-") && name.ends_with(".md") {
+            kept.push(name);
+        }
+    }
+    // ISO-8601 stamps sort chronologically as strings.
+    kept.sort();
+    let excess = kept.len().saturating_sub(MEMORY_BACKUPS_KEPT);
+    for name in kept.into_iter().take(excess) {
+        let _ = fs::remove_file(dir.join(name)).await;
+    }
+    Ok(())
+}
+
+/// Write `memory.md`: review, back up, then replace atomically.
+async fn write_memory(
+    registry: &ToolRegistry,
+    ctx: &ToolContext,
+    resolved: &std::path::Path,
+    next: &str,
+) -> Result<String, String> {
+    let current = fs::read_to_string(resolved).await.ok();
+    review_memory_write(
+        current.as_deref(),
+        next,
+        ctx.memory_read_this_turn
+            .load(std::sync::atomic::Ordering::Relaxed),
+    )?;
+
+    let mut backed_up = false;
+    if let Some(previous) = current.as_deref() {
+        // An unchanged rewrite is common (the model re-saves identical text);
+        // backing it up again would evict a genuinely different older version.
+        if previous != next && !previous.trim().is_empty() {
+            back_up_memory(registry, previous).await.map_err(|e| {
+                format!(
+                    "Refused: could not back up the current {} ({}), so it was left unchanged \
+                     rather than overwritten without a copy.",
+                    MEMORY_FILE, e
+                )
+            })?;
+            backed_up = true;
+        }
+    }
+
+    write_atomic(resolved, next.as_bytes())
+        .await
+        .map_err(|e| format!("Error writing file: {}", e))?;
+    tracing::info!(
+        previous_bytes = current.as_deref().map(str::len).unwrap_or(0),
+        new_bytes = next.len(),
+        backed_up,
+        "memory.md replaced"
+    );
+    Ok(format!(
+        "Successfully wrote to {}{}",
+        MEMORY_FILE,
+        if backed_up {
+            " (previous version kept in the rolling backup set)"
+        } else {
+            ""
+        }
+    ))
+}
+
+pub async fn execute_write(
+    registry: &ToolRegistry,
+    ctx: &ToolContext,
+    input: &Value,
+) -> Result<String, String> {
     let path = input_string(input, "path").unwrap_or("").trim();
     let content = input_string(input, "content").unwrap_or("");
     if path.is_empty() {
@@ -148,6 +304,11 @@ pub async fn execute_write(registry: &ToolRegistry, input: &Value) -> Result<Str
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
+    // Ordinary notes keep their existing plain-overwrite behaviour; only the
+    // one irreplaceable file gets the extra protection.
+    if path.replace('\\', "/") == MEMORY_FILE {
+        return write_memory(registry, ctx, &resolved, content).await;
+    }
     if let Some(parent) = resolved.parent() {
         let _ = fs::create_dir_all(parent).await;
     }
@@ -493,6 +654,7 @@ mod tests {
             inside_subagent: false,
             model_is_local,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
+            memory_read_this_turn: Default::default(),
         }
     }
 
@@ -540,9 +702,177 @@ mod tests {
         let external = TempDir::new("ext-w");
         let reg = registry_with_private(&vault.0, &external.0);
         let input = json!({ "path": "private/notes/new.md", "content": "nope" });
-        // write_file has no ctx / no private branch — check_permission rejects it.
-        assert!(execute_write(&reg, &input).await.is_err());
+        // write_file has no private branch — check_permission rejects it.
+        assert!(execute_write(&reg, &ctx(true), &input).await.is_err());
         assert!(!external.0.join("new.md").exists());
+    }
+
+    /// Build a registry over a bare vault with an existing memory.md.
+    fn memory_registry(vault: &std::path::Path, body: &str) -> Arc<ToolRegistry> {
+        use crate::config::Config;
+        use crate::providers::ProviderRegistry;
+        use crate::skill_registry::SkillRegistry;
+        use crate::vault::Vault;
+
+        std::fs::write(vault.join("memory.md"), body).unwrap();
+        Arc::new(ToolRegistry::new(
+            Arc::new(Config::default()),
+            Arc::new(Vault::new(vault.to_path_buf()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ))
+    }
+
+    fn backups(vault: &std::path::Path) -> Vec<String> {
+        let dir = vault.join(MEMORY_BACKUP_DIR);
+        if !dir.exists() {
+            return Vec::new();
+        }
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| Some(e.ok()?.file_name().to_string_lossy().to_string()))
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// The exact accident this exists for: `save-memory` asks for the complete
+    /// file, so a careless summary silently replaces curated memory with less.
+    #[test]
+    fn memory_review_blocks_unverified_loss_but_allows_ordinary_edits() {
+        let curated = "# Memory\n".to_string() + &"- a curated line\n".repeat(40);
+
+        // Emptying it is never acceptable, read or not.
+        assert!(review_memory_write(Some(&curated), "   ", true).is_err());
+        assert!(review_memory_write(Some(&curated), "", false).is_err());
+
+        // Dropping most of the file without having read it reads as an accident.
+        let error = review_memory_write(Some(&curated), "- one line", false).unwrap_err();
+        assert!(error.contains("has not read it"), "{error}");
+
+        // Same write from a caller that did read it is a deliberate edit.
+        assert!(review_memory_write(Some(&curated), "- one line", true).is_ok());
+
+        // Ordinary growth and small trims are untouched either way.
+        assert!(review_memory_write(Some(&curated), &format!("{curated}- more\n"), false).is_ok());
+        let small_trim: String = curated.lines().take(30).collect::<Vec<_>>().join("\n");
+        assert!(review_memory_write(Some(&curated), &small_trim, false).is_ok());
+
+        // A first write has nothing to lose.
+        assert!(review_memory_write(None, "- first note", false).is_ok());
+        assert!(review_memory_write(Some("  "), "- replacing a blank file", false).is_ok());
+    }
+
+    #[tokio::test]
+    async fn memory_write_keeps_a_recoverable_copy_and_replaces_atomically() {
+        let vault = TempDir::new("vault-mem");
+        let reg = memory_registry(&vault.0, "# Memory\n- original curated line\n");
+
+        let input = json!({ "path": "memory.md", "content": "# Memory\n- original curated line\n- added\n" });
+        let out = execute_write(&reg, &ctx(false), &input).await.unwrap();
+        assert!(out.contains("backup"), "{out}");
+
+        assert_eq!(
+            std::fs::read_to_string(vault.0.join("memory.md")).unwrap(),
+            "# Memory\n- original curated line\n- added\n"
+        );
+        let saved = backups(&vault.0);
+        assert_eq!(saved.len(), 1, "previous version is recoverable");
+        assert_eq!(
+            std::fs::read_to_string(vault.0.join(MEMORY_BACKUP_DIR).join(&saved[0])).unwrap(),
+            "# Memory\n- original curated line\n"
+        );
+
+        // No temp file survives a completed write.
+        let leftovers: Vec<_> = std::fs::read_dir(&vault.0)
+            .unwrap()
+            .filter_map(|e| Some(e.ok()?.file_name().to_string_lossy().to_string()))
+            .filter(|n| n.contains(".tmp-"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[tokio::test]
+    async fn a_destructive_memory_write_leaves_the_file_untouched() {
+        let vault = TempDir::new("vault-mem2");
+        let curated = "# Memory\n".to_string() + &"- a curated line\n".repeat(40);
+        let reg = memory_registry(&vault.0, &curated);
+
+        let input = json!({ "path": "memory.md", "content": "- oops" });
+        let error = execute_write(&reg, &ctx(false), &input).await.unwrap_err();
+        assert!(error.contains("Refused"), "{error}");
+        assert_eq!(std::fs::read_to_string(vault.0.join("memory.md")).unwrap(), curated);
+        assert!(backups(&vault.0).is_empty(), "a refused write backs up nothing");
+
+        // Reading it first makes the same write a deliberate edit.
+        let context = ctx(false);
+        execute_read(&reg, &context, &json!({ "path": "memory.md" })).await.unwrap();
+        execute_write(&reg, &context, &input).await.unwrap();
+        assert_eq!(std::fs::read_to_string(vault.0.join("memory.md")).unwrap(), "- oops");
+        assert_eq!(backups(&vault.0).len(), 1, "and the old version is still recoverable");
+    }
+
+    #[tokio::test]
+    async fn identical_rewrites_do_not_evict_older_backups() {
+        let vault = TempDir::new("vault-mem3");
+        let reg = memory_registry(&vault.0, "# Memory\n- one\n");
+        let same = json!({ "path": "memory.md", "content": "# Memory\n- one\n" });
+        execute_write(&reg, &ctx(false), &same).await.unwrap();
+        execute_write(&reg, &ctx(false), &same).await.unwrap();
+        assert!(backups(&vault.0).is_empty(), "nothing changed, nothing to keep");
+    }
+
+    #[tokio::test]
+    async fn the_backup_set_stays_bounded_and_keeps_the_newest() {
+        let vault = TempDir::new("vault-mem4");
+        let reg = memory_registry(&vault.0, "# Memory\n- v0\n");
+        for i in 1..=MEMORY_BACKUPS_KEPT + 4 {
+            let input = json!({ "path": "memory.md", "content": format!("# Memory\n- v{i}\n") });
+            execute_write(&reg, &ctx(false), &input).await.unwrap();
+            // Distinct millisecond stamps.
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+        let saved = backups(&vault.0);
+        assert_eq!(saved.len(), MEMORY_BACKUPS_KEPT);
+        let newest = std::fs::read_to_string(
+            vault.0.join(MEMORY_BACKUP_DIR).join(saved.last().unwrap()),
+        )
+        .unwrap();
+        assert!(newest.contains(&format!("- v{}", MEMORY_BACKUPS_KEPT + 3)), "{newest}");
+    }
+
+    /// Backups must not leak back into prompts, search results, or listings.
+    #[tokio::test]
+    async fn backups_are_outside_everything_the_model_can_see() {
+        let vault = TempDir::new("vault-mem5");
+        let reg = memory_registry(&vault.0, "# Memory\n- secret curated note\n");
+        execute_write(&reg, &ctx(false), &json!({ "path": "memory.md", "content": "# Memory\n- replaced\n" }))
+            .await
+            .unwrap();
+        let name = backups(&vault.0).remove(0);
+
+        let read = execute_read(&reg, &ctx(false), &json!({ "path": format!("{MEMORY_BACKUP_DIR}/{name}") })).await;
+        assert!(read.is_err(), "read_file must not reach the backup set");
+
+        let listed = execute_list_directory(&reg, &ctx(false), &json!({ "path": "." }))
+            .await
+            .unwrap_or_default();
+        assert!(!listed.contains(MEMORY_BACKUP_DIR), "{listed}");
+    }
+
+    /// Ordinary notes keep the old plain-overwrite behaviour.
+    #[tokio::test]
+    async fn notes_are_not_given_memory_protections() {
+        let vault = TempDir::new("vault-mem6");
+        std::fs::create_dir_all(vault.0.join("notes")).unwrap();
+        let reg = memory_registry(&vault.0, "# Memory\n- keep\n");
+        std::fs::write(vault.0.join("notes/n.md"), "a".repeat(500)).unwrap();
+
+        execute_write(&reg, &ctx(false), &json!({ "path": "notes/n.md", "content": "x" }))
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(vault.0.join("notes/n.md")).unwrap(), "x");
+        assert!(backups(&vault.0).is_empty());
     }
 
     #[tokio::test]

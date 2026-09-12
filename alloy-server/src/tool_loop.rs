@@ -642,6 +642,7 @@ mod tests {
                     inside_subagent: false,
                     model_is_local: false,
                     execution_policy: self.execution_policy,
+                    memory_read_this_turn: Default::default(),
                 },
                 mcp: None,
                 context_window: self.context_window,

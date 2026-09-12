@@ -173,6 +173,7 @@ async fn run_one_agent(
             // a local sub-agent (or vice versa) is classified correctly.
             model_is_local: crate::local::model_is_local(&parent_registry.config, &model),
             execution_policy,
+            memory_read_this_turn: Default::default(),
         },
         // Sub-agents use whatever provider they're given via Alloy's own loop;
         // no Claude Code MCP bridge.
@@ -207,6 +208,7 @@ mod tests {
             inside_subagent,
             model_is_local,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
+            memory_read_this_turn: Default::default(),
         }
     }
 

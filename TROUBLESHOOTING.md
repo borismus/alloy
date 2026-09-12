@@ -140,6 +140,29 @@ Alloy resynchronizes after watcher reconnect and when the page returns to the
 foreground. If it remains stale, verify `/api/watch` can connect and inspect the
 backend logs; a manual reload is a workaround, not expected normal behavior.
 
+### Restoring `memory.md` after a bad write
+
+`memory.md` is injected into every system prompt and is hand-curated, so Alloy
+protects it more than ordinary notes. Before each replacement it keeps a copy of
+the outgoing version in `.memory-backups/` at the vault root, retaining the last
+ten distinct versions. That directory is dot-prefixed on purpose: reads, vault
+search, directory listings, and the file watcher all skip it, so backups never
+re-enter a prompt or the timeline.
+
+A write is refused outright — leaving the file untouched — if it would empty the
+file, or if it would cut it by more than half without that turn having read the
+current version first. If you meant such an edit, ask again in a conversation
+where the model reads `memory.md` first.
+
+To see and restore previous versions:
+
+```bash
+cd /path/to/your/vault
+ls -1 .memory-backups/                       # newest last
+diff .memory-backups/memory-<stamp>.md memory.md
+cp .memory-backups/memory-<stamp>.md memory.md
+```
+
 ### Memory changes are not reflected
 
 Check that `[vault]/memory.md` exists and contains the intended text. The vault

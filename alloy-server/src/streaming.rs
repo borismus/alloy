@@ -516,6 +516,7 @@ async fn run_stream(
             inside_subagent: false,
             model_is_local,
             execution_policy: params.execution_policy,
+            memory_read_this_turn: Default::default(),
         },
         mcp,
         context_window: cw,

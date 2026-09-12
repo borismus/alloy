@@ -37,6 +37,11 @@ pub struct ToolContext {
     /// Limits inherited from the parent turn. Most tools ignore this; subagent
     /// spawning uses it so task runs can have a larger but still bounded pool.
     pub execution_policy: crate::execution_policy::ExecutionPolicy,
+    /// Set once this turn has read `memory.md`. A write that would sharply
+    /// shrink hand-curated memory is trusted only from a caller that has
+    /// actually seen the revision it is replacing — see
+    /// [`files::review_memory_write`](crate::tools::files::review_memory_write).
+    pub memory_read_this_turn: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct ToolRegistry {
@@ -68,7 +73,7 @@ impl ToolRegistry {
             "web_search" => websearch::execute(self, &call.input).await,
             "web_fetch" | "http_get" => http::execute_fetch(ctx, &call.input).await,
             "read_file" => files::execute_read(self, ctx, &call.input).await,
-            "write_file" => files::execute_write(self, &call.input).await,
+            "write_file" => files::execute_write(self, ctx, &call.input).await,
             "list_directory" => files::execute_list_directory(self, ctx, &call.input).await,
             "append_to_note" => files::execute_append_to_note(self, ctx, &call.input).await,
             "search_directory" => search::execute(self, ctx, &call.input).await,

@@ -570,6 +570,7 @@ mod tests {
             inside_subagent: false,
             model_is_local,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
+            memory_read_this_turn: Default::default(),
         }
     }
 
