@@ -39,3 +39,6 @@ anyhow = "1"
 # standalone binary; the shell only emits events.
 tracing = "0.1"
 
+
+[dev-dependencies]
+tempfile = "3"

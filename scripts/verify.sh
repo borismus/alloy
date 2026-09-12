@@ -30,6 +30,10 @@ step "typecheck"  npm run typecheck
 step "lint"       npm run lint
 step "unit tests" npm run test:run
 step "rust tests" cargo test --manifest-path alloy-server/Cargo.toml
+# The desktop shell is otherwise compiled only by the release workflow, on a
+# tag — too late to learn it doesn't build. `check` rather than `test` keeps the
+# gate quick; the shell's logic lives in alloy-server, where it is tested.
+step "tauri shell" cargo check --manifest-path src-tauri/Cargo.toml
 step "web build"  npx vite build
 
 echo ""

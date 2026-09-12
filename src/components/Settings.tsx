@@ -7,7 +7,7 @@ import { useTheme, type ThemePreference } from '../theme';
 import { AlloyDialog, Switch } from './ui';
 import { CheckResult } from './UpdateChecker';
 import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
-import { getAutoUpdate, setAutoUpdate } from '../services/autoUpdate';
+import { getAutoUpdate, loadAutoUpdate, setAutoUpdate } from '../services/autoUpdate';
 import packageInfo from '../../package.json';
 import './Settings.css';
 
@@ -45,7 +45,16 @@ interface SettingsProps {
 export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorChange }: SettingsProps) {
   const { preference: themePreference, setPreference: setThemePreference } = useTheme();
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | CheckResult>('idle');
+  // Seed from the local mirror so the switch renders immediately, then confirm
+  // against the shell, which holds the authoritative per-machine value.
   const [autoUpdate, setAutoUpdateState] = useState(getAutoUpdate);
+  useEffect(() => {
+    let cancelled = false;
+    void loadAutoUpdate().then((enabled) => {
+      if (!cancelled) setAutoUpdateState(enabled);
+    });
+    return () => { cancelled = true; };
+  }, []);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   const handleCheckForUpdates = async () => {

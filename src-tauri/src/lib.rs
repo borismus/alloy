@@ -10,6 +10,8 @@ use alloy_server::embed::{EmbeddedServer, bootstrap_for_tauri};
 use serde::Serialize;
 use tauri::{Manager, State};
 
+mod updater;
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -151,6 +153,10 @@ pub fn run() {
             let server = tauri::async_runtime::block_on(bootstrap_for_tauri(None))
                 .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
             app.manage(server);
+            // Unattended updates run here rather than in the webview, whose
+            // timers macOS throttles when the window isn't in front.
+            app.manage(std::sync::Arc::new(updater::AutoUpdate::default()));
+            updater::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -159,6 +165,8 @@ pub fn run() {
             set_vault_path,
             get_share_status,
             set_share_on_network,
+            updater::get_auto_update,
+            updater::set_auto_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

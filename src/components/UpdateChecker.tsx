@@ -1,29 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import {
-  AUTO_UPDATE_CHANGED,
-  getAutoUpdate,
-  isServerIdle,
-  runAutoUpdateCycle,
-} from '../services/autoUpdate';
-import { isTauri } from '../services/api';
 import './UpdateChecker.css';
-
-/** Let the app settle before the first unattended attempt. */
-const FIRST_CHECK_MS = 10_000;
-/** Between ordinary checks. A check is one request for a small static manifest,
- *  and an always-on machine has no launch to piggyback on, so hourly keeps it
- *  close to current without hammering the release host. Also limits how far a
- *  throttled background timer can drift. */
-const CHECK_INTERVAL_MS = 60 * 60 * 1000;
-/** After enabling the setting: near-immediate, but debounced against a toggle. */
-const PREFERENCE_CHECK_MS = 2_000;
-/** After deferring for a busy server. Short enough to catch a quiet window,
- *  long enough not to re-ask constantly during a long task. */
-const BUSY_RETRY_MS = 10 * 60 * 1000;
-/** After a failure, so a broken download can't retry as often as a clean check. */
-const ERROR_RETRY_MS = 3 * 60 * 60 * 1000;
 
 // Export for use in Settings
 export type CheckResult = { available: true; version: string } | { available: false } | { error: string };
@@ -35,9 +13,6 @@ export function UpdateChecker() {
   const [dismissed, setDismissed] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
-  /** An update already written to disk, still waiting for an idle moment to
-   *  restart into. Survives cycles so the bytes are fetched only once. */
-  const pendingInstall = useRef(false);
 
   useEffect(() => {
     // Silent check on mount so the banner is available to everyone, including
@@ -51,62 +26,6 @@ export function UpdateChecker() {
     (window as any).checkForUpdates = () => checkForUpdates();
   }, []);
 
-  // Unattended updates for an opted-in always-on machine. Browser clients are
-  // excluded: they can't install anything, and "restart" there would just be a
-  // page reload of someone else's session.
-  useEffect(() => {
-    if (!isTauri()) return;
-
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const schedule = (delay: number) => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { void tick(); }, delay);
-    };
-
-    const tick = async () => {
-      const outcome = await runAutoUpdateCycle<Update>({
-        // Re-read each cycle so toggling the setting takes effect without a
-        // restart, and so a machine that opts out stops immediately.
-        enabled: getAutoUpdate,
-        findUpdate: () => check().then((u) => u ?? null),
-        isIdle: isServerIdle,
-        install: async (update) => {
-          await update.downloadAndInstall();
-          pendingInstall.current = true;
-        },
-        relaunch,
-        pendingInstall: pendingInstall.current,
-      });
-      if (cancelled) return;
-
-      if (outcome !== 'disabled' && outcome !== 'none') {
-        console.info(`[Updater] unattended update: ${outcome}`);
-      }
-      const delay =
-        outcome === 'busy-before-install' || outcome === 'busy-after-install' ? BUSY_RETRY_MS
-          : outcome === 'error' ? ERROR_RETRY_MS
-          : CHECK_INTERVAL_MS;
-      // A self-scheduling timeout rather than an interval: a slow download must
-      // never overlap with the next attempt.
-      schedule(delay);
-    };
-
-    // Enabling the setting must not wait out the current interval, which made
-    // switching it on look like it did nothing.
-    const onPreferenceChanged = () => {
-      if (!cancelled && getAutoUpdate()) schedule(PREFERENCE_CHECK_MS);
-    };
-    window.addEventListener(AUTO_UPDATE_CHANGED, onPreferenceChanged);
-
-    schedule(FIRST_CHECK_MS);
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      window.removeEventListener(AUTO_UPDATE_CHANGED, onPreferenceChanged);
-    };
-  }, []);
 
   // Returns the Update itself so the auto-install path can act on it
   // immediately, without waiting a render for the `update` state to land.

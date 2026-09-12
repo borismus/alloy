@@ -9,7 +9,7 @@
  * actively working on should not restart under you.
  */
 
-import { getApiBase, getAuthHeadersForApi } from './server-streaming';
+import { isTauri } from './api';
 
 const STORAGE_KEY = 'alloy.autoUpdate';
 
@@ -20,6 +20,12 @@ const STORAGE_KEY = 'alloy.autoUpdate';
  */
 export const AUTO_UPDATE_CHANGED = 'alloy:auto-update-changed';
 
+/**
+ * Read the preference for display. The desktop shell owns the authoritative
+ * copy — it must be readable before any window exists, and clearing webview
+ * storage must not silently opt a machine out — so localStorage is only a
+ * mirror for rendering the switch, and a browser-mode fallback.
+ */
 export function getAutoUpdate(): boolean {
   try {
     return localStorage.getItem(STORAGE_KEY) === 'true';
@@ -29,106 +35,48 @@ export function getAutoUpdate(): boolean {
   }
 }
 
+/** Authoritative value from the shell, falling back to the local mirror. */
+export async function loadAutoUpdate(): Promise<boolean> {
+  if (!isTauri()) return getAutoUpdate();
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const enabled = await invoke<boolean>('get_auto_update');
+    try {
+      localStorage.setItem(STORAGE_KEY, String(enabled));
+    } catch { /* mirror is best-effort */ }
+    return enabled;
+  } catch {
+    return getAutoUpdate();
+  }
+}
+
 export function setAutoUpdate(enabled: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEY, String(enabled));
   } catch {
     // Non-fatal: the preference simply won't persist.
   }
+  // Hand it to the shell, which persists it and — when switching on — checks
+  // within seconds rather than waiting out its interval.
+  if (isTauri()) {
+    void (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('set_auto_update', { enabled });
+      } catch (error) {
+        console.error('[Updater] could not save the update preference:', error);
+      }
+    })();
+  }
   try {
     window.dispatchEvent(new CustomEvent(AUTO_UPDATE_CHANGED, { detail: { enabled } }));
   } catch {
-    // No window (tests, SSR): the next scheduled cycle picks the value up.
+    // No window (tests, SSR): the shell still has the value.
   }
 }
 
-interface ServerActivity {
-  busy: boolean;
-  streamingSessions: number;
-  runningTasks: number;
-}
-
-/**
- * Ask the backend whether anything is in flight. The frontend cannot answer
- * this: a turn may belong to another device on the LAN, and scheduled tasks run
- * with no client attached.
- *
- * Any doubt counts as busy. An unreachable or unparseable server must never be
- * read as "safe to restart" — the cost of waiting is a delayed update, the cost
- * of guessing wrong is killing a running task.
- */
-export async function isServerIdle(): Promise<boolean> {
-  try {
-    const response = await fetch(`${getApiBase()}/api/activity`, {
-      headers: getAuthHeadersForApi(),
-    });
-    if (!response.ok) return false;
-    const activity = await response.json() as ServerActivity;
-    return activity.busy === false;
-  } catch {
-    return false;
-  }
-}
-
-export type AutoUpdateOutcome =
-  | 'disabled'
-  | 'none'
-  | 'busy-before-install'
-  | 'busy-after-install'
-  | 'installed'
-  | 'error';
-
-export interface AutoUpdateDeps<TUpdate> {
-  /** Per-machine opt-in, re-read each cycle so toggling it takes effect. */
-  enabled: () => boolean;
-  findUpdate: () => Promise<TUpdate | null>;
-  isIdle: () => Promise<boolean>;
-  install: (update: TUpdate) => Promise<void>;
-  relaunch: () => Promise<void>;
-  /** True when a previous cycle installed but had to defer the relaunch. */
-  pendingInstall?: boolean;
-}
-
-/**
- * One unattended update attempt.
- *
- * Idle is checked twice on purpose. Once before downloading, so a busy machine
- * does no work at all; and again immediately before relaunching, because a turn
- * or scheduled task can start while the download runs. Nothing here ever
- * cancels work or imposes a deadline on it — a busy machine simply defers, and
- * the caller retries later.
- */
-export async function runAutoUpdateCycle<TUpdate>(
-  deps: AutoUpdateDeps<TUpdate>,
-): Promise<AutoUpdateOutcome> {
-  if (!deps.enabled()) return 'disabled';
-
-  // A previous cycle already staged the bytes; only the restart is outstanding,
-  // so don't download them again.
-  if (deps.pendingInstall) {
-    if (!await deps.isIdle()) return 'busy-after-install';
-    await deps.relaunch();
-    return 'installed';
-  }
-
-  let update: TUpdate | null;
-  try {
-    update = await deps.findUpdate();
-  } catch {
-    return 'error';
-  }
-  if (!update) return 'none';
-
-  if (!await deps.isIdle()) return 'busy-before-install';
-
-  try {
-    await deps.install(update);
-  } catch {
-    return 'error';
-  }
-
-  if (!await deps.isIdle()) return 'busy-after-install';
-
-  await deps.relaunch();
-  return 'installed';
-}
+// The unattended update loop itself now lives in the desktop shell
+// (src-tauri/src/updater.rs), driven by alloy-server's `update_policy`. It ran
+// here until macOS timer throttling in a background window made it unreliable
+// on exactly the always-on machines it serves, and its decisions went to a
+// console unreachable over SSH. Manual checks stay in the UI.

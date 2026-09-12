@@ -12,6 +12,7 @@ pub mod embed;
 pub mod error;
 pub mod execution_policy;
 pub mod logging;
+pub mod update_policy;
 pub mod host;
 pub mod local;
 pub mod notify;

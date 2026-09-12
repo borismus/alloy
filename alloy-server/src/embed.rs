@@ -92,6 +92,17 @@ impl EmbeddedServer {
 
     /// Returns the current loopback URL the SPA should use, or `None` if
     /// no vault has been bound yet (first launch).
+    /// Whether the embedded server is currently doing work: a streaming turn
+    /// (from any device, including a phone on the LAN) or a scheduled task from
+    /// cron or **Run now**. `None` before a vault is bound, which callers must
+    /// treat as "don't know" rather than idle — an unattended updater uses this
+    /// to decide whether restarting would kill work in progress.
+    pub fn is_idle(&self) -> Option<bool> {
+        let inner = self.inner.lock().unwrap();
+        let state = inner.state.as_ref()?;
+        Some(state.sessions.streaming_count() == 0 && state.tasks.inflight.is_empty())
+    }
+
     pub fn internal_url(&self) -> Option<String> {
         self.inner.lock().unwrap().internal_url.clone()
     }
