@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { loadAutoUpdate } from '../services/autoUpdate';
 import './UpdateChecker.css';
 
 // Export for use in Settings
@@ -21,6 +22,11 @@ export function UpdateChecker() {
       console.error('[Updater] Failed to check for updates:', err);
       return null;
     });
+
+    // Carry a pre-0.4.29 preference into the shell. Done here rather than in
+    // Settings because an unattended machine may never open that dialog, and
+    // this is exactly the machine the setting exists for.
+    void loadAutoUpdate();
 
     // Expose for manual checks from Settings, which wants the CheckResult shape.
     (window as any).checkForUpdates = () => checkForUpdates();

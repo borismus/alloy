@@ -62,9 +62,23 @@ fn write_preference<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> std::io::R
     std::fs::write(path, if enabled { "true" } else { "false" })
 }
 
+/// `configured` distinguishes "explicitly off" from "never set on this
+/// machine", which the SPA needs to carry a pre-0.4.29 preference across
+/// without overwriting a deliberate opt-out.
+#[derive(serde::Serialize)]
+pub struct AutoUpdateState {
+    enabled: bool,
+    configured: bool,
+}
+
 #[tauri::command]
-pub fn get_auto_update(state: State<'_, Arc<AutoUpdate>>) -> bool {
-    state.is_enabled()
+pub fn get_auto_update(app: AppHandle, state: State<'_, Arc<AutoUpdate>>) -> AutoUpdateState {
+    AutoUpdateState {
+        enabled: state.is_enabled(),
+        configured: preference_path(&app)
+            .map(|path| path.exists())
+            .unwrap_or(false),
+    }
 }
 
 /// Persist the preference and, when switching on, check within seconds instead
@@ -144,12 +158,12 @@ async fn run_once<R: Runtime>(app: &AppHandle<R>) -> UpdateOutcome {
         UpdateStep::Install => UpdateOutcome::Failed,
     };
 
-    // Quiet when there is nothing to say, so the log stays readable: an hourly
-    // "up to date" forever would bury the lines that matter.
+    // An hourly "up to date" is 24 lines a day — nothing next to the turn
+    // records, and it is the only way to answer "is it even checking?", which
+    // was the first question asked of this feature. A machine that never opted
+    // in says nothing, since that would be noise with no question behind it.
     match outcome {
-        UpdateOutcome::Disabled | UpdateOutcome::UpToDate => {
-            tracing::debug!(outcome = outcome.as_str(), "update check")
-        }
+        UpdateOutcome::Disabled => tracing::debug!(outcome = outcome.as_str(), "update check"),
         _ => tracing::info!(outcome = outcome.as_str(), "update check"),
     }
     outcome
