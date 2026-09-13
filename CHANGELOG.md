@@ -4,6 +4,18 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.29
+
+- **Automatic updates now actually happen on an always-on Mac.** The check ran
+  in the app window, and macOS slows timers in a window that is never in front —
+  the exact machine this feature is for — so it could drift or stall. It now runs
+  in the app itself, checks hourly instead of every six hours, and starts within
+  seconds of switching the setting on rather than waiting out the interval. It
+  still restarts only when no conversation or scheduled task is running.
+- **You can see what the updater decided.** Every check writes a line to
+  `~/Library/Logs/Alloy`, so "it hasn't updated" has an answer: up to date,
+  waiting for the machine to go quiet, or a failed download.
+
 ## 0.4.28
 
 - **`memory.md` can no longer be destroyed by a careless rewrite.** It is
