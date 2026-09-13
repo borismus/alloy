@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.30
+
+- **Money stops turning into broken math.** An answer containing a price range
+  like `$500K–$2M` was read as a math formula, so part of the sentence rendered
+  as a red `ParseError` and the rest was struck through. Currency ranges are now
+  left alone, whether or not the model escapes the dollar signs, while real math
+  such as `$10^3$` still renders. Affected conversations look right on reload —
+  nothing that was saved needs fixing.
+
 ## 0.4.29
 
 - **Automatic updates now actually happen on an always-on Mac.** The check ran
