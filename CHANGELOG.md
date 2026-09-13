@@ -4,6 +4,17 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.31
+
+- **Fixed automatic updates switching themselves off.** A Mac set to update
+  when idle would install 0.4.29 or 0.4.30 and come back with the setting off,
+  because it moved to a new home during that update and the old value was left
+  behind. The preference now carries across. If yours turned itself off, switch
+  it back on once and it will stay.
+- **You can confirm it is checking.** Each hourly check now records the result,
+  so `~/Library/Logs/Alloy` shows whether a machine is up to date, waiting for
+  work to finish, or failing to download.
+
 ## 0.4.30
 
 - **Money stops turning into broken math.** An answer containing a price range
