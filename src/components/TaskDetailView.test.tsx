@@ -69,7 +69,6 @@ describe('TaskDetailView failure state', () => {
         <TaskDetailView
           task={task}
           availableModels={[]}
-          onDelete={vi.fn()}
           onRunComplete={vi.fn()}
           onAskAbout={vi.fn()}
           onTaskUpdated={vi.fn()}
@@ -104,7 +103,6 @@ describe('TaskDetailView configuration controls', () => {
           availableModels={models}
           favoriteModels={['openrouter/openai/gpt-5.4-mini']}
           defaultModel="mlx-local/Qwen"
-          onDelete={vi.fn()}
           onRunComplete={vi.fn()}
           onAskAbout={vi.fn()}
           onTaskUpdated={onTaskUpdated}
@@ -136,7 +134,6 @@ describe('TaskDetailView configuration controls', () => {
         <TaskDetailView
           task={task}
           availableModels={models}
-          onDelete={vi.fn()}
           onRunComplete={vi.fn()}
           onAskAbout={vi.fn()}
           onTaskUpdated={onTaskUpdated}

@@ -56,7 +56,7 @@ function taskConfigSubset(task: ScheduledTask): Record<string, unknown> {
 interface TaskDetailViewProps {
   task: ScheduledTask;
   availableModels: ModelInfo[];
-  onDelete: () => void;
+
   onRunComplete: () => void;
   onAskAbout: (task: ScheduledTask) => void;
   onTaskUpdated: (task: ScheduledTask) => void;
@@ -130,7 +130,6 @@ function deliveredMap(task: ScheduledTask): Map<string, string> {
 export function TaskDetailView({
   task,
   availableModels,
-  onDelete,
   onRunComplete,
   onAskAbout,
   onTaskUpdated,
@@ -150,7 +149,6 @@ export function TaskDetailView({
   const modelIsKnown = modelInfo !== undefined || modelIsLocal;
   const { activeRuns, markRunning, markDone } = useTaskContext();
   const [isRunning, setIsRunning] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [updatingField, setUpdatingField] = useState<'model' | 'email' | null>(null);
   const [configUpdateError, setConfigUpdateError] = useState<string | null>(null);
@@ -393,14 +391,6 @@ export function TaskDetailView({
         >
           {task.enabled ? 'Disable' : 'Enable'}
         </Button>
-        {showDeleteConfirm ? (
-          <>
-            <Button variant="danger" size="small" onPress={() => { onDelete(); setShowDeleteConfirm(false); }}>Confirm</Button>
-            <Button variant="secondary" size="small" onPress={() => setShowDeleteConfirm(false)}>Cancel</Button>
-          </>
-        ) : (
-          <Button variant="secondary" size="small" onPress={() => setShowDeleteConfirm(true)}>Delete</Button>
-        )}
       </ItemHeader>
 
       <div className="task-detail-content">

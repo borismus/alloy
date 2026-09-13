@@ -1401,11 +1401,6 @@ function AppContent() {
                   defaultModel={config?.defaultModel}
                   onBack={() => setMobileView('list')}
                   canGoBack={true}
-                  onDelete={async () => {
-                    await handleDeleteTask(selectedTask.id);
-                    setSelectedItem(null);
-                    setMobileView('list');
-                  }}
                   onRunComplete={async () => {
                     const refreshed = await vaultService.loadTask(selectedTask.id);
                     if (refreshed) {
@@ -1547,10 +1542,6 @@ function AppContent() {
               defaultModel={config?.defaultModel}
               onBack={goBack}
               canGoBack={canGoBack}
-              onDelete={async () => {
-                await handleDeleteTask(selectedTask.id);
-                setSelectedItem(null);
-              }}
               onRunComplete={async () => {
                 const refreshed = await vaultService.loadTask(selectedTask.id);
                 if (refreshed) {
