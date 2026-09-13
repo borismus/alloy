@@ -200,22 +200,24 @@ impl TurnSummary {
 mod tests {
     use super::*;
 
+    /// Both halves live in one test on purpose: the environment is
+    /// process-global while Rust runs tests on parallel threads, so two tests
+    /// each setting and restoring `ALLOY_LOG_DIR` raced and failed about one
+    /// run in eight.
     #[test]
-    fn log_directory_prefers_an_explicit_override() {
+    fn log_directory_honours_an_override_and_otherwise_uses_the_platform_path() {
         temp_env("ALLOY_LOG_DIR", Some("/tmp/alloy-logs-test"), || {
             assert_eq!(
                 log_directory(),
                 Some(PathBuf::from("/tmp/alloy-logs-test"))
             );
         });
+
         // An empty override is ignored rather than writing to the process CWD.
         temp_env("ALLOY_LOG_DIR", Some(""), || {
             assert_ne!(log_directory(), Some(PathBuf::new()));
         });
-    }
 
-    #[test]
-    fn default_log_directory_is_the_platform_convention() {
         temp_env("ALLOY_LOG_DIR", None, || {
             let dir = log_directory().expect("HOME is set in tests");
             if cfg!(target_os = "macos") {
