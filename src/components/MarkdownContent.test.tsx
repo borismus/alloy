@@ -93,4 +93,29 @@ describe('MarkdownContent math delimiters', () => {
     expect(container.textContent).toContain('$5');
     expect(container.textContent).toContain('$10');
   });
+
+  // Reported from a real answer: the escaped closing `$` was taken as a math
+  // delimiter, so the backslash landed inside the span and KaTeX rendered
+  // "ParseError: Unexpected character: '\'" in the middle of the sentence.
+  it('keeps a hyphenated currency range literal when the second $ is escaped', () => {
+    const container = renderMarkdown('roughly $500K\u2013\\$2M per transit');
+    expect(container.textContent).not.toContain('ParseError');
+    expect(container.querySelector('.katex')).toBeNull();
+    expect(container.textContent).toContain('$500K');
+    expect(container.textContent).toContain('$2M');
+    expect(container.textContent).not.toContain('\\');
+  });
+
+  it('keeps a hyphenated currency range literal when neither $ is escaped', () => {
+    const container = renderMarkdown('roughly $500K\u2013$2M per transit');
+    expect(container.querySelector('.katex')).toBeNull();
+    expect(container.textContent).toContain('$500K');
+    expect(container.textContent).toContain('$2M');
+  });
+
+  it('still treats a digit-leading span closed before a non-digit as math', () => {
+    // The guard must not swallow real math that happens to start with a digit.
+    const container = renderMarkdown('scaling by $2^{10}$ and $10^3$ overall');
+    expect(container.querySelectorAll('.katex').length).toBe(2);
+  });
 });

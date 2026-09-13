@@ -68,9 +68,17 @@ function transformOutsideCode(content: string, transform: (text: string) => stri
 // unless it opens a space-free span closed by another `$` (e.g. `$10^3$`),
 // which is genuine digit-leading math. Skip fenced code blocks and inline
 // code so we don't corrupt code samples.
+//
+// Two things disqualify that closing `$` from ending a math span, both seen in
+// real answers about money:
+//
+//   * It is escaped — `$500K–\$2M`. Treating `\$` as the closer swallowed the
+//     backslash into the span and KaTeX reported "Unexpected character: '\'".
+//   * It is followed by a digit — `$500K–$2M`. Pandoc uses the same rule, and
+//     it is what separates a currency range from `$10^3$`.
 function escapeCurrencyDollars(content: string): string {
   return transformOutsideCode(content, (text) =>
-    text.replace(/(^|[^\\])\$(?=\d)(?!\d[^\s$]*\$)/g, '$1\\$'),
+    text.replace(/(^|[^\\])\$(?=\d)(?!\d[^\s$]*(?<!\\)\$(?!\d))/g, '$1\\$'),
   );
 }
 
