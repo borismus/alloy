@@ -4,6 +4,13 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.32
+
+- **Tasks use the same deletion flow as everything else.** The redundant Delete
+  button and its second confirmation pattern are gone from the task header.
+  Delete tasks from the timeline menu, just like conversations and notes; the
+  task header now stays focused on Run now and Enable or Disable.
+
 ## 0.4.31
 
 - **Fixed automatic updates switching themselves off.** A Mac set to update
