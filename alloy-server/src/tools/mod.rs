@@ -6,7 +6,7 @@
 
 pub mod files;
 pub mod http;
-pub mod private;
+pub mod mounts;
 pub mod search;
 pub mod skills;
 pub mod subagents;
@@ -30,9 +30,10 @@ pub struct ToolContext {
     /// `spawn_subagent`), nested `spawn_subagent` calls are rejected.
     pub inside_subagent: bool,
     /// True when the model driving this tool loop runs on local/trusted hardware
-    /// (see `crate::local::model_is_local`). Gates read access to the private
-    /// mount (`private/<alias>/`) and private-network web fetches; cloud models
-    /// are denied both.
+    /// (see `crate::local::model_is_local`). Decides which read-only mounts are
+    /// readable — `private/<alias>/` needs it, `shared/<alias>/` does not (see
+    /// [`mounts::resolve_for`]) — and gates private-network web fetches, which
+    /// cloud models are denied outright.
     pub model_is_local: bool,
     /// Limits inherited from the parent turn. Most tools ignore this; subagent
     /// spawning uses it so task runs can have a larger but still bounded pool.

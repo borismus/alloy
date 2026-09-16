@@ -110,11 +110,40 @@ impl StringOrVec {
 /// `private/<alias>/`. `path` is an absolute path outside the vault (e.g. a
 /// separate Obsidian vault); local models read it via the mount, cloud models
 /// can't reach it or learn it exists.
+/// Who may read a read-only mount.
+///
+/// Defaults to [`Audience::Local`], so an entry written before this field
+/// existed — or one whose `audience` a reader doesn't understand — stays
+/// local-only. The risky value always has to be asked for explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Audience {
+    /// Local/trusted models only. Cloud providers can't read it or learn it exists.
+    #[default]
+    Local,
+    /// Every model, including cloud providers. Still read-only.
+    All,
+}
+
+impl Audience {
+    /// Whether a caller of this trust level may read the mount.
+    pub fn allows(self, caller_is_local: bool) -> bool {
+        matches!(self, Audience::All) || caller_is_local
+    }
+}
+
+// `deny_unknown_fields` only here: a typo like `audiance: all` would otherwise
+// be ignored, leaving the mount local-only while the user believed they had
+// shared it. Silence is the safe direction, but it's a confusing one, and this
+// block is small and security-relevant enough to be strict about.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrivateDir {
     pub alias: String,
     pub path: std::path::PathBuf,
+    /// Who may read this mount. Omitted means local-only.
+    #[serde(default)]
+    pub audience: Audience,
     /// Subpaths (relative to `path`) to skip when a local model lists/searches
     /// this mount — e.g. the nested Alloy vault, so chat history isn't scanned.
     #[serde(default)]
@@ -419,6 +448,7 @@ impl Config {
                 path: crate::vault::normalize_path(&d.path),
                 exclude_dirs: d.exclude_dirs,
                 description: d.description,
+                audience: d.audience,
             })
             .collect();
 
@@ -466,11 +496,6 @@ impl Config {
                         );
                         return false;
                     }
-                    tracing::info!(
-                        "private read-only dir: private/{} -> {}",
-                        d.alias,
-                        canon.display()
-                    );
                     true
                 }
                 Err(e) => {
@@ -484,6 +509,73 @@ impl Config {
                 }
             }
         });
+
+        // An alias is a mount's address; two mounts answering to one name would
+        // make which file a model reads depend on config order.
+        let mut seen: Vec<String> = Vec::new();
+        self.private_read_only_dirs.retain(|d| {
+            if seen.contains(&d.alias) {
+                tracing::warn!(
+                    "privateReadOnlyDirs: dropping duplicate alias '{}' ({})",
+                    d.alias,
+                    d.path.display()
+                );
+                return false;
+            }
+            seen.push(d.alias.clone());
+            true
+        });
+
+        self.log_read_only_mounts();
+    }
+
+    /// Record the effective mounts at startup, naming the audience in full.
+    ///
+    /// A mount that cloud providers can read is the one setting here whose
+    /// mistakes are irreversible, so it is stated plainly rather than inferred
+    /// from a prefix — including when it is nested inside a local-only mount,
+    /// which is legitimate (a published subfolder) but is also the only shape
+    /// that widens access rather than narrowing it.
+    fn log_read_only_mounts(&self) {
+        for d in &self.private_read_only_dirs {
+            let Ok(canon) = d.path.canonicalize() else {
+                continue;
+            };
+            let prefix = crate::tools::mounts::prefix_for(d.audience);
+            match d.audience {
+                Audience::Local => tracing::info!(
+                    "read-only mount: {}{} -> {} (local models only)",
+                    prefix,
+                    d.alias,
+                    canon.display()
+                ),
+                Audience::All => {
+                    let nested_in = self
+                        .private_read_only_dirs
+                        .iter()
+                        .filter(|p| p.alias != d.alias && p.audience == Audience::Local)
+                        .find_map(|p| {
+                            let pc = p.path.canonicalize().ok()?;
+                            (canon.starts_with(&pc) && canon != pc).then_some(p.alias.clone())
+                        });
+                    match nested_in {
+                        Some(parent) => tracing::warn!(
+                            "read-only mount: {}{} -> {} — READABLE BY ALL MODELS, INCLUDING CLOUD (nested inside local-only '{}')",
+                            prefix,
+                            d.alias,
+                            canon.display(),
+                            parent
+                        ),
+                        None => tracing::warn!(
+                            "read-only mount: {}{} -> {} — READABLE BY ALL MODELS, INCLUDING CLOUD",
+                            prefix,
+                            d.alias,
+                            canon.display()
+                        ),
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -665,6 +757,73 @@ mod tests {
             .unwrap(),
         );
         assert!(cfg.email.is_none());
+    }
+
+    /// Existing configs predate `audience`, and the mounts they describe are
+    /// private. Parsing one must not quietly widen access.
+    #[test]
+    fn omitted_audience_is_local_so_existing_configs_do_not_change_meaning() {
+        let raw: RawConfig = serde_yaml::from_str(
+            "privateReadOnlyDirs:\n  - alias: notes\n    path: /Users/x/Notes\n    excludeDirs: [PromptBox]\n",
+        )
+        .unwrap();
+        let cfg = Config::from_raw(raw);
+        assert_eq!(cfg.private_read_only_dirs[0].audience, Audience::Local);
+        assert!(!cfg.private_read_only_dirs[0].audience.allows(false));
+        assert!(cfg.private_read_only_dirs[0].audience.allows(true));
+    }
+
+    #[test]
+    fn audience_all_is_opt_in_and_readable_by_cloud() {
+        let raw: RawConfig = serde_yaml::from_str(
+            "privateReadOnlyDirs:\n  - alias: public\n    path: /Users/x/Notes/Public\n    audience: all\n",
+        )
+        .unwrap();
+        let cfg = Config::from_raw(raw);
+        assert_eq!(cfg.private_read_only_dirs[0].audience, Audience::All);
+        assert!(cfg.private_read_only_dirs[0].audience.allows(false));
+    }
+
+    /// A misspelled key or value must fail loudly. Serde would otherwise ignore
+    /// `audiance:` entirely, leaving the user convinced they had shared a folder
+    /// that stayed private — safe, but silently wrong in a confusing direction.
+    #[test]
+    fn misspelled_audience_key_or_value_is_rejected() {
+        let typo_key: Result<RawConfig, _> = serde_yaml::from_str(
+            "privateReadOnlyDirs:\n  - alias: public\n    path: /p\n    audiance: all\n",
+        );
+        assert!(typo_key.is_err(), "unknown key must not be silently ignored");
+
+        let typo_value: Result<RawConfig, _> = serde_yaml::from_str(
+            "privateReadOnlyDirs:\n  - alias: public\n    path: /p\n    audience: everyone\n",
+        );
+        assert!(typo_value.is_err(), "unknown audience must not parse");
+    }
+
+    #[test]
+    fn duplicate_aliases_are_dropped_so_one_name_means_one_mount() {
+        let mut cfg = Config {
+            private_read_only_dirs: vec![
+                PrivateDir {
+                    alias: "notes".into(),
+                    path: std::env::temp_dir(),
+                    exclude_dirs: vec![],
+                    description: None,
+                    audience: Audience::Local,
+                },
+                PrivateDir {
+                    alias: "notes".into(),
+                    path: std::env::temp_dir(),
+                    exclude_dirs: vec![],
+                    description: None,
+                    audience: Audience::All,
+                },
+            ],
+            ..Config::default()
+        };
+        cfg.validate_private_dirs(std::path::Path::new("/nonexistent-vault"));
+        assert_eq!(cfg.private_read_only_dirs.len(), 1);
+        assert_eq!(cfg.private_read_only_dirs[0].audience, Audience::Local);
     }
 
     #[test]

@@ -58,18 +58,16 @@ pub async fn execute(
         return Err("Missing required parameter: query".into());
     }
 
-    // Private mount: searchable by local models only; cloud gets a generic
-    // "not found" without touching disk.
-    let private = crate::tools::private::is_private_path(directory);
-    if private && !ctx.model_is_local {
-        return Err(format!("Directory not found: {}", directory));
-    }
+    // External mount: searchable per its audience. Resolution denies from config
+    // alone when this caller may not read the mount, so an unauthorized search
+    // never touches disk.
+    let mount = crate::tools::mounts::is_mount_path(directory);
 
     if directory.contains("..") || directory.starts_with('/') {
         return Err("Invalid directory: must be relative and cannot contain \"..\"".into());
     }
 
-    if !private {
+    if !mount {
         let dir_normalized = if directory.ends_with('/') {
             directory.to_string()
         } else {
@@ -97,11 +95,12 @@ pub async fn execute(
     let offset = input_usize(input, "offset").unwrap_or(0);
     let file_ext = input_string(input, "file_extension").map(|s| s.to_string());
 
-    // Private search roots resolve to an external absolute path; vault searches
-    // go through the sandbox. Either way the label stays the request path so
-    // result `path` fields read as `private/<alias>/…` or `notes/…`.
-    let search_path = if private {
-        match crate::tools::private::resolve_private_path(&registry.config, directory) {
+    // Mount roots resolve to an external absolute path; vault searches go
+    // through the sandbox. Either way the label stays the request path so
+    // result `path` fields read as `private/<alias>/…`, `shared/<alias>/…`, or
+    // `notes/…` — never the host path.
+    let search_path = if mount {
+        match crate::tools::mounts::resolve_for(&registry.config, directory, ctx.model_is_local) {
             Ok(Some(abs)) => abs,
             _ => return Err(format!("Directory not found: {}", directory)),
         }
@@ -111,8 +110,8 @@ pub async fn execute(
     if fs::metadata(&search_path).await.is_err() {
         return Err(format!("Directory not found: {}", directory));
     }
-    let excludes = if private {
-        crate::tools::private::private_exclude_roots(&registry.config, directory)
+    let excludes = if mount {
+        crate::tools::mounts::exclude_roots(&registry.config, directory)
     } else {
         Vec::new()
     };
@@ -470,6 +469,7 @@ mod tests {
                 path: external_dir.to_path_buf(),
                 exclude_dirs: Vec::new(),
                 description: None,
+                audience: crate::config::Audience::Local,
             }],
             ..Config::default()
         };
@@ -490,6 +490,88 @@ mod tests {
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
             memory_read_this_turn: Default::default(),
         }
+    }
+
+    /// `~/Notes` local-only with a shared `Public/` subfolder.
+    fn registry_with_nested_mounts(
+        vault_dir: &std::path::Path,
+        notes_root: &std::path::Path,
+    ) -> Arc<ToolRegistry> {
+        use crate::config::{Audience, Config, PrivateDir};
+        use crate::providers::ProviderRegistry;
+        use crate::skill_registry::SkillRegistry;
+        use crate::vault::Vault;
+
+        let config = Config {
+            private_read_only_dirs: vec![
+                PrivateDir {
+                    alias: "obsidian_vault".into(),
+                    path: notes_root.to_path_buf(),
+                    exclude_dirs: Vec::new(),
+                    description: None,
+                    audience: Audience::Local,
+                },
+                PrivateDir {
+                    alias: "public".into(),
+                    path: notes_root.join("Public"),
+                    exclude_dirs: Vec::new(),
+                    description: None,
+                    audience: Audience::All,
+                },
+            ],
+            ..Config::default()
+        };
+        Arc::new(ToolRegistry::new(
+            Arc::new(config),
+            Arc::new(Vault::new(vault_dir.to_path_buf()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ))
+    }
+
+    /// Search is the risky surface: it pulls content in without the model
+    /// naming a file, so the audience boundary has to hold per-directory.
+    #[tokio::test]
+    async fn cloud_search_covers_the_shared_mount_only() {
+        let vault = TempDir::new("vault-search-nest");
+        let notes = TempDir::new("notes-search-nest");
+        std::fs::create_dir_all(notes.0.join("Public")).unwrap();
+        std::fs::write(notes.0.join("Journal.md"), "the needle is private").unwrap();
+        std::fs::write(notes.0.join("Public/Essay.md"), "the needle is published").unwrap();
+        let reg = registry_with_nested_mounts(&vault.0, &notes.0);
+
+        let found = execute(
+            &reg,
+            &ctx(false),
+            &json!({ "directory": "shared/public", "query": "needle" }),
+        )
+        .await
+        .unwrap();
+        assert!(found.contains("shared/public/Essay.md"), "{found}");
+        assert!(!found.contains("Journal"), "private sibling leaked: {found}");
+        assert!(!found.contains("is private"), "private content leaked: {found}");
+
+        // The private parent is not searchable by a cloud model at all.
+        let err = execute(
+            &reg,
+            &ctx(false),
+            &json!({ "directory": "private/obsidian_vault", "query": "needle" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.starts_with("Directory not found"), "{err}");
+
+        // A local model searching the parent sees its own files, but the nested
+        // mount stays carved out so results keep one address per file.
+        let local = execute(
+            &reg,
+            &ctx(true),
+            &json!({ "directory": "private/obsidian_vault", "query": "needle" }),
+        )
+        .await
+        .unwrap();
+        assert!(local.contains("Journal.md"), "{local}");
+        assert!(!local.contains("Essay.md"), "nested mount leaked into parent search: {local}");
     }
 
     #[tokio::test]

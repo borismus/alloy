@@ -718,35 +718,42 @@ fn apply_invoked_skill(
     })
 }
 
-/// Append a description of the private read-only mounts, positioning them as the
-/// user's primary knowledge base and disambiguating them from the app's own
-/// `notes/`. Only for **local** models with at least one configured mount —
-/// cloud models (and mount-less local models) get the system prompt untouched,
-/// so cloud models never even learn these directories exist.
+/// Append a description of the read-only mounts this model may actually read,
+/// positioning them as the user's primary knowledge base and disambiguating them
+/// from the app's own `notes/`.
+///
+/// INVARIANT: a mount whose audience is `local` must never appear in a prompt
+/// sent to a cloud provider — not its alias, not its path, not its description.
+/// A cloud model is told only about `audience: all` mounts, and with none
+/// configured it gets the system prompt untouched, exactly as before.
 fn apply_private_dirs_hint(
     system: Option<String>,
     config: &crate::config::Config,
     model_is_local: bool,
 ) -> Option<String> {
-    // INVARIANT: cloud models must never see this hint. Keep this early return.
-    if !model_is_local || config.private_read_only_dirs.is_empty() {
+    let visible = crate::tools::mounts::visible_to(config, model_is_local);
+    if visible.is_empty() {
         return system;
     }
-    let lines = config
-        .private_read_only_dirs
+    let lines = visible
         .iter()
         .map(|d| {
             let desc = d
                 .description
                 .as_deref()
                 .unwrap_or("the user's personal notes / knowledge base");
-            format!("- `private/{}/` — {}", d.alias, desc)
+            format!(
+                "- `{}{}/` — {}",
+                crate::tools::mounts::prefix_for(d.audience),
+                d.alias,
+                desc
+            )
         })
         .collect::<Vec<_>>()
         .join("\n");
     let hint = format!(
-        "The user's real notes / knowledge base live in these read-only directories \
-         (local models only), searchable with read_file, list_directory, and search_directory:\n\
+        "The user's real notes / knowledge base live in these read-only directories, \
+         searchable with read_file, list_directory, and search_directory:\n\
          {lines}\n\
          When the user asks about \"their notes\" or any personal topic, search these FIRST. \
          The vault's own `notes/` directory holds only notes created inside this app — it is NOT \
@@ -1342,6 +1349,7 @@ mod tests {
                 path: "/Users/x/Notes".into(),
                 exclude_dirs: vec![],
                 description: desc.map(str::to_string),
+                audience: crate::config::Audience::Local,
             }],
             ..crate::config::Config::default()
         }
@@ -1376,6 +1384,71 @@ mod tests {
         let empty = crate::config::Config::default();
         assert_eq!(
             apply_private_dirs_hint(Some("BASE".into()), &empty, true),
+            Some("BASE".into())
+        );
+    }
+
+    /// The real-world shape: a local-only Obsidian vault with a published
+    /// subfolder shared with every model.
+    fn cfg_with_nested_mounts() -> crate::config::Config {
+        crate::config::Config {
+            private_read_only_dirs: vec![
+                crate::config::PrivateDir {
+                    alias: "obsidian_vault".into(),
+                    path: "/Users/x/Notes".into(),
+                    exclude_dirs: vec![],
+                    description: Some("diaries, finances, therapy notes".into()),
+                    audience: crate::config::Audience::Local,
+                },
+                crate::config::PrivateDir {
+                    alias: "public".into(),
+                    path: "/Users/x/Notes/Public".into(),
+                    exclude_dirs: vec![],
+                    description: Some("published notes".into()),
+                    audience: crate::config::Audience::All,
+                },
+            ],
+            ..crate::config::Config::default()
+        }
+    }
+
+    /// INVARIANT: a cloud prompt may name the shared mount and nothing else.
+    /// Sharing one folder must not become a way to mention the private mount
+    /// it happens to live inside.
+    #[test]
+    fn cloud_hint_names_shared_mounts_and_never_the_local_ones() {
+        let cfg = cfg_with_nested_mounts();
+        let out = apply_private_dirs_hint(Some("BASE".into()), &cfg, false).unwrap();
+
+        assert!(out.contains("shared/public/"), "{out}");
+        assert!(out.contains("published notes"), "{out}");
+        for leaked in [
+            "obsidian_vault",
+            "private/",
+            "diaries",
+            "finances",
+            "therapy",
+            "/Users/x/Notes",
+        ] {
+            assert!(!out.contains(leaked), "leaked {leaked} to a cloud model: {out}");
+        }
+    }
+
+    #[test]
+    fn local_hint_names_every_mount_with_its_own_prefix() {
+        let cfg = cfg_with_nested_mounts();
+        let out = apply_private_dirs_hint(Some("BASE".into()), &cfg, true).unwrap();
+        assert!(out.contains("private/obsidian_vault/"), "{out}");
+        assert!(out.contains("shared/public/"), "{out}");
+    }
+
+    /// With only local mounts configured, a cloud prompt stays byte-identical —
+    /// the pre-existing behavior this change must not regress.
+    #[test]
+    fn cloud_prompt_is_untouched_when_nothing_is_shared() {
+        let cfg = cfg_with_mount(Some("secret notes"));
+        assert_eq!(
+            apply_private_dirs_hint(Some("BASE".into()), &cfg, false),
             Some("BASE".into())
         );
     }

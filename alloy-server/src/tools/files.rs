@@ -129,14 +129,13 @@ pub async fn execute_read(
     if path.is_empty() {
         return Err("Missing required parameter: path".into());
     }
-    // Private mount: readable by local models only. Cloud models get a generic
-    // "not found" without touching disk, so they can't tell it exists.
-    if crate::tools::private::is_private_path(path) {
+    // External mount. `resolve_for` decides by the mount's audience and denies
+    // from config alone when this caller may not read it, so a cloud model gets
+    // a generic "not found" without the filesystem being touched at all.
+    if crate::tools::mounts::is_mount_path(path) {
         let not_found = || format!("File not found: {}", path);
-        if !ctx.model_is_local {
-            return Err(not_found());
-        }
-        return match crate::tools::private::resolve_private_path(&registry.config, path) {
+        return match crate::tools::mounts::resolve_for(&registry.config, path, ctx.model_is_local)
+        {
             Ok(Some(abs)) => fs::read_to_string(&abs).await.map(cap_read).map_err(|_| not_found()),
             _ => Err(not_found()),
         };
@@ -399,18 +398,20 @@ pub async fn execute_list_directory(
         by_recent: input_string(input, "sort").map(|s| s != "name").unwrap_or(true),
     };
 
-    // Private mount: listable by local models only; cloud models get a generic
-    // "not found" (never revealing the dir's existence or its host path).
-    if crate::tools::private::is_private_path(path) {
+    // External mount: listable per its audience; a caller that may not read it
+    // gets a generic "not found" that never reveals the dir's existence or its
+    // host path.
+    if crate::tools::mounts::is_mount_path(path) {
         let not_found = || format!("Directory not found: {}", path);
-        if !ctx.model_is_local {
-            return Err(not_found());
-        }
-        let abs = match crate::tools::private::resolve_private_path(&registry.config, path) {
-            Ok(Some(abs)) => abs,
-            _ => return Err(not_found()),
-        };
-        let excludes = crate::tools::private::private_exclude_roots(&registry.config, path);
+        let abs =
+            match crate::tools::mounts::resolve_for(&registry.config, path, ctx.model_is_local) {
+                Ok(Some(abs)) => abs,
+                _ => return Err(not_found()),
+            };
+        // Excludes carve out nested mounts as well as configured excludeDirs,
+        // so a parent listing never surfaces a nested mount's files under the
+        // parent's address.
+        let excludes = crate::tools::mounts::exclude_roots(&registry.config, path);
         return list_dir_json(&abs, path, &opts, &excludes).await;
     }
     if let Some(msg) = check_permission(path, Op::Read) {
@@ -636,6 +637,7 @@ mod tests {
                 path: external_dir.to_path_buf(),
                 exclude_dirs: Vec::new(),
                 description: None,
+                audience: crate::config::Audience::Local,
             }],
             ..Config::default()
         };
@@ -656,6 +658,150 @@ mod tests {
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
             memory_read_this_turn: Default::default(),
         }
+    }
+
+    /// Registry matching the real setup: `~/Notes` local-only, with its
+    /// `Public/` subfolder shared with every model.
+    fn registry_with_nested_mounts(
+        vault_dir: &std::path::Path,
+        notes_root: &std::path::Path,
+    ) -> Arc<ToolRegistry> {
+        use crate::config::{Audience, Config, PrivateDir};
+        use crate::providers::ProviderRegistry;
+        use crate::skill_registry::SkillRegistry;
+        use crate::vault::Vault;
+
+        let config = Config {
+            private_read_only_dirs: vec![
+                PrivateDir {
+                    alias: "obsidian_vault".into(),
+                    path: notes_root.to_path_buf(),
+                    exclude_dirs: Vec::new(),
+                    description: None,
+                    audience: Audience::Local,
+                },
+                PrivateDir {
+                    alias: "public".into(),
+                    path: notes_root.join("Public"),
+                    exclude_dirs: Vec::new(),
+                    description: None,
+                    audience: Audience::All,
+                },
+            ],
+            ..Config::default()
+        };
+        Arc::new(ToolRegistry::new(
+            Arc::new(config),
+            Arc::new(Vault::new(vault_dir.to_path_buf()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ))
+    }
+
+    /// Build `~/Notes` with a private journal and a published essay.
+    fn nested_notes(tag: &str) -> TempDir {
+        let notes = TempDir::new(tag);
+        std::fs::create_dir_all(notes.0.join("Public")).unwrap();
+        std::fs::write(notes.0.join("Journal.md"), "dear diary, the pin is 1234").unwrap();
+        std::fs::write(notes.0.join("Public/Essay.md"), "published thoughts").unwrap();
+        notes
+    }
+
+    #[tokio::test]
+    async fn cloud_reads_the_shared_subfolder_but_not_its_private_parent() {
+        let vault = TempDir::new("vault-nest");
+        let notes = nested_notes("notes-nest");
+        let reg = registry_with_nested_mounts(&vault.0, &notes.0);
+
+        // The thing the user asked for: a cloud model reads published notes.
+        let essay = execute_read(&reg, &ctx(false), &json!({ "path": "shared/public/Essay.md" }))
+            .await
+            .unwrap();
+        assert!(essay.contains("published thoughts"));
+
+        // ...and still cannot touch the private notes surrounding them, by any
+        // address, with no error that distinguishes denial from absence.
+        for path in [
+            "private/obsidian_vault/Journal.md",
+            "private/obsidian_vault/Public/Essay.md",
+            "shared/obsidian_vault/Journal.md",
+        ] {
+            let err = execute_read(&reg, &ctx(false), &json!({ "path": path }))
+                .await
+                .unwrap_err();
+            assert!(err.starts_with("File not found"), "{path}: {err}");
+            assert!(!err.contains("1234"), "{path}: {err}");
+            assert!(!err.contains(notes.0.to_str().unwrap()), "leaked host path: {err}");
+        }
+
+        // A local model reads both, each at its own canonical address.
+        assert!(
+            execute_read(&reg, &ctx(true), &json!({ "path": "private/obsidian_vault/Journal.md" }))
+                .await
+                .unwrap()
+                .contains("dear diary")
+        );
+        assert!(
+            execute_read(&reg, &ctx(true), &json!({ "path": "shared/public/Essay.md" }))
+                .await
+                .unwrap()
+                .contains("published")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_nested_mount_is_carved_out_of_its_parents_listing() {
+        let vault = TempDir::new("vault-list-nest");
+        let notes = nested_notes("notes-list-nest");
+        let reg = registry_with_nested_mounts(&vault.0, &notes.0);
+
+        // Listing the parent recursively must not surface the nested mount's
+        // files under the parent's address — one file, one address.
+        let out = execute_list_directory(
+            &reg,
+            &ctx(true),
+            &json!({ "path": "private/obsidian_vault", "recursive": true }),
+        )
+        .await
+        .unwrap();
+        assert!(out.contains("Journal.md"), "{out}");
+        assert!(!out.contains("Essay.md"), "nested mount leaked into parent listing: {out}");
+
+        // Cloud may list the shared mount, never the private one.
+        let shared = execute_list_directory(&reg, &ctx(false), &json!({ "path": "shared/public" }))
+            .await
+            .unwrap();
+        assert!(shared.contains("Essay.md"), "{shared}");
+        let err = execute_list_directory(
+            &reg,
+            &ctx(false),
+            &json!({ "path": "private/obsidian_vault" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.starts_with("Directory not found"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn shared_mounts_are_still_read_only() {
+        let vault = TempDir::new("vault-w-nest");
+        let notes = nested_notes("notes-w-nest");
+        let reg = registry_with_nested_mounts(&vault.0, &notes.0);
+
+        for caller in [true, false] {
+            let err = execute_write(
+                &reg,
+                &ctx(caller),
+                &json!({ "path": "shared/public/Essay.md", "content": "defaced" }),
+            )
+            .await
+            .unwrap_err();
+            assert!(err.contains("Access denied"), "{err}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(notes.0.join("Public/Essay.md")).unwrap(),
+            "published thoughts"
+        );
     }
 
     #[tokio::test]
@@ -933,6 +1079,7 @@ mod tests {
                 path: external.0.clone(),
                 exclude_dirs: vec!["PromptBox".into()],
                 description: None,
+                audience: crate::config::Audience::Local,
             }],
             ..Config::default()
         };
