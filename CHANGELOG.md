@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.33
+
+- **Share a published folder with cloud models.** A read-only directory can now
+  be marked `audience: all`, so every model can read it instead of local ones
+  only — useful when part of your notes is already public. A shared folder may
+  sit inside a local-only one: the narrower entry wins, so `~/Notes` stays
+  private while `~/Notes/Public` is shared, with no exclusion list to maintain.
+  Directories are local-only unless you say otherwise, and everything stays
+  read-only. Existing config is unchanged — add `audience: all` to opt in.
+
 ## 0.4.32
 
 - **Tasks use the same deletion flow as everything else.** The redundant Delete
