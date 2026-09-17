@@ -111,7 +111,17 @@ pub async fn execute(
         return Err(format!("Directory not found: {}", directory));
     }
     let excludes = if mount {
+        if crate::tools::mounts::is_private_path(directory) {
+            ctx.mark_private_read();
+        }
         crate::tools::mounts::exclude_roots(&registry.config, directory)
+    } else if !ctx.model_is_local
+        && crate::tools::conversation_privacy::is_conversation_path(directory)
+    {
+        // Snippets are content, so a search is a read in miniature: conversations
+        // carrying private material have to drop out of the candidate set before
+        // anything is scanned.
+        crate::tools::conversation_privacy::hidden_paths(&search_path).await
     } else {
         Vec::new()
     };
@@ -489,6 +499,7 @@ mod tests {
             model_is_local,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
             memory_read_this_turn: Default::default(),
+            private_read_this_turn: Default::default(),
         }
     }
 

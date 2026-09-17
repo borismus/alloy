@@ -571,6 +571,7 @@ mod tests {
             model_is_local,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
             memory_read_this_turn: Default::default(),
+            private_read_this_turn: Default::default(),
         }
     }
 

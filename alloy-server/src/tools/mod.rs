@@ -4,6 +4,7 @@
 //! takes a ToolCall, dispatches to the right executor, returns a ToolResult.
 //! Server-side equivalent — file I/O against the vault, no Tauri plugins.
 
+pub mod conversation_privacy;
 pub mod files;
 pub mod http;
 pub mod mounts;
@@ -43,6 +44,25 @@ pub struct ToolContext {
     /// actually seen the revision it is replacing — see
     /// [`files::review_memory_write`](crate::tools::files::review_memory_write).
     pub memory_read_this_turn: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Set once this turn has read local-only material: a `private/` mount, or a
+    /// conversation already marked as carrying such material. The conversation
+    /// this turn belongs to is then marked too, so the record cannot become a
+    /// cloud-readable copy of what only local models were trusted to see.
+    pub private_read_this_turn: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ToolContext {
+    /// Record that this turn touched local-only material.
+    pub fn mark_private_read(&self) {
+        self.private_read_this_turn
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether this turn touched local-only material.
+    pub fn read_private_this_turn(&self) -> bool {
+        self.private_read_this_turn
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 pub struct ToolRegistry {

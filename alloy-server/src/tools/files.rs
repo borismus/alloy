@@ -136,7 +136,14 @@ pub async fn execute_read(
         let not_found = || format!("File not found: {}", path);
         return match crate::tools::mounts::resolve_for(&registry.config, path, ctx.model_is_local)
         {
-            Ok(Some(abs)) => fs::read_to_string(&abs).await.map(cap_read).map_err(|_| not_found()),
+            Ok(Some(abs)) => {
+                // Reading a local-only mount taints this turn, so the record of
+                // it does not become a cloud-readable copy.
+                if crate::tools::mounts::is_private_path(path) {
+                    ctx.mark_private_read();
+                }
+                fs::read_to_string(&abs).await.map(cap_read).map_err(|_| not_found())
+            }
             _ => Err(not_found()),
         };
     }
@@ -144,6 +151,17 @@ pub async fn execute_read(
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
+    // A conversation carrying private material is invisible to cloud callers,
+    // and taints a local caller's turn so the marking travels with the content
+    // instead of stopping at the first hop.
+    if crate::tools::conversation_privacy::is_conversation_path(path)
+        && crate::tools::conversation_privacy::is_marked_private(&resolved)
+    {
+        if !ctx.model_is_local {
+            return Err(format!("File not found: {}", path));
+        }
+        ctx.mark_private_read();
+    }
     let content = fs::read_to_string(&resolved)
         .await
         .map(cap_read)
@@ -411,6 +429,9 @@ pub async fn execute_list_directory(
         // Excludes carve out nested mounts as well as configured excludeDirs,
         // so a parent listing never surfaces a nested mount's files under the
         // parent's address.
+        if crate::tools::mounts::is_private_path(path) {
+            ctx.mark_private_read();
+        }
         let excludes = crate::tools::mounts::exclude_roots(&registry.config, path);
         return list_dir_json(&abs, path, &opts, &excludes).await;
     }
@@ -418,7 +439,16 @@ pub async fn execute_list_directory(
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
-    list_dir_json(&resolved, path, &opts, &[]).await
+    // Filenames are slugs of conversation titles, so a listing leaks the subject
+    // of every private conversation even though no file is opened.
+    let hidden = if !ctx.model_is_local
+        && crate::tools::conversation_privacy::is_conversation_path(path)
+    {
+        crate::tools::conversation_privacy::hidden_paths(&resolved).await
+    } else {
+        Vec::new()
+    };
+    list_dir_json(&resolved, path, &opts, &hidden).await
 }
 
 struct ListEntry {
@@ -657,6 +687,7 @@ mod tests {
             model_is_local,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
             memory_read_this_turn: Default::default(),
+            private_read_this_turn: Default::default(),
         }
     }
 
@@ -795,6 +826,127 @@ mod tests {
         .await
         .unwrap();
         assert!(ok.contains("PRIVATE-CANARY"));
+    }
+
+    /// Write a conversation record plus its Markdown twin into `vault/conversations`.
+    fn write_conversation(vault: &std::path::Path, stem: &str, marked: bool, body: &str) {
+        let dir = vault.join("conversations");
+        std::fs::create_dir_all(&dir).unwrap();
+        let marker = if marked { "private: true\n" } else { "" };
+        std::fs::write(
+            dir.join(format!("{stem}.yaml")),
+            format!(
+                "id: {stem}\ntitle: About Sarah\nmodel: mlx/local\ncreated: t\nupdated: t\n{marker}messages:\n- role: assistant\n  content: |-\n    {body}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(format!("{stem}.md")),
+            format!("# About Sarah\n\n{body}\n"),
+        )
+        .unwrap();
+    }
+
+    /// The vector behind this whole mechanism: a local model reads a private
+    /// note, the turn is persisted to `conversations/`, and a cloud model reads
+    /// it back from there. The mount stays shut; the copy must shut too.
+    #[tokio::test]
+    async fn a_conversation_holding_private_material_is_invisible_to_cloud_models() {
+        let vault = TempDir::new("vault-convpriv");
+        let external = TempDir::new("ext-convpriv");
+        write_conversation(&vault.0, "marked", true, "PRIVATE-CANARY about the log");
+        write_conversation(&vault.0, "plain", false, "ordinary chatter");
+        let reg = registry_with_private(&vault.0, &external.0);
+
+        // Reads: both the record and its twin, which holds the same content one
+        // extension away.
+        for path in ["conversations/marked.yaml", "conversations/marked.md"] {
+            let err = execute_read(&reg, &ctx(false), &json!({ "path": path }))
+                .await
+                .unwrap_err();
+            assert!(err.starts_with("File not found"), "{path}: {err}");
+            assert!(!err.contains("PRIVATE-CANARY"), "{path}: {err}");
+        }
+        // Unmarked conversations stay readable — this must not become a blanket
+        // ban on cloud models reading history.
+        assert!(execute_read(&reg, &ctx(false), &json!({ "path": "conversations/plain.md" }))
+            .await
+            .unwrap()
+            .contains("ordinary chatter"));
+
+        // Listings: filenames are title slugs, so the entry itself is a leak.
+        let listing = execute_list_directory(
+            &reg,
+            &ctx(false),
+            &json!({ "path": "conversations", "limit": 100 }),
+        )
+        .await
+        .unwrap();
+        assert!(!listing.contains("marked"), "marked conversation listed: {listing}");
+        assert!(listing.contains("plain"), "{listing}");
+
+        // Search: snippets are content, so a hit must not come back at all.
+        // (The response echoes the query, so assert on paths and counts rather
+        // than on the search term appearing anywhere in the JSON.)
+        let results = crate::tools::search::execute(
+            &reg,
+            &ctx(false),
+            &json!({ "directory": "conversations", "query": "the log" }),
+        )
+        .await
+        .unwrap();
+        assert!(!results.contains("conversations/marked"), "path leaked: {results}");
+        assert!(!results.contains("PRIVATE-CANARY"), "snippet leaked: {results}");
+        assert!(results.contains("\"returned\": 0"), "{results}");
+
+        // ...while an unmarked conversation is still searchable.
+        let plain = crate::tools::search::execute(
+            &reg,
+            &ctx(false),
+            &json!({ "directory": "conversations", "query": "ordinary chatter" }),
+        )
+        .await
+        .unwrap();
+        assert!(plain.contains("conversations/plain"), "{plain}");
+
+        // A local model still reads it, and doing so marks the current turn so
+        // the material cannot be laundered one hop further.
+        let local = ctx(true);
+        assert!(execute_read(&reg, &local, &json!({ "path": "conversations/marked.md" }))
+            .await
+            .unwrap()
+            .contains("PRIVATE-CANARY"));
+        assert!(
+            local.read_private_this_turn(),
+            "reading a marked conversation must taint the turn that read it"
+        );
+    }
+
+    #[tokio::test]
+    async fn reading_a_private_mount_marks_the_turn() {
+        let vault = TempDir::new("vault-taint");
+        let external = TempDir::new("ext-taint");
+        std::fs::write(external.0.join("diary.md"), "dear diary").unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+
+        let untouched = ctx(true);
+        assert!(!untouched.read_private_this_turn());
+
+        let c = ctx(true);
+        execute_read(&reg, &c, &json!({ "path": "private/notes/diary.md" }))
+            .await
+            .unwrap();
+        assert!(c.read_private_this_turn());
+
+        // An ordinary vault read leaves the turn clean, or every conversation
+        // would end up marked and the signal would mean nothing.
+        let plain = ctx(true);
+        std::fs::create_dir_all(vault.0.join("notes")).unwrap();
+        std::fs::write(vault.0.join("notes/n.md"), "hi").unwrap();
+        execute_read(&reg, &plain, &json!({ "path": "notes/n.md" }))
+            .await
+            .unwrap();
+        assert!(!plain.read_private_this_turn());
     }
 
     /// Registry matching the real setup: `~/Notes` local-only, with its

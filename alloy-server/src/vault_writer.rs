@@ -18,6 +18,12 @@ struct Conversation {
     model: String,
     created: String,
     updated: String,
+    /// Set once a turn in this conversation read local-only material. Declared
+    /// before `messages` so it serializes into the file header, where
+    /// `conversation_privacy::is_marked_private` can find it with a short read
+    /// rather than parsing a large conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    private: Option<bool>,
     #[serde(default)]
     messages: Vec<Value>,
     // Preserve any other fields (memory_version, lastCompactedAt, etc.).
@@ -56,6 +62,10 @@ pub struct AssistantWrite {
     pub compacted: Option<NewCompacted>,
     /// Tool calls/results observed this turn, persisted so pills survive reload.
     pub tool_use: Vec<PersistedToolUse>,
+    /// True when this turn read a `private/` mount or an already-marked
+    /// conversation. Marks the conversation so cloud models cannot read back
+    /// what only local models were trusted to see.
+    pub contains_private: bool,
 }
 
 /// Append an assistant message to the conversation file. When `w.compacted` is
@@ -102,6 +112,11 @@ pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyho
     }
     conversation.messages.push(Value::Mapping(msg));
     conversation.updated = now;
+    // Sticky: a conversation that has held private material keeps holding it,
+    // so later ordinary turns must never clear the mark.
+    if w.contains_private {
+        conversation.private = Some(true);
+    }
 
     let yaml = serde_yaml::to_string(&conversation)?;
     write_atomic(&file_path, &yaml).await?;
@@ -352,6 +367,53 @@ mod tests {
         assert_eq!(generate_filename("abc123", Some("!!!")), "abc123.yaml");
     }
 
+    /// The mark is what makes a conversation invisible to cloud models, so it
+    /// has to survive the write that creates it — and every later write.
+    #[tokio::test]
+    async fn a_turn_that_read_private_material_marks_its_conversation_permanently() {
+        let temp = tempfile::tempdir().unwrap();
+        let conversations = temp.path().join("conversations");
+        fs::create_dir_all(&conversations).await.unwrap();
+        let path = conversations.join("conv-priv.yaml");
+        fs::write(
+            &path,
+            "id: conv-priv\nmodel: mlx/test\ncreated: t\nupdated: t\nmessages: []\n",
+        )
+        .await
+        .unwrap();
+        let vault = Vault::new(temp.path().to_path_buf()).unwrap();
+
+        let write = |content: &str, contains_private: bool| AssistantWrite {
+            conversation_id: "conv-priv".into(),
+            assistant_message_id: format!("m-{content}"),
+            content: content.into(),
+            error: None,
+            incomplete_reason: None,
+            usage: None,
+            compacted: None,
+            tool_use: Vec::new(),
+            contains_private,
+        };
+
+        append_assistant_message(&vault, write("clean", false)).await.unwrap();
+        let text = fs::read_to_string(&path).await.unwrap();
+        assert!(!text.contains("private: true"), "unmarked turn marked it: {text}");
+
+        append_assistant_message(&vault, write("touched", true)).await.unwrap();
+        let text = fs::read_to_string(&path).await.unwrap();
+        assert!(text.contains("private: true"), "{text}");
+        // In the header, before messages, so the check stays a short read.
+        let marker = text.find("private: true").unwrap();
+        let messages = text.find("messages:").unwrap();
+        assert!(marker < messages, "marker must precede messages: {text}");
+
+        // Sticky: an ordinary turn afterwards must not un-mark a conversation
+        // that already holds private material.
+        append_assistant_message(&vault, write("later", false)).await.unwrap();
+        let text = fs::read_to_string(&path).await.unwrap();
+        assert!(text.contains("private: true"), "mark was cleared: {text}");
+    }
+
     #[tokio::test]
     async fn assistant_error_is_atomic_with_partial_content_and_tools() {
         let temp = tempfile::tempdir().unwrap();
@@ -382,6 +444,7 @@ mod tests {
                     result: Some("no result".into()),
                     is_error: None,
                 }],
+                contains_private: false,
             },
         )
         .await
@@ -447,6 +510,7 @@ mod tests {
                 usage: None,
                 compacted: None,
                 tool_use: vec![],
+                contains_private: false,
             },
         )
         .await

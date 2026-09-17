@@ -40,6 +40,17 @@ fn subagent_tools() -> Vec<ToolDefinition> {
         .collect()
 }
 
+/// Whether a sub-agent may reach local-only material.
+///
+/// The intersection of its own trust and its parent's, because a sub-agent hands
+/// its summary back: a local sub-agent spawned by a cloud parent would be a
+/// proxy for exactly what the parent was refused — name a local model, have it
+/// read `private/`, receive the contents. A sub-agent is never more privileged
+/// than whoever asked for it.
+fn subagent_is_local(parent_is_local: bool, subagent_model_is_local: bool) -> bool {
+    parent_is_local && subagent_model_is_local
+}
+
 fn ensure_spawn_allowed(ctx: &ToolContext) -> Result<(), String> {
     if ctx.model_is_local {
         return Err(
@@ -94,6 +105,8 @@ pub async fn execute(
             tools,
             name,
             ctx.execution_policy,
+            ctx.model_is_local,
+            ctx.private_read_this_turn.clone(),
         ));
     }
 
@@ -114,6 +127,7 @@ pub async fn execute(
     Ok(parts.join("\n\n"))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_one_agent(
     parent_registry: Arc<ToolRegistry>,
     model: String,
@@ -122,6 +136,8 @@ async fn run_one_agent(
     tools: Vec<ToolDefinition>,
     name: String,
     execution_policy: crate::execution_policy::ExecutionPolicy,
+    parent_is_local: bool,
+    private_read: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<(String, String, String), (String, String, String)> {
     let (provider, upstream_model) = match parent_registry.providers.resolve(&model) {
         Ok(r) => r,
@@ -169,11 +185,15 @@ async fn run_one_agent(
             message_id: None,
             conversation_id: None,
             inside_subagent: true,
-            // Computed from the sub-agent's own model, so a cloud parent spawning
-            // a local sub-agent (or vice versa) is classified correctly.
-            model_is_local: crate::local::model_is_local(&parent_registry.config, &model),
+            model_is_local: subagent_is_local(
+                parent_is_local,
+                crate::local::model_is_local(&parent_registry.config, &model),
+            ),
             execution_policy,
             memory_read_this_turn: Default::default(),
+            // Shared with the parent turn: material a sub-agent reads reaches the
+            // parent's conversation, so it must mark that conversation too.
+            private_read_this_turn: private_read,
         },
         // Sub-agents use whatever provider they're given via Alloy's own loop;
         // no Claude Code MCP bridge.
@@ -209,6 +229,7 @@ mod tests {
             model_is_local,
             execution_policy: crate::execution_policy::ExecutionPolicy::interactive(),
             memory_read_this_turn: Default::default(),
+            private_read_this_turn: Default::default(),
         }
     }
 
@@ -222,5 +243,17 @@ mod tests {
     fn cloud_parent_can_spawn_but_nested_subagent_cannot() {
         assert!(ensure_spawn_allowed(&context(false, false)).is_ok());
         assert!(ensure_spawn_allowed(&context(false, true)).is_err());
+    }
+
+    /// A cloud model may not borrow a local model's privileges. Spawning is
+    /// already denied to local parents, so without this the only reachable
+    /// combination — cloud parent, local sub-agent — would be a private-mount
+    /// proxy whose output lands back in the cloud model's context.
+    #[test]
+    fn a_subagent_is_never_more_privileged_than_its_parent() {
+        assert!(!subagent_is_local(false, true), "cloud parent, local sub-agent");
+        assert!(!subagent_is_local(false, false));
+        assert!(subagent_is_local(true, true), "local parent, local sub-agent");
+        assert!(!subagent_is_local(true, false), "local parent, cloud sub-agent");
     }
 }

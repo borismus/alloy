@@ -46,6 +46,16 @@ pub fn prefix_for(audience: Audience) -> &'static str {
     }
 }
 
+/// True when `request_path` addresses a local-only mount. Used to mark a turn
+/// as having read material cloud models may not see; the prefix is authoritative
+/// because [`resolve_for`] refuses any request whose prefix disagrees with its
+/// mount's audience.
+pub fn is_private_path(request_path: &str) -> bool {
+    request_path
+        .trim_start_matches('/')
+        .starts_with(PRIVATE_PREFIX)
+}
+
 /// True when `request_path` addresses either mount prefix (ignoring a leading `/`).
 pub fn is_mount_path(request_path: &str) -> bool {
     let rel = request_path.trim_start_matches('/');

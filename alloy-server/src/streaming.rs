@@ -81,6 +81,10 @@ pub struct SessionInner {
     /// Internal limits for this turn. Kept with the session so providers that
     /// own their tool loop and call back over MCP inherit task-specific limits.
     pub execution_policy: ExecutionPolicy,
+    /// Set when any tool call this turn read local-only material. Lives on the
+    /// session so both the success and failure persistence paths mark the
+    /// conversation from the same signal.
+    pub private_read: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -235,6 +239,7 @@ impl SessionRegistry {
                 error_message: None,
                 error_persisted: false,
                 tool_history: Vec::new(),
+                private_read: Default::default(),
                 mcp_token: mcp_token.into(),
                 execution_policy: ExecutionPolicy::interactive(),
             }),
@@ -336,6 +341,7 @@ pub fn start_session(
             error_message: None,
             error_persisted: false,
             tool_history: Vec::new(),
+            private_read: Default::default(),
             mcp_token: uuid::Uuid::new_v4().to_string(),
             execution_policy: params.execution_policy,
         }),
@@ -498,6 +504,16 @@ async fn run_stream(
     });
 
     let model_is_local = crate::local::model_is_local(&tools.config, &params.model);
+    // One lock: two `lock()` calls inside the struct literal below would
+    // deadlock, because the first guard is a temporary that lives until the end
+    // of the statement and std's Mutex is not reentrant.
+    let (assistant_message_id, private_read) = {
+        let inner = session.inner.lock().unwrap();
+        (
+            inner.assistant_message_id.clone(),
+            inner.private_read.clone(),
+        )
+    };
     let loop_req = LoopRequest {
         provider: provider.clone(),
         model: upstream_model.clone(),
@@ -511,12 +527,13 @@ async fn run_stream(
         cancel: cancel.clone(),
         retry_connect: params.retry_connect,
         tool_ctx: ToolContext {
-            message_id: Some(session.inner.lock().unwrap().assistant_message_id.clone()),
+            message_id: Some(assistant_message_id),
             conversation_id: Some(format!("conversations/{}", params.conversation_id)),
             inside_subagent: false,
             model_is_local,
             execution_policy: params.execution_policy,
             memory_read_this_turn: Default::default(),
+            private_read_this_turn: private_read,
         },
         mcp,
         context_window: cw,
@@ -545,11 +562,12 @@ async fn run_stream(
             }
 
             if !params.skip_persist {
-                let (assistant_message_id, tool_use) = {
+                let (assistant_message_id, tool_use, contains_private) = {
                     let inner = session.inner.lock().unwrap();
                     (
                         inner.assistant_message_id.clone(),
                         collect_tool_uses(&inner.tool_history),
+                        inner.private_read.load(std::sync::atomic::Ordering::Relaxed),
                     )
                 };
                 let write = AssistantWrite {
@@ -561,6 +579,7 @@ async fn run_stream(
                     usage: stream_result.usage.clone(),
                     compacted: new_compacted,
                     tool_use,
+                    contains_private,
                 };
                 if let Err(e) = vault_writer::append_assistant_message(&vault, write).await {
                     tracing::warn!("failed to append assistant message: {}", e);
@@ -804,7 +823,7 @@ async fn persist_conversation_error(
         return false;
     }
 
-    let (content, assistant_message_id, tool_use) = {
+    let (content, assistant_message_id, tool_use, contains_private) = {
         let inner = session.inner.lock().unwrap();
         let content = if inner.full_content.trim().is_empty() {
             String::new()
@@ -815,6 +834,7 @@ async fn persist_conversation_error(
             content,
             inner.assistant_message_id.clone(),
             collect_tool_uses(&inner.tool_history),
+            inner.private_read.load(std::sync::atomic::Ordering::Relaxed),
         )
     };
     let write = AssistantWrite {
@@ -828,6 +848,7 @@ async fn persist_conversation_error(
         usage: None,
         compacted: None,
         tool_use,
+        contains_private,
     };
     match vault_writer::append_assistant_message(vault, write).await {
         Ok(()) => true,
