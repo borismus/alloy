@@ -4,6 +4,32 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.34
+
+- **Cloud models can no longer read your private notes second-hand.** Local-only
+  folders were never readable by a cloud model, but anything a local model read
+  was written into the conversation record — and `conversations/` was readable by
+  everything. A conversation that has touched a local-only folder is now marked,
+  and cloud models cannot read, search, or even list it. Conversations already in
+  your vault stay unmarked until you run
+  `alloy-serve --vault <path> --mark-private-conversations`, which reports what it
+  would mark and changes nothing until you add `--write`.
+- **Switching a conversation to a cloud model asks first.** The next turn replays
+  everything said so far to the new provider, so moving off a local model is a
+  disclosure — of your own messages, not just anything a tool read. Alloy now
+  names the provider that would receive it and lets you cancel. Staying local, or
+  staying with the same provider, says nothing.
+- **The seven built-in skills work again.** `note-query`, `save-memory`,
+  `read-url`, `note-capture`, `note-linker`, `summarize-note`, and
+  `create-scheduled-task` were offered to the model but could not run, so it
+  reported them missing and improvised. They now load, and a skill you write in
+  your vault still overrides the built-in one of the same name.
+- **Notes folders work with Claude and Codex.** Both were told about the folders
+  but reached for a shell to find them, which cannot see them, and concluded your
+  notes were unavailable.
+- Sub-agents can no longer be used to reach folders their parent is not allowed
+  to read.
+
 ## 0.4.33
 
 - **Share a published folder with cloud models.** A read-only directory can now
