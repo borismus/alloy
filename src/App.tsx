@@ -27,8 +27,8 @@ import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
 import { openInEditor, type ExternalEditor } from './utils/openInEditor';
-import { chooseDefaultModel } from './utils/models';
-import { modelSwitchDisclosure, providerOf, type DisclosureReason } from './utils/privateContext';
+import { chooseDefaultModel, providerLabel } from './utils/models';
+import { modelSwitchDisclosure, type DisclosureReason } from './utils/privateContext';
 import { AlloyDialog, Button } from './components/ui';
 import {
   setDefaultPreference,
@@ -1364,22 +1364,28 @@ function AppContent() {
             isOpen
             onOpenChange={(open) => { if (!open) setPendingModelSwitch(null); }}
             size="compact"
-            title="Send this conversation to a cloud model?"
+            title="Send to the cloud?"
           >
             {() => (
-              <div className="dialog-body">
-                <p>
+              <div className="disclosure-dialog">
+                <p className="disclosure-lede">
                   {pendingModelSwitch.reason === 'private-material'
-                    ? 'This conversation includes notes only local models can read. Continuing sends the conversation so far — including those notes — to '
+                    ? 'This conversation includes notes only local models can read.'
                     : pendingModelSwitch.reason === 'unknown-origin'
-                      ? 'Alloy can’t confirm where this conversation has been running — its model isn’t reachable right now, so it may have been local. Continuing sends all of it — every message so far — to '
-                      : 'This conversation has been running on a local model, so nothing in it has left your machine. Continuing sends all of it — every message so far — to '}
-                  <strong>{providerOf(availableModels, pendingModelSwitch.model)}</strong>.
+                      ? 'This conversation’s model isn’t reachable, so it may have been running locally.'
+                      : 'Nothing in this conversation has left your machine yet.'}
                 </p>
-                <p>You can keep using it with a local model instead.</p>
-                <div className="rename-buttons">
+                <p className="disclosure-detail">
+                  Continuing sends every message so far to{' '}
+                  <strong>
+                    {/* Drop the "(subscription)" qualifier: it speaks to billing,
+                        and the only question here is who receives the text. */}
+                    {providerLabel(undefined, pendingModelSwitch.model).replace(/\s*\(subscription\)$/, '')}
+                  </strong>.
+                </p>
+                <div className="disclosure-actions">
                   <Button variant="secondary" onPress={() => setPendingModelSwitch(null)}>
-                    Keep local
+                    Cancel
                   </Button>
                   <Button
                     variant="danger"

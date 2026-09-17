@@ -144,3 +144,37 @@ textarea,
   opacity: 0.7;
 }
 
+
+/* Model-switch disclosure dialog.
+   Its own styles rather than borrowing the sidebar's rename/delete classes,
+   which styled raw <button> elements and left the ui/Button secondary looking
+   like unstyled text next to a large danger pill. */
+.disclosure-dialog {
+  padding: 0.25rem 1.5rem 1.25rem;
+  max-width: 24rem;
+}
+
+.disclosure-lede {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.disclosure-detail {
+  margin: 0 0 1.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.disclosure-detail strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.disclosure-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
