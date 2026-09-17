@@ -660,6 +660,143 @@ mod tests {
         }
     }
 
+    /// THE BOUNDARY, stated once and checked through every tool that can reach
+    /// a mount.
+    ///
+    /// Trust is derived here the way production derives it — from the provider
+    /// config via `local::model_is_local` — rather than passed in as a bare
+    /// bool, so this also fails if provider classification changes and a cloud
+    /// provider starts being treated as local. `codex-cli` is the specific case
+    /// worth pinning: it runs a local process but sends prompts to OpenAI.
+    #[tokio::test]
+    async fn private_mounts_are_reachable_only_by_local_models() {
+        use crate::config::{Audience, CliAdapter, Config, PrivateDir, ProviderConfig, ProviderKind};
+        use crate::providers::ProviderRegistry;
+        use crate::skill_registry::SkillRegistry;
+        use crate::vault::Vault;
+
+        let vault_dir = TempDir::new("vault-boundary");
+        let notes = TempDir::new("notes-boundary");
+        std::fs::create_dir_all(notes.0.join("Public")).unwrap();
+        std::fs::write(notes.0.join("Sarah relationship log.md"), "PRIVATE-CANARY").unwrap();
+        std::fs::write(notes.0.join("Public/Essay.md"), "PUBLISHED-CANARY").unwrap();
+
+        let provider = |id: &str, kind, base: Option<&str>, local| ProviderConfig {
+            id: id.into(),
+            kind,
+            adapter: (kind == ProviderKind::Cli).then_some(CliAdapter::Codex),
+            base_url: base.map(str::to_string),
+            api_key: String::new(),
+            command: None,
+            oauth_token: None,
+            local,
+        };
+        let config = Config {
+            providers: vec![
+                provider(
+                    "openrouter",
+                    ProviderKind::OpenaiCompatible,
+                    Some("https://openrouter.ai/api/v1"),
+                    None,
+                ),
+                provider("codex-cli", ProviderKind::Cli, None, None),
+                provider("claude-cli", ProviderKind::Cli, None, None),
+                provider(
+                    "mlx",
+                    ProviderKind::OpenaiCompatible,
+                    Some("http://192.168.4.11:8000/v1"),
+                    Some(true),
+                ),
+            ],
+            private_read_only_dirs: vec![
+                PrivateDir {
+                    alias: "obsidian_vault".into(),
+                    path: notes.0.clone(),
+                    exclude_dirs: Vec::new(),
+                    description: None,
+                    audience: Audience::Local,
+                },
+                PrivateDir {
+                    alias: "public".into(),
+                    path: notes.0.join("Public"),
+                    exclude_dirs: Vec::new(),
+                    description: None,
+                    audience: Audience::All,
+                },
+            ],
+            ..Config::default()
+        };
+        let reg = Arc::new(ToolRegistry::new(
+            Arc::new(config.clone()),
+            Arc::new(Vault::new(vault_dir.0.clone()).unwrap()),
+            ProviderRegistry::from_configs(&[]),
+            Arc::new(SkillRegistry::new()),
+        ));
+
+        // Every way a model can name the private note, including through the
+        // shared mount's prefix and the parent mount's path.
+        let private_paths = [
+            "private/obsidian_vault/Sarah relationship log.md",
+            "/private/obsidian_vault/Sarah relationship log.md",
+            "shared/obsidian_vault/Sarah relationship log.md",
+            "private/public/../Sarah relationship log.md",
+        ];
+
+        for model in [
+            "openrouter/anthropic/claude-sonnet-4.6",
+            "codex-cli/gpt-5.6-sol",
+            "claude-cli/opus",
+        ] {
+            let is_local = crate::local::model_is_local(&config, model);
+            assert!(!is_local, "{model} must be classified as cloud");
+            let cloud = ctx(is_local);
+
+            for path in private_paths {
+                let err = execute_read(&reg, &cloud, &json!({ "path": path }))
+                    .await
+                    .unwrap_err();
+                assert!(!err.contains("PRIVATE-CANARY"), "{model} read {path}: {err}");
+            }
+            let err = execute_list_directory(
+                &reg,
+                &cloud,
+                &json!({ "path": "private/obsidian_vault", "recursive": true }),
+            )
+            .await
+            .unwrap_err();
+            assert!(err.starts_with("Directory not found"), "{model}: {err}");
+
+            let err = crate::tools::search::execute(
+                &reg,
+                &cloud,
+                &json!({ "directory": "private/obsidian_vault", "query": "Sarah" }),
+            )
+            .await
+            .unwrap_err();
+            assert!(err.starts_with("Directory not found"), "{model}: {err}");
+
+            // The shared mount stays reachable — denial must be about audience,
+            // not about mounts being broken for cloud models generally.
+            let ok = execute_read(&reg, &cloud, &json!({ "path": "shared/public/Essay.md" }))
+                .await
+                .unwrap();
+            assert!(ok.contains("PUBLISHED-CANARY"), "{model}: {ok}");
+        }
+
+        // ...and a genuinely local model still reads the private note.
+        let local_model = "mlx/Qwen3.8-27B-MLX-4bit";
+        assert!(crate::local::model_is_local(&config, local_model));
+        let local = ctx(true);
+        let ok = execute_read(
+            &reg,
+            &local,
+            &json!({ "path": "private/obsidian_vault/Sarah relationship log.md" }),
+        )
+        .await
+        .unwrap();
+        assert!(ok.contains("PRIVATE-CANARY"));
+    }
+
     /// Registry matching the real setup: `~/Notes` local-only, with its
     /// `Public/` subfolder shared with every model.
     fn registry_with_nested_mounts(
