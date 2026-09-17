@@ -779,9 +779,12 @@ fn apply_private_dirs_hint(
         .collect::<Vec<_>>()
         .join("\n");
     let hint = format!(
-        "The user's real notes / knowledge base live in these read-only directories, \
-         searchable with read_file, list_directory, and search_directory:\n\
+        "The user's real notes / knowledge base live in these read-only directories:\n\
          {lines}\n\
+         These are Alloy tool paths, not filesystem paths. Reach them ONLY with the \
+         read_file, list_directory, and search_directory tools. Shell commands cannot \
+         see them: they do not exist on disk and the shell runs outside the vault, so \
+         `ls`, `rg`, or `find` will report that they are missing.\n\
          When the user asks about \"their notes\" or any personal topic, search these FIRST. \
          The vault's own `notes/` directory holds only notes created inside this app — it is NOT \
          the user's personal notes."
@@ -1460,6 +1463,21 @@ mod tests {
             "/Users/x/Notes",
         ] {
             assert!(!out.contains(leaked), "leaked {leaked} to a cloud model: {out}");
+        }
+    }
+
+    /// Regression: naming `shared/public/` to a provider that owns a shell
+    /// (Codex) sent it to `rg shared/public` in its temp working directory,
+    /// where the path does not exist — so it reported the notes unmounted and
+    /// gave up without trying the tools that can actually reach them.
+    #[test]
+    fn hint_says_mount_paths_are_not_reachable_from_a_shell() {
+        let cfg = cfg_with_nested_mounts();
+        for model_is_local in [true, false] {
+            let out = apply_private_dirs_hint(Some("BASE".into()), &cfg, model_is_local).unwrap();
+            assert!(out.contains("not filesystem paths"), "{out}");
+            assert!(out.contains("Shell commands cannot"), "{out}");
+            assert!(out.contains("search_directory"), "{out}");
         }
     }
 
