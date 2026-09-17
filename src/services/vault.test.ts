@@ -232,6 +232,34 @@ describe('VaultService', () => {
       expect(fs.writeTextFile).not.toHaveBeenCalled();
     });
 
+    it('preserves the private marker the backend set', async () => {
+      // The marker is what keeps a conversation out of cloud models' reach. The
+      // frontend rewrites the whole file on every save, so dropping an unknown
+      // field here would silently re-expose it.
+      vaultService.setVaultPath('/test/vault');
+      const mockConversation = createMockConversation({
+        id: 'conv-private',
+        private: true,
+        messages: [
+          { role: 'user', content: 'Hello', timestamp: '2024-01-01T10:00:00Z' },
+        ],
+      });
+      vi.mocked(fs.writeTextFile).mockResolvedValue();
+      vi.mocked(fs.exists).mockResolvedValue(true);
+      vi.mocked(fs.readDir).mockResolvedValue([]);
+
+      await vaultService.saveConversation(mockConversation);
+
+      const yamlCall = vi.mocked(fs.writeTextFile).mock.calls.find(([p]) =>
+        String(p).endsWith('.yaml'),
+      );
+      expect(yamlCall).toBeDefined();
+      const written = String(yamlCall![1]);
+      expect(written).toContain('private: true');
+      // In the header, ahead of messages, where the backend's short read finds it.
+      expect(written.indexOf('private: true')).toBeLessThan(written.indexOf('messages:'));
+    });
+
     it('should save conversation to yaml file', async () => {
       vaultService.setVaultPath('/test/vault');
       // Need to include messages so conversation is saved (empty messages are filtered)

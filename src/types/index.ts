@@ -194,6 +194,13 @@ export interface Conversation {
   model: string;  // Format: "provider/model-id" (e.g., "anthropic/claude-sonnet-4-5-20250929")
   title?: string;
   memory_version?: number;
+  /**
+   * Set by the backend when a turn in this conversation read local-only
+   * material (a `private/` mount, or another conversation already marked).
+   * Cloud models cannot read such a conversation from the vault, and switching
+   * this conversation to a cloud model warns first. Never cleared once set.
+   */
+  private?: boolean;
   messages: Message[];
   // ISO timestamp of the most recent compaction (auto or manual). Omitted if never compacted.
   lastCompactedAt?: string;

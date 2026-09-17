@@ -28,6 +28,8 @@ import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
 import { openInEditor, type ExternalEditor } from './utils/openInEditor';
 import { chooseDefaultModel } from './utils/models';
+import { shouldWarnBeforeModelSwitch, providerOf } from './utils/privateContext';
+import { AlloyDialog, Button } from './components/ui';
 import {
   setDefaultPreference,
   toggleFavoritePreference,
@@ -225,6 +227,9 @@ function AppContent() {
   const [initError, setInitError] = useState<{ title: string; detail: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  // Model the user picked for a conversation holding private material, pending
+  // their confirmation that sending it to that provider is intended.
+  const [pendingModelSwitch, setPendingModelSwitch] = useState<string | null>(null);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
@@ -1093,7 +1098,8 @@ function AppContent() {
     await persistModelPreferences(current, setDefaultPreference(current, modelKey));
   }, [config?.defaultModel, config?.favoriteModels, persistModelPreferences]);
 
-  const handleModelChange = (modelKey: string) => {
+  /// Applies a model switch, having already decided any disclosure is intended.
+  const applyModelChange = (modelKey: string) => {
     if (!currentConversation) return;
 
     const modelChanged = modelKey !== currentConversation.model;
@@ -1113,6 +1119,18 @@ function AppContent() {
       setDraftConversation(prev => prev?.id === updatedConversation.id ? updatedConversation : prev);
       setConversations(prev => prev.map(c => c.id === updatedConversation.id ? updatedConversation : c));
     }
+  };
+
+  const handleModelChange = (modelKey: string) => {
+    if (!currentConversation) return;
+    // The next turn replays this conversation's history to whichever model runs
+    // it, so switching to a cloud model is itself the disclosure — ask first,
+    // while declining is still possible.
+    if (shouldWarnBeforeModelSwitch(currentConversation, modelKey, availableModels)) {
+      setPendingModelSwitch(modelKey);
+      return;
+    }
+    applyModelChange(modelKey);
   };
 
   // handleSendMessage wrapper: ChatInterface calls with (content, attachments, onChunk, signal)
@@ -1334,6 +1352,40 @@ function AppContent() {
     <TaskProvider tasks={tasks}>
       <SettingsLauncherProvider open={() => setShowSettings(true)}>
         <UpdateChecker />
+        {pendingModelSwitch && (
+          <AlloyDialog
+            isOpen
+            onOpenChange={(open) => { if (!open) setPendingModelSwitch(null); }}
+            size="compact"
+            title="Send this conversation to a cloud model?"
+          >
+            {() => (
+              <div className="dialog-body">
+                <p>
+                  This conversation includes notes only local models can read. Continuing
+                  sends the conversation so far — including those notes — to{' '}
+                  <strong>{providerOf(availableModels, pendingModelSwitch)}</strong>.
+                </p>
+                <p>You can keep using it with a local model instead.</p>
+                <div className="rename-buttons">
+                  <Button variant="secondary" onPress={() => setPendingModelSwitch(null)}>
+                    Keep local
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onPress={() => {
+                      const target = pendingModelSwitch;
+                      setPendingModelSwitch(null);
+                      applyModelChange(target);
+                    }}
+                  >
+                    Send anyway
+                  </Button>
+                </div>
+              </div>
+            )}
+          </AlloyDialog>
+        )}
         {memory && (
           <MemoryWarning
             sizeBytes={memory.sizeBytes}
