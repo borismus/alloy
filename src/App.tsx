@@ -28,7 +28,7 @@ import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
 import { openInEditor, type ExternalEditor } from './utils/openInEditor';
 import { chooseDefaultModel } from './utils/models';
-import { shouldWarnBeforeModelSwitch, providerOf } from './utils/privateContext';
+import { modelSwitchDisclosure, providerOf, type DisclosureReason } from './utils/privateContext';
 import { AlloyDialog, Button } from './components/ui';
 import {
   setDefaultPreference,
@@ -159,7 +159,11 @@ export function mergeConversationSummaries(
     if (
       existing.title === summary.title &&
       existing.model === summary.model &&
-      existing.created === summary.created
+      existing.created === summary.created &&
+      // A conversation can be marked private by the backend mid-session, which
+      // does not move `updated`. Without this the stale object survives and the
+      // switch warning never arms for the turn that earned it.
+      existing.private === summary.private
     ) {
       return existing;
     }
@@ -227,9 +231,11 @@ function AppContent() {
   const [initError, setInitError] = useState<{ title: string; detail: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  // Model the user picked for a conversation holding private material, pending
-  // their confirmation that sending it to that provider is intended.
-  const [pendingModelSwitch, setPendingModelSwitch] = useState<string | null>(null);
+  // Model the user picked for a conversation whose contents haven't reached that
+  // provider yet, pending their confirmation that sending them is intended.
+  const [pendingModelSwitch, setPendingModelSwitch] = useState<
+    { model: string; reason: DisclosureReason } | null
+  >(null);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
@@ -1126,8 +1132,9 @@ function AppContent() {
     // The next turn replays this conversation's history to whichever model runs
     // it, so switching to a cloud model is itself the disclosure — ask first,
     // while declining is still possible.
-    if (shouldWarnBeforeModelSwitch(currentConversation, modelKey, availableModels)) {
-      setPendingModelSwitch(modelKey);
+    const reason = modelSwitchDisclosure(currentConversation, modelKey, availableModels);
+    if (reason) {
+      setPendingModelSwitch({ model: modelKey, reason });
       return;
     }
     applyModelChange(modelKey);
@@ -1362,9 +1369,12 @@ function AppContent() {
             {() => (
               <div className="dialog-body">
                 <p>
-                  This conversation includes notes only local models can read. Continuing
-                  sends the conversation so far — including those notes — to{' '}
-                  <strong>{providerOf(availableModels, pendingModelSwitch)}</strong>.
+                  {pendingModelSwitch.reason === 'private-material'
+                    ? 'This conversation includes notes only local models can read. Continuing sends the conversation so far — including those notes — to '
+                    : pendingModelSwitch.reason === 'unknown-origin'
+                      ? 'Alloy can’t confirm where this conversation has been running — its model isn’t reachable right now, so it may have been local. Continuing sends all of it — every message so far — to '
+                      : 'This conversation has been running on a local model, so nothing in it has left your machine. Continuing sends all of it — every message so far — to '}
+                  <strong>{providerOf(availableModels, pendingModelSwitch.model)}</strong>.
                 </p>
                 <p>You can keep using it with a local model instead.</p>
                 <div className="rename-buttons">
@@ -1374,7 +1384,7 @@ function AppContent() {
                   <Button
                     variant="danger"
                     onPress={() => {
-                      const target = pendingModelSwitch;
+                      const target = pendingModelSwitch.model;
                       setPendingModelSwitch(null);
                       applyModelChange(target);
                     }}

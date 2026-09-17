@@ -437,6 +437,10 @@ providers:
         updated: meta.updated ?? isoMtime,
         model: meta.model ?? '',
         title: meta.title ?? this.deriveTitleFromFilename(name),
+        // Carried through the metadata-only read because the summary is what
+        // the list holds, and a resync rebuilds open conversations from it.
+        // Dropping it here silently disarms the model-switch warning.
+        private: meta.private,
         messages: [],
         messagesLoaded: false,
       });

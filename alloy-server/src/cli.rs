@@ -23,4 +23,17 @@ pub struct Args {
     /// allowlist in `auth::ip_allowlist`.
     #[arg(long, default_value = "0.0.0.0")]
     pub host: String,
+
+    /// Report which conversations hold private-mount material and exit without
+    /// serving. Writes nothing unless `--write` is also given.
+    ///
+    /// Conversations written before the marker existed are invisible to this
+    /// protection until they carry it, so this is how an existing vault catches
+    /// up. Reporting is the default because it edits personal files.
+    #[arg(long)]
+    pub mark_private_conversations: bool,
+
+    /// Apply the marks that `--mark-private-conversations` would report.
+    #[arg(long, requires = "mark_private_conversations")]
+    pub write: bool,
 }

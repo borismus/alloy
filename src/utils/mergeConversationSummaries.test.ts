@@ -118,3 +118,24 @@ describe('resync idempotence', () => {
     expect(merged[1].title).toBe('Renamed');
   });
 });
+
+describe('private marking survives a resync', () => {
+  it('adopts a conversation newly marked private by the backend', () => {
+    // The backend marks a conversation when a turn reads a local-only mount.
+    // That does not change `updated`, so without comparing the flag the stale
+    // unmarked object survives and the model-switch warning never arms for the
+    // very turn that earned it.
+    const current = [conv({ messages: [msg], messagesLoaded: true })];
+    const merged = mergeConversationSummaries(current, [summary({ private: true })]);
+    expect(merged[0].private).toBe(true);
+    expect(merged[0].messages).toEqual([msg]);
+    expect(merged[0].messagesLoaded).toBe(true);
+  });
+
+  it('keeps the flag on an already-marked conversation', () => {
+    const current = [conv({ private: true, messages: [msg], messagesLoaded: true })];
+    const merged = mergeConversationSummaries(current, [summary({ private: true })]);
+    expect(merged[0].private).toBe(true);
+    expect(merged[0].messages).toEqual([msg]);
+  });
+});

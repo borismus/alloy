@@ -101,6 +101,157 @@ pub async fn hidden_paths(dir: &Path) -> Vec<PathBuf> {
     hidden
 }
 
+// ---------------------------------------------------------------------------
+// Backfill
+// ---------------------------------------------------------------------------
+
+/// Error text the file tools return when a read is refused. Mirrored here so a
+/// denial is never mistaken for a successful read; `denial_strings_match_the_tools`
+/// keeps this list honest against the tools themselves.
+const DENIALS: &[&str] = &[
+    "File not found",
+    "Directory not found",
+    "not accessible",
+    "Access denied",
+];
+
+/// True when a persisted tool result represents a refusal rather than content.
+pub fn is_denial(result: &str) -> bool {
+    DENIALS.iter().any(|d| result.starts_with(d))
+}
+
+/// One conversation that holds private-mount material but is not yet marked.
+#[derive(Debug)]
+pub struct Candidate {
+    pub path: PathBuf,
+    /// Successful local-only mount reads found in its persisted tool history.
+    pub reads: usize,
+    /// First such target, for the operator to eyeball before writing.
+    pub example: String,
+}
+
+#[derive(Debug, Default)]
+pub struct Report {
+    pub scanned: usize,
+    pub already_marked: usize,
+    /// Touched a `private/` path but was refused every time — nothing private
+    /// landed in the file, so marking it would hide a conversation for no reason.
+    pub denied_only: usize,
+    pub candidates: Vec<Candidate>,
+    pub unreadable: Vec<PathBuf>,
+}
+
+/// Count successful local-only mount reads persisted in one conversation.
+fn private_reads(doc: &serde_yaml::Value) -> (usize, Option<String>) {
+    let mut count = 0;
+    let mut first = None;
+    let Some(messages) = doc.get("messages").and_then(|m| m.as_sequence()) else {
+        return (0, None);
+    };
+    for message in messages {
+        let Some(uses) = message.get("toolUse").and_then(|t| t.as_sequence()) else {
+            continue;
+        };
+        for use_ in uses {
+            let input = use_.get("input");
+            let target = input
+                .and_then(|i| i.get("path").or_else(|| i.get("directory")))
+                .and_then(|p| p.as_str())
+                .unwrap_or("");
+            if !target.trim_start_matches('/').starts_with(MOUNT_PREFIX_PRIVATE) {
+                continue;
+            }
+            if use_.get("isError").and_then(|e| e.as_bool()).unwrap_or(false) {
+                continue;
+            }
+            let result = use_.get("result").and_then(|r| r.as_str()).unwrap_or("");
+            if is_denial(result) {
+                continue;
+            }
+            count += 1;
+            if first.is_none() {
+                first = Some(target.to_string());
+            }
+        }
+    }
+    (count, first)
+}
+
+/// `private/`, duplicated from `mounts` to keep this module free of a cycle.
+const MOUNT_PREFIX_PRIVATE: &str = "private/";
+
+/// Examine every conversation record without writing anything.
+pub fn scan(conversations_dir: &Path) -> Report {
+    let mut report = Report::default();
+    let Ok(entries) = std::fs::read_dir(conversations_dir) else {
+        return report;
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("yaml"))
+        .collect();
+    paths.sort();
+
+    for path in paths {
+        report.scanned += 1;
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            report.unreadable.push(path);
+            continue;
+        };
+        if is_marked_private(&path) {
+            report.already_marked += 1;
+            continue;
+        }
+        let Ok(doc) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+            report.unreadable.push(path);
+            continue;
+        };
+        let (reads, example) = private_reads(&doc);
+        if reads > 0 {
+            report.candidates.push(Candidate {
+                path,
+                reads,
+                example: example.unwrap_or_default(),
+            });
+        } else if text.contains("private/") {
+            report.denied_only += 1;
+        }
+    }
+    report
+}
+
+/// Insert the marker immediately before the top-level `messages:` key.
+///
+/// Textual on purpose. Re-serializing the YAML would rewrite quoting, ordering,
+/// and line wrapping across files the user reads in Obsidian, and would rewrite
+/// message bodies this command has no business touching. Returns `None` when the
+/// shape isn't what we expect, so an odd file is skipped rather than guessed at.
+pub fn insert_marker(original: &str) -> Option<String> {
+    if original.lines().any(|l| l.trim_end() == format!("{MARKER_KEY}: true")) {
+        return None; // already marked
+    }
+    let idx = original
+        .lines()
+        .position(|line| line.starts_with("messages:"))?;
+    let mut out = String::with_capacity(original.len() + 16);
+    for (i, line) in original.lines().enumerate() {
+        if i == idx {
+            out.push_str(&format!("{MARKER_KEY}: true\n"));
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    // The file must be byte-identical apart from the one inserted line. This is
+    // the whole safety property of the migration, so it is checked rather than
+    // trusted — and the trailing-newline normalisation above is exactly the kind
+    // of drift it catches.
+    if out.replacen(&format!("{MARKER_KEY}: true\n"), "", 1) != original {
+        return None;
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +347,68 @@ mod tests {
         assert!(hidden.contains(&d.0.join("marked.md")), "{hidden:?}");
         assert!(!hidden.contains(&d.0.join("plain.yaml")), "{hidden:?}");
         assert!(!hidden.contains(&d.0.join("plain.md")), "{hidden:?}");
+    }
+
+    #[test]
+    fn insert_marker_adds_exactly_one_line_and_changes_nothing_else() {
+        let original = "id: x\ntitle: A thing\nmodel: mlx/local\ncreated: t\nupdated: t\nmessages:\n- role: user\n  content: |-\n    hello\n";
+        let updated = insert_marker(original).unwrap();
+        assert_eq!(updated.replacen("private: true\n", "", 1), original);
+        assert_eq!(updated.lines().count(), original.lines().count() + 1);
+        // Header placement, ahead of messages, where the short read looks.
+        assert!(updated.find("private: true").unwrap() < updated.find("messages:").unwrap());
+        // `updated:` is untouched, so the sidebar does not reshuffle.
+        assert!(updated.contains("updated: t\n"));
+    }
+
+    #[test]
+    fn insert_marker_declines_rather_than_guessing() {
+        // Already marked.
+        assert!(insert_marker("id: x\nprivate: true\nmessages:\n- a\n").is_none());
+        // No top-level messages key: not a shape we understand, so leave it be.
+        assert!(insert_marker("id: x\nupdated: t\n").is_none());
+        // Indented `messages:` belongs to something else.
+        assert!(insert_marker("id: x\nnested:\n  messages:\n  - a\n").is_none());
+    }
+
+    #[test]
+    fn scan_marks_successful_reads_and_leaves_refusals_alone() {
+        let d = TempDir::new("scan");
+        let write = |name: &str, body: &str| {
+            fs::write(d.0.join(name), body).unwrap();
+        };
+        // A local model that actually read the mount.
+        write(
+            "read.yaml",
+            "id: r\nmodel: mlx/x\nupdated: t\nmessages:\n- role: assistant\n  toolUse:\n  - type: read_file\n    input:\n      path: private/obsidian_vault/Diary.md\n    result: 'dear diary'\n",
+        );
+        // A cloud model that was refused: nothing private landed in the file.
+        write(
+            "denied.yaml",
+            "id: d\nmodel: codex-cli/x\nupdated: t\nmessages:\n- role: assistant\n  toolUse:\n  - type: read_file\n    input:\n      path: private/obsidian_vault/Diary.md\n    result: 'File not found: private/obsidian_vault/Diary.md'\n",
+        );
+        // Ordinary conversation.
+        write(
+            "plain.yaml",
+            "id: p\nmodel: mlx/x\nupdated: t\nmessages:\n- role: user\n  content: hi\n",
+        );
+        // Already marked: must not be counted again.
+        write(
+            "done.yaml",
+            "id: done\nmodel: mlx/x\nupdated: t\nprivate: true\nmessages:\n- role: assistant\n  toolUse:\n  - type: read_file\n    input:\n      path: private/obsidian_vault/D.md\n    result: 'x'\n",
+        );
+
+        let report = scan(&d.0);
+        assert_eq!(report.scanned, 4);
+        assert_eq!(report.already_marked, 1);
+        assert_eq!(report.denied_only, 1);
+        let names: Vec<_> = report
+            .candidates
+            .iter()
+            .map(|c| c.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["read.yaml"], "only the file holding content");
+        assert_eq!(report.candidates[0].reads, 1);
     }
 
     #[test]

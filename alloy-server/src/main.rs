@@ -12,6 +12,62 @@ use alloy_server::{
 };
 use clap::Parser;
 
+/// Report, and optionally apply, `private: true` for conversations whose
+/// persisted tool history shows a successful local-only mount read.
+///
+/// Touches only the conversation records that qualify, and only by inserting a
+/// single line: no reformatting, no Markdown twins, no `updated` bump, nothing
+/// outside `conversations/`.
+fn mark_private_conversations(vault_root: &std::path::Path, write: bool) -> anyhow::Result<()> {
+    use alloy_server::tools::conversation_privacy as privacy;
+
+    let dir = vault_root.join("conversations");
+    let report = privacy::scan(&dir);
+
+    println!("scanned            : {}", report.scanned);
+    println!("already marked     : {}", report.already_marked);
+    println!("refused only       : {} (left alone)", report.denied_only);
+    println!("unreadable         : {}", report.unreadable.len());
+    println!("would mark         : {}", report.candidates.len());
+    println!();
+
+    for c in &report.candidates {
+        let name = c.path.file_name().unwrap_or_default().to_string_lossy();
+        println!("  {:>3} read(s)  {}", c.reads, name);
+        println!("              first: {}", c.example);
+    }
+    if report.candidates.is_empty() {
+        println!("  (nothing to do)");
+        return Ok(());
+    }
+
+    if !write {
+        println!();
+        println!("dry run: nothing written. Re-run with --write to apply.");
+        return Ok(());
+    }
+
+    let mut applied = 0usize;
+    let mut skipped = 0usize;
+    for c in &report.candidates {
+        let original = std::fs::read_to_string(&c.path)?;
+        let Some(updated) = privacy::insert_marker(&original) else {
+            // Shape we don't recognise, or already marked. Leave it untouched
+            // rather than guess at someone's conversation.
+            skipped += 1;
+            tracing::warn!("skipped {}: unexpected file shape", c.path.display());
+            continue;
+        };
+        let tmp = c.path.with_extension(format!("yaml.mark-{}", std::process::id()));
+        std::fs::write(&tmp, &updated)?;
+        std::fs::rename(&tmp, &c.path)?;
+        applied += 1;
+    }
+    println!();
+    println!("marked {applied} conversation(s); skipped {skipped}.");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     alloy_server::logging::init("server", env!("CARGO_PKG_VERSION"));
@@ -26,6 +82,14 @@ async fn main() -> anyhow::Result<()> {
             e
         )
     })?);
+
+    // One-shot maintenance: report (and optionally apply) markers for
+    // conversations written before the marker existed, then exit without
+    // serving. Runs before providers or watchers start — it only reads and
+    // rewrites conversation records.
+    if args.mark_private_conversations {
+        return mark_private_conversations(vault.root(), args.write);
+    }
 
     let config_path = vault.root().join("config.yaml");
     let mut config = if config_path.exists() {

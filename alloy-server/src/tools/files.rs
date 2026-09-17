@@ -922,6 +922,53 @@ mod tests {
         );
     }
 
+    /// The backfill decides a persisted read was refused by matching the error
+    /// text the tools produce. Two copies of a string in different files drift,
+    /// and the drift would be silent: refusals would be read as successful reads
+    /// and conversations holding nothing private would be hidden. So the real
+    /// errors are fed to the real classifier.
+    #[tokio::test]
+    async fn backfill_recognizes_the_denials_the_tools_actually_emit() {
+        use crate::tools::conversation_privacy::is_denial;
+
+        let vault = TempDir::new("vault-denials");
+        let external = TempDir::new("ext-denials");
+        std::fs::write(external.0.join("diary.md"), "dear diary").unwrap();
+        write_conversation(&vault.0, "marked", true, "secret");
+        let reg = registry_with_private(&vault.0, &external.0);
+        let cloud = ctx(false);
+
+        let read_err = execute_read(&reg, &cloud, &json!({ "path": "private/notes/diary.md" }))
+            .await
+            .unwrap_err();
+        assert!(is_denial(&read_err), "unrecognized read refusal: {read_err}");
+
+        let list_err = execute_list_directory(&reg, &cloud, &json!({ "path": "private/notes" }))
+            .await
+            .unwrap_err();
+        assert!(is_denial(&list_err), "unrecognized list refusal: {list_err}");
+
+        let search_err = crate::tools::search::execute(
+            &reg,
+            &cloud,
+            &json!({ "directory": "private/notes", "query": "x" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(is_denial(&search_err), "unrecognized search refusal: {search_err}");
+
+        let hidden_err = execute_read(&reg, &cloud, &json!({ "path": "conversations/marked.md" }))
+            .await
+            .unwrap_err();
+        assert!(is_denial(&hidden_err), "unrecognized hidden-conversation refusal: {hidden_err}");
+
+        // ...and real content is never mistaken for a refusal.
+        let content = execute_read(&reg, &ctx(true), &json!({ "path": "private/notes/diary.md" }))
+            .await
+            .unwrap();
+        assert!(!is_denial(&content));
+    }
+
     #[tokio::test]
     async fn reading_a_private_mount_marks_the_turn() {
         let vault = TempDir::new("vault-taint");
