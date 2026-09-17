@@ -696,8 +696,7 @@ fn tool_call_metadata(history: &[ToolHistoryEntry]) -> (usize, Vec<String>) {
 }
 
 /// Append an explicitly-invoked (`/skill_name`) skill's instructions to a turn's
-/// system prompt. A missing/blank name or an unknown skill leaves the prompt
-/// unchanged.
+/// system prompt. A missing/blank name leaves the prompt unchanged.
 fn apply_invoked_skill(
     system: Option<String>,
     invoke_skill: Option<&str>,
@@ -707,6 +706,15 @@ fn apply_invoked_skill(
         return system;
     };
     let Some(block) = crate::tools::skills::skill_block(skills, name) else {
+        // The turn still runs, but without the instructions the user asked for
+        // and with nothing in the reply to say so. Now that the SPA and this
+        // registry load the same bundled set this should be unreachable from the
+        // UI, which is precisely why it must not pass unremarked if it happens.
+        tracing::warn!(
+            skill = name,
+            available = skills.available().len(),
+            "invoked skill is unknown to the backend registry — running the turn without it"
+        );
         return system;
     };
     let directive = format!(
