@@ -4,6 +4,7 @@ import * as dialog from '@tauri-apps/plugin-dialog';
 import * as fs from '@tauri-apps/plugin-fs';
 import * as yaml from 'js-yaml';
 import { createMockConversation, createMockFileSystemEntry } from '../test/mocks';
+import type { ScheduledTask } from '../types';
 
 describe('VaultService', () => {
   let vaultService: VaultService;
@@ -503,6 +504,67 @@ messages: []
       const longTitle = 'a'.repeat(100);
       const slug = vaultService.generateSlug(longTitle);
       expect(slug.length).toBe(50);
+    });
+  });
+
+  describe('buildTimeline', () => {
+    const makeTask = (overrides: Partial<ScheduledTask>): ScheduledTask => ({
+      id: 'task-1',
+      created: '2024-01-01T00:00:00Z',
+      updated: '2024-01-01T00:00:00Z',
+      title: 'Task',
+      model: 'openrouter/test',
+      enabled: true,
+      prompt: 'do it',
+      schedule: { cron: '0 8 * * *', timezone: 'UTC' },
+      messages: [],
+      ...overrides,
+    });
+
+    it('orders an edited task by its edit time', () => {
+      const edited = makeTask({
+        id: 'edited',
+        updated: '2024-03-01T00:00:00Z',
+        lastRunAt: '2024-02-01T00:00:00Z',
+        lastDeliveredAt: '2024-01-15T00:00:00Z',
+      });
+      const delivered = makeTask({
+        id: 'delivered',
+        updated: '2024-01-01T00:00:00Z',
+        lastDeliveredAt: '2024-02-15T00:00:00Z',
+      });
+
+      const items = vaultService.buildTimeline([], [], [delivered, edited]);
+
+      expect(items.map(i => i.id)).toEqual(['edited', 'delivered']);
+      expect(items[0].lastUpdated).toBe(new Date('2024-03-01T00:00:00Z').getTime());
+    });
+
+    it('ignores run bookkeeping that stamped `updated` alongside `lastRunAt`', () => {
+      // Legacy/no-delivery runs wrote `updated === lastRunAt`; those must not
+      // bubble a task that produced nothing to the top of the timeline.
+      const ranButSkipped = makeTask({
+        id: 'ran',
+        updated: '2024-05-01T00:00:00Z',
+        lastRunAt: '2024-05-01T00:00:00Z',
+        lastDeliveredAt: '2024-01-10T00:00:00Z',
+      });
+      const delivered = makeTask({
+        id: 'delivered',
+        lastDeliveredAt: '2024-02-15T00:00:00Z',
+      });
+
+      const items = vaultService.buildTimeline([], [], [ranButSkipped, delivered]);
+
+      expect(items.map(i => i.id)).toEqual(['delivered', 'ran']);
+    });
+
+    it('falls back to created when a task has never run or been edited', () => {
+      const fresh = makeTask({ id: 'fresh', created: '2024-04-01T00:00:00Z', updated: '' });
+
+      const items = vaultService.buildTimeline([], [], [fresh]);
+
+      expect(items[0].lastUpdated).toBe(new Date('2024-04-01T00:00:00Z').getTime());
     });
   });
 

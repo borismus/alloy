@@ -244,9 +244,11 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
 pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome, runner: &str) -> String {
     use crate::tasks::model::{push_delivery_messages, push_history, TaskAttempt};
 
+    // `updated` is the task's last *edit* time and drives timeline ordering,
+    // so a run deliberately leaves it alone: run activity lives in
+    // `last_run_at` / `last_delivered_at` / `history`.
     let now = now_iso();
     task.last_run_at = Some(now.clone());
-    task.updated = now.clone();
 
     match outcome.result {
         TaskVerdict::Completed | TaskVerdict::Triggered => {
