@@ -23,6 +23,8 @@ function renderChat(overrides: {
   onSaveImage: (id: string, data: Uint8Array, mime: string) => Promise<Attachment>;
   onSendMessage?: () => Promise<void>;
   conversation?: Conversation;
+  onNewConversation?: () => void;
+  onMobileBack?: () => void;
 }) {
   const onSendMessage = overrides.onSendMessage ?? vi.fn(async () => {});
   render(
@@ -36,12 +38,24 @@ function renderChat(overrides: {
           hasProvider
           onModelChange={vi.fn()}
           availableModels={[]}
+          onNewConversation={overrides.onNewConversation}
+          onMobileBack={overrides.onMobileBack}
         />
       </MessageQueueProvider>
     </StreamingProvider>,
   );
   return { onSendMessage };
 }
+
+const withMessages = (...contents: string[]): Conversation => ({
+  ...conversation,
+  messages: contents.map((content, index) => ({
+    id: `m-${index}`,
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    timestamp: '2024-01-01T10:01:00Z',
+    content,
+  })) as Message[],
+});
 
 /** Paste an image into the composer (the only pending-image path in jsdom). */
 async function pasteImage(name = 'shot.png') {
@@ -201,6 +215,41 @@ describe('ChatInterface image preparation feedback', () => {
 
     deferreds[0].resolve({ type: 'image', path: 'attachments/one.png', mimeType: 'image/png' });
     await waitFor(() => expect(onSendMessage).toHaveBeenCalled());
+  });
+
+  it('starts a new conversation from inside an existing one', () => {
+    const onNewConversation = vi.fn();
+    renderChat({
+      onSaveImage: vi.fn(),
+      conversation: withMessages('hello', 'hi there'),
+      onNewConversation,
+      onMobileBack: vi.fn(),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+
+    expect(onNewConversation).toHaveBeenCalledTimes(1);
+  });
+
+  // An empty thread already is the new one — offering to create another just
+  // swaps one unsaved draft for another.
+  it('does not offer to create another conversation from an empty one', () => {
+    const onNewConversation = vi.fn();
+    renderChat({ onSaveImage: vi.fn(), onNewConversation, onMobileBack: vi.fn() });
+
+    const action = screen.getByRole('button', { name: 'New conversation' });
+    fireEvent.click(action);
+
+    expect(action.hasAttribute('disabled') || action.getAttribute('aria-disabled') === 'true').toBe(true);
+    expect(onNewConversation).not.toHaveBeenCalled();
+  });
+
+  // Desktop keeps the sidebar on screen, so it never passes the callback and
+  // must not grow a second creation affordance.
+  it('omits the action when the layout does not ask for it', () => {
+    renderChat({ onSaveImage: vi.fn(), conversation: withMessages('hello', 'hi there') });
+
+    expect(screen.queryByRole('button', { name: 'New conversation' })).toBeNull();
   });
 
   it('clears the indicator when an image save fails', async () => {

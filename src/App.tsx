@@ -1553,6 +1553,7 @@ function AppContent() {
                 scrollToMessageId={pendingScrollToMessageId}
                 onScrollComplete={() => setPendingScrollToMessageId(null)}
                 onMobileBack={() => setMobileView('list')}
+                onNewConversation={handleNewConversation}
               />
             )}
           </div>
