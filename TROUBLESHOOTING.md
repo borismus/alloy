@@ -169,6 +169,32 @@ Check that `[vault]/memory.md` exists and contains the intended text. The vault
 watcher reloads it after external edits; if the watcher is disconnected, focus
 the app to trigger a resync.
 
+## Mobile and the installed web app (iOS)
+
+### Dictation asks for the microphone on every cold launch
+
+Tapping **Allow** on the iOS permission prompt only grants the microphone for
+that browsing session, so the next cold launch asks again and the site never
+appears in `Settings → Safari → Microphone`. That list holds only sites you
+configured explicitly.
+
+Make the grant persistent from a Safari tab — not from the home-screen app,
+which has no address bar:
+
+1. Open the Alloy URL in Safari.
+2. Tap **`ᴀA`** in the address bar → **Website Settings**.
+3. Set **Microphone** to **Allow**, then **Done**.
+
+The site now appears in `Settings → Safari → Microphone`, and the installed
+home-screen app inherits the grant: dictation stops prompting on cold launch.
+If it still prompts, also set the global default at
+`Settings → Safari → Microphone → Allow`, and confirm the app is served over
+clean HTTPS — an insecure or certificate-warning origin never persists a grant.
+
+A stale `*.trycloudflare.com` entry in that list is a leftover from tunnel
+testing and can be deleted; quick-tunnel hostnames are random per run, so
+nothing tied to them survives.
+
 ## UI and build problems
 
 ### Blank or white window
