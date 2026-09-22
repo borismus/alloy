@@ -190,7 +190,7 @@ npm run tauri dev       # Desktop app (requires Rust)
 npm run dev             # Web mode: frontend (:1420) + auto-rebuilding backend (:3030); vault from .env
 npm run test:run        # Unit tests
 npm run test:smoke      # Seeded backend/browser smoke tests
-npm run verify          # Typecheck, lint, unit/Rust tests, production web build
+npm run verify          # Typecheck, lint, unit/Rust tests, web build, smoke suite
 npm run tauri build     # Production desktop build
 ```
 

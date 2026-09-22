@@ -64,7 +64,7 @@ npm run test            # Run unit tests (watch mode)
 npm run test:run        # Run unit tests once
 npm run test:e2e        # Run Playwright e2e tests
 npm run test:smoke      # Run seeded desktop/mobile browser smoke tests
-npm run verify          # Full frontend/Rust/build verification gate
+npm run verify          # Full gate: frontend, Rust, build, smoke (VERIFY_SKIP_SMOKE=1 to skip smoke)
 npm run build           # Build the production web bundle
 ```
 

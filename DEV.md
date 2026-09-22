@@ -96,9 +96,11 @@ One-off design decisions are recorded in [docs/design-decisions.md](docs/design-
   Each run copies the fixture to a temp dir, so the checked-in fixture is never
   dirtied.
 
-`npm run verify` runs typecheck, lint, frontend unit tests, Rust tests, and the
-production web build. CI (`.github/workflows/ci.yml`) runs those concerns plus
-the seeded smoke suite on every pull request and push to `main`.
+`npm run verify` runs typecheck, lint, frontend unit tests, Rust tests, the
+production web build, and the smoke suite above — the same concerns CI
+(`.github/workflows/ci.yml`) checks on every pull request and push to `main`, so
+a green local gate means a green CI. Smoke adds ~45s and needs Playwright
+browsers installed; `VERIFY_SKIP_SMOKE=1` opts out for a faster loop.
 
 ## Dual Runtime Modes
 

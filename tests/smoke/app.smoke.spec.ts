@@ -401,11 +401,20 @@ test('task model and email controls persist direct changes', async ({ page }) =>
   await page.getByRole('option').filter({ hasText: target }).first().click();
   await expect(modelPicker).toHaveAttribute('aria-label', new RegExp(target));
 
+  // The two binary flags share a row: whether the task runs at all, and
+  // whether its results are emailed. Locate each by its own label rather than
+  // by the row, so they can't silently swap.
   const emailSwitch = page.getByRole('switch', { name: 'Email task results' });
-  const emailToggle = page.locator('.task-email-control label');
-  const emailBox = await emailToggle.boundingBox();
-  expect(emailBox?.width).toBeGreaterThanOrEqual(44);
-  expect(emailBox?.height).toBeGreaterThanOrEqual(44);
+  const emailToggle = page.locator('.task-toggle').filter({ hasText: 'Email' }).locator('label');
+  const scheduleSwitch = page.getByRole('switch', { name: 'Run this task on its schedule' });
+  const scheduleToggle = page.locator('.task-toggle').filter({ hasText: 'Schedule' }).locator('label');
+
+  for (const toggle of [emailToggle, scheduleToggle]) {
+    const box = await toggle.boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  }
+
   const emailWasOn = await emailSwitch.isChecked();
   await emailToggle.click();
   if (emailWasOn) {
@@ -413,6 +422,12 @@ test('task model and email controls persist direct changes', async ({ page }) =>
   } else {
     await expect(emailSwitch).toBeChecked();
   }
+
+  // Disabling has to be visible at a glance, not just recorded in the file.
+  await scheduleToggle.click();
+  await expect(scheduleSwitch).not.toBeChecked();
+  await expect(page.locator('.task-schedule-card.paused')).toBeVisible();
+  await expect(page.locator('.task-kind.paused')).toHaveText('Disabled');
 
   // Both controls write the task file rather than changing only local UI state.
   await page.reload();
@@ -428,6 +443,8 @@ test('task model and email controls persist direct changes', async ({ page }) =>
   } else {
     await expect(persistedEmail).toBeChecked();
   }
+  await expect(page.getByRole('switch', { name: 'Run this task on its schedule' })).not.toBeChecked();
+  await expect(page.locator('.task-schedule-card.paused')).toBeVisible();
 });
 
 test('search finds text inside conversation bodies', async ({ page }) => {

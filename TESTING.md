@@ -9,7 +9,13 @@ npm run verify
 ```
 
 It runs TypeScript typechecking, ESLint, all Vitest tests, all Rust backend tests,
-and the production web build.
+the production web build, and the seeded smoke suite — the same concerns CI checks.
+
+Smoke costs about 45 seconds and needs Playwright browsers
+(`npx playwright install chromium webkit`). It earns that: it is the only layer
+that notices a renamed CSS class or a moved control, which typechecking, lint,
+and unit tests all pass straight through. Set `VERIFY_SKIP_SMOKE=1` to leave it
+out while iterating on something it cannot reach.
 
 ## Focused tests
 
