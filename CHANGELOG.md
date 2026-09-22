@@ -4,6 +4,25 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.35
+
+- **The model can read the part of a long file that matters.** `read_file`
+  returned the first 64 KB and nothing else, so 87 of the conversations in a
+  real vault were only ever readable from their oldest end — the least likely
+  to answer the question. It now takes a line range, and `search_directory`
+  reports the line number of each match, so a search result can be read around
+  instead of a file being pulled in from the top.
+- **Editing a task moves it back to the top of the timeline.** Task ordering
+  ignored edits entirely and sorted on delivery alone, so a task you had just
+  changed stayed buried. Runs that deliver nothing still don't reorder anything.
+- **A disabled task looks disabled.** Enable/disable sat in the header while the
+  email toggle sat in the settings below it; the two flags now sit together, and
+  a disabled task's schedule card says it is paused rather than advertising a
+  cadence it will never honor.
+- **Mobile can start a new conversation without going back to the list.** The
+  app reopens whatever you last had open, and leaving that thread previously
+  meant a trip back to the timeline.
+
 ## 0.4.34
 
 - **Cloud models can no longer read your private notes second-hand.** Local-only
