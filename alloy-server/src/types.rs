@@ -111,12 +111,24 @@ pub fn builtin_tools_with_subagent_limit(max_subagents: u32) -> Vec<ToolDefiniti
     vec![
         def(
             "read_file",
-            "Read a file from readable vault directories (notes/, skills/, conversations/, tasks/) or root files like memory.md. Conversations and tasks are read-only here; task changes must use dedicated scheduled-task tools.",
-            &[(
-                "path",
-                "string",
-                r#"Relative path within vault (e.g., "memory.md", "notes/todo.md", "tasks/task-id.yaml")"#,
-            )],
+            "Read a file from readable vault directories (notes/, skills/, conversations/, tasks/) or root files like memory.md. Conversations and tasks are read-only here; task changes must use dedicated scheduled-task tools. Without offset/limit the whole file is returned, capped at 64 KB from the top. Large files (long conversation YAMLs especially) are better read by line range: search_directory reports the line number of each match, so pass that as offset to read around it instead of pulling in the start of the file.",
+            &[
+                (
+                    "path",
+                    "string",
+                    r#"Relative path within vault (e.g., "memory.md", "notes/todo.md", "tasks/task-id.yaml")"#,
+                ),
+                (
+                    "offset",
+                    "integer",
+                    "Optional 1-based line number to start at. Supplying offset or limit returns a numbered line window with a [lines X-Y of Z] header instead of the whole file.",
+                ),
+                (
+                    "limit",
+                    "integer",
+                    "Optional number of lines to return (default 400, max 2000). Also bounded by the 64 KB output cap.",
+                ),
+            ],
             &["path"],
         ),
         def(
@@ -158,7 +170,7 @@ pub fn builtin_tools_with_subagent_limit(max_subagents: u32) -> Vec<ToolDefiniti
         ),
         def(
             "search_directory",
-            "Search a directory for a query in file names and content. Returns a page of matching files (most-recent-first), each with its path, modified time, match count, and one short snippet. Read a file for full content. Use limit/offset to page through more matches.",
+            "Search a directory for a query in file names and content. Returns a page of matching files (most-recent-first), each with its path, modified time, total match count, and up to three located matches giving the line number and a short snippet. Pass a match's line number as read_file's offset to read around it rather than reading the file from the top. Use limit/offset to page through more matches.",
             &[
                 ("directory", "string", r#"Directory to search (e.g., "notes", "conversations", "skills")"#),
                 ("query", "string", "Text to find in file names or content (case-insensitive)"),

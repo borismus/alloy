@@ -28,7 +28,15 @@ fn iso(t: std::time::SystemTime) -> String {
     chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
+/// Default lines returned by a ranged read when only `offset` is given.
+const DEFAULT_READ_LINES: usize = 400;
+/// Ceiling on `limit`, so one call can't ask for a whole 16k-line conversation
+/// line by line. The byte cap still applies on top of this.
+const MAX_READ_LINES: usize = 2_000;
+
 /// Truncate an over-large file read at a char boundary, appending a marker.
+/// This is the *un-ranged* path and is kept byte-identical to what it has
+/// always produced, so existing skills and prompts don't shift under them.
 fn cap_read(content: String) -> String {
     if content.len() <= MAX_READ_BYTES {
         return content;
@@ -37,12 +45,66 @@ fn cap_read(content: String) -> String {
     while end > 0 && !content.is_char_boundary(end) {
         end -= 1;
     }
+    let total_lines = content.lines().count();
     format!(
-        "{}\n\n[truncated: file is {} bytes; showing the first {} KB]",
+        "{}\n\n[truncated: file is {} bytes ({} lines); showing the first {} KB. \
+         Call read_file again with offset/limit to read a specific line range.]",
         &content[..end],
         content.len(),
+        total_lines,
         MAX_READ_BYTES / 1024
     )
+}
+
+/// Render a line window: 1-based `offset`, `limit` lines, each prefixed with
+/// its line number.
+///
+/// Lines, not characters (`web_fetch` pages by character offset): search
+/// reports line numbers, vault YAML is line-delimited, a line number is
+/// verifiable in an editor, and a line boundary can never split a multi-byte
+/// character. The numbering is what makes a window that starts mid-value
+/// recoverable — the model can widen deliberately instead of guessing.
+fn read_window(content: &str, offset: usize, limit: usize) -> Result<String, String> {
+    let total_lines = content.lines().count();
+    let start = offset.max(1);
+    if start > total_lines {
+        return Err(format!(
+            "offset {} is past the end of the file ({} lines)",
+            start, total_lines
+        ));
+    }
+    let limit = limit.clamp(1, MAX_READ_LINES);
+
+    let mut out = String::new();
+    let mut bytes = 0usize;
+    let mut last = start - 1;
+    for (index, line) in content
+        .lines()
+        .enumerate()
+        .skip(start - 1)
+        .take(limit)
+    {
+        let numbered = format!("{}\t{}\n", index + 1, line);
+        // Byte cap on top of the line cap: one pathological multi-megabyte
+        // line would otherwise defeat `limit` entirely. Always emit at least
+        // the first line so a call can't come back empty.
+        if bytes + numbered.len() > MAX_READ_BYTES && last >= start {
+            break;
+        }
+        bytes += numbered.len();
+        out.push_str(&numbered);
+        last = index + 1;
+    }
+
+    let mut header = format!("[lines {}-{} of {}]\n", start, last, total_lines);
+    header.push_str(&out);
+    if last < total_lines {
+        header.push_str(&format!(
+            "\n[More lines available. Call read_file again with offset={}.]",
+            last + 1
+        ));
+    }
+    Ok(header)
 }
 
 /// The one file injected into every system prompt. It is hand-curated, has no
@@ -129,6 +191,15 @@ pub async fn execute_read(
     if path.is_empty() {
         return Err("Missing required parameter: path".into());
     }
+    // Absent both parameters the read behaves exactly as it always has.
+    let range = match (input_usize(input, "offset"), input_usize(input, "limit")) {
+        (None, None) => None,
+        (offset, limit) => Some((offset.unwrap_or(1), limit.unwrap_or(DEFAULT_READ_LINES))),
+    };
+    let render = |content: String| match range {
+        None => Ok(cap_read(content)),
+        Some((offset, limit)) => read_window(&content, offset, limit),
+    };
     // External mount. `resolve_for` decides by the mount's audience and denies
     // from config alone when this caller may not read it, so a cloud model gets
     // a generic "not found" without the filesystem being touched at all.
@@ -142,7 +213,10 @@ pub async fn execute_read(
                 if crate::tools::mounts::is_private_path(path) {
                     ctx.mark_private_read();
                 }
-                fs::read_to_string(&abs).await.map(cap_read).map_err(|_| not_found())
+                match fs::read_to_string(&abs).await {
+                    Ok(content) => render(content),
+                    Err(_) => Err(not_found()),
+                }
             }
             _ => Err(not_found()),
         };
@@ -162,10 +236,11 @@ pub async fn execute_read(
         }
         ctx.mark_private_read();
     }
-    let content = fs::read_to_string(&resolved)
-        .await
-        .map(cap_read)
-        .map_err(|_| format!("File not found: {}", path))?;
+    let content = render(
+        fs::read_to_string(&resolved)
+            .await
+            .map_err(|_| format!("File not found: {}", path))?,
+    )?;
     // Remember that this turn has seen the current memory, so a later
     // rewrite can be trusted to be based on it rather than on a guess.
     if path.replace('\\', "/") == MEMORY_FILE {
@@ -573,6 +648,134 @@ async fn list_dir_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- ranged reads ----
+
+    /// The default path must not move: skills and prompts were written against
+    /// it, so a range-less read stays byte-identical — no header, no numbering.
+    #[test]
+    fn an_unranged_read_returns_the_file_untouched() {
+        let content = "alpha\nbeta\ngamma\n".to_string();
+        assert_eq!(cap_read(content.clone()), content);
+    }
+
+    #[test]
+    fn a_window_is_numbered_headed_and_points_at_the_next_page() {
+        let content: String = (1..=10).map(|i| format!("line {}\n", i)).collect();
+        let out = read_window(&content, 3, 4).unwrap();
+
+        assert!(out.starts_with("[lines 3-6 of 10]\n"));
+        assert!(out.contains("3\tline 3\n"));
+        assert!(out.contains("6\tline 6\n"));
+        assert!(!out.contains("line 7"));
+        assert!(!out.contains("line 2"));
+        assert!(out.contains("[More lines available. Call read_file again with offset=7.]"));
+    }
+
+    /// A window that reaches the end must not dangle a continuation marker —
+    /// that is what sends a model back for a page that does not exist.
+    #[test]
+    fn a_window_reaching_the_end_offers_no_continuation() {
+        let content: String = (1..=10).map(|i| format!("line {}\n", i)).collect();
+        let out = read_window(&content, 8, 50).unwrap();
+        assert!(out.starts_with("[lines 8-10 of 10]\n"));
+        assert!(!out.contains("More lines available"));
+    }
+
+    #[test]
+    fn an_offset_past_the_end_says_how_long_the_file_is() {
+        let content: String = (1..=10).map(|i| format!("line {}\n", i)).collect();
+        let err = read_window(&content, 99, 10).unwrap_err();
+        assert!(err.contains("past the end"), "{}", err);
+        assert!(err.contains("10 lines"), "{}", err);
+    }
+
+    /// `limit` counts lines, so a file of enormous lines could still blow the
+    /// context. The byte cap is the backstop, and it must still return
+    /// something and still say where to resume.
+    #[test]
+    fn the_byte_cap_bounds_a_window_of_enormous_lines() {
+        let huge: String = std::iter::repeat_n("x".repeat(40 * 1024), 10)
+            .map(|line| format!("{}\n", line))
+            .collect();
+        let out = read_window(&huge, 1, 10).unwrap();
+
+        assert!(out.len() < MAX_READ_BYTES + 1024, "len was {}", out.len());
+        assert!(out.contains("1\t"));
+        assert!(out.contains("More lines available"));
+    }
+
+    /// A single line larger than the whole cap must still come back rather than
+    /// yielding an empty window the model cannot act on.
+    #[test]
+    fn one_oversized_line_is_still_returned() {
+        let content = format!("{}\nsecond\n", "y".repeat(MAX_READ_BYTES * 2));
+        let out = read_window(&content, 1, 5).unwrap();
+        assert!(out.starts_with("[lines 1-1 of 2]\n"));
+        assert!(out.contains("More lines available. Call read_file again with offset=2."));
+    }
+
+    /// Line boundaries can't split a multi-byte character — the reason this
+    /// pages by line rather than by the character offsets `web_fetch` uses.
+    #[test]
+    fn multibyte_content_survives_a_window_edge() {
+        let content = "\u{440}\u{443}\u{441}\u{441}\u{43a}\u{438}\u{439}\n\u{4e5d}\u{5dde}\n\u{1f9ea} emoji\nplain\n";
+        let out = read_window(content, 2, 2).unwrap();
+        assert!(out.contains("2\t\u{4e5d}\u{5dde}\n"));
+        assert!(out.contains("3\t\u{1f9ea} emoji\n"));
+    }
+
+    #[test]
+    fn limit_alone_reads_from_the_top_and_offset_alone_uses_the_default_span() {
+        let content: String = (1..=10).map(|i| format!("line {}\n", i)).collect();
+        assert!(read_window(&content, 1, 2).unwrap().starts_with("[lines 1-2 of 10]"));
+        assert!(
+            read_window(&content, 4, DEFAULT_READ_LINES)
+                .unwrap()
+                .starts_with("[lines 4-10 of 10]")
+        );
+    }
+
+    /// End to end through the tool entry point, including that the truncation
+    /// marker now tells the model the range option exists.
+    #[tokio::test]
+    async fn execute_read_honors_a_range_and_advertises_it_when_truncating() {
+        let vault = TempDir::new("vault-range");
+        let external = TempDir::new("ext-range");
+        std::fs::create_dir_all(vault.0.join("notes")).unwrap();
+        let body: String = (1..=500).map(|i| format!("row {}\n", i)).collect();
+        std::fs::write(vault.0.join("notes/big.md"), &body).unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+
+        let windowed = execute_read(
+            &reg,
+            &ctx(false),
+            &serde_json::json!({ "path": "notes/big.md", "offset": 100, "limit": 3 }),
+        )
+        .await
+        .unwrap();
+        assert!(windowed.starts_with("[lines 100-102 of 500]\n"));
+        assert!(windowed.contains("100\trow 100\n"));
+        assert!(!windowed.contains("row 103"));
+
+        // Un-ranged read of the same file is the plain content.
+        let whole = execute_read(&reg, &ctx(false), &serde_json::json!({ "path": "notes/big.md" }))
+            .await
+            .unwrap();
+        assert_eq!(whole, body);
+
+        // Over the cap: the marker has to name the escape hatch, or a model
+        // that hits truncation still has no next move.
+        let long: String = std::iter::repeat_n("z".repeat(200), 500)
+            .map(|line| format!("{}\n", line))
+            .collect();
+        std::fs::write(vault.0.join("notes/huge.md"), &long).unwrap();
+        let capped = execute_read(&reg, &ctx(false), &serde_json::json!({ "path": "notes/huge.md" }))
+            .await
+            .unwrap();
+        assert!(capped.contains("[truncated: file is"));
+        assert!(capped.contains("offset/limit"));
+    }
 
     #[test]
     fn permission_root_memory_md_writable() {

@@ -17,24 +17,34 @@ const MAX_FILE_SIZE: usize = 200 * 1024;
 const MAX_RECURSION_DEPTH: usize = 6;
 const MAX_CANDIDATES: usize = 200_000; // sanity bound on the (cheap) path/mtime walk
 const SNIPPET_CONTEXT: usize = 60;
+/// Located matches reported per file. Three is enough to aim a ranged
+/// `read_file` at the right part of a long file without letting a term that
+/// appears 400 times turn one search result into a wall of snippets.
+const MAX_LOCATED_MATCHES: usize = 3;
 
 const READABLE_DIRS: &[&str] = &["notes/", "skills/", "conversations/"];
 const TEXT_EXTENSIONS: &[&str] = &["md", "txt", "yaml", "yml", "json", "js", "ts", "css", "html"];
 
-/// One matching file in the result page: path + recency + a single short snippet.
+/// One matching file in the result page: path + recency + a few located
+/// snippets. The line numbers are the point: they are what `read_file`'s
+/// `offset` takes, so a hit in a 16k-line conversation can be read around
+/// instead of the file being pulled in from its (oldest) head.
 #[derive(Serialize)]
 struct FileMatch {
     path: String,
     modified: String,
     #[serde(rename = "matchCount")]
     match_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    snippet: Option<String>,
+    /// Bounded to `MAX_LOCATED_MATCHES`: enough to aim a ranged read, few
+    /// enough that search results don't grow into the cost ranged reads exist
+    /// to avoid. Empty when only the filename matched.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    matches: Vec<MatchInfo>,
 }
 
-/// A single content match (internal to `find_matches`).
+/// A single located content match.
+#[derive(Serialize)]
 struct MatchInfo {
-    #[allow(dead_code)]
     line: u32,
     snippet: String,
 }
@@ -173,31 +183,33 @@ pub async fn execute(
         let hit = if fuzzy {
             match content.as_deref() {
                 Some(c) => fuzzy_match(c, &filename_lower, &terms),
-                None if terms.iter().all(|t| filename_lower.contains(t)) => Some((terms.len(), None)),
+                None if terms.iter().all(|t| filename_lower.contains(t)) => {
+                    Some((terms.len(), Vec::new()))
+                }
                 None => None,
             }
         } else {
             let fname = filename_lower.contains(&query_lower);
-            let (count, snip) = match content.as_deref() {
+            let (count, located) = match content.as_deref() {
                 Some(c) => {
                     let ms = find_matches(c, &query_lower);
-                    (ms.len(), ms.into_iter().next().map(|m| m.snippet))
+                    (ms.len(), take_located(ms))
                 }
-                None => (0, None),
+                None => (0, Vec::new()),
             };
             if fname || count > 0 {
-                Some((count.max(usize::from(fname)), snip))
+                Some((count.max(usize::from(fname)), located))
             } else {
                 None
             }
         };
 
-        if let Some((count, snippet)) = hit {
+        if let Some((count, matches)) = hit {
             matched.push(FileMatch {
                 path: rel,
                 modified: iso(mtime),
                 match_count: count,
-                snippet,
+                matches,
             });
         }
     }
@@ -304,6 +316,14 @@ fn find_matches(content: &str, query_lower: &str) -> Vec<MatchInfo> {
     out
 }
 
+/// Keep the first N located matches, dropping the rest. The total count is
+/// reported separately, so "7 matches, here are the first 3 lines" stays
+/// honest.
+fn take_located(mut matches: Vec<MatchInfo>) -> Vec<MatchInfo> {
+    matches.truncate(MAX_LOCATED_MATCHES);
+    matches
+}
+
 /// Extract a `...context needle context...` snippet around a match at byte `idx`
 /// (of length `match_len`) within `line`, snapped to char boundaries.
 pub(crate) fn snippet_around(line: &str, idx: usize, match_len: usize) -> String {
@@ -323,12 +343,12 @@ pub(crate) fn snippet_around(line: &str, idx: usize, match_len: usize) -> String
 
 /// Fuzzy (multi-term) match: succeeds when EVERY term appears somewhere in the
 /// content or filename (order-independent, not necessarily adjacent). Returns
-/// (count of lines containing any term, first snippet) or None.
+/// (count of lines containing any term, first located matches) or None.
 fn fuzzy_match(
     content: &str,
     filename_lower: &str,
     terms: &[String],
-) -> Option<(usize, Option<String>)> {
+) -> Option<(usize, Vec<MatchInfo>)> {
     if terms.is_empty() {
         return None;
     }
@@ -340,8 +360,8 @@ fn fuzzy_match(
         return None;
     }
     let mut count = 0usize;
-    let mut snippet = None;
-    for line in content.lines() {
+    let mut located: Vec<MatchInfo> = Vec::new();
+    for (i, line) in content.lines().enumerate() {
         let ll = line.to_lowercase();
         if let Some((idx, len)) = terms
             .iter()
@@ -349,12 +369,15 @@ fn fuzzy_match(
             .min_by_key(|(i, _)| *i)
         {
             count += 1;
-            if snippet.is_none() {
-                snippet = Some(snippet_around(line, idx, len));
+            if located.len() < MAX_LOCATED_MATCHES {
+                located.push(MatchInfo {
+                    line: (i + 1) as u32,
+                    snippet: snippet_around(line, idx, len),
+                });
             }
         }
     }
-    Some((count.max(1), snippet))
+    Some((count.max(1), located))
 }
 
 /// Snap a byte offset to a char boundary in `s`. `forward=true` moves
@@ -427,6 +450,81 @@ mod tests {
         let fv: serde_json::Value = serde_json::from_str(&fz).unwrap();
         assert_eq!(fv["returned"], 1);
         assert!(fz.contains("note.md"));
+    }
+
+    /// The line numbers are the whole point of the change: without them a
+    /// caller knows a 16k-line conversation matched but not where, and has to
+    /// read it from its (oldest) head.
+    #[tokio::test]
+    async fn located_matches_carry_line_numbers_and_stay_bounded() {
+        let vault = TempDir::new("vault-loc");
+        let external = TempDir::new("ext-loc");
+        let mut body = String::new();
+        for i in 1..=50 {
+            // Needle on lines 3, 8, 13, ... — ten hits in total.
+            if i % 5 == 3 {
+                body.push_str("a sneaky needle here\n");
+            } else {
+                body.push_str("filler\n");
+            }
+        }
+        std::fs::write(external.0.join("note.md"), &body).unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+
+        let out = execute(
+            &reg,
+            &ctx(true),
+            &json!({ "directory": "private/notes", "query": "needle" }),
+        )
+        .await
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let file = &v["files"][0];
+
+        // The total stays honest even though the located set is trimmed.
+        assert_eq!(file["matchCount"], 10);
+        let matches = file["matches"].as_array().unwrap();
+        assert_eq!(matches.len(), MAX_LOCATED_MATCHES);
+        assert_eq!(matches[0]["line"], 3);
+        assert_eq!(matches[1]["line"], 8);
+        assert_eq!(matches[2]["line"], 13);
+        assert!(matches[0]["snippet"].as_str().unwrap().contains("needle"));
+    }
+
+    /// Fuzzy hits have to be aimable too, and a filename-only hit has nowhere
+    /// to point — it must omit the field rather than invent line 1.
+    #[tokio::test]
+    async fn fuzzy_matches_are_located_and_name_only_hits_are_not() {
+        let vault = TempDir::new("vault-loc2");
+        let external = TempDir::new("ext-loc2");
+        std::fs::write(
+            external.0.join("water.md"),
+            "intro\nmore intro\nWater use in data centers\n",
+        )
+        .unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+
+        let fz = execute(
+            &reg,
+            &ctx(true),
+            &json!({ "directory": "private/notes", "query": "data water", "fuzzy": true }),
+        )
+        .await
+        .unwrap();
+        let fv: serde_json::Value = serde_json::from_str(&fz).unwrap();
+        assert_eq!(fv["files"][0]["matches"][0]["line"], 3);
+
+        // Name-only match: content is not searched, so there is no line to give.
+        let name_only = execute(
+            &reg,
+            &ctx(true),
+            &json!({ "directory": "private/notes", "query": "water", "search_content": false }),
+        )
+        .await
+        .unwrap();
+        let nv: serde_json::Value = serde_json::from_str(&name_only).unwrap();
+        assert_eq!(nv["returned"], 1);
+        assert!(nv["files"][0].get("matches").is_none());
     }
 
     #[test]
