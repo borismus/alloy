@@ -334,6 +334,12 @@
   color: white;
 }
 
+.type-badge.task-disabled {
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 38%, transparent);
+}
+
 .type-badge.local {
   background: var(--color-success-soft);
   color: var(--color-success);

@@ -532,6 +532,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         return (
           <>
             <span className="type-badge task">Task</span>
+            {item.task && !item.task.enabled && (
+              <span className="type-badge task-disabled" title="Disabled — will not run on its schedule">Disabled</span>
+            )}
             {item.task && isLocalModel(item.task.model, availableModels) && (
               <span className="type-badge local" title="Uses a local model">Local</span>
             )}

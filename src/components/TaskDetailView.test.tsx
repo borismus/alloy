@@ -152,4 +152,53 @@ describe('TaskDetailView configuration controls', () => {
     expect(updated.schedule).toEqual(task.schedule);
     expect(updated.history).toEqual(task.history);
   });
+
+  it('disables the schedule from the switch next to email and bumps `updated`', async () => {
+    const user = userEvent.setup();
+    const onTaskUpdated = vi.fn();
+    render(
+      <TaskProvider tasks={[task]}>
+        <TaskDetailView
+          task={task}
+          availableModels={models}
+          onRunComplete={vi.fn()}
+          onAskAbout={vi.fn()}
+          onTaskUpdated={onTaskUpdated}
+        />
+      </TaskProvider>,
+    );
+
+    const scheduleSwitch = screen.getByRole('switch', { name: 'Run this task on its schedule' });
+    expect((scheduleSwitch as HTMLInputElement).checked).toBe(true);
+    // Both binary flags share one row.
+    expect(scheduleSwitch.closest('.task-model-row'))
+      .toBe(screen.getByRole('switch', { name: 'Email task results' }).closest('.task-model-row'));
+
+    await user.click(scheduleSwitch);
+
+    await waitFor(() => expect(onTaskUpdated).toHaveBeenCalledTimes(1));
+    const updated = onTaskUpdated.mock.calls[0][0] as ScheduledTask;
+    expect(updated.enabled).toBe(false);
+    expect(updated.email).toBe(task.email);
+    expect(updated.updated).not.toBe(task.updated);
+  });
+
+  it('marks a disabled task as paused in the schedule card', () => {
+    render(
+      <TaskProvider tasks={[{ ...task, enabled: false }]}>
+        <TaskDetailView
+          task={{ ...task, enabled: false }}
+          availableModels={models}
+          onRunComplete={vi.fn()}
+          onAskAbout={vi.fn()}
+          onTaskUpdated={vi.fn()}
+        />
+      </TaskProvider>,
+    );
+
+    expect(screen.getByText('Disabled', { selector: '.task-kind.paused' })).toBeTruthy();
+    expect(screen.getByText('Disabled', { selector: '.task-state-tag.disabled' })).toBeTruthy();
+    expect(document.querySelector('.task-schedule-card.paused')).not.toBeNull();
+    expect(screen.getByText(/will not run on its schedule/)).toBeTruthy();
+  });
 });

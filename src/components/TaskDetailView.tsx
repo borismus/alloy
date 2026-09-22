@@ -221,12 +221,13 @@ export function TaskDetailView({
     }
   };
 
-  const handleToggleEnabled = async () => {
+  const handleToggleEnabled = async (enabled: boolean) => {
     setIsToggling(true);
     try {
       const updated = await vaultService.updateTask(task.id, fresh => ({
         ...fresh,
-        enabled: !fresh.enabled,
+        enabled,
+        updated: new Date().toISOString(),
       }));
       if (updated) onTaskUpdated(updated);
     } catch (error) {
@@ -383,14 +384,6 @@ export function TaskDetailView({
         <Button variant="primary" size="small" onPress={handleRunNow} isDisabled={isChecking}>
           {isChecking ? 'Running…' : 'Run now'}
         </Button>
-        <Button
-          variant={task.enabled ? 'secondary' : 'muted'}
-          size="small"
-          onPress={handleToggleEnabled}
-          isDisabled={isToggling}
-        >
-          {task.enabled ? 'Disable' : 'Enable'}
-        </Button>
       </ItemHeader>
 
       <div className="task-detail-content">
@@ -403,19 +396,27 @@ export function TaskDetailView({
 
         {/* 1 — Config summary: schedule, model, email. Above the run history. */}
         <section className="task-config-section">
-          <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''}`}>
+          <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''} ${task.enabled ? '' : 'paused'}`}>
             <div className="task-schedule-card-header">
               <div className="task-schedule-description">{schedule.description}</div>
-              <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
-                {task.trigger ? 'Conditional' : 'Every run'}
-              </span>
+              {task.enabled ? (
+                <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
+                  {task.trigger ? 'Conditional' : 'Every run'}
+                </span>
+              ) : (
+                <span className="task-kind paused">Disabled</span>
+              )}
             </div>
             <div className="task-schedule-technical">
               <span>{schedule.timezone}</span>
               <span aria-hidden="true">·</span>
               <code>{schedule.raw}</code>
             </div>
-            {schedule.nextRun && (
+            {!task.enabled ? (
+              <div className="task-next-run paused">
+                <span>Paused</span>This task will not run on its schedule. “Run now” still works.
+              </div>
+            ) : schedule.nextRun && (
               <div className="task-next-run"><span>Next</span>{schedule.nextRun}</div>
             )}
           </div>
@@ -445,21 +446,42 @@ export function TaskDetailView({
               )}
             </div>
           </div>
-          <div className="task-model-row">
-            <span className="task-field-label">Email</span>
-            <div
-              className="task-model-value task-email-control"
-              title={task.email ? 'Delivered results and first-failure alerts are emailed via Resend' : 'This task does not send email'}
-            >
-              <Switch
-                aria-label="Email task results"
-                isSelected={task.email === true}
-                onChange={handleEmailChange}
-                isDisabled={updatingField !== null}
-              />
-              <span className={`task-email-tag ${task.email ? 'on' : 'off'}`}>
-                {task.email ? 'On' : 'Off'}
-              </span>
+          {/* Both binary flags live together: whether the task runs, and
+              whether its results are emailed. */}
+          <div className="task-model-row task-toggle-row">
+            <div className="task-toggle">
+              <span className="task-field-label">Schedule</span>
+              <div
+                className="task-model-value task-switch-control"
+                title={task.enabled ? 'This task runs on its schedule' : 'This task is disabled and will not run on its schedule'}
+              >
+                <Switch
+                  aria-label="Run this task on its schedule"
+                  isSelected={task.enabled}
+                  onChange={handleToggleEnabled}
+                  isDisabled={isToggling}
+                />
+                <span className={`task-state-tag ${task.enabled ? 'on' : 'disabled'}`}>
+                  {task.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+            </div>
+            <div className="task-toggle">
+              <span className="task-field-label">Email</span>
+              <div
+                className="task-model-value task-switch-control"
+                title={task.email ? 'Delivered results and first-failure alerts are emailed via Resend' : 'This task does not send email'}
+              >
+                <Switch
+                  aria-label="Email task results"
+                  isSelected={task.email === true}
+                  onChange={handleEmailChange}
+                  isDisabled={updatingField !== null}
+                />
+                <span className={`task-state-tag ${task.email ? 'on' : 'off'}`}>
+                  {task.email ? 'On' : 'Off'}
+                </span>
+              </div>
             </div>
           </div>
           {configUpdateError && (

@@ -75,6 +75,12 @@
   background: var(--color-success-soft);
 }
 
+.task-kind.paused {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+}
+
 .task-schedule-card {
   padding: 1.1rem 1.2rem;
   border: 1px solid var(--border-color, var(--color-border));
@@ -85,6 +91,25 @@
 
 .task-schedule-card.invalid {
   border-left-color: var(--color-danger);
+}
+
+/* A disabled task never runs on its schedule — say so loudly: the card that
+   normally advertises the next run goes flat, striped and warning-edged. */
+.task-schedule-card.paused {
+  border-left-color: var(--color-warning);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent,
+      transparent 8px,
+      color-mix(in srgb, var(--color-warning) 7%, transparent) 8px,
+      color-mix(in srgb, var(--color-warning) 7%, transparent) 16px
+    ),
+    var(--bg-secondary, var(--color-surface));
+}
+
+.task-schedule-card.paused .task-schedule-description {
+  color: var(--text-secondary, var(--color-text-secondary));
 }
 
 .task-schedule-description {
@@ -129,6 +154,15 @@
   letter-spacing: 0.05em;
   font-size: 0.68rem;
   padding-top: 0.12rem;
+}
+
+.task-next-run.paused {
+  color: var(--color-warning);
+  border-top-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+}
+
+.task-next-run.paused span {
+  color: var(--color-warning);
 }
 
 .task-instructions {
@@ -228,17 +262,31 @@
   margin-bottom: 1rem;
 }
 
-.task-email-control {
+/* The two binary flags (runs on schedule / emails results) sit side by side. */
+.task-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+}
+
+.task-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.task-switch-control {
   flex-wrap: nowrap;
 }
 
-.task-email-control > label {
+.task-switch-control > label {
   min-width: 44px;
   min-height: 44px;
   justify-content: center;
 }
 
-.task-email-tag {
+.task-state-tag {
   display: inline-flex;
   align-items: center;
   padding: 0.12rem 0.5rem;
@@ -249,16 +297,22 @@
   text-transform: uppercase;
 }
 
-.task-email-tag.on {
+.task-state-tag.on {
   background: var(--color-success-soft);
   color: var(--color-success);
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-.task-email-tag.off {
+.task-state-tag.off {
   background: var(--color-code-bg);
   color: var(--color-text-secondary);
   border: 1px solid rgba(107, 114, 128, 0.25);
+}
+
+.task-state-tag.disabled {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  color: var(--color-warning);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
 }
 
 .task-config-update-error {
