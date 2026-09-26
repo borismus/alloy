@@ -91,6 +91,13 @@ agent's `EnvironmentVariables` when you do:
 <integer>30</integer>
 ```
 
+`ALLOY_SUPERVISED=1` changes two behaviors, both of which reduce to "exiting is
+how a supervised process restarts":
+
+- A copy that loses the race for the share port exits instead of lingering.
+- An automatic update exits after staging instead of re-executing itself, so
+  the agent starts the new version and keeps tracking the process it started.
+
 Without it, a copy that loses the race for the share port stays up with no
 vault bound and an inactive scheduler. launchd counts that as a healthy
 service, so the supervisor reports green while nothing is being served and no
@@ -110,6 +117,12 @@ When they disagree, kill the untracked process and
 `launchctl kickstart -k gui/$(id -u)/<label>`. The vault lock keeps scheduled
 tasks correct throughout — a duplicate logs `scheduler inactive: another Alloy
 process on <host> owns this vault` and runs nothing.
+
+The in-app updater is the usual way the two diverge: `app.restart()` re-execs in
+place, so the re-exec'd copy outlives the agent's child and holds the port while
+the agent's replacement cannot bind. Keep `KeepAlive` a plain `<true/>`; a
+`SuccessfulExit: false` policy would not restart after the update handoff, which
+exits zero deliberately.
 
 ### Vault permission denied on macOS
 

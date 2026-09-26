@@ -207,6 +207,18 @@ async fn install<R: Runtime>(
 }
 
 fn restart<R: Runtime>(app: &AppHandle<R>) -> UpdateOutcome {
+    // `app.restart()` re-execs in place, which escapes a process supervisor:
+    // launchd's tracked child exits while the re-exec'd copy lives on holding
+    // the share port, so the agent's replacement can never bind and the two
+    // copies fight until someone intervenes. Under a supervisor, exiting IS
+    // the restart — it starts the freshly staged version for us, and stays the
+    // process it is tracking.
+    if crate::supervised() {
+        tracing::info!("update staged; exiting for the supervisor to start the new version");
+        // Zero: this is a successful, intentional handoff. It relies on plain
+        // `KeepAlive`; a `SuccessfulExit: false` policy would not restart us.
+        std::process::exit(0);
+    }
     tracing::info!("restarting to apply update");
     app.restart();
 }

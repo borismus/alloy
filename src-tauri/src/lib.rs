@@ -16,6 +16,15 @@ mod updater;
 /// "I will restart you; prefer dying over lingering uselessly".
 const SUPERVISED_ENV: &str = "ALLOY_SUPERVISED";
 
+/// Is a supervisor responsible for restarting this process?
+pub(crate) fn supervised() -> bool {
+    is_supervised(std::env::var(SUPERVISED_ENV).ok().as_deref())
+}
+
+fn is_supervised(value: Option<&str>) -> bool {
+    matches!(value, Some(value) if value != "0" && !value.is_empty())
+}
+
 /// Should a lost race for the share port end this process?
 ///
 /// Observed on the always-on Mac: launchd's `KeepAlive` copy could not bind
@@ -29,8 +38,7 @@ const SUPERVISED_ENV: &str = "ALLOY_SUPERVISED";
 /// the actionable error screen instead, which is why this is opt-in through
 /// the environment rather than inferred.
 fn should_exit_on_port_conflict(error: &EmbedError, supervised: Option<&str>) -> bool {
-    matches!(error, EmbedError::SharedPortInUse { .. })
-        && matches!(supervised, Some(value) if value != "0" && !value.is_empty())
+    matches!(error, EmbedError::SharedPortInUse { .. }) && is_supervised(supervised)
 }
 
 #[tauri::command]
@@ -225,6 +233,17 @@ mod tests {
 
     /// Only the port race is survivable by restarting. A missing vault or a
     /// broken config would restart into the same failure forever.
+    #[test]
+    fn supervision_is_read_the_same_way_everywhere() {
+        // One definition, so the updater's handoff and the port-conflict exit
+        // can never disagree about whether a supervisor is present.
+        assert!(is_supervised(Some("1")));
+        assert!(is_supervised(Some("true")));
+        assert!(!is_supervised(None));
+        assert!(!is_supervised(Some("")));
+        assert!(!is_supervised(Some("0")));
+    }
+
     #[test]
     fn other_bind_failures_never_exit() {
         let config = EmbedError::Config("no such vault".into());
