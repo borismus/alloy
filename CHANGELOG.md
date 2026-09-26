@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.37
+
+- **An unattended Mac now survives its own updates.** Applying an update
+  re-executed the app in place, which escaped the process supervisor: the
+  supervisor's copy kept losing the race for the shared port to the copy the
+  update had left behind. With `ALLOY_SUPERVISED=1` set, an update now exits
+  after staging and lets the supervisor start the new version. Completes the
+  0.4.36 fix.
+
 ## 0.4.36
 
 - **An always-on Mac recovers on its own when two copies of Alloy collide.** A
