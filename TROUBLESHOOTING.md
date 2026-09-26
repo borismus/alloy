@@ -73,6 +73,44 @@ Quit the other Alloy instance—not just its window—or choose another standalo
 port. Development mode deliberately uses backend port 3030 by default; override
 it with `ALLOY_DEV_PORT`.
 
+### Running Alloy unattended under launchd
+
+An always-on Mac that serves the vault (and runs scheduled tasks) is usually
+started by a LaunchAgent with `KeepAlive`. Set `ALLOY_SUPERVISED=1` in the
+agent's `EnvironmentVariables` when you do:
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+  <key>ALLOY_SUPERVISED</key>
+  <string>1</string>
+</dict>
+<key>KeepAlive</key>
+<true/>
+<key>ThrottleInterval</key>
+<integer>30</integer>
+```
+
+Without it, a copy that loses the race for the share port stays up with no
+vault bound and an inactive scheduler. launchd counts that as a healthy
+service, so the supervisor reports green while nothing is being served and no
+scheduled task runs — and because nothing retries the bind, that copy never
+takes over when the port frees. With it set, the losing copy exits and the
+supervisor's restart becomes the retry.
+
+If you already have two copies running, the tracked one may not be the one
+holding the port:
+
+```bash
+lsof -nP -iTCP:3001 -sTCP:LISTEN               # which PID actually serves
+launchctl print gui/$(id -u)/com.smus.alloy    # which PID launchd tracks
+```
+
+When they disagree, kill the untracked process and
+`launchctl kickstart -k gui/$(id -u)/<label>`. The vault lock keeps scheduled
+tasks correct throughout — a duplicate logs `scheduler inactive: another Alloy
+process on <host> owns this vault` and runs nothing.
+
 ### Vault permission denied on macOS
 
 Choose a writable vault directory. macOS may deny a development build access to

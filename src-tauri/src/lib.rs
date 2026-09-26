@@ -6,11 +6,32 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use alloy_server::embed::{EmbeddedServer, bootstrap_for_tauri};
+use alloy_server::embed::{EmbedError, EmbeddedServer, bootstrap_for_tauri};
 use serde::Serialize;
 use tauri::{Manager, State};
 
 mod updater;
+
+/// Set by a process supervisor (a launchd agent on the always-on Mac) to say
+/// "I will restart you; prefer dying over lingering uselessly".
+const SUPERVISED_ENV: &str = "ALLOY_SUPERVISED";
+
+/// Should a lost race for the share port end this process?
+///
+/// Observed on the always-on Mac: launchd's `KeepAlive` copy could not bind
+/// :3001 because an earlier copy still held it, so it stayed up with no vault
+/// and an inactive scheduler. launchd counted that as a healthy service, and
+/// because nothing retried the bind, the dead copy would never take over when
+/// the port freed — a green supervisor light over a server that does nothing.
+///
+/// Exiting hands the decision back to the supervisor, whose restart is the
+/// retry. A person who double-clicked Alloy while another copy runs must keep
+/// the actionable error screen instead, which is why this is opt-in through
+/// the environment rather than inferred.
+fn should_exit_on_port_conflict(error: &EmbedError, supervised: Option<&str>) -> bool {
+    matches!(error, EmbedError::SharedPortInUse { .. })
+        && matches!(supervised, Some(value) if value != "0" && !value.is_empty())
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -43,6 +64,15 @@ async fn set_vault_path(
             // folder, permission denied, unparseable config) rather than just
             // failing and leaving the app to guess.
             tracing::error!("failed to bind vault {path}: {e}");
+            if should_exit_on_port_conflict(&e, std::env::var(SUPERVISED_ENV).ok().as_deref()) {
+                tracing::error!(
+                    "{SUPERVISED_ENV} is set and the share port is taken — exiting so the \
+                     supervisor can retry; whichever copy outlives the other becomes the server"
+                );
+                // Non-zero so the supervisor's logs distinguish this from a
+                // clean shutdown, and so a plain `KeepAlive` still restarts it.
+                std::process::exit(1);
+            }
             Err(e.to_string())
         }
     }
@@ -170,4 +200,34 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_supervised_copy_that_loses_the_port_race_exits() {
+        let busy = EmbedError::SharedPortInUse { port: 3001 };
+        assert!(should_exit_on_port_conflict(&busy, Some("1")));
+    }
+
+    /// Someone who double-clicked Alloy while another copy runs needs the
+    /// error screen; silently vanishing would look like the app failing to
+    /// launch at all.
+    #[test]
+    fn an_unsupervised_copy_keeps_the_actionable_error() {
+        let busy = EmbedError::SharedPortInUse { port: 3001 };
+        assert!(!should_exit_on_port_conflict(&busy, None));
+        assert!(!should_exit_on_port_conflict(&busy, Some("")));
+        assert!(!should_exit_on_port_conflict(&busy, Some("0")));
+    }
+
+    /// Only the port race is survivable by restarting. A missing vault or a
+    /// broken config would restart into the same failure forever.
+    #[test]
+    fn other_bind_failures_never_exit() {
+        let config = EmbedError::Config("no such vault".into());
+        assert!(!should_exit_on_port_conflict(&config, Some("1")));
+    }
 }

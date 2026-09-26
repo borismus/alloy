@@ -45,9 +45,10 @@ step "lint"       npm run lint
 step "unit tests" npm run test:run
 step "rust tests" cargo test --manifest-path alloy-server/Cargo.toml
 # The desktop shell is otherwise compiled only by the release workflow, on a
-# tag — too late to learn it doesn't build. `check` rather than `test` keeps the
-# gate quick; the shell's logic lives in alloy-server, where it is tested.
-step "tauri shell" cargo check --manifest-path src-tauri/Cargo.toml
+# tag — too late to learn it doesn't build. CI can't cover it either (Linux
+# runners lack the webkit toolchain), so this local gate is the only place its
+# own tests — supervisor/port-conflict behavior — ever run.
+step "tauri shell" cargo test --manifest-path src-tauri/Cargo.toml
 step "web build"  npx vite build
 # `npm run test:smoke` rebuilds dist-web first; the step above already did, so
 # call Playwright directly rather than paying for a second build.
