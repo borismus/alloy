@@ -4,6 +4,17 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.36
+
+- **An always-on Mac recovers on its own when two copies of Alloy collide.** A
+  copy that lost the race for the shared port stayed running with no vault and
+  an inactive scheduler, so a process supervisor saw a healthy service over one
+  that served nothing — and it could never take over when the port freed. Set
+  `ALLOY_SUPERVISED=1` in a launchd agent and the losing copy now exits so the
+  restart becomes the retry. Scheduled tasks were never at risk: the vault lock
+  already stopped a duplicate from running them. TROUBLESHOOTING documents the
+  agent setup and how to spot a supervisor tracking the wrong process.
+
 ## 0.4.35
 
 - **The model can read the part of a long file that matters.** `read_file`
