@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.38
+
+- **Attach PDFs and Markdown files.** The attach button, paste and drag-and-drop
+  now take `.pdf` and `.md` alongside images. PDFs go to the model as-is, so
+  scanned pages and charts are seen, not just text — on Claude subscription
+  models and OpenRouter. Codex and local models can't read PDFs, so the composer
+  says so and the file is left out of the request. Markdown files are sent as
+  text and work with every model.
+
 ## 0.4.37
 
 - **An unattended Mac now survives its own updates.** Applying an update
