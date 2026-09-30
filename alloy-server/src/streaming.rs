@@ -484,7 +484,12 @@ async fn run_stream(
         &compaction,
     )
     .await;
-    let messages = prepared.send;
+    let mut messages = prepared.send;
+    // PDFs attached earlier in the conversation may have been sent to a model
+    // that reads them; drop them for one that can't rather than fail upstream.
+    if !provider.supports_pdfs(&upstream_model) {
+        crate::providers::strip_pdfs(&mut messages);
+    }
     // Only persist a freshly-generated compacted message when we own a
     // conversation file (scheduled tasks/riffs use skip_persist and ephemeral
     // histories).

@@ -153,7 +153,7 @@ fn render_excerpt(msgs: &[WireMessage]) -> String {
             };
             let mut s = format!("{}: {}", role, m.content);
             if !m.attachments.is_empty() {
-                s.push_str(&format!(" [{} image(s) omitted]", m.attachments.len()));
+                s.push_str(&format!(" [{} attachment(s) omitted]", m.attachments.len()));
             }
             s
         })
@@ -296,8 +296,11 @@ mod tests {
         // 8 chars -> ceil(8/4)=2, +10 overhead = 12
         assert_eq!(estimate_one(&wire("user", "abcdefgh")), 12);
         let mut m = wire("user", "");
-        m.attachments
-            .push(crate::providers::WireAttachment { path: "a".into(), mime_type: "image/png".into() });
+        m.attachments.push(crate::providers::WireAttachment {
+            path: "a".into(),
+            mime_type: "image/png".into(),
+            name: None,
+        });
         assert_eq!(estimate_one(&m), 10 + 1000);
     }
 

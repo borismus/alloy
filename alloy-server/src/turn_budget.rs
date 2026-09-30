@@ -22,9 +22,10 @@
 //! Calibration never scales below 1.0, so a provider that under-reports (or
 //! reports nothing) cannot talk us into an optimistic budget.
 
-use crate::providers::ChatMessage;
-use crate::types::ToolDefinition;
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
 
+use crate::providers::{AttachmentData, ChatMessage};
+use crate::types::ToolDefinition;
 
 /// Extra headroom for framing we can't measure: provider-side system additions,
 /// role scaffolding, and tokenizer disagreement the calibration hasn't seen yet.
@@ -51,6 +52,43 @@ const PER_MESSAGE_OVERHEAD: u64 = 10;
 /// Flat charge per image. Attachments are sent as base64, but providers bill
 /// them as a fixed-ish block of tokens, so the encoded length is irrelevant.
 const PER_IMAGE_TOKENS: u64 = 1_000;
+
+/// PDFs are billed per page (text plus a rendered page image), roughly 1.5–3k
+/// tokens each. Charge the high end so a long PDF trips the budget early.
+const PER_PDF_PAGE_TOKENS: u64 = 3_000;
+
+/// Without an uncompressed page tree to count, assume ~100 KB per page.
+const PDF_BYTES_PER_PAGE_FALLBACK: usize = 100_000;
+
+fn estimate_attachment(att: &AttachmentData) -> u64 {
+    if !att.is_pdf() {
+        return PER_IMAGE_TOKENS;
+    }
+    let bytes = B64.decode(&att.base64).unwrap_or_default();
+    pdf_page_count(&bytes) * PER_PDF_PAGE_TOKENS
+}
+
+/// Count `/Type /Page` objects (excluding the `/Pages` tree nodes). PDFs that
+/// pack page objects into compressed object streams hide them, so fall back to
+/// a size-based guess.
+fn pdf_page_count(bytes: &[u8]) -> u64 {
+    let mut pages = 0u64;
+    for marker in [&b"/Type /Page"[..], &b"/Type/Page"[..]] {
+        let mut i = 0;
+        while let Some(pos) = bytes[i..].windows(marker.len()).position(|w| w == marker) {
+            let end = i + pos + marker.len();
+            if bytes.get(end) != Some(&b's') {
+                pages += 1;
+            }
+            i = end;
+        }
+    }
+    if pages > 0 {
+        pages
+    } else {
+        (bytes.len() / PDF_BYTES_PER_PAGE_FALLBACK).max(1) as u64
+    }
+}
 
 /// The usable slice of a model's context window for one turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,8 +219,13 @@ fn estimate_tools(tools: &[ToolDefinition]) -> u64 {
 fn estimate_message(message: &ChatMessage) -> u64 {
     match message {
         ChatMessage::System { content } => tokens_for(content) + PER_MESSAGE_OVERHEAD,
-        ChatMessage::User { content, images } => {
-            tokens_for(content) + PER_MESSAGE_OVERHEAD + images.len() as u64 * PER_IMAGE_TOKENS
+        ChatMessage::User {
+            content,
+            attachments,
+        } => {
+            tokens_for(content)
+                + PER_MESSAGE_OVERHEAD
+                + attachments.iter().map(estimate_attachment).sum::<u64>()
         }
         ChatMessage::Assistant {
             content,
@@ -206,12 +249,12 @@ fn estimate_message(message: &ChatMessage) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::{AssistantToolCall, AssistantToolFunction, ImageData};
+    use crate::providers::{AssistantToolCall, AssistantToolFunction, AttachmentData};
 
     fn user(content: &str) -> ChatMessage {
         ChatMessage::User {
             content: content.into(),
-            images: Vec::new(),
+            attachments: Vec::new(),
         }
     }
 
@@ -259,14 +302,24 @@ mod tests {
     fn images_cost_a_flat_charge_rather_than_their_base64_length() {
         let with_image = ChatMessage::User {
             content: "look".into(),
-            images: vec![ImageData {
+            attachments: vec![AttachmentData {
                 mime_type: "image/png".into(),
                 base64: "A".repeat(4_000_000),
+                name: None,
             }],
         };
         let ledger = TokenLedger::new(Some(200_000), &[]);
         // ~1k for the image, not ~1M for its encoding.
         assert!(ledger.projected(std::slice::from_ref(&with_image)) < 2_000);
+    }
+
+    #[test]
+    fn pdfs_cost_per_page() {
+        let pdf = b"%PDF-1.4 /Type /Pages /Type /Page x /Type/Page y";
+        assert_eq!(pdf_page_count(pdf), 2);
+        // Compressed page tree: fall back to size.
+        assert_eq!(pdf_page_count(&vec![0u8; 250_000]), 2);
+        assert_eq!(pdf_page_count(b"%PDF-1.7"), 1);
     }
 
     #[test]

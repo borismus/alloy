@@ -30,7 +30,7 @@ use tokio::process::Command;
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    ChatMessage, DiscoveredModel, ImageData, Provider, ProviderStreamEvent, StreamRequest,
+    AttachmentData, ChatMessage, DiscoveredModel, Provider, ProviderStreamEvent, StreamRequest,
     StreamResult, Usage,
 };
 use crate::types::{ToolCall, ToolResult};
@@ -448,7 +448,7 @@ fn claude_model_display_name(model: &str) -> String {
 #[async_trait]
 impl Provider for CliClaudeProvider {
     async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
-        let (system, user_text, images) = flatten_conversation(&req.messages);
+        let (system, user_text, attachments) = flatten_conversation(&req.messages);
 
         let mut cmd = self.base_command(&req.model);
         // Enable extended thinking so the reasoning disclosure has content. Only
@@ -499,7 +499,7 @@ impl Provider for CliClaudeProvider {
         // produces one response and exits.
         let input = json!({
             "type": "user",
-            "message": { "role": "user", "content": user_message_content(&user_text, &images) },
+            "message": { "role": "user", "content": user_message_content(&user_text, &attachments) },
         });
         if let Some(mut stdin) = child.stdin.take() {
             let line = format!("{}\n", input);
@@ -693,13 +693,19 @@ impl Provider for CliClaudeProvider {
     fn supports_tools(&self, _model: &str) -> bool {
         false
     }
+
+    /// stream-json user messages take Anthropic `document` blocks, so PDFs go
+    /// to the model as-is.
+    fn supports_pdfs(&self, _model: &str) -> bool {
+        true
+    }
 }
 
 /// Pull the system prompt out, flatten the remaining turns into one transcript
-/// string, and collect images from the latest user turn. `--input-format
+/// string, and collect attachments from the latest user turn. `--input-format
 /// stream-json` only accepts user messages, so prior assistant turns are
 /// rendered as labeled text rather than true assistant-role messages.
-fn flatten_conversation(messages: &[ChatMessage]) -> (Option<String>, String, Vec<ImageData>) {
+fn flatten_conversation(messages: &[ChatMessage]) -> (Option<String>, String, Vec<AttachmentData>) {
     let mut system = None;
     let mut turns: Vec<&ChatMessage> = Vec::new();
     for m in messages {
@@ -711,11 +717,13 @@ fn flatten_conversation(messages: &[ChatMessage]) -> (Option<String>, String, Ve
         }
     }
 
-    let latest_images = turns
+    let latest_attachments = turns
         .iter()
         .rev()
         .find_map(|m| match m {
-            ChatMessage::User { images, .. } if !images.is_empty() => Some(images.clone()),
+            ChatMessage::User { attachments, .. } if !attachments.is_empty() => {
+                Some(attachments.clone())
+            }
             _ => None,
         })
         .unwrap_or_default();
@@ -741,17 +749,18 @@ fn flatten_conversation(messages: &[ChatMessage]) -> (Option<String>, String, Ve
             .join("\n\n")
     };
 
-    (system, text, latest_images)
+    (system, text, latest_attachments)
 }
 
 /// Build the `content` array for a stream-json user message: a text block plus
-/// any base64 image blocks (Anthropic content-block shape).
-fn user_message_content(text: &str, images: &[ImageData]) -> Value {
+/// any base64 image or PDF `document` blocks (Anthropic content-block shape).
+fn user_message_content(text: &str, attachments: &[AttachmentData]) -> Value {
     let mut parts = vec![json!({ "type": "text", "text": text })];
-    for img in images {
+    for att in attachments {
+        let block_type = if att.is_pdf() { "document" } else { "image" };
         parts.push(json!({
-            "type": "image",
-            "source": { "type": "base64", "media_type": img.mime_type, "data": img.base64 },
+            "type": block_type,
+            "source": { "type": "base64", "media_type": att.mime_type, "data": att.base64 },
         }));
     }
     Value::Array(parts)
@@ -844,7 +853,7 @@ mod tests {
     fn user(content: &str) -> ChatMessage {
         ChatMessage::User {
             content: content.into(),
-            images: vec![],
+            attachments: vec![],
         }
     }
     fn assistant(content: &str) -> ChatMessage {
@@ -884,16 +893,17 @@ mod tests {
 
     #[test]
     fn collects_images_from_latest_user_turn() {
-        let img = ImageData {
+        let img = AttachmentData {
             mime_type: "image/png".into(),
             base64: "AAAA".into(),
+            name: None,
         };
         let msgs = vec![
             user("first"),
             assistant("ok"),
             ChatMessage::User {
                 content: "look".into(),
-                images: vec![img],
+                attachments: vec![img],
             },
         ];
         let (_, _, images) = flatten_conversation(&msgs);
@@ -903,6 +913,19 @@ mod tests {
         assert_eq!(content[1]["type"], "image");
         assert_eq!(content[1]["source"]["media_type"], "image/png");
         assert_eq!(content[1]["source"]["data"], "AAAA");
+    }
+
+    #[test]
+    fn sends_pdfs_as_document_blocks() {
+        let pdf = AttachmentData {
+            mime_type: "application/pdf".into(),
+            base64: "JVBERi0=".into(),
+            name: Some("paper.pdf".into()),
+        };
+        let content = user_message_content("summarize", &[pdf]);
+        assert_eq!(content[1]["type"], "document");
+        assert_eq!(content[1]["source"]["media_type"], "application/pdf");
+        assert_eq!(content[1]["source"]["data"], "JVBERi0=");
     }
 
     #[test]

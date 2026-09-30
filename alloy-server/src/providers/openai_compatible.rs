@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use crate::config::ProviderConfig;
 use crate::providers::{
-    chat_messages_to_openai, fallback_title, image_content_blocks, sanitize_title, ChatMessage,
-    Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
+    attachment_content_blocks, chat_messages_to_openai, fallback_title, sanitize_title,
+    ChatMessage, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
 };
 use crate::types::{to_openai_tools, ToolCall};
 
@@ -56,6 +56,10 @@ impl OpenAICompatibleProvider {
         &self.base_url
     }
 
+    fn is_openrouter(&self) -> bool {
+        self.base_url.contains("openrouter.ai")
+    }
+
     /// Issue an authenticated POST to /chat/completions with optional
     /// OpenRouter analytics headers.
     fn post_chat(&self, body: Value) -> reqwest::RequestBuilder {
@@ -64,7 +68,7 @@ impl OpenAICompatibleProvider {
             .post(self.chat_url())
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json");
-        if self.base_url.contains("openrouter.ai") {
+        if self.is_openrouter() {
             builder = builder
                 .header("HTTP-Referer", "https://github.com/borismus/alloy")
                 .header("X-Title", "Alloy");
@@ -428,7 +432,7 @@ impl Provider for OpenAICompatibleProvider {
     }
 
     fn title_model(&self, conversation_model: &str) -> String {
-        if self.base_url.contains("openrouter.ai") {
+        if self.is_openrouter() {
             "anthropic/claude-haiku-4-5".to_string()
         } else {
             conversation_model.to_string()
@@ -563,6 +567,13 @@ impl Provider for OpenAICompatibleProvider {
     fn supports_tools(&self, _model: &str) -> bool {
         true
     }
+
+    /// OpenRouter accepts `file` content parts for every model: models that
+    /// read PDFs natively get the file, the rest go through OpenRouter's own
+    /// parser. Other compatible endpoints (oMLX, …) have no PDF input.
+    fn supports_pdfs(&self, _model: &str) -> bool {
+        self.is_openrouter()
+    }
 }
 
 fn bracketed_stream_error(text: &str) -> Option<String> {
@@ -627,7 +638,10 @@ fn apply_anthropic_caching(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                     "cache_control": { "type": "ephemeral" },
                 }],
             }),
-            ChatMessage::User { content, images } => {
+            ChatMessage::User {
+                content,
+                attachments,
+            } => {
                 let cache = Some(i) == cache_target_user_idx;
                 let mut block = serde_json::Map::new();
                 block.insert("type".into(), json!("text"));
@@ -638,7 +652,7 @@ fn apply_anthropic_caching(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                 // Text block stays at content[0] so cache_control always lands
                 // on it; image blocks follow.
                 let mut parts = vec![serde_json::Value::Object(block)];
-                parts.extend(image_content_blocks(images));
+                parts.extend(attachment_content_blocks(attachments));
                 json!({
                     "role": "user",
                     "content": parts,
@@ -757,7 +771,7 @@ mod tests {
             },
             ChatMessage::User {
                 content: "u1".into(),
-                images: vec![],
+                attachments: vec![],
             },
             ChatMessage::Assistant {
                 content: "a1".into(),
@@ -765,7 +779,7 @@ mod tests {
             },
             ChatMessage::User {
                 content: "u2".into(),
-                images: vec![],
+                attachments: vec![],
             },
             ChatMessage::Assistant {
                 content: "a2".into(),
@@ -773,7 +787,7 @@ mod tests {
             },
             ChatMessage::User {
                 content: "u3".into(),
-                images: vec![],
+                attachments: vec![],
             },
         ];
         let wire = apply_anthropic_caching(&msgs);
@@ -799,7 +813,7 @@ mod tests {
             },
             ChatMessage::User {
                 content: "u1".into(),
-                images: vec![],
+                attachments: vec![],
             },
         ];
         let wire = apply_anthropic_caching(&msgs);
@@ -811,16 +825,17 @@ mod tests {
 
     #[test]
     fn appends_image_blocks_after_cached_text() {
-        use crate::providers::ImageData;
+        use crate::providers::AttachmentData;
         let msgs = vec![
             ChatMessage::System {
                 content: "sys".into(),
             },
             ChatMessage::User {
                 content: "u1".into(),
-                images: vec![ImageData {
+                attachments: vec![AttachmentData {
                     mime_type: "image/png".into(),
                     base64: "AAAA".into(),
+                    name: None,
                 }],
             },
         ];

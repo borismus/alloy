@@ -72,6 +72,11 @@ pub struct ModelInfo {
     /// the wire when true so existing consumers treat absence as "supported".
     #[serde(rename = "supportsImages", skip_serializing_if = "Option::is_none")]
     pub supports_images: Option<bool>,
+    /// True when the provider reads PDF attachments natively (Claude CLI,
+    /// OpenRouter). Unlike images, absence means unsupported: Alloy never
+    /// extracts PDF text, so a PDF is only sent where the model can read it.
+    #[serde(rename = "supportsPdfs", default, skip_serializing_if = "is_false")]
+    pub supports_pdfs: bool,
     #[serde(rename = "contextWindow", skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
     #[serde(
@@ -159,7 +164,12 @@ impl ModelCache {
             return models;
         }
 
-        let (models, complete) = discover_provider_models(config).await;
+        let (mut models, complete) = discover_provider_models(config).await;
+        let pdfs = crate::providers::build_provider(config)
+            .is_some_and(|provider| provider.supports_pdfs(""));
+        for model in &mut models {
+            model.supports_pdfs = pdfs;
+        }
         let ttl = if complete && !models.is_empty() {
             CACHE_TTL
         } else {
@@ -221,6 +231,7 @@ fn cli_model_info(
         provider: Some(provider_id.to_string()),
         local: false,
         supports_images: None,
+        supports_pdfs: false,
         context_window: model.context_window,
         context_window_source: model.context_window.map(|_| source),
         // Subscription calls do not consume per-token API credits.
@@ -501,6 +512,7 @@ fn openai_model_infos(
                 // OpenAI-compatible /models says nothing about image support,
                 // so stay optimistic rather than guess per model.
                 supports_images: None,
+                supports_pdfs: false,
                 context_window,
                 context_window_source,
                 input_per_1m,
@@ -575,6 +587,7 @@ mod tests {
             provider: None,
             local: false,
             supports_images: None,
+            supports_pdfs: false,
             context_window: None,
             context_window_source: None,
             input_per_1m: None,
@@ -600,6 +613,55 @@ mod tests {
         // Claude's stream-json protocol carries base64 image blocks (verified
         // end to end against the real CLI).
         assert!(CliClaudeProvider::new(&cfg(CliAdapter::Claude)).supports_images(""));
+    }
+
+    #[test]
+    fn pdf_support_follows_the_provider() {
+        use crate::config::{CliAdapter, ProviderConfig, ProviderKind};
+        use crate::providers::build_provider;
+        let cfg = |kind, adapter, base_url: Option<&str>| ProviderConfig {
+            id: "p".into(),
+            kind,
+            adapter,
+            base_url: base_url.map(str::to_string),
+            api_key: String::new(),
+            command: None,
+            oauth_token: None,
+            local: None,
+        };
+        let pdfs = |c: &ProviderConfig| build_provider(c).unwrap().supports_pdfs("");
+        assert!(pdfs(&cfg(
+            ProviderKind::Cli,
+            Some(CliAdapter::Claude),
+            None
+        )));
+        assert!(!pdfs(&cfg(
+            ProviderKind::Cli,
+            Some(CliAdapter::Codex),
+            None
+        )));
+        assert!(pdfs(&cfg(
+            ProviderKind::OpenaiCompatible,
+            None,
+            Some("https://openrouter.ai/api/v1")
+        )));
+        // Default base URL is OpenRouter.
+        assert!(pdfs(&cfg(ProviderKind::OpenaiCompatible, None, None)));
+        assert!(!pdfs(&cfg(
+            ProviderKind::OpenaiCompatible,
+            None,
+            Some("http://127.0.0.1:8000/v1")
+        )));
+    }
+
+    #[test]
+    fn supports_pdfs_is_only_on_the_wire_when_true() {
+        let json = serde_json::to_string(&model("a/b")).unwrap();
+        assert!(!json.contains("supportsPdfs"), "got {json}");
+        let mut m = model("openrouter/x");
+        m.supports_pdfs = true;
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(json.contains("\"supportsPdfs\":true"), "got {json}");
     }
 
     #[test]

@@ -36,21 +36,41 @@ pub struct WireMessage {
     pub attachments: Vec<WireAttachment>,
 }
 
-/// Image attachment reference from the SPA. The bytes live in the vault at
-/// `conversations/{path}`; the server reads + base64-encodes them when building
+/// Attachment reference from the SPA (image, PDF, or Markdown). The bytes live
+/// in the vault at `conversations/{path}`; the server reads them when building
 /// the provider request (the SPA never ships the base64 over the wire).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WireAttachment {
     pub path: String,
     #[serde(rename = "mimeType", default)]
     pub mime_type: String,
+    /// Original filename, shown to the model for PDFs and Markdown files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
-/// A decoded image ready to embed in a provider request as a base64 data URL.
+pub const PDF_MIME: &str = "application/pdf";
+const MARKDOWN_MIME: &str = "text/markdown";
+
+/// A decoded binary attachment (image or PDF) ready to embed in a provider
+/// request as base64. PDFs are sent as-is to providers that read them natively
+/// and dropped for the rest — Alloy never extracts PDF text itself.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageData {
+pub struct AttachmentData {
     pub mime_type: String,
     pub base64: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl AttachmentData {
+    pub fn is_pdf(&self) -> bool {
+        self.mime_type == PDF_MIME
+    }
+
+    pub fn filename(&self) -> &str {
+        self.name.as_deref().unwrap_or("document.pdf")
+    }
 }
 
 /// Provider-internal message format. Supports OpenAI tool-calling: assistant
@@ -65,7 +85,7 @@ pub enum ChatMessage {
     User {
         content: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        images: Vec<ImageData>,
+        attachments: Vec<AttachmentData>,
     },
     Assistant {
         #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -139,50 +159,62 @@ pub async fn wire_to_chat(
     }
     for m in messages {
         match m.role.as_str() {
-            "user" => out.push(ChatMessage::User {
-                content: m.content.clone(),
-                images: resolve_images(vault, &m.attachments).await,
-            }),
             "assistant" => out.push(ChatMessage::Assistant {
                 content: m.content.clone(),
                 tool_calls: Vec::new(),
             }),
             "log" => {} // skip
-            _ => out.push(ChatMessage::User {
-                content: m.content.clone(),
-                images: resolve_images(vault, &m.attachments).await,
-            }),
+            _ => out.push(resolve_user_message(vault, m).await),
         }
     }
     out
 }
 
-/// Read each image attachment from the vault (`conversations/{path}`) and
-/// base64-encode it. Missing/unreadable files are logged and skipped so a
-/// stale attachment reference can't break the whole turn. Returns empty when
-/// no vault is available (e.g. sub-agent calls) or there are no attachments.
-async fn resolve_images(vault: Option<&Vault>, attachments: &[WireAttachment]) -> Vec<ImageData> {
-    let Some(vault) = vault else {
-        return Vec::new();
-    };
-    let mut out = Vec::with_capacity(attachments.len());
-    for att in attachments {
-        let path = match vault.resolve(&format!("conversations/{}", att.path)) {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!("skipping attachment {}: {}", att.path, e);
-                continue;
+/// Build a user turn from a wire message, reading its attachments from the
+/// vault (`conversations/{path}`). Images and PDFs are base64-encoded; Markdown
+/// files are plain text, so their contents are appended to the message text
+/// where every provider can see them. Missing/unreadable files are logged and
+/// skipped so a stale attachment reference can't break the whole turn. No vault
+/// (e.g. sub-agent calls) means no attachments.
+async fn resolve_user_message(vault: Option<&Vault>, m: &WireMessage) -> ChatMessage {
+    let mut content = m.content.clone();
+    let mut attachments = Vec::new();
+    if let Some(vault) = vault {
+        for att in &m.attachments {
+            let path = match vault.resolve(&format!("conversations/{}", att.path)) {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::warn!("skipping attachment {}: {}", att.path, e);
+                    continue;
+                }
+            };
+            let bytes = match tokio::fs::read(&path).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::warn!("failed to read attachment {}: {}", att.path, e);
+                    continue;
+                }
+            };
+            if att.mime_type == MARKDOWN_MIME {
+                let name = att.name.as_deref().unwrap_or("attachment.md");
+                content.push_str(&format!(
+                    "\n\n<file name=\"{}\">\n{}\n</file>",
+                    name,
+                    String::from_utf8_lossy(&bytes).trim_end()
+                ));
+            } else {
+                attachments.push(AttachmentData {
+                    mime_type: att.mime_type.clone(),
+                    base64: B64.encode(&bytes),
+                    name: att.name.clone(),
+                });
             }
-        };
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => out.push(ImageData {
-                mime_type: att.mime_type.clone(),
-                base64: B64.encode(&bytes),
-            }),
-            Err(e) => tracing::warn!("failed to read attachment {}: {}", att.path, e),
         }
     }
-    out
+    ChatMessage::User {
+        content,
+        attachments,
+    }
 }
 
 /// Model metadata discovered by a provider adapter. The `/api/models` route
@@ -386,6 +418,14 @@ pub trait Provider: Send + Sync {
     fn supports_images(&self, _model: &str) -> bool {
         true
     }
+
+    /// Can this provider+model read PDF attachments natively? Alloy never
+    /// extracts PDF text itself, so providers that can't read PDFs have them
+    /// dropped before the request and the composer refuses them up front.
+    /// Default is no; concrete impls override.
+    fn supports_pdfs(&self, _model: &str) -> bool {
+        false
+    }
 }
 
 pub type ProviderArc = Arc<dyn Provider>;
@@ -426,20 +466,11 @@ impl ProviderRegistry {
         let mut by_id: HashMap<String, ProviderArc> = HashMap::new();
         let mut default_id = None;
         for cfg in configs {
-            let provider: ProviderArc = match cfg.kind {
-                ProviderKind::OpenaiCompatible => {
-                    Arc::new(openai_compatible::OpenAICompatibleProvider::new(cfg))
-                }
-                ProviderKind::Cli => match cfg.adapter {
-                    Some(CliAdapter::Claude) => Arc::new(cli_claude::CliClaudeProvider::new(cfg)),
-                    Some(CliAdapter::Codex) => Arc::new(cli_codex::CliCodexProvider::new(cfg)),
-                    None => {
-                        // Config::load rejects this; keep programmatic/test-built
-                        // registries defensive rather than panicking.
-                        tracing::error!("CLI provider '{}' has no adapter; skipping", cfg.id);
-                        continue;
-                    }
-                },
+            let Some(provider) = build_provider(cfg) else {
+                // Config::load rejects this; keep programmatic/test-built
+                // registries defensive rather than panicking.
+                tracing::error!("CLI provider '{}' has no adapter; skipping", cfg.id);
+                continue;
             };
             if default_id.is_none() {
                 default_id = Some(cfg.id.clone());
@@ -508,6 +539,21 @@ impl ProviderRegistry {
     }
 }
 
+/// Construct the provider for one config. `None` only for a CLI provider with
+/// no adapter.
+pub fn build_provider(cfg: &ProviderConfig) -> Option<ProviderArc> {
+    Some(match cfg.kind {
+        ProviderKind::OpenaiCompatible => {
+            Arc::new(openai_compatible::OpenAICompatibleProvider::new(cfg))
+        }
+        ProviderKind::Cli => match cfg.adapter {
+            Some(CliAdapter::Claude) => Arc::new(cli_claude::CliClaudeProvider::new(cfg)),
+            Some(CliAdapter::Codex) => Arc::new(cli_codex::CliCodexProvider::new(cfg)),
+            None => return None,
+        },
+    })
+}
+
 // Used by the openai_compatible impl for serializing messages.
 pub(crate) fn chat_messages_to_openai(messages: &[ChatMessage]) -> Vec<Value> {
     messages
@@ -517,12 +563,15 @@ pub(crate) fn chat_messages_to_openai(messages: &[ChatMessage]) -> Vec<Value> {
                 "role": "system",
                 "content": content,
             }),
-            ChatMessage::User { content, images } => {
-                if images.is_empty() {
+            ChatMessage::User {
+                content,
+                attachments,
+            } => {
+                if attachments.is_empty() {
                     serde_json::json!({ "role": "user", "content": content })
                 } else {
                     let mut parts = vec![serde_json::json!({ "type": "text", "text": content })];
-                    parts.extend(image_content_blocks(images));
+                    parts.extend(attachment_content_blocks(attachments));
                     serde_json::json!({ "role": "user", "content": parts })
                 }
             }
@@ -558,27 +607,96 @@ pub(crate) fn chat_messages_to_openai(messages: &[ChatMessage]) -> Vec<Value> {
         .collect()
 }
 
-/// Build OpenAI-style image content blocks from decoded images. Shared by the
+/// Build OpenAI-style content blocks from decoded attachments. Shared by the
 /// plain OpenAI path and the Anthropic-caching path — both target an
-/// OpenAI-compatible upstream (OpenRouter), so the image wire shape is the same
-/// (`image_url` with a base64 data URL); only `cache_control` markers differ.
-pub(crate) fn image_content_blocks(images: &[ImageData]) -> Vec<Value> {
-    images
+/// OpenAI-compatible upstream (OpenRouter), so the wire shape is the same
+/// (`image_url` / `file` with a base64 data URL); only `cache_control` markers
+/// differ.
+pub(crate) fn attachment_content_blocks(attachments: &[AttachmentData]) -> Vec<Value> {
+    attachments
         .iter()
-        .map(|img| {
-            serde_json::json!({
-                "type": "image_url",
-                "image_url": {
-                    "url": format!("data:{};base64,{}", img.mime_type, img.base64),
-                },
-            })
+        .map(|att| {
+            let data_url = format!("data:{};base64,{}", att.mime_type, att.base64);
+            if att.is_pdf() {
+                serde_json::json!({
+                    "type": "file",
+                    "file": { "filename": att.filename(), "file_data": data_url },
+                })
+            } else {
+                serde_json::json!({
+                    "type": "image_url",
+                    "image_url": { "url": data_url },
+                })
+            }
         })
         .collect()
+}
+
+/// Drop PDF attachments from every user turn. Used when the selected provider
+/// can't read PDFs natively — e.g. a conversation that attached a PDF on Claude
+/// and then switched to Codex.
+pub fn strip_pdfs(messages: &mut [ChatMessage]) {
+    for m in messages {
+        if let ChatMessage::User { attachments, .. } = m {
+            attachments.retain(|att| !att.is_pdf());
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn inlines_markdown_and_keeps_pdfs_as_attachments() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("conversations/attachments");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("c-file-001.md"), "# Notes\n\nhello\n").unwrap();
+        std::fs::write(dir.join("c-file-002.pdf"), b"%PDF-1.4").unwrap();
+        let vault = Vault::new(temp.path().to_path_buf()).unwrap();
+        let wire = WireMessage {
+            id: None,
+            role: "user".into(),
+            content: "read these".into(),
+            attachments: vec![
+                WireAttachment {
+                    path: "attachments/c-file-001.md".into(),
+                    mime_type: "text/markdown".into(),
+                    name: Some("notes.md".into()),
+                },
+                WireAttachment {
+                    path: "attachments/c-file-002.pdf".into(),
+                    mime_type: "application/pdf".into(),
+                    name: Some("paper.pdf".into()),
+                },
+            ],
+        };
+        let mut chat = wire_to_chat(&[wire], None, Some(&vault)).await;
+        let ChatMessage::User {
+            content,
+            attachments,
+        } = &chat[0]
+        else {
+            panic!("expected user turn");
+        };
+        assert_eq!(
+            content,
+            "read these\n\n<file name=\"notes.md\">\n# Notes\n\nhello\n</file>"
+        );
+        assert_eq!(attachments.len(), 1);
+        assert!(attachments[0].is_pdf());
+
+        let blocks = attachment_content_blocks(attachments);
+        assert_eq!(blocks[0]["type"], "file");
+        assert_eq!(blocks[0]["file"]["filename"], "paper.pdf");
+
+        strip_pdfs(&mut chat);
+        let ChatMessage::User { attachments, .. } = &chat[0] else {
+            unreachable!()
+        };
+        assert!(attachments.is_empty());
+    }
 
     fn openrouter_only() -> ProviderRegistry {
         ProviderRegistry::from_configs(&[ProviderConfig {

@@ -379,7 +379,7 @@ pub async fn execute_with_tools(
         let mut wrap_up_messages = messages.clone();
         wrap_up_messages.push(ChatMessage::User {
             content: WRAP_UP_INSTRUCTION.to_string(),
-            images: Vec::new(),
+            attachments: Vec::new(),
         });
         // Last guard before the wire. If even a tool-free conclusion doesn't
         // fit, fail here: the alternative is a multi-minute wait for the
@@ -759,8 +759,8 @@ mod tests {
         assert_eq!(seen.len(), MAX_ITERATIONS as usize + 1);
         assert!(matches!(
             seen.last().unwrap().last(),
-            Some(ChatMessage::User { content, images })
-                if content == WRAP_UP_INSTRUCTION && images.is_empty()
+            Some(ChatMessage::User { content, attachments })
+                if content == WRAP_UP_INSTRUCTION && attachments.is_empty()
         ));
     }
 
@@ -1106,7 +1106,7 @@ mod tests {
             context_window: Some(20_000),
             messages: vec![ChatMessage::User {
                 content: "x".repeat(200_000),
-                images: vec![],
+                attachments: vec![],
             }],
             ..LoopCase::new(vec![final_turn("never reached", 5)])
         }

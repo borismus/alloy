@@ -739,11 +739,13 @@ fn app_server_thread_start_params(model: &str, has_mcp: bool) -> Value {
 
 /// Build one app-server turn from Alloy's flattened transcript plus every image
 /// attachment in message order. Data URLs keep vault paths private from Codex.
+/// App-server has no file/document input, so PDFs never reach Codex (the
+/// provider keeps the default `supports_pdfs() == false`).
 fn app_server_input(prompt: &str, messages: &[ChatMessage]) -> Vec<Value> {
     let mut input = vec![serde_json::json!({"type": "text", "text": prompt})];
     for message in messages {
-        if let ChatMessage::User { images, .. } = message {
-            for image in images {
+        if let ChatMessage::User { attachments, .. } = message {
+            for image in attachments.iter().filter(|a| !a.is_pdf()) {
                 input.push(serde_json::json!({
                     "type": "image",
                     "url": format!("data:{};base64,{}", image.mime_type, image.base64),
@@ -1355,7 +1357,7 @@ mod tests {
     fn user(content: &str) -> ChatMessage {
         ChatMessage::User {
             content: content.into(),
-            images: vec![],
+            attachments: vec![],
         }
     }
     fn assistant(content: &str) -> ChatMessage {
@@ -1389,9 +1391,10 @@ mod tests {
     fn app_server_attaches_images_as_data_urls() {
         let messages = vec![ChatMessage::User {
             content: "what color?".into(),
-            images: vec![crate::providers::ImageData {
+            attachments: vec![crate::providers::AttachmentData {
                 mime_type: "image/png".into(),
                 base64: "aGVsbG8=".into(),
+                name: None,
             }],
         }];
         let input = app_server_input("what color?", &messages);
