@@ -20,7 +20,7 @@ interface Deferred {
 }
 
 function renderChat(overrides: {
-  onSaveImage: (id: string, data: Uint8Array, mime: string) => Promise<Attachment>;
+  onSaveAttachment: (id: string, data: Uint8Array, mime: string) => Promise<Attachment>;
   onSendMessage?: () => Promise<void>;
   conversation?: Conversation;
   onNewConversation?: () => void;
@@ -33,7 +33,7 @@ function renderChat(overrides: {
         <ChatInterface
           conversation={overrides.conversation ?? conversation}
           onSendMessage={onSendMessage}
-          onSaveImage={overrides.onSaveImage}
+          onSaveAttachment={overrides.onSaveAttachment}
           loadImageAsBase64={vi.fn(async () => ({ base64: '', mimeType: 'image/png' }))}
           hasProvider
           onModelChange={vi.fn()}
@@ -87,7 +87,7 @@ afterEach(() => {
 describe('ChatInterface persisted errors', () => {
   it('renders an assistant error together with its tool history', () => {
     renderChat({
-      onSaveImage: vi.fn(),
+      onSaveAttachment: vi.fn(),
       conversation: {
         ...conversation,
         messages: [{
@@ -121,7 +121,7 @@ describe('ChatInterface incomplete answers', () => {
 
   it('says an answer was cut short when the turn ran out of context', () => {
     renderChat({
-      onSaveImage: vi.fn(),
+      onSaveAttachment: vi.fn(),
       conversation: answer({ incompleteReason: 'context_budget' }),
     });
 
@@ -138,7 +138,7 @@ describe('ChatInterface incomplete answers', () => {
     // Observed in a real 621s research turn: 27k characters ending mid-word,
     // presented as a finished answer.
     renderChat({
-      onSaveImage: vi.fn(),
+      onSaveAttachment: vi.fn(),
       conversation: answer({ incompleteReason: 'output_limit' }),
     });
 
@@ -149,7 +149,7 @@ describe('ChatInterface incomplete answers', () => {
 
   it('says an answer stopped when the tool-use safety limit was reached', () => {
     renderChat({
-      onSaveImage: vi.fn(),
+      onSaveAttachment: vi.fn(),
       conversation: answer({ incompleteReason: 'iteration_limit' }),
     });
 
@@ -159,7 +159,7 @@ describe('ChatInterface incomplete answers', () => {
   });
 
   it('leaves an ordinary answer unlabelled', () => {
-    renderChat({ onSaveImage: vi.fn(), conversation: answer({}) });
+    renderChat({ onSaveAttachment: vi.fn(), conversation: answer({}) });
 
     expect(screen.getByText('Here is what I found so far.')).toBeTruthy();
     expect(document.querySelector('.response-incomplete-notice')).toBeNull();
@@ -169,10 +169,10 @@ describe('ChatInterface incomplete answers', () => {
 describe('ChatInterface image preparation feedback', () => {
   it('shows one indicator while multiple images persist, then hands off to streaming', async () => {
     const deferreds: Deferred[] = [];
-    const onSaveImage = vi.fn(
+    const onSaveAttachment = vi.fn(
       () => new Promise<Attachment>((resolve, reject) => deferreds.push({ resolve, reject })),
     );
-    const { onSendMessage } = renderChat({ onSaveImage });
+    const { onSendMessage } = renderChat({ onSaveAttachment });
 
     await pasteImage('one.png');
     await pasteImage('two.png');
@@ -180,12 +180,12 @@ describe('ChatInterface image preparation feedback', () => {
 
     // Indicator appears immediately, before any save resolves; no model call yet.
     const indicator = await screen.findByRole('status');
-    expect(indicator.textContent).toContain('Preparing images…');
+    expect(indicator.textContent).toContain('Preparing attachments…');
     expect(onSendMessage).not.toHaveBeenCalled();
 
     // Still exactly one indicator while the saves proceed one by one.
     deferreds[0].resolve({ type: 'image', path: 'attachments/one.png', mimeType: 'image/png' });
-    await waitFor(() => expect(onSaveImage).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onSaveAttachment).toHaveBeenCalledTimes(2));
     expect(screen.getAllByRole('status')).toHaveLength(1);
     expect(onSendMessage).not.toHaveBeenCalled();
 
@@ -197,10 +197,10 @@ describe('ChatInterface image preparation feedback', () => {
 
   it('queues a message submitted during preparation instead of racing it', async () => {
     const deferreds: Deferred[] = [];
-    const onSaveImage = vi.fn(
+    const onSaveAttachment = vi.fn(
       () => new Promise<Attachment>((resolve, reject) => deferreds.push({ resolve, reject })),
     );
-    const { onSendMessage } = renderChat({ onSaveImage });
+    const { onSendMessage } = renderChat({ onSaveAttachment });
 
     await pasteImage();
     const textarea = screen.getByPlaceholderText('Send a message...');
@@ -211,7 +211,7 @@ describe('ChatInterface image preparation feedback', () => {
     fireEvent.change(textarea, { target: { value: 'follow-up while preparing' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     expect(await screen.findByText('follow-up while preparing')).toBeTruthy();
-    expect(onSaveImage).toHaveBeenCalledTimes(1);
+    expect(onSaveAttachment).toHaveBeenCalledTimes(1);
 
     deferreds[0].resolve({ type: 'image', path: 'attachments/one.png', mimeType: 'image/png' });
     await waitFor(() => expect(onSendMessage).toHaveBeenCalled());
@@ -220,7 +220,7 @@ describe('ChatInterface image preparation feedback', () => {
   it('starts a new conversation from inside an existing one', () => {
     const onNewConversation = vi.fn();
     renderChat({
-      onSaveImage: vi.fn(),
+      onSaveAttachment: vi.fn(),
       conversation: withMessages('hello', 'hi there'),
       onNewConversation,
       onMobileBack: vi.fn(),
@@ -235,7 +235,7 @@ describe('ChatInterface image preparation feedback', () => {
   // swaps one unsaved draft for another.
   it('does not offer to create another conversation from an empty one', () => {
     const onNewConversation = vi.fn();
-    renderChat({ onSaveImage: vi.fn(), onNewConversation, onMobileBack: vi.fn() });
+    renderChat({ onSaveAttachment: vi.fn(), onNewConversation, onMobileBack: vi.fn() });
 
     const action = screen.getByRole('button', { name: 'New conversation' });
     fireEvent.click(action);
@@ -247,17 +247,17 @@ describe('ChatInterface image preparation feedback', () => {
   // Desktop keeps the sidebar on screen, so it never passes the callback and
   // must not grow a second creation affordance.
   it('omits the action when the layout does not ask for it', () => {
-    renderChat({ onSaveImage: vi.fn(), conversation: withMessages('hello', 'hi there') });
+    renderChat({ onSaveAttachment: vi.fn(), conversation: withMessages('hello', 'hi there') });
 
     expect(screen.queryByRole('button', { name: 'New conversation' })).toBeNull();
   });
 
   it('clears the indicator when an image save fails', async () => {
-    const onSaveImage = vi.fn(async () => {
+    const onSaveAttachment = vi.fn(async () => {
       throw new Error('disk full');
     });
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { onSendMessage } = renderChat({ onSaveImage });
+    const { onSendMessage } = renderChat({ onSaveAttachment });
 
     await pasteImage();
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
@@ -265,7 +265,7 @@ describe('ChatInterface image preparation feedback', () => {
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
     expect(onSendMessage).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to save image attachments'),
+      expect.stringContaining('Failed to save attachments'),
       expect.any(Error),
     );
   });

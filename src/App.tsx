@@ -130,7 +130,8 @@ function modelListsMatch(a: ModelInfo[], b: ModelInfo[]): boolean {
       && model.local === other.local
       && model.contextWindow === other.contextWindow
       && model.contextWindowSource === other.contextWindowSource
-      && model.supportsImages === other.supportsImages;
+      && model.supportsImages === other.supportsImages
+      && model.supportsPdfs === other.supportsPdfs;
   });
 }
 
@@ -605,7 +606,7 @@ function AppContent() {
   }, [config?.externalEditor, markSelfWrite]);
 
   // Extracted hook: handles message sending, streaming, saving, error recovery
-  const { handleSendMessage, handleSaveImage, handleLoadImageAsBase64 } = useSendMessage({
+  const { handleSendMessage, handleSaveAttachment, handleLoadImageAsBase64 } = useSendMessage({
     config, memory, markSelfWrite, showToast, chatInterfaceRef,
     setDraftConversation, setConversations,
     setStreamingThinkingState, updateStreamingThinking, finishStreamingThinking,
@@ -1537,7 +1538,7 @@ function AppContent() {
                 ref={chatInterfaceRef}
                 conversation={currentConversation}
                 onSendMessage={handleSendMessageForChat}
-                onSaveImage={handleSaveImage}
+                onSaveAttachment={handleSaveAttachment}
                 loadImageAsBase64={handleLoadImageAsBase64}
                 hasProvider={hasProvider}
                 onModelChange={handleModelChange}
@@ -1647,7 +1648,7 @@ function AppContent() {
             ref={chatInterfaceRef}
             conversation={currentConversation}
             onSendMessage={handleSendMessageForChat}
-            onSaveImage={handleSaveImage}
+            onSaveAttachment={handleSaveAttachment}
             loadImageAsBase64={handleLoadImageAsBase64}
             hasProvider={hasProvider}
             onModelChange={handleModelChange}

@@ -63,7 +63,9 @@ export function MessageQueueProvider({ children }: { children: React.ReactNode }
     if (!current) return;
     const target = current.find(m => m.id === messageId);
     if (target) {
-      target.pendingImages.forEach(img => URL.revokeObjectURL(img.preview));
+      target.pendingAttachments.forEach(a => {
+        if (a.preview) URL.revokeObjectURL(a.preview);
+      });
     }
     setQueues(prev => {
       const q = prev.get(id);

@@ -259,8 +259,8 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     }
   }, []);
 
-  const handleSaveImage = useCallback(async (conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> => {
-    return await vaultService.saveImage(conversationId, imageData, mimeType);
+  const handleSaveAttachment = useCallback(async (conversationId: string, data: Uint8Array, mimeType: string, name: string): Promise<Attachment> => {
+    return await vaultService.saveAttachment(conversationId, data, mimeType, name);
   }, []);
 
   const handleLoadImageAsBase64 = useCallback(async (relativePath: string): Promise<{ base64: string; mimeType: string }> => {
@@ -270,5 +270,5 @@ export function useSendMessage(deps: UseSendMessageDeps) {
     return { base64, mimeType };
   }, []);
 
-  return { handleSendMessage, handleSaveImage, handleLoadImageAsBase64 };
+  return { handleSendMessage, handleSaveAttachment, handleLoadImageAsBase64 };
 }

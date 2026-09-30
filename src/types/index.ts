@@ -30,9 +30,10 @@ export function getModelIdFromModel(modelString: string): string {
 }
 
 export interface Attachment {
-  type: 'image';
-  path: string;          // Relative path: attachments/{convId}-img-001.png
-  mimeType: string;      // image/png, image/jpeg, image/gif, image/webp
+  type: 'image' | 'file';
+  path: string;          // Relative path: attachments/{convId}-img-001.png or {convId}-file-001.pdf
+  mimeType: string;      // image/png, image/jpeg, image/webp, application/pdf, text/markdown
+  name?: string;         // Original filename (files only)
 }
 
 export interface ToolUse {
@@ -81,10 +82,18 @@ export interface SubagentStreamingState {
   toolUse?: ToolUse[];
 }
 
+// An attachment picked in the composer but not yet saved to the vault.
+export interface PendingAttachment {
+  data: Uint8Array;
+  mimeType: string;
+  name: string;
+  preview?: string;  // Object URL for image thumbnails; absent for files
+}
+
 export interface QueuedMessage {
   id: string;
   content: string;
-  pendingImages: Array<{ data: Uint8Array; mimeType: string; preview: string }>;
+  pendingAttachments: PendingAttachment[];
 }
 
 export interface Message {
@@ -131,6 +140,9 @@ export interface ModelInfo {
   // which takes a single text prompt). Absent means supported — the backend
   // omits it when true, so don't test truthiness, test `=== false`.
   supportsImages?: boolean;
+  // True only when the model reads PDFs natively (Claude CLI, OpenRouter).
+  // Unlike images, absent means unsupported — Alloy never extracts PDF text.
+  supportsPdfs?: boolean;
 }
 
 export interface TaskSchedule {

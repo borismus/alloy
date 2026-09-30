@@ -330,10 +330,9 @@ providers:
             .map((line, i) => i === 0 ? `> [${role}] ${line}` : `> ${line}`)
             .join('\n');
 
-          // Add image embeds for Obsidian
+          // Add attachment embeds for Obsidian (images, PDFs, and Markdown all embed)
           if (m.attachments?.length) {
             const imageEmbeds = m.attachments
-              .filter(a => a.type === 'image')
               .map(a => {
                 // Convert attachments/convid-img-001.png to ![[convid-img-001.png]]
                 const filename = a.path.split('/').pop();
@@ -1089,29 +1088,27 @@ providers:
     return await join(this.vaultPath, 'conversations', 'attachments');
   }
 
-  async getNextImageFilename(conversationId: string, extension: string): Promise<string> {
+  async getNextAttachmentFilename(conversationId: string, kind: 'img' | 'file', extension: string): Promise<string> {
+    const prefix = `${conversationId}-${kind}-`;
     const attachmentsPath = await this.getAttachmentsPath();
-    if (!attachmentsPath) return `${conversationId}-img-001.${extension}`;
-
-    if (!(await exists(attachmentsPath))) {
-      return `${conversationId}-img-001.${extension}`;
+    if (!attachmentsPath || !(await exists(attachmentsPath))) {
+      return `${prefix}001.${extension}`;
     }
 
     const entries = await readDir(attachmentsPath);
-    const prefix = `${conversationId}-img-`;
-    const imageNumbers = entries
+    const numbers = entries
       .filter(e => e.name?.startsWith(prefix))
       .map(e => {
-        const match = e.name?.match(/-img-(\d+)\./);
+        const match = e.name?.slice(prefix.length).match(/^(\d+)\./);
         return match ? parseInt(match[1], 10) : 0;
       })
       .filter(n => !isNaN(n));
 
-    const nextNum = imageNumbers.length > 0 ? Math.max(...imageNumbers) + 1 : 1;
-    return `${conversationId}-img-${String(nextNum).padStart(3, '0')}.${extension}`;
+    const nextNum = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
+    return `${prefix}${String(nextNum).padStart(3, '0')}.${extension}`;
   }
 
-  async saveImage(conversationId: string, imageData: Uint8Array, mimeType: string): Promise<Attachment> {
+  async saveAttachment(conversationId: string, data: Uint8Array, mimeType: string, name: string): Promise<Attachment> {
     const attachmentsPath = await this.getAttachmentsPath();
     if (!attachmentsPath) {
       throw new Error('No vault path set');
@@ -1122,17 +1119,18 @@ providers:
       await mkdir(attachmentsPath, { recursive: true });
     }
 
-    const extension = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png';
-    const filename = await this.getNextImageFilename(conversationId, extension);
+    const isImage = mimeType.startsWith('image/');
+    const extension = isImage
+      ? (mimeType.split('/')[1] === 'jpeg' ? 'jpg' : mimeType.split('/')[1] || 'png')
+      : (mimeType === 'application/pdf' ? 'pdf' : 'md');
+    const filename = await this.getNextAttachmentFilename(conversationId, isImage ? 'img' : 'file', extension);
     const filePath = await join(attachmentsPath, filename);
 
-    await writeFile(filePath, imageData);
+    await writeFile(filePath, data);
 
-    return {
-      type: 'image',
-      path: `attachments/${filename}`,
-      mimeType,
-    };
+    return isImage
+      ? { type: 'image', path: `attachments/${filename}`, mimeType }
+      : { type: 'file', path: `attachments/${filename}`, mimeType, name };
   }
 
   async loadImageAsBase64(relativePath: string): Promise<string> {

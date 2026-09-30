@@ -24,7 +24,8 @@ function isModelInfo(value: unknown): value is ModelInfo {
       'model_alias',
       'assumed',
     ].includes(model.contextWindowSource))
-    && (model.supportsImages === undefined || typeof model.supportsImages === 'boolean');
+    && (model.supportsImages === undefined || typeof model.supportsImages === 'boolean')
+    && (model.supportsPdfs === undefined || typeof model.supportsPdfs === 'boolean');
 }
 
 /**

@@ -14,9 +14,9 @@ export const QueuedMessagesList = React.memo(({ queue, onRemove }: QueuedMessage
       {queue.map((qm) => (
         <div key={qm.id} className="queued-message">
           <div className="queued-message-content">
-            {qm.pendingImages.length > 0 && (
+            {qm.pendingAttachments.length > 0 && (
               <span className="queued-images-badge">
-                {qm.pendingImages.length} image{qm.pendingImages.length > 1 ? 's' : ''}
+                {qm.pendingAttachments.length} attachment{qm.pendingAttachments.length > 1 ? 's' : ''}
               </span>
             )}
             <span className="queued-message-text">

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
-import { Conversation, Message, ModelInfo, Attachment, getProviderFromModel, getModelIdFromModel } from '../types';
+import { Conversation, Message, ModelInfo, Attachment, PendingAttachment, getProviderFromModel, getModelIdFromModel } from '../types';
+import { toPendingAttachments } from '../utils/attachments';
 import { generateMessageId } from '../utils/ids';
 import { chooseDefaultModel, PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
@@ -13,7 +14,7 @@ import { ItemHeader } from './ItemHeader';
 import { ContextUsageChip } from './ContextUsageChip';
 import { ThreadCostChip } from './ThreadCostChip';
 import { MarkdownContent } from './MarkdownContent';
-import { ChatInputForm, ChatInputFormHandle, PendingImage } from './ChatInputForm';
+import { ChatInputForm, ChatInputFormHandle } from './ChatInputForm';
 import { QueuedMessagesList } from './QueuedMessagesList';
 import { Button } from './ui';
 import './ChatInterface.css';
@@ -25,7 +26,7 @@ interface UserMessageProps {
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
 }
 
-// UserMessage handles user messages with image attachments
+// UserMessage handles user messages with image and file attachments
 const UserMessage = React.memo(({ message, getImageUrl, onNavigateToNote, onNavigateToConversation }: UserMessageProps) => {
   return (
     <div className="message user">
@@ -38,6 +39,15 @@ const UserMessage = React.memo(({ message, getImageUrl, onNavigateToNote, onNavi
             </div>
           );
         })}
+        {message.attachments?.some(a => a.type === 'file') && (
+          <div className="message-files">
+            {message.attachments.filter(a => a.type === 'file').map(attachment => (
+              <span key={attachment.path} className="attachment-chip" title={attachment.name}>
+                {attachment.name ?? attachment.path.split('/').pop()}
+              </span>
+            ))}
+          </div>
+        )}
         <MarkdownContent
           content={message.content}
           onNavigateToNote={onNavigateToNote}
@@ -116,7 +126,7 @@ const CompactedMessage = React.memo(({ message }: { message: Message }) => {
 interface ChatInterfaceProps {
   conversation: Conversation | null;
   onSendMessage: (content: string, attachments: Attachment[], onChunk?: (text: string) => void, signal?: AbortSignal) => Promise<void>;
-  onSaveImage: (conversationId: string, imageData: Uint8Array, mimeType: string) => Promise<Attachment>;
+  onSaveAttachment: (conversationId: string, data: Uint8Array, mimeType: string, name: string) => Promise<Attachment>;
   loadImageAsBase64: (relativePath: string) => Promise<{ base64: string; mimeType: string }>;
   hasProvider: boolean;
   onModelChange: (modelKey: string) => void;  // Format: "provider/model-id"
@@ -168,7 +178,7 @@ const getAssistantName = (model: string): string => {
 export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(({
   conversation,
   onSendMessage,
-  onSaveImage,
+  onSaveAttachment,
   loadImageAsBase64,
   hasProvider,
   onModelChange,
@@ -201,7 +211,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   const [isDragging, setIsDragging] = useState(false);
   // True while image attachments are being persisted, before any model
   // request exists — deliberately distinct from the streaming/thinking state.
-  const [isPreparingImages, setIsPreparingImages] = useState(false);
+  const [isPreparingAttachments, setIsPreparingAttachments] = useState(false);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -440,62 +450,34 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
 
-    // Valid image MIME types
-    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
-    // Fallback: check extension if MIME type is missing/incorrect
-    const imageExtensions = /\.(png|jpe?g|webp)$/i;
-
-    const newImages: PendingImage[] = [];
-    for (const file of Array.from(files)) {
-      // Check MIME type first
-      let mimeType = file.type;
-      const isValidMime = validImageTypes.includes(mimeType);
-      const hasImageExtension = imageExtensions.test(file.name);
-
-      // Skip if neither MIME type nor extension indicates an image
-      if (!isValidMime && !hasImageExtension) continue;
-
-      // If MIME type is missing/invalid but extension is valid, infer MIME type
-      if (!isValidMime && hasImageExtension) {
-        const ext = file.name.split('.').pop()?.toLowerCase();
-        if (ext === 'png') mimeType = 'image/png';
-        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'webp') mimeType = 'image/webp';
-        else continue; // Unknown extension
-      }
-
-      const arrayBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      const preview = URL.createObjectURL(file);
-      newImages.push({ data, mimeType, preview });
-    }
-    if (newImages.length > 0) {
-      chatInputRef.current?.addImages(newImages);
+    const attachments = await toPendingAttachments(Array.from(files));
+    if (attachments.length > 0) {
+      chatInputRef.current?.addAttachments(attachments);
     }
   };
 
-  const processAndSend = useCallback(async (message: string, pendingImages: PendingImage[]) => {
+  const processAndSend = useCallback(async (message: string, pendingAttachments: PendingAttachment[]) => {
     if (!conversation) return;
 
     // Capture the conversation ID at submission time - user may navigate away during streaming
     const submittedConversationId = conversation.id;
 
-    // Save images and collect attachments. Persisting can take seconds and no
-    // model request has started yet, so show a distinct "Preparing images…"
+    // Save attachments to the vault. Persisting can take seconds and no
+    // model request has started yet, so show a distinct "Preparing attachments…"
     // state immediately — without it the cleared composer looks like the send
     // was ignored. It hands off to the streaming state once saves finish.
     const attachments: Attachment[] = [];
-    if (pendingImages.length > 0) {
-      setIsPreparingImages(true);
+    if (pendingAttachments.length > 0) {
+      setIsPreparingAttachments(true);
       try {
-        for (const img of pendingImages) {
-          const attachment = await onSaveImage(conversation.id, img.data, img.mimeType);
+        for (const pending of pendingAttachments) {
+          const attachment = await onSaveAttachment(conversation.id, pending.data, pending.mimeType, pending.name);
           attachments.push(attachment);
-          URL.revokeObjectURL(img.preview);
+          if (pending.preview) URL.revokeObjectURL(pending.preview);
         }
       } catch (error) {
-        setIsPreparingImages(false);
-        console.error('[ChatInterface] Failed to save image attachments:', error);
+        setIsPreparingAttachments(false);
+        console.error('[ChatInterface] Failed to save attachments:', error);
         return;
       }
     }
@@ -505,7 +487,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // Start streaming and get AbortController. Batched with the preparing
     // reset so the indicator swaps for the streaming state in one render.
     const abortController = startStreaming();
-    setIsPreparingImages(false);
+    setIsPreparingAttachments(false);
     if (!abortController) return;
 
     // Helper to check if user is still viewing this conversation
@@ -526,9 +508,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       }
       throw error;
     }
-  }, [conversation, onSaveImage, onSendMessage, startStreaming, updateContent, completeStreaming]);
+  }, [conversation, onSaveAttachment, onSendMessage, startStreaming, updateContent, completeStreaming]);
 
-  const handleFormSubmit = useCallback((message: string, pendingImages: PendingImage[]): boolean => {
+  const handleFormSubmit = useCallback((message: string, pendingAttachments: PendingAttachment[]): boolean => {
     // Mobile intentionally renders the conversation shell during restoration.
     // Rejecting here keeps the composer intact until App reconstructs a missing
     // unsaved draft; previously this silent return happened after the text was
@@ -537,30 +519,30 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     // Queue during preparation too — attachment saves haven't started the
     // stream yet, and a second concurrent processAndSend would race it.
-    if (isStreaming || isPreparingImages) {
+    if (isStreaming || isPreparingAttachments) {
       enqueue({
         id: generateMessageId(),
         content: message,
-        pendingImages,
+        pendingAttachments,
       });
       return true;
     }
 
-    void processAndSend(message, pendingImages);
+    void processAndSend(message, pendingAttachments);
     return true;
-  }, [conversation, isStreaming, isPreparingImages, enqueue, processAndSend]);
+  }, [conversation, isStreaming, isPreparingAttachments, enqueue, processAndSend]);
 
   // Process queued messages when streaming completes. Everything queued during
   // the turn is folded into a single follow-up send (content joined by blank
   // lines, images concatenated) so N queued messages produce one reply, not N.
   useEffect(() => {
-    if (isStreaming || isPreparingImages || queue.length === 0) return;
+    if (isStreaming || isPreparingAttachments || queue.length === 0) return;
     const drained = drainQueue();
     if (drained.length === 0) return;
     const combinedContent = drained.map(m => m.content).join('\n\n');
-    const combinedImages = drained.flatMap(m => m.pendingImages);
-    processAndSend(combinedContent, combinedImages);
-  }, [isStreaming, isPreparingImages, queue.length, drainQueue, processAndSend]);
+    const combinedAttachments = drained.flatMap(m => m.pendingAttachments);
+    processAndSend(combinedContent, combinedAttachments);
+  }, [isStreaming, isPreparingAttachments, queue.length, drainQueue, processAndSend]);
 
   // Global Escape key handler for stopping streaming
   useGlobalEscape(handleStop, isStreaming);
@@ -798,10 +780,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </>
         )}
 
-        {isPreparingImages && !showStreamingMessage && (
+        {isPreparingAttachments && !showStreamingMessage && (
           <div className="preparing-images-indicator" role="status">
             <span className="thinking-indicator"><span></span><span></span><span></span></span>
-            Preparing images…
+            Preparing attachments…
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { ModelInfo } from '../types';
+import { ModelInfo, PendingAttachment } from '../types';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { useDictation, type DictationMode } from '../hooks/useDictation';
@@ -11,18 +11,19 @@ import { AlloyTooltip, Button } from './ui';
 import { SlashCommandMenu, SlashCommandItem } from './SlashCommandMenu';
 import { skillRegistry } from '../services/skills';
 import { slashQuery } from '../utils/slashCommand';
+import {
+  ATTACHMENT_ACCEPT,
+  PDF_MIME,
+  isImageMime,
+  modelAcceptsAttachment,
+  toPendingAttachments,
+} from '../utils/attachments';
 
 const MAX_SLASH_ITEMS = 8;
 
-export interface PendingImage {
-  data: Uint8Array;
-  mimeType: string;
-  preview: string;
-}
-
 interface ChatInputFormProps {
   /** Return true once the message was accepted for sending or queueing. */
-  onSubmit: (message: string, pendingImages: PendingImage[]) => boolean;
+  onSubmit: (message: string, pendingAttachments: PendingAttachment[]) => boolean;
   onStop: () => void;
   isStreaming: boolean;
   model: string;
@@ -37,7 +38,7 @@ interface ChatInputFormProps {
 
 export interface ChatInputFormHandle {
   focus: () => void;
-  addImages: (images: PendingImage[]) => void;
+  addAttachments: (attachments: PendingAttachment[]) => void;
   setText: (text: string) => void;
 }
 
@@ -55,15 +56,18 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   sonioxApiKey,
 }, ref) => {
   const [input, setInput] = useState('');
-  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
 
-  // Some providers can't accept images at all (codex exec takes a single text
-  // prompt). They used to drop the attachment silently and answer the bare
-  // text, so the model would insist no image had been sent. Absence means
-  // supported — only an explicit `false` blocks.
+  // Some models can't take some attachment types (PDFs need native support;
+  // Alloy never extracts their text). Warn up front rather than let the model
+  // answer the bare text as if nothing had been attached.
   const selectedModelInfo = availableModels.find(m => m.key === model);
-  const modelAcceptsImages = selectedModelInfo?.supportsImages !== false;
   const modelLabel = selectedModelInfo?.name ?? 'This model';
+  const unsupported = pendingAttachments.filter(a => !modelAcceptsAttachment(selectedModelInfo, a.mimeType));
+  const unsupportedKinds = [
+    unsupported.some(a => isImageMime(a.mimeType)) && 'images',
+    unsupported.some(a => a.mimeType === PDF_MIME) && 'PDFs',
+  ].filter(Boolean).join(' or ');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const preDictationTextRef = useRef('');
@@ -99,7 +103,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
-    addImages: (images: PendingImage[]) => setPendingImages(prev => [...prev, ...images]),
+    addAttachments: (attachments: PendingAttachment[]) => setPendingAttachments(prev => [...prev, ...attachments]),
     setText: (text: string) => setInput(text),
   }));
 
@@ -108,30 +112,21 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
-    // Let the paste fall through as text rather than silently swallowing it.
-    if (!modelAcceptsImages) return;
 
-    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
-
-    for (const item of Array.from(items)) {
-      if (!validImageTypes.includes(item.type)) continue;
-
-      e.preventDefault();
-      const blob = item.getAsFile();
-      if (!blob) continue;
-
-      const arrayBuffer = await blob.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      const preview = URL.createObjectURL(blob);
-
-      setPendingImages(prev => [...prev, { data, mimeType: item.type, preview }]);
-    }
+    // getAsFile() is null for text items.
+    const files = Array.from(items)
+      .map(item => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    const attachments = await toPendingAttachments(files);
+    if (attachments.length === 0) return; // plain text paste
+    e.preventDefault();
+    setPendingAttachments(prev => [...prev, ...attachments]);
   };
 
-  const handleRemoveImage = (index: number) => {
-    setPendingImages(prev => {
+  const handleRemoveAttachment = (index: number) => {
+    setPendingAttachments(prev => {
       const removed = prev[index];
-      if (removed) {
+      if (removed?.preview) {
         URL.revokeObjectURL(removed.preview);
       }
       return prev.filter((_, i) => i !== index);
@@ -142,29 +137,8 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const validImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
-    const imageExtensions = /\.(png|jpe?g|webp)$/i;
-
-    for (const file of Array.from(files)) {
-      let mimeType = file.type;
-      const isValidMime = validImageTypes.includes(mimeType);
-      const hasImageExtension = imageExtensions.test(file.name);
-
-      if (!isValidMime && !hasImageExtension) continue;
-
-      if (!isValidMime && hasImageExtension) {
-        const ext = file.name.split('.').pop()?.toLowerCase();
-        if (ext === 'png') mimeType = 'image/png';
-        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'webp') mimeType = 'image/webp';
-        else continue;
-      }
-
-      const arrayBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      const preview = URL.createObjectURL(file);
-      setPendingImages(prev => [...prev, { data, mimeType, preview }]);
-    }
+    const attachments = await toPendingAttachments(Array.from(files));
+    setPendingAttachments(prev => [...prev, ...attachments]);
 
     e.target.value = '';
   };
@@ -175,20 +149,20 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
 
   const doSubmit = useCallback((textOverride?: string): boolean => {
     const sourceText = textOverride ?? input;
-    if (!sourceText.trim() && pendingImages.length === 0) return false;
+    if (!sourceText.trim() && pendingAttachments.length === 0) return false;
 
     const message = sourceText.trim();
-    const images = [...pendingImages];
+    const attachments = [...pendingAttachments];
 
     // A restored mobile screen can briefly have no backing conversation while
     // its draft is reconstructed. Never erase a composed prompt unless the
     // parent actually accepted it for sending or queueing.
-    if (!onSubmit(message, images)) return false;
+    if (!onSubmit(message, attachments)) return false;
 
     setInput('');
-    setPendingImages([]);
+    setPendingAttachments([]);
     return true;
-  }, [input, pendingImages, onSubmit]);
+  }, [input, pendingAttachments, onSubmit]);
 
   const transcriptWithPrefix = useCallback((text: string) => {
     const pre = preDictationTextRef.current;
@@ -330,20 +304,23 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           onHover={setSlashActiveIndex}
         />
       )}
-      {pendingImages.length > 0 && !modelAcceptsImages && (
+      {unsupported.length > 0 && (
         <p className="attachment-warning" role="status">
-          {modelLabel} can&apos;t accept images — {pendingImages.length === 1 ? 'this attachment' : 'these attachments'} will be ignored. Switch models to send {pendingImages.length === 1 ? 'it' : 'them'}.
+          {modelLabel} can&apos;t read {unsupportedKinds} — {unsupported.length === 1 ? 'this attachment' : 'these attachments'} will be ignored. Switch models to send {unsupported.length === 1 ? 'it' : 'them'}.
         </p>
       )}
-      {pendingImages.length > 0 && (
+      {pendingAttachments.length > 0 && (
         <div className="pending-images">
-          {pendingImages.map((img, idx) => (
-            <div key={idx} className="pending-image">
-              <img src={img.preview} alt={`Pending ${idx + 1}`} />
+          {pendingAttachments.map((attachment, idx) => (
+            <div key={idx} className={attachment.preview ? 'pending-image' : 'pending-file'}>
+              {attachment.preview
+                ? <img src={attachment.preview} alt={`Pending ${idx + 1}`} />
+                : <span className="attachment-chip" title={attachment.name}>{attachment.name}</span>}
               <button
                 type="button"
                 className="remove-image"
-                onClick={() => handleRemoveImage(idx)}
+                aria-label={`Remove ${attachment.name}`}
+                onClick={() => handleRemoveAttachment(idx)}
               >
                 ×
               </button>
@@ -355,22 +332,19 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+          accept={ATTACHMENT_ACCEPT}
           multiple
           onChange={handleFileSelect}
           style={{ display: 'none' }}
         />
-        <AlloyTooltip
-          content={modelAcceptsImages ? 'Attach image' : `${modelLabel} can't accept images`}
-        >
+        <AlloyTooltip content="Attach image, PDF, or Markdown">
           <Button
             type="button"
             variant="secondary"
             size="composer"
             data-composer-control="attach"
             onPress={handleAttachClick}
-            aria-label={modelAcceptsImages ? 'Attach image' : `${modelLabel} can't accept images`}
-            isDisabled={!modelAcceptsImages}
+            aria-label="Attach file"
           >
             +
           </Button>
@@ -413,7 +387,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
             />
           </AlloyTooltip>
         )}
-        {isStreaming && !input.trim() && pendingImages.length === 0 ? (
+        {isStreaming && !input.trim() && pendingAttachments.length === 0 ? (
           <AlloyTooltip content="Stop generating">
             <Button
               type="button"
@@ -433,7 +407,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
               variant="primary"
               size="composer"
               data-composer-control="send"
-              isDisabled={!input.trim() && pendingImages.length === 0}
+              isDisabled={!input.trim() && pendingAttachments.length === 0}
               aria-label={isStreaming ? 'Queue message' : 'Send message'}
             >
               ↑

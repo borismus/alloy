@@ -99,21 +99,20 @@ export async function executeViaServer(
   const apiBase = getApiBase();
 
   // Convert messages to server format (strip fields the server doesn't need).
-  // Image attachments are passed as lightweight references (path + mimeType);
-  // the server reads the bytes from the vault and base64-encodes them, so the
-  // start payload stays small.
+  // Attachments are passed as lightweight references (path + mimeType + name);
+  // the server reads the bytes from the vault, so the start payload stays small.
   const serverMessages = messages
     .filter(m => m.role !== 'log')
     .map(m => {
-      const imageAttachments = m.attachments?.filter(a => a.type === 'image') ?? [];
+      const attachments = m.attachments ?? [];
       return {
         // `id` lets the server anchor a server-inserted compacted message at the
         // right boundary in the vault array (see alloy-server/src/compaction.rs).
         ...(m.id ? { id: m.id } : {}),
         role: m.role,
         content: m.content,
-        ...(imageAttachments.length > 0
-          ? { attachments: imageAttachments.map(a => ({ path: a.path, mimeType: a.mimeType })) }
+        ...(attachments.length > 0
+          ? { attachments: attachments.map(a => ({ path: a.path, mimeType: a.mimeType, ...(a.name ? { name: a.name } : {}) })) }
           : {}),
       };
     });

@@ -45,7 +45,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const attachButton = () => screen.getByRole('button', { name: /Attach image|can't accept images/ });
+const attachButton = () => screen.getByRole('button', { name: 'Attach file' });
 
 describe('message submission', () => {
   it('keeps composed text when the parent cannot accept the send', () => {
@@ -70,24 +70,13 @@ describe('message submission', () => {
   });
 });
 
-describe('image attachment gating', () => {
-  it('disables attaching when the model cannot accept images', () => {
+const PNG = { data: new Uint8Array([1, 2, 3]), mimeType: 'image/png', name: 'shot.png', preview: 'blob:preview' };
+const PDF = { data: new Uint8Array([1, 2, 3]), mimeType: 'application/pdf', name: 'paper.pdf' };
+const MD = { data: new Uint8Array([1, 2, 3]), mimeType: 'text/markdown', name: 'notes.md' };
+
+describe('attachment gating', () => {
+  it('keeps attaching available on text-only models, since Markdown always works', () => {
     renderForm(TEXT_ONLY.key);
-    const button = attachButton();
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(button.getAttribute('aria-label')).toContain("can't accept images");
-  });
-
-  it('allows attaching when the model supports images', () => {
-    renderForm(VISION.key);
-    expect((attachButton() as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it('treats an absent supportsImages flag as supported', () => {
-    // Regression guard: the wire omits the field when true, so a truthiness
-    // check here would wrongly block every normal model.
-    expect(VISION.supportsImages).toBeUndefined();
-    renderForm(VISION.key);
     expect((attachButton() as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -106,9 +95,7 @@ describe('image attachment gating', () => {
     const { rerender } = renderForm(VISION.key, ref);
 
     act(() => {
-      ref.current?.addImages([
-        { data: new Uint8Array([1, 2, 3]), mimeType: 'image/png', preview: 'blob:preview' },
-      ]);
+      ref.current?.addAttachments([PNG]);
     });
     expect(screen.queryByRole('status')).toBeNull();
 
@@ -125,7 +112,47 @@ describe('image attachment gating', () => {
     );
 
     const warning = screen.getByRole('status');
-    expect(warning.textContent).toContain("can't accept images");
+    expect(warning.textContent).toContain("can't read images");
     expect(warning.textContent).toContain('Text-only test model');
+  });
+
+  it('warns about PDFs unless the model explicitly reads them', () => {
+    // Absent `supportsPdfs` means unsupported — the opposite of images.
+    const ref = createRef<ChatInputFormHandle>();
+    renderForm(VISION.key, ref);
+    act(() => {
+      ref.current?.addAttachments([PDF]);
+    });
+    expect(screen.getByRole('status').textContent).toContain("can't read PDFs");
+  });
+
+  it('accepts PDFs on models that read them natively', () => {
+    const ref = createRef<ChatInputFormHandle>();
+    render(
+      <ChatInputForm
+        ref={ref}
+        onSubmit={vi.fn()}
+        onStop={vi.fn()}
+        isStreaming={false}
+        model={VISION.key}
+        onModelChange={vi.fn()}
+        availableModels={[{ ...VISION, supportsPdfs: true }]}
+      />
+    );
+    act(() => {
+      ref.current?.addAttachments([PDF]);
+    });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('paper.pdf')).toBeTruthy();
+  });
+
+  it('never warns about Markdown, which is sent as text', () => {
+    const ref = createRef<ChatInputFormHandle>();
+    renderForm(TEXT_ONLY.key, ref);
+    act(() => {
+      ref.current?.addAttachments([MD]);
+    });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('notes.md')).toBeTruthy();
   });
 });
