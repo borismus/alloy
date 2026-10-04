@@ -546,8 +546,11 @@
   text-decoration: underline;
 }
 
+/* The user bubble is the same purple gradient in both themes, so its link
+   colors are fixed rather than theme tokens (accent-soft is a translucent
+   indigo in dark mode, which vanished against the gradient). */
 .message.user .message-content a.wiki-link {
-  color: var(--color-accent-soft);
+  color: white;
   background: rgba(255, 255, 255, 0.2);
 }
 
