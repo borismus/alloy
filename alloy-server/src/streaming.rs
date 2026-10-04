@@ -617,7 +617,7 @@ async fn run_stream(
                 }
             }
 
-            turn_summary(
+            let summary = turn_summary(
                 "complete",
                 &params,
                 &session,
@@ -625,8 +625,9 @@ async fn run_stream(
                 &stream_result.content,
                 stream_result.usage.as_ref(),
                 duration_ms,
-            )
-            .record();
+            );
+            summary.record();
+            summary.record_error(&params.conversation_id, None);
 
             {
                 let mut inner = session.inner.lock().unwrap();
@@ -647,7 +648,7 @@ async fn run_stream(
             // The failure reason is Alloy's own message, not model or user
             // text, so it is safe to log and is the whole point of the record.
             let partial = session.inner.lock().unwrap().full_content.clone();
-            turn_summary(
+            let summary = turn_summary(
                 "error",
                 &params,
                 &session,
@@ -655,8 +656,9 @@ async fn run_stream(
                 &partial,
                 None,
                 duration_ms,
-            )
-            .record();
+            );
+            summary.record();
+            summary.record_error(&params.conversation_id, Some(&msg));
             tracing::warn!(error = %msg, "turn failed");
 
             // Persist partial content, tool history, and the error on one
@@ -681,7 +683,7 @@ fn turn_summary(
     duration_ms: u64,
 ) -> crate::logging::TurnSummary {
     let (provider, model) = crate::logging::TurnSummary::split_model(&params.model);
-    let (tool_calls, tool_names) = {
+    let (tool_calls, tool_names, failed_tools) = {
         let inner = session.inner.lock().unwrap();
         tool_call_metadata(&inner.tool_history)
     };
@@ -692,6 +694,7 @@ fn turn_summary(
         messages: params.messages.len(),
         tool_calls,
         tool_names,
+        failed_tools,
         stop_reason: stop_reason.to_string(),
         incomplete_reason: incomplete_reason(stop_reason),
         content_chars: content.chars().count(),
@@ -703,20 +706,41 @@ fn turn_summary(
     }
 }
 
-/// Count tool invocations and collect their unique names in call order. Names
-/// are metadata; `input` (paths, queries, URLs) and results never leave here.
-fn tool_call_metadata(history: &[ToolHistoryEntry]) -> (usize, Vec<String>) {
-    let mut count = 0;
-    let mut names: Vec<String> = Vec::new();
-    for entry in history {
-        if let ToolHistoryEntry::Use { name, .. } = entry {
-            count += 1;
-            if !names.iter().any(|seen| seen == name) {
-                names.push(name.clone());
-            }
+/// Count tool invocations and collect their unique names in call order, plus
+/// the unique names of those that returned an error. Names are metadata;
+/// `input` (paths, queries, URLs) and results never leave here.
+fn tool_call_metadata(history: &[ToolHistoryEntry]) -> (usize, Vec<String>, Vec<String>) {
+    fn push_unique(names: &mut Vec<String>, name: &str) {
+        if !names.iter().any(|seen| seen == name) {
+            names.push(name.to_string());
         }
     }
-    (count, names)
+    let mut count = 0;
+    let mut names: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for entry in history {
+        match entry {
+            ToolHistoryEntry::Use { name, .. } => {
+                count += 1;
+                push_unique(&mut names, name);
+            }
+            ToolHistoryEntry::Result {
+                tool_use_id,
+                is_error: true,
+                ..
+            } => {
+                let name = history.iter().find_map(|e| match e {
+                    ToolHistoryEntry::Use { id, name, .. } if id == tool_use_id => Some(name),
+                    _ => None,
+                });
+                if let Some(name) = name {
+                    push_unique(&mut failed, name);
+                }
+            }
+            ToolHistoryEntry::Result { .. } => {}
+        }
+    }
+    (count, names, failed)
 }
 
 /// Append an explicitly-invoked (`/skill_name`) skill's instructions to a turn's
@@ -1563,6 +1587,11 @@ mod tests {
                 name: "web_fetch".into(),
                 input: json!({ "url": "https://broker.example.com/account/9912" }),
             });
+            inner.tool_history.push(ToolHistoryEntry::Result {
+                tool_use_id: "t3".into(),
+                content: "403 for https://broker.example.com/account/9912".into(),
+                is_error: true,
+            });
         }
 
         let params = StartParams {
@@ -1606,6 +1635,7 @@ mod tests {
             vec!["read_file", "web_fetch"],
             "names only, de-duplicated, in call order"
         );
+        assert_eq!(summary.failed_tools, vec!["web_fetch"]);
         assert_eq!(summary.content_shape, "prose");
         assert_eq!(summary.content_chars, 36);
         assert_eq!(summary.input_tokens, 900);

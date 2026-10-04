@@ -26,6 +26,12 @@ const MAX_LOG_FILES: usize = 7;
 const FILENAME_PREFIX: &str = "alloy";
 const FILENAME_SUFFIX: &str = "log";
 
+/// Append-only list of turns that went wrong, one JSON object per line, kept
+/// next to the daily logs. Each entry points at the conversation where the
+/// details live, so problems can be triaged later (e.g. from a Claude Code
+/// session in the repo) without the log itself holding conversation content.
+pub const ERROR_LOG_FILENAME: &str = "errors.jsonl";
+
 /// Where rotating logs are written. `ALLOY_LOG_DIR` overrides (also used by
 /// tests); otherwise the platform's conventional location.
 pub fn log_directory() -> Option<PathBuf> {
@@ -156,6 +162,8 @@ pub struct TurnSummary {
     pub tool_calls: usize,
     /// Unique tool names in call order. Names only — never their arguments.
     pub tool_names: Vec<String>,
+    /// Unique names of tools whose result was an error, in call order.
+    pub failed_tools: Vec<String>,
     pub stop_reason: String,
     pub incomplete_reason: Option<String>,
     pub content_chars: usize,
@@ -183,6 +191,7 @@ impl TurnSummary {
             messages = self.messages,
             tool_calls = self.tool_calls,
             tools = %self.tool_names.join(","),
+            failed_tools = %self.failed_tools.join(","),
             stop_reason = %self.stop_reason,
             incomplete_reason = self.incomplete_reason.as_deref().unwrap_or("-"),
             content_chars = self.content_chars,
@@ -194,6 +203,58 @@ impl TurnSummary {
             "turn finished"
         );
     }
+
+    /// Add this turn to [`ERROR_LOG_FILENAME`] if it failed or any tool call
+    /// errored. `reason` is Alloy's own failure message (never model or user
+    /// text). A write failure is logged and otherwise ignored.
+    pub fn record_error(&self, conversation_id: &str, reason: Option<&str>) {
+        let Some(line) = self.error_entry(conversation_id, reason, chrono::Utc::now()) else {
+            return;
+        };
+        let Some(dir) = log_directory() else { return };
+        if let Err(error) = append_line(&dir.join(ERROR_LOG_FILENAME), &line) {
+            tracing::warn!(%error, "failed to append to error log");
+        }
+    }
+
+    fn error_entry(
+        &self,
+        conversation_id: &str,
+        reason: Option<&str>,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Option<String> {
+        let kind = if self.outcome == "error" {
+            "turn_error"
+        } else if !self.failed_tools.is_empty() {
+            "tool_error"
+        } else {
+            return None;
+        };
+        Some(
+            serde_json::json!({
+                "at": at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                "kind": kind,
+                "conversationId": conversation_id,
+                "provider": self.provider,
+                "model": self.model,
+                "failedTools": self.failed_tools,
+                "reason": reason,
+            })
+            .to_string(),
+        )
+    }
+}
+
+fn append_line(path: &std::path::Path, line: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    writeln!(file, "{line}")
 }
 
 #[cfg(test)]
@@ -292,6 +353,7 @@ mod tests {
             messages: 4,
             tool_calls: 2,
             tool_names: vec!["read_file".into(), "web_search".into()],
+            failed_tools: vec!["web_search".into()],
             stop_reason: "end_turn".into(),
             incomplete_reason: None,
             content_chars: 512,
@@ -316,6 +378,56 @@ mod tests {
             );
         }
         assert!(rendered.contains("read_file"), "tool names are metadata");
+
+        let entry = summary
+            .error_entry("2026-09-30-1000-cd4a", None, chrono::Utc::now())
+            .expect("a failed tool is worth an entry");
+        let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
+        assert_eq!(entry["kind"], "tool_error");
+        assert_eq!(entry["conversationId"], "2026-09-30-1000-cd4a");
+        assert_eq!(entry["failedTools"], serde_json::json!(["web_search"]));
+    }
+
+    #[test]
+    fn only_failed_turns_reach_the_error_log() {
+        let mut summary = TurnSummary {
+            outcome: "complete",
+            provider: "codex-cli".into(),
+            model: "gpt".into(),
+            messages: 1,
+            tool_calls: 0,
+            tool_names: vec![],
+            failed_tools: vec![],
+            stop_reason: "end_turn".into(),
+            incomplete_reason: None,
+            content_chars: 0,
+            content_shape: "empty",
+            input_tokens: 0,
+            output_tokens: 0,
+            connection_retries: 0,
+            duration_ms: 0,
+        };
+        assert!(summary.error_entry("c", None, chrono::Utc::now()).is_none());
+
+        summary.outcome = "error";
+        let entry = summary
+            .error_entry("c", Some("upstream returned 500"), chrono::Utc::now())
+            .unwrap();
+        let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
+        assert_eq!(entry["kind"], "turn_error");
+        assert_eq!(entry["reason"], "upstream returned 500");
+    }
+
+    #[test]
+    fn error_lines_append() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested").join(ERROR_LOG_FILENAME);
+        append_line(&path, "{\"a\":1}").unwrap();
+        append_line(&path, "{\"a\":2}").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{\"a\":1}\n{\"a\":2}\n"
+        );
     }
 
     /// `std::env::set_var` is process-global; keep mutation contained.

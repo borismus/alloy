@@ -126,6 +126,17 @@ To bump the version and create a release:
 
 This updates version in package.json, tauri.conf.json, Cargo.toml, syncs package-lock.json, and creates a git commit + tag.
 
+## Error Log
+
+Every turn that fails, or has a tool call that errors (including skill loads),
+appends one JSON line to `~/Library/Logs/Alloy/errors.jsonl` (`ALLOY_LOG_DIR`
+overrides): `at`, `kind` (`turn_error` | `tool_error`), `conversationId`,
+`provider`, `model`, `failedTools`, and `reason` for turn errors. Entries are
+pointers only; the details (tool input, error result) live in
+`<vault>/conversations/<conversationId>*.yaml`. To triage when the user asks,
+read the log, open each conversation, and group entries by root cause. After a
+cause is fixed, remove its lines from the log.
+
 ## Model Documentation
 
 Authoritative URLs for checking available models and updating model lists:
