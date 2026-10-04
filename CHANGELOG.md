@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.39
+
+- **Failed turns leave a trail.** A turn that errors, or one where a tool call
+  fails (such as a skill that doesn't load), now adds a line to
+  `errors.jsonl` beside Alloy's logs, pointing at the conversation. Before, a
+  turn whose skill silently failed was recorded as a normal success.
+- **Wiki links in your messages are visible again in dark mode.** A `[[link]]`
+  in a message you sent had faded to near-invisible against the purple bubble.
+
 ## 0.4.38
 
 - **Attach PDFs and Markdown files.** The attach button, paste and drag-and-drop
