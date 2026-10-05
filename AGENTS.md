@@ -1,4 +1,4 @@
-# Claude Code Project Instructions
+# Agent Project Instructions
 
 ## Project Overview
 
@@ -23,6 +23,27 @@ Key features:
 
 - **Minimal scope**: When asked to implement a feature or fix, start with the MINIMAL scope. Do not add extra UI elements, system prompt overrides, polling mechanisms, or utility functions beyond what was explicitly requested. If you think something additional is needed, ask first.
 - **Reuse existing code**: When reusing existing patterns in the codebase, always check for and reuse existing hooks, utilities, and components rather than duplicating code. Search for similar implementations before creating new ones.
+
+## Definition of Done
+
+Every feature or fix states its definition of done **before** implementation
+starts, in two parts:
+
+1. **Automated**: the check(s) that must pass, such as a new or updated test
+   that fails without the change, plus `npm run verify` (or the relevant subset).
+2. **Manual**: what the user will do to confirm it in the real app (mode:
+   Tauri, web, or mobile; concrete steps), and what they should see.
+
+When reporting the work as finished:
+
+- Run the automated checks and report the actual results. Never call a change
+  fixed or working on the basis of reasoning alone.
+- Give the manual steps and expected result so the user can verify.
+- Say plainly what could not be verified here and why (no software keyboard in
+  headless browsers, no access to the user's vault or API keys, a real device
+  needed) instead of implying it was covered.
+- For bugs that can't be reproduced (intermittent or device-only), the first
+  deliverable is a repro or a list of ruled-out causes, not a speculative fix.
 
 ## Architecture
 
@@ -129,13 +150,13 @@ This updates version in package.json, tauri.conf.json, Cargo.toml, syncs package
 ## Error Log
 
 Every turn that fails, or has a tool call that errors (including skill loads),
-appends one JSON line to `~/Library/Logs/Alloy/errors.jsonl` (`ALLOY_LOG_DIR`
-overrides): `at`, `kind` (`turn_error` | `tool_error`), `conversationId`,
-`provider`, `model`, `failedTools`, and `reason` for turn errors. Entries are
-pointers only; the details (tool input, error result) live in
-`<vault>/conversations/<conversationId>*.yaml`. To triage when the user asks,
-read the log, open each conversation, and group entries by root cause. After a
-cause is fixed, remove its lines from the log.
+appends one JSON line to `<vault>/logs/errors/<host>.jsonl`, one file per
+machine so synced appends never conflict: `at`, `host`, `kind` (`turn_error` |
+`tool_error`), `conversationId`, `provider`, `model`, `failedTools`, and
+`reason` for turn errors. Entries are pointers only; the details (tool input,
+error result) live in `<vault>/conversations/<conversationId>*.yaml`. To triage
+when the user asks, read every file in `logs/errors/`, open each conversation,
+and group entries by root cause. After a cause is fixed, remove its lines.
 
 ## Model Documentation
 
