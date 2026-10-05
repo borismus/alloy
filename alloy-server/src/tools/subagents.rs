@@ -151,6 +151,7 @@ async fn run_one_agent(
             role: "user".into(),
             content: prompt,
             attachments: Vec::new(),
+            sent_at: None,
         }],
         system_prompt.as_deref(),
         None,

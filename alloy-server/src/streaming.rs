@@ -1535,6 +1535,7 @@ mod tests {
             role: "user".into(),
             content: content.into(),
             attachments: vec![],
+            sent_at: None,
         }
     }
 

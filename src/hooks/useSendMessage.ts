@@ -140,6 +140,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
           onThinking: (thinking) => updateStreamingThinking(convId, thinking),
           onThinkingDone: (durationMs) => finishStreamingThinking(convId, durationMs),
           invokeSkill,
+          includeSentAt: true,
           onTitle: (newTitle: string) => {
             const conv = { ...updatedConversation, title: newTitle };
             setDraftConversation(prev => prev?.id === conv.id ? conv : prev);

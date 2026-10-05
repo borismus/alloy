@@ -151,7 +151,12 @@ fn render_excerpt(msgs: &[WireMessage]) -> String {
                 "compacted" => "Summary",
                 other => other,
             };
-            let mut s = format!("{}: {}", role, m.content);
+            // Keep send times so a summary of a conversation spanning days can
+            // still say when things happened.
+            let mut s = match &m.sent_at {
+                Some(sent_at) => format!("{} ({}): {}", role, sent_at, m.content),
+                None => format!("{}: {}", role, m.content),
+            };
             if !m.attachments.is_empty() {
                 s.push_str(&format!(" [{} attachment(s) omitted]", m.attachments.len()));
             }
@@ -167,6 +172,7 @@ fn summary_wire(summary: &str) -> WireMessage {
         role: "user".into(),
         content: format!("Summary of earlier conversation:\n\n{}", summary),
         attachments: Vec::new(),
+        sent_at: None,
     }
 }
 
@@ -176,6 +182,7 @@ fn assistant_ack() -> WireMessage {
         role: "assistant".into(),
         content: "Understood — continuing from the summary above.".into(),
         attachments: Vec::new(),
+        sent_at: None,
     }
 }
 
@@ -278,6 +285,7 @@ mod tests {
             role: role.into(),
             content: content.into(),
             attachments: Vec::new(),
+            sent_at: None,
         }
     }
 
@@ -287,6 +295,7 @@ mod tests {
             role: "user".into(),
             content: "x".repeat(chars),
             attachments: Vec::new(),
+            sent_at: None,
         }
     }
 

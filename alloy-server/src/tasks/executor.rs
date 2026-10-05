@@ -78,12 +78,14 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
             role: "user".into(),
             content: format!("LAST DELIVERED RESULT:\n\n{}", truncated),
             attachments: Vec::new(),
+            sent_at: None,
         });
         messages.push(WireMessage {
             id: None,
             role: "assistant".into(),
             content: "I will use this only to avoid duplicate notifications and will evaluate the current condition independently.".into(),
             attachments: Vec::new(),
+            sent_at: None,
         });
     }
     messages.push(WireMessage {
@@ -91,6 +93,7 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
         role: "user".into(),
         content: task.prompt.clone(),
         attachments: Vec::new(),
+        sent_at: None,
     });
 
     let system_prompt = match task.trigger.as_ref() {

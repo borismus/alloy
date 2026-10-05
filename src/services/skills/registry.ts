@@ -67,7 +67,8 @@ export class SkillRegistry {
       month: 'long',
       day: 'numeric',
     });
-    prompt += `Current date: ${dateStr} (${Intl.DateTimeFormat().resolvedOptions().timeZone})\n\n`;
+    prompt += `Current date: ${dateStr} (${Intl.DateTimeFormat().resolvedOptions().timeZone})\n`;
+    prompt += 'Each user message begins with the local time it was sent, in brackets. Use these to tell how much time has passed between messages. Don\'t include such timestamps in your replies.\n\n';
 
     // Inject memory content at the top if provided
     if (memoryContent) {

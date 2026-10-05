@@ -34,6 +34,12 @@ pub struct WireMessage {
     pub content: String,
     #[serde(default)]
     pub attachments: Vec<WireAttachment>,
+    /// When a user message was sent, pre-formatted in the user's local time by
+    /// the SPA (which knows their timezone). Prefixed onto the message so the
+    /// model can tell how much time passed between turns of a conversation
+    /// resumed over days.
+    #[serde(rename = "sentAt", default, skip_serializing_if = "Option::is_none")]
+    pub sent_at: Option<String>,
 }
 
 /// Attachment reference from the SPA (image, PDF, or Markdown). The bytes live
@@ -177,7 +183,10 @@ pub async fn wire_to_chat(
 /// skipped so a stale attachment reference can't break the whole turn. No vault
 /// (e.g. sub-agent calls) means no attachments.
 async fn resolve_user_message(vault: Option<&Vault>, m: &WireMessage) -> ChatMessage {
-    let mut content = m.content.clone();
+    let mut content = match &m.sent_at {
+        Some(sent_at) => format!("[{sent_at}]\n{}", m.content),
+        None => m.content.clone(),
+    };
     let mut attachments = Vec::new();
     if let Some(vault) = vault {
         for att in &m.attachments {
@@ -648,6 +657,27 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn prefixes_user_turns_with_their_send_time() {
+        let wire = |role: &str| WireMessage {
+            id: None,
+            role: role.into(),
+            content: "how is the fever now".into(),
+            attachments: Vec::new(),
+            sent_at: Some("Sat, Sep 19, 2026, 8:16 PM".into()),
+        };
+        let chat = wire_to_chat(&[wire("user"), wire("assistant")], None, None).await;
+        let ChatMessage::User { content, .. } = &chat[0] else {
+            panic!("expected user turn");
+        };
+        assert_eq!(content, "[Sat, Sep 19, 2026, 8:16 PM]\nhow is the fever now");
+        // Only user turns are stamped; the model shouldn't learn to echo stamps.
+        let ChatMessage::Assistant { content, .. } = &chat[1] else {
+            panic!("expected assistant turn");
+        };
+        assert_eq!(content, "how is the fever now");
+    }
+
+    #[tokio::test]
     async fn inlines_markdown_and_keeps_pdfs_as_attachments() {
         let temp = tempfile::tempdir().unwrap();
         let dir = temp.path().join("conversations/attachments");
@@ -671,6 +701,7 @@ mod tests {
                     name: Some("paper.pdf".into()),
                 },
             ],
+            sent_at: None,
         };
         let mut chat = wire_to_chat(&[wire], None, Some(&vault)).await;
         let ChatMessage::User {

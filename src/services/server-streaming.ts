@@ -75,6 +75,12 @@ export interface ServerStreamOptions {
    * system prompt; unknown skills are ignored.
    */
   invokeSkill?: string;
+  /**
+   * Send each user message's local send time (`sentAt`) so the server can
+   * prefix it. Only for chat turns, whose system prompt explains the stamps;
+   * one-shot callers (note edits, classification) must not see them.
+   */
+  includeSentAt?: boolean;
 }
 
 /**
@@ -101,6 +107,8 @@ export async function executeViaServer(
   // Convert messages to server format (strip fields the server doesn't need).
   // Attachments are passed as lightweight references (path + mimeType + name);
   // the server reads the bytes from the vault, so the start payload stays small.
+  // With `includeSentAt`, user messages carry their local send time; the
+  // server prefixes it so the model knows when each turn happened.
   const serverMessages = messages
     .filter(m => m.role !== 'log')
     .map(m => {
@@ -111,6 +119,9 @@ export async function executeViaServer(
         ...(m.id ? { id: m.id } : {}),
         role: m.role,
         content: m.content,
+        ...(options.includeSentAt && m.role === 'user' && m.timestamp
+          ? { sentAt: formatSentAt(m.timestamp) }
+          : {}),
         ...(attachments.length > 0
           ? { attachments: attachments.map(a => ({ path: a.path, mimeType: a.mimeType, ...(a.name ? { name: a.name } : {}) })) }
           : {}),
@@ -463,4 +474,22 @@ export async function reconnectToActiveSessions(callbacks: ReconnectCallbacks): 
       }).catch(() => {});
     }, { once: true });
   }
+}
+
+/**
+ * A message's send time as the model sees it, e.g. "Sat, Sep 19, 2026, 8:16 PM".
+ * Must be stable for a given message so earlier turns stay byte-identical across
+ * requests and providers can keep reusing their prompt cache.
+ */
+export function formatSentAt(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return iso;
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
