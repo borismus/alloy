@@ -4,6 +4,17 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.40
+
+- **The model knows when you said things.** Each message you send now carries
+  its local send time, so in a conversation you come back to over days the
+  model can tell that "this morning" was yesterday, or how long ago you took
+  that medication. Older conversations get the times too, since they were
+  always stored.
+- **The error log now syncs.** Failed turns and tool errors are written to
+  `logs/errors/<machine>.jsonl` inside the vault, one file per machine, so
+  failures on an always-on Mac show up everywhere.
+
 ## 0.4.39
 
 - **Failed turns leave a trail.** A turn that errors, or one where a tool call
