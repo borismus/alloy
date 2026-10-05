@@ -27,10 +27,21 @@ const FILENAME_PREFIX: &str = "alloy";
 const FILENAME_SUFFIX: &str = "log";
 
 /// Append-only list of turns that went wrong, one JSON object per line, kept
-/// next to the daily logs. Each entry points at the conversation where the
-/// details live, so problems can be triaged later (e.g. from a Claude Code
-/// session in the repo) without the log itself holding conversation content.
-pub const ERROR_LOG_FILENAME: &str = "errors.jsonl";
+/// in the vault so it syncs to every machine. Each entry points at the
+/// conversation where the details live, so problems can be triaged later (e.g.
+/// from a coding-agent session in the repo) without the log holding
+/// conversation content.
+///
+/// One file per machine (`<host>.jsonl`): the vault syncs through tools that
+/// resolve concurrent edits to a non-Markdown file by keeping one copy, so two
+/// machines appending to a shared file would lose lines. The directory is not
+/// dot-prefixed because some sync tools (Obsidian Sync) skip hidden folders.
+pub const ERROR_LOG_DIR: &str = "logs/errors";
+
+/// This machine's error log within the vault.
+pub fn error_log_path(vault_root: &std::path::Path, host: &str) -> PathBuf {
+    vault_root.join(ERROR_LOG_DIR).join(format!("{host}.jsonl"))
+}
 
 /// Where rotating logs are written. `ALLOY_LOG_DIR` overrides (also used by
 /// tests); otherwise the platform's conventional location.
@@ -204,21 +215,29 @@ impl TurnSummary {
         );
     }
 
-    /// Add this turn to [`ERROR_LOG_FILENAME`] if it failed or any tool call
-    /// errored. `reason` is Alloy's own failure message (never model or user
-    /// text). A write failure is logged and otherwise ignored.
-    pub fn record_error(&self, conversation_id: &str, reason: Option<&str>) {
-        let Some(line) = self.error_entry(conversation_id, reason, chrono::Utc::now()) else {
+    /// Add this turn to this machine's error log in the vault (see
+    /// [`ERROR_LOG_DIR`]) if it failed or any tool call errored. `reason` is
+    /// Alloy's own failure message (never model or user text). A write failure
+    /// is logged and otherwise ignored.
+    pub fn record_error(
+        &self,
+        vault_root: &std::path::Path,
+        conversation_id: &str,
+        reason: Option<&str>,
+    ) {
+        let host = crate::host::current_hostname();
+        let Some(line) = self.error_entry(&host, conversation_id, reason, chrono::Utc::now())
+        else {
             return;
         };
-        let Some(dir) = log_directory() else { return };
-        if let Err(error) = append_line(&dir.join(ERROR_LOG_FILENAME), &line) {
+        if let Err(error) = append_line(&error_log_path(vault_root, &host), &line) {
             tracing::warn!(%error, "failed to append to error log");
         }
     }
 
     fn error_entry(
         &self,
+        host: &str,
         conversation_id: &str,
         reason: Option<&str>,
         at: chrono::DateTime<chrono::Utc>,
@@ -233,6 +252,7 @@ impl TurnSummary {
         Some(
             serde_json::json!({
                 "at": at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                "host": host,
                 "kind": kind,
                 "conversationId": conversation_id,
                 "provider": self.provider,
@@ -380,10 +400,11 @@ mod tests {
         assert!(rendered.contains("read_file"), "tool names are metadata");
 
         let entry = summary
-            .error_entry("2026-09-30-1000-cd4a", None, chrono::Utc::now())
+            .error_entry("smusmini", "2026-09-30-1000-cd4a", None, chrono::Utc::now())
             .expect("a failed tool is worth an entry");
         let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
         assert_eq!(entry["kind"], "tool_error");
+        assert_eq!(entry["host"], "smusmini");
         assert_eq!(entry["conversationId"], "2026-09-30-1000-cd4a");
         assert_eq!(entry["failedTools"], serde_json::json!(["web_search"]));
     }
@@ -407,11 +428,11 @@ mod tests {
             connection_retries: 0,
             duration_ms: 0,
         };
-        assert!(summary.error_entry("c", None, chrono::Utc::now()).is_none());
+        assert!(summary.error_entry("h", "c", None, chrono::Utc::now()).is_none());
 
         summary.outcome = "error";
         let entry = summary
-            .error_entry("c", Some("upstream returned 500"), chrono::Utc::now())
+            .error_entry("h", "c", Some("upstream returned 500"), chrono::Utc::now())
             .unwrap();
         let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
         assert_eq!(entry["kind"], "turn_error");
@@ -421,7 +442,8 @@ mod tests {
     #[test]
     fn error_lines_append() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested").join(ERROR_LOG_FILENAME);
+        let path = error_log_path(dir.path(), "legomenon");
+        assert!(path.ends_with("logs/errors/legomenon.jsonl"));
         append_line(&path, "{\"a\":1}").unwrap();
         append_line(&path, "{\"a\":2}").unwrap();
         assert_eq!(

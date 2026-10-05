@@ -627,7 +627,7 @@ async fn run_stream(
                 duration_ms,
             );
             summary.record();
-            summary.record_error(&params.conversation_id, None);
+            summary.record_error(vault.root(), &params.conversation_id, None);
 
             {
                 let mut inner = session.inner.lock().unwrap();
@@ -658,7 +658,7 @@ async fn run_stream(
                 duration_ms,
             );
             summary.record();
-            summary.record_error(&params.conversation_id, Some(&msg));
+            summary.record_error(vault.root(), &params.conversation_id, Some(&msg));
             tracing::warn!(error = %msg, "turn failed");
 
             // Persist partial content, tool history, and the error on one
