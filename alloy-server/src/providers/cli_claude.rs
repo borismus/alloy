@@ -449,6 +449,7 @@ fn claude_model_display_name(model: &str) -> String {
 impl Provider for CliClaudeProvider {
     async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
         let (system, user_text, attachments) = flatten_conversation(&req.messages);
+        let attachments = deliverable_attachments(&req.messages, attachments)?;
 
         let mut cmd = self.base_command(&req.model);
         // Enable extended thinking so the reasoning disclosure has content. Only
@@ -699,6 +700,47 @@ impl Provider for CliClaudeProvider {
     fn supports_pdfs(&self, _model: &str) -> bool {
         true
     }
+
+    fn max_pdf_bytes(&self, _model: &str) -> Option<u64> {
+        Some(MAX_PDF_BYTES)
+    }
+}
+
+/// The Claude CLI silently drops a large PDF: the turn succeeds and the model
+/// answers as if nothing was attached (no error, nothing on stderr; the request
+/// simply bills no tokens for it). Measured with CLI 2.1.288: 15 MB arrives,
+/// 19.5 MB does not. Re-measure if a CLI update moves the cutoff.
+const MAX_PDF_BYTES: u64 = 15_000_000;
+
+fn is_oversized_pdf(att: &AttachmentData) -> bool {
+    att.is_pdf() && att.decoded_len() > MAX_PDF_BYTES
+}
+
+/// Refuse a turn whose own PDF the CLI would silently drop, so the failure is
+/// visible in the conversation and the error log instead of a confused reply.
+/// An oversized PDF carried over from an earlier turn (see
+/// `flatten_conversation`) already failed that turn, so it is left out rather
+/// than failing every later message too.
+fn deliverable_attachments(
+    messages: &[ChatMessage],
+    mut attachments: Vec<AttachmentData>,
+) -> anyhow::Result<Vec<AttachmentData>> {
+    if let Some(ChatMessage::User {
+        attachments: latest,
+        ..
+    }) = messages.last()
+    {
+        if let Some(att) = latest.iter().find(|a| is_oversized_pdf(a)) {
+            anyhow::bail!(
+                "{} is {:.1} MB, but Claude only receives PDFs up to {} MB through the CLI (larger ones are silently dropped). Shrink it (in Preview: File → Export → Reduce File Size) or switch to an OpenRouter model.",
+                att.filename(),
+                att.decoded_len() as f64 / 1e6,
+                MAX_PDF_BYTES / 1_000_000
+            );
+        }
+    }
+    attachments.retain(|att| !is_oversized_pdf(att));
+    Ok(attachments)
 }
 
 /// Pull the system prompt out, flatten the remaining turns into one transcript
@@ -913,6 +955,56 @@ mod tests {
         assert_eq!(content[1]["type"], "image");
         assert_eq!(content[1]["source"]["media_type"], "image/png");
         assert_eq!(content[1]["source"]["data"], "AAAA");
+    }
+
+    fn pdf_of(bytes: usize) -> AttachmentData {
+        use base64::{engine::general_purpose::STANDARD as B64, Engine};
+        AttachmentData {
+            mime_type: "application/pdf".into(),
+            base64: B64.encode(vec![0u8; bytes]),
+            name: Some("contract.pdf".into()),
+        }
+    }
+
+    fn user_with(content: &str, attachments: Vec<AttachmentData>) -> ChatMessage {
+        ChatMessage::User {
+            content: content.into(),
+            attachments,
+        }
+    }
+
+    #[test]
+    fn refuses_a_pdf_the_cli_would_silently_drop() {
+        let ok = vec![user_with("read", vec![pdf_of(MAX_PDF_BYTES as usize)])];
+        let (_, _, atts) = flatten_conversation(&ok);
+        assert_eq!(deliverable_attachments(&ok, atts).unwrap().len(), 1);
+
+        let big = vec![user_with("read", vec![pdf_of(19_600_000)])];
+        let (_, _, atts) = flatten_conversation(&big);
+        let err = deliverable_attachments(&big, atts).unwrap_err().to_string();
+        assert!(err.contains("contract.pdf is 19.6 MB"), "{err}");
+        assert!(err.contains("15 MB"), "{err}");
+
+        // Images are not subject to the PDF limit.
+        let mut image = pdf_of(19_600_000);
+        image.mime_type = "image/png".into();
+        let msgs = vec![user_with("look", vec![image])];
+        let (_, _, atts) = flatten_conversation(&msgs);
+        assert!(deliverable_attachments(&msgs, atts).is_ok());
+    }
+
+    #[test]
+    fn an_earlier_oversized_pdf_is_left_out_not_fatal() {
+        // flatten_conversation carries the last attachments forward, so without
+        // this an oversized PDF would fail every later message.
+        let msgs = vec![
+            user_with("read this", vec![pdf_of(19_600_000)]),
+            assistant("I can't see it"),
+            user("ok, what else?"),
+        ];
+        let (_, _, atts) = flatten_conversation(&msgs);
+        assert_eq!(atts.len(), 1, "carried forward from the earlier turn");
+        assert!(deliverable_attachments(&msgs, atts).unwrap().is_empty());
     }
 
     #[test]

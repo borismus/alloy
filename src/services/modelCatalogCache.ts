@@ -25,7 +25,8 @@ function isModelInfo(value: unknown): value is ModelInfo {
       'assumed',
     ].includes(model.contextWindowSource))
     && (model.supportsImages === undefined || typeof model.supportsImages === 'boolean')
-    && (model.supportsPdfs === undefined || typeof model.supportsPdfs === 'boolean');
+    && (model.supportsPdfs === undefined || typeof model.supportsPdfs === 'boolean')
+    && (model.maxPdfBytes === undefined || typeof model.maxPdfBytes === 'number');
 }
 
 /**

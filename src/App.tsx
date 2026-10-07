@@ -131,7 +131,8 @@ function modelListsMatch(a: ModelInfo[], b: ModelInfo[]): boolean {
       && model.contextWindow === other.contextWindow
       && model.contextWindowSource === other.contextWindowSource
       && model.supportsImages === other.supportsImages
-      && model.supportsPdfs === other.supportsPdfs;
+      && model.supportsPdfs === other.supportsPdfs
+      && model.maxPdfBytes === other.maxPdfBytes;
   });
 }
 

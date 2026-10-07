@@ -143,6 +143,9 @@ export interface ModelInfo {
   // True only when the model reads PDFs natively (Claude CLI, OpenRouter).
   // Unlike images, absent means unsupported — Alloy never extracts PDF text.
   supportsPdfs?: boolean;
+  // Largest PDF the provider is known to deliver, when it drops larger ones
+  // silently (the Claude CLI). Absent means no known limit.
+  maxPdfBytes?: number;
 }
 
 export interface TaskSchedule {

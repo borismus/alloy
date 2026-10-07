@@ -74,6 +74,12 @@ impl AttachmentData {
         self.mime_type == PDF_MIME
     }
 
+    /// Size of the original file, from its base64 encoding.
+    pub fn decoded_len(&self) -> u64 {
+        let padding = self.base64.bytes().rev().take_while(|b| *b == b'=').count();
+        (self.base64.len() / 4 * 3).saturating_sub(padding) as u64
+    }
+
     pub fn filename(&self) -> &str {
         self.name.as_deref().unwrap_or("document.pdf")
     }
@@ -435,6 +441,14 @@ pub trait Provider: Send + Sync {
     fn supports_pdfs(&self, _model: &str) -> bool {
         false
     }
+
+    /// Largest PDF this provider is known to deliver, in bytes, when it has a
+    /// limit it enforces silently rather than by returning an error. Surfaced
+    /// through `/api/models` so the composer can warn, and enforced by the
+    /// provider so an oversized PDF fails the turn instead of vanishing.
+    fn max_pdf_bytes(&self, _model: &str) -> Option<u64> {
+        None
+    }
 }
 
 pub type ProviderArc = Arc<dyn Provider>;
@@ -669,7 +683,10 @@ mod tests {
         let ChatMessage::User { content, .. } = &chat[0] else {
             panic!("expected user turn");
         };
-        assert_eq!(content, "[Sat, Sep 19, 2026, 8:16 PM]\nhow is the fever now");
+        assert_eq!(
+            content,
+            "[Sat, Sep 19, 2026, 8:16 PM]\nhow is the fever now"
+        );
         // Only user turns are stamped; the model shouldn't learn to echo stamps.
         let ChatMessage::Assistant { content, .. } = &chat[1] else {
             panic!("expected assistant turn");

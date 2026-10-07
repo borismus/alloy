@@ -146,6 +146,46 @@ describe('attachment gating', () => {
     expect(screen.getByText('paper.pdf')).toBeTruthy();
   });
 
+  it('warns when a PDF exceeds the model\'s delivery limit', () => {
+    const ref = createRef<ChatInputFormHandle>();
+    render(
+      <ChatInputForm
+        ref={ref}
+        onSubmit={vi.fn()}
+        onStop={vi.fn()}
+        isStreaming={false}
+        model={VISION.key}
+        onModelChange={vi.fn()}
+        availableModels={[{ ...VISION, supportsPdfs: true, maxPdfBytes: 2 }]}
+      />
+    );
+    act(() => {
+      ref.current?.addAttachments([{ ...PDF, data: new Uint8Array(3) }]);
+    });
+    const warning = screen.getByRole('status');
+    expect(warning.textContent).toContain('paper.pdf');
+    expect(warning.textContent).toContain('only receives PDFs up to');
+  });
+
+  it('does not warn about a PDF within the limit', () => {
+    const ref = createRef<ChatInputFormHandle>();
+    render(
+      <ChatInputForm
+        ref={ref}
+        onSubmit={vi.fn()}
+        onStop={vi.fn()}
+        isStreaming={false}
+        model={VISION.key}
+        onModelChange={vi.fn()}
+        availableModels={[{ ...VISION, supportsPdfs: true, maxPdfBytes: 3 }]}
+      />
+    );
+    act(() => {
+      ref.current?.addAttachments([{ ...PDF, data: new Uint8Array(3) }]);
+    });
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('never warns about Markdown, which is sent as text', () => {
     const ref = createRef<ChatInputFormHandle>();
     renderForm(TEXT_ONLY.key, ref);

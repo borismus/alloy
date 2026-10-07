@@ -77,6 +77,14 @@ pub struct ModelInfo {
     /// extracts PDF text, so a PDF is only sent where the model can read it.
     #[serde(rename = "supportsPdfs", default, skip_serializing_if = "is_false")]
     pub supports_pdfs: bool,
+    /// Largest PDF the provider is known to deliver (see
+    /// `Provider::max_pdf_bytes`). Omitted when there is no known limit.
+    #[serde(
+        rename = "maxPdfBytes",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub max_pdf_bytes: Option<u64>,
     #[serde(rename = "contextWindow", skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
     #[serde(
@@ -165,10 +173,12 @@ impl ModelCache {
         }
 
         let (mut models, complete) = discover_provider_models(config).await;
-        let pdfs = crate::providers::build_provider(config)
-            .is_some_and(|provider| provider.supports_pdfs(""));
+        let provider = crate::providers::build_provider(config);
+        let pdfs = provider.as_ref().is_some_and(|p| p.supports_pdfs(""));
+        let max_pdf_bytes = provider.as_ref().and_then(|p| p.max_pdf_bytes(""));
         for model in &mut models {
             model.supports_pdfs = pdfs;
+            model.max_pdf_bytes = max_pdf_bytes;
         }
         let ttl = if complete && !models.is_empty() {
             CACHE_TTL
@@ -232,6 +242,7 @@ fn cli_model_info(
         local: false,
         supports_images: None,
         supports_pdfs: false,
+        max_pdf_bytes: None,
         context_window: model.context_window,
         context_window_source: model.context_window.map(|_| source),
         // Subscription calls do not consume per-token API credits.
@@ -513,6 +524,7 @@ fn openai_model_infos(
                 // so stay optimistic rather than guess per model.
                 supports_images: None,
                 supports_pdfs: false,
+                max_pdf_bytes: None,
                 context_window,
                 context_window_source,
                 input_per_1m,
@@ -588,6 +600,7 @@ mod tests {
             local: false,
             supports_images: None,
             supports_pdfs: false,
+            max_pdf_bytes: None,
             context_window: None,
             context_window_source: None,
             input_per_1m: None,

@@ -14,8 +14,10 @@ import { slashQuery } from '../utils/slashCommand';
 import {
   ATTACHMENT_ACCEPT,
   PDF_MIME,
+  formatMegabytes,
   isImageMime,
   modelAcceptsAttachment,
+  pdfTooLarge,
   toPendingAttachments,
 } from '../utils/attachments';
 
@@ -68,6 +70,8 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     unsupported.some(a => isImageMime(a.mimeType)) && 'images',
     unsupported.some(a => a.mimeType === PDF_MIME) && 'PDFs',
   ].filter(Boolean).join(' or ');
+  const oversized = pendingAttachments.filter(a =>
+    modelAcceptsAttachment(selectedModelInfo, a.mimeType) && pdfTooLarge(selectedModelInfo, a));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const preDictationTextRef = useRef('');
@@ -309,6 +313,11 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           {modelLabel} can&apos;t read {unsupportedKinds} — {unsupported.length === 1 ? 'this attachment' : 'these attachments'} will be ignored. Switch models to send {unsupported.length === 1 ? 'it' : 'them'}.
         </p>
       )}
+      {oversized.map(a => (
+        <p key={a.name} className="attachment-warning" role="status">
+          {a.name} is {formatMegabytes(a.data.length)}, but {modelLabel} only receives PDFs up to {formatMegabytes(selectedModelInfo?.maxPdfBytes ?? 0)}. Shrink it or switch models.
+        </p>
+      ))}
       {pendingAttachments.length > 0 && (
         <div className="pending-images">
           {pendingAttachments.map((attachment, idx) => (

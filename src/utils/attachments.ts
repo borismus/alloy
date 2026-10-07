@@ -49,6 +49,17 @@ export function modelAcceptsAttachment(model: ModelInfo | undefined, mimeType: s
   return true;
 }
 
+/** A PDF over the model's known delivery limit, which the server will refuse. */
+export function pdfTooLarge(model: ModelInfo | undefined, attachment: PendingAttachment): boolean {
+  return attachment.mimeType === PDF_MIME
+    && model?.maxPdfBytes !== undefined
+    && attachment.data.length > model.maxPdfBytes;
+}
+
+export function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1e6).toFixed(1).replace(/\.0$/, '')} MB`;
+}
+
 /** Read picked, pasted, or dropped files into pending attachments, skipping unsupported types. */
 export async function toPendingAttachments(files: File[]): Promise<PendingAttachment[]> {
   const out: PendingAttachment[] = [];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentMimeType, modelAcceptsAttachment } from './attachments';
+import { attachmentMimeType, formatMegabytes, modelAcceptsAttachment, pdfTooLarge } from './attachments';
 import type { ModelInfo } from '../types';
 
 const model = (overrides: Partial<ModelInfo> = {}): ModelInfo => ({ key: 'p/m', name: 'M', ...overrides });
@@ -35,5 +35,25 @@ describe('modelAcceptsAttachment', () => {
 
   it('always accepts Markdown', () => {
     expect(modelAcceptsAttachment(model({ supportsImages: false }), 'text/markdown')).toBe(true);
+  });
+});
+
+describe('pdfTooLarge', () => {
+  const pdf = (size: number) => ({ data: new Uint8Array(size), mimeType: 'application/pdf', name: 'a.pdf' });
+  it('only applies when the model has a known limit', () => {
+    expect(pdfTooLarge(model({ supportsPdfs: true }), pdf(10))).toBe(false);
+    expect(pdfTooLarge(model({ supportsPdfs: true, maxPdfBytes: 5 }), pdf(10))).toBe(true);
+    expect(pdfTooLarge(model({ supportsPdfs: true, maxPdfBytes: 10 }), pdf(10))).toBe(false);
+  });
+
+  it('ignores non-PDFs', () => {
+    expect(pdfTooLarge(model({ maxPdfBytes: 5 }), { ...pdf(10), mimeType: 'image/png' })).toBe(false);
+  });
+});
+
+describe('formatMegabytes', () => {
+  it('formats with one decimal, dropping a trailing .0', () => {
+    expect(formatMegabytes(19_593_751)).toBe('19.6 MB');
+    expect(formatMegabytes(15_000_000)).toBe('15 MB');
   });
 });
