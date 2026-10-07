@@ -105,8 +105,14 @@ fn governing_mount<'a>(
 ///   directly (bypassing `Vault`).
 /// - `Ok(None)` — not a mount path; the caller uses `Vault::resolve` as usual.
 /// - `Err(_)` — denied, unknown, unsafe, or missing, with one generic message.
+///
+/// A mount may contain the Alloy vault itself (e.g. an Obsidian folder with the
+/// vault as a subfolder). Anything inside `vault_root` is refused here, so a
+/// mount can never become a way around the vault's own permissions — in
+/// particular, to `config.yaml` and the API keys in it.
 pub fn resolve_for(
     config: &crate::config::Config,
+    vault_root: &std::path::Path,
     request_path: &str,
     caller_is_local: bool,
 ) -> Result<Option<PathBuf>, String> {
@@ -150,6 +156,12 @@ pub fn resolve_for(
     if !target_canon.starts_with(&root_canon) {
         return Err(DENY.into());
     }
+    if vault_root
+        .canonicalize()
+        .is_ok_and(|vault| target_canon.starts_with(vault))
+    {
+        return Err(DENY.into());
+    }
 
     // Judge the file by where it actually landed. A nested mount governs its own
     // subtree, so reaching those files through the parent's prefix is refused,
@@ -165,12 +177,17 @@ pub fn resolve_for(
 
 /// Canonical absolute paths to skip when traversing the mount that
 /// `request_path` addresses: the mount's configured `excludeDirs` plus any
-/// other mount nested inside it.
+/// other mount nested inside it, plus the Alloy vault if the mount contains it
+/// (see [`resolve_for`]).
 ///
 /// Excluding nested mounts is what makes the carve-out real — listing
 /// `private/obsidian_vault` must not walk into `shared/public`, or the same
 /// files would appear under two addresses with two different audiences.
-pub fn exclude_roots(config: &crate::config::Config, request_path: &str) -> Vec<PathBuf> {
+pub fn exclude_roots(
+    config: &crate::config::Config,
+    vault_root: &std::path::Path,
+    request_path: &str,
+) -> Vec<PathBuf> {
     let rel = request_path.trim_start_matches('/');
     let Some((_, rest)) = split_prefix(rel) else {
         return Vec::new();
@@ -197,11 +214,19 @@ pub fn exclude_roots(config: &crate::config::Config, request_path: &str) -> Vec<
             }
         }
     }
+    if let Ok(vault) = vault_root.canonicalize() {
+        if vault.starts_with(&root_canon) {
+            excludes.push(vault);
+        }
+    }
     excludes
 }
 
 #[cfg(test)]
 mod tests {
+    /// For tests where the vault is not inside any mount.
+    const NO_VAULT: &str = "/nonexistent-alloy-vault";
+
     use super::*;
     use crate::config::Config;
     use std::fs;
@@ -254,8 +279,8 @@ mod tests {
     #[test]
     fn non_mount_path_returns_none() {
         let cfg = Config::default();
-        assert_eq!(resolve_for(&cfg, "notes/x.md", CLOUD).unwrap(), None);
-        assert_eq!(resolve_for(&cfg, "/notes/x.md", LOCAL).unwrap(), None);
+        assert_eq!(resolve_for(&cfg, NO_VAULT.as_ref(), "notes/x.md", CLOUD).unwrap(), None);
+        assert_eq!(resolve_for(&cfg, NO_VAULT.as_ref(), "/notes/x.md", LOCAL).unwrap(), None);
     }
 
     #[test]
@@ -265,10 +290,10 @@ mod tests {
         let cfg = config_with(vec![dir("notes", &d.0, Audience::Local)]);
 
         assert_eq!(
-            resolve_for(&cfg, "private/notes/a.md", LOCAL).unwrap().unwrap(),
+            resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/a.md", LOCAL).unwrap().unwrap(),
             d.0.join("a.md")
         );
-        assert!(resolve_for(&cfg, "private/notes/a.md", CLOUD).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/a.md", CLOUD).is_err());
     }
 
     #[test]
@@ -279,7 +304,7 @@ mod tests {
 
         for caller in [LOCAL, CLOUD] {
             assert_eq!(
-                resolve_for(&cfg, "shared/public/p.md", caller).unwrap().unwrap(),
+                resolve_for(&cfg, NO_VAULT.as_ref(), "shared/public/p.md", caller).unwrap().unwrap(),
                 d.0.join("p.md")
             );
         }
@@ -292,13 +317,13 @@ mod tests {
         let d = TempDir::new("prefix");
         fs::write(d.0.join("a.md"), "x").unwrap();
         let cfg = config_with(vec![dir("notes", &d.0, Audience::Local)]);
-        assert!(resolve_for(&cfg, "shared/notes/a.md", CLOUD).is_err());
-        assert!(resolve_for(&cfg, "shared/notes/a.md", LOCAL).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/notes/a.md", CLOUD).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/notes/a.md", LOCAL).is_err());
 
         let pubdir = TempDir::new("prefix-pub");
         fs::write(pubdir.0.join("a.md"), "x").unwrap();
         let cfg = config_with(vec![dir("public", &pubdir.0, Audience::All)]);
-        assert!(resolve_for(&cfg, "private/public/a.md", LOCAL).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/public/a.md", LOCAL).is_err());
     }
 
     /// The headline case: `~/Notes` local-only with `~/Notes/Public` shared.
@@ -316,17 +341,17 @@ mod tests {
         ]);
 
         // Cloud reads the public subtree, and nothing else.
-        assert!(resolve_for(&cfg, "shared/public/Essay.md", CLOUD).is_ok());
-        assert!(resolve_for(&cfg, "private/obsidian_vault/Journal.md", CLOUD).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/public/Essay.md", CLOUD).is_ok());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/obsidian_vault/Journal.md", CLOUD).is_err());
         // ...including through the parent mount's prefix, which would otherwise
         // give one file two addresses and leak the private alias to the cloud.
-        assert!(resolve_for(&cfg, "private/obsidian_vault/Public/Essay.md", CLOUD).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/obsidian_vault/Public/Essay.md", CLOUD).is_err());
 
         // Local reads both, each at its own canonical address.
-        assert!(resolve_for(&cfg, "private/obsidian_vault/Journal.md", LOCAL).is_ok());
-        assert!(resolve_for(&cfg, "shared/public/Essay.md", LOCAL).is_ok());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/obsidian_vault/Journal.md", LOCAL).is_ok());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/public/Essay.md", LOCAL).is_ok());
         // Even for a local model, the nested file belongs to the nested mount.
-        assert!(resolve_for(&cfg, "private/obsidian_vault/Public/Essay.md", LOCAL).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/obsidian_vault/Public/Essay.md", LOCAL).is_err());
     }
 
     #[test]
@@ -345,8 +370,8 @@ mod tests {
                 dir("obsidian_vault", &notes.0, Audience::Local),
                 dir("public", &public, Audience::All),
             ]);
-            assert!(resolve_for(&cfg, "shared/public/leak.md", CLOUD).is_err());
-            assert!(resolve_for(&cfg, "shared/public/leak.md", LOCAL).is_err());
+            assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/public/leak.md", CLOUD).is_err());
+            assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/public/leak.md", LOCAL).is_err());
         }
     }
 
@@ -354,17 +379,17 @@ mod tests {
     fn dotdot_traversal_is_rejected() {
         let d = TempDir::new("dotdot");
         let cfg = config_with(vec![dir("notes", &d.0, Audience::Local)]);
-        assert!(resolve_for(&cfg, "private/notes/../escape", LOCAL).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/../escape", LOCAL).is_err());
         let cfg = config_with(vec![dir("public", &d.0, Audience::All)]);
-        assert!(resolve_for(&cfg, "shared/public/../escape", CLOUD).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/public/../escape", CLOUD).is_err());
     }
 
     #[test]
     fn unknown_alias_is_rejected() {
         let d = TempDir::new("unknown");
         let cfg = config_with(vec![dir("notes", &d.0, Audience::Local)]);
-        assert!(resolve_for(&cfg, "private/other/a.md", LOCAL).is_err());
-        assert!(resolve_for(&cfg, "shared/other/a.md", CLOUD).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/other/a.md", LOCAL).is_err());
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "shared/other/a.md", CLOUD).is_err());
     }
 
     #[test]
@@ -376,7 +401,7 @@ mod tests {
             fs::write(outside.0.join("secret.md"), "top secret").unwrap();
             std::os::unix::fs::symlink(&outside.0, d.0.join("link")).unwrap();
             let cfg = config_with(vec![dir("notes", &d.0, Audience::Local)]);
-            assert!(resolve_for(&cfg, "private/notes/link/secret.md", LOCAL).is_err());
+            assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/link/secret.md", LOCAL).is_err());
         }
     }
 
@@ -387,9 +412,31 @@ mod tests {
         let d = TempDir::new("deny");
         fs::write(d.0.join("a.md"), "x").unwrap();
         let cfg = config_with(vec![dir("notes", &d.0, Audience::Local)]);
-        let denied = resolve_for(&cfg, "private/notes/a.md", CLOUD).unwrap_err();
-        let missing = resolve_for(&cfg, "private/nope/a.md", CLOUD).unwrap_err();
+        let denied = resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/a.md", CLOUD).unwrap_err();
+        let missing = resolve_for(&cfg, NO_VAULT.as_ref(), "private/nope/a.md", CLOUD).unwrap_err();
         assert_eq!(denied, missing);
+    }
+
+    /// The real layout: the Alloy vault lives inside the mounted Obsidian
+    /// folder. Without this, `private/notes/PromptBox/config.yaml` would hand a
+    /// local model the API keys the vault's own permissions refuse.
+    #[test]
+    fn a_mount_cannot_reach_into_the_alloy_vault() {
+        let notes = TempDir::new("vault-inside");
+        let vault = notes.0.join("PromptBox");
+        fs::create_dir_all(&vault).unwrap();
+        fs::write(vault.join("config.yaml"), "apiKey: sk-or-v1-CANARY").unwrap();
+        fs::write(notes.0.join("Journal.md"), "dear diary").unwrap();
+        let cfg = config_with(vec![dir("notes", &notes.0, Audience::Local)]);
+
+        assert!(resolve_for(&cfg, &vault, "private/notes/PromptBox/config.yaml", LOCAL).is_err());
+        assert!(resolve_for(&cfg, &vault, "private/notes/PromptBox", LOCAL).is_err());
+        // The rest of the mount is unaffected.
+        assert!(resolve_for(&cfg, &vault, "private/notes/Journal.md", LOCAL)
+            .unwrap()
+            .is_some());
+        // Listing and search skip the vault too.
+        assert!(exclude_roots(&cfg, &vault, "private/notes").contains(&vault.canonicalize().unwrap()));
     }
 
     #[test]
@@ -404,7 +451,7 @@ mod tests {
         parent.exclude_dirs = vec!["PromptBox".into()];
         let cfg = config_with(vec![parent, dir("public", &public, Audience::All)]);
 
-        let excludes = exclude_roots(&cfg, "private/obsidian_vault");
+        let excludes = exclude_roots(&cfg, NO_VAULT.as_ref(), "private/obsidian_vault");
         assert!(excludes.contains(&vault.canonicalize().unwrap()), "{excludes:?}");
         assert!(
             excludes.contains(&public.canonicalize().unwrap()),
@@ -412,7 +459,7 @@ mod tests {
         );
 
         // The nested mount itself excludes nothing.
-        assert!(exclude_roots(&cfg, "shared/public").is_empty());
+        assert!(exclude_roots(&cfg, NO_VAULT.as_ref(), "shared/public").is_empty());
     }
 
     #[test]

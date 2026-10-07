@@ -6,8 +6,9 @@
 //!   we don't ship in Phase 1** → server-mode hard-errors writes to skills/
 //! - conversations/ — read only
 //! - tasks/ — same as skills/ (read; write requires approval → server hard-error)
-//! - root files: read allowed; write allowed only for memory.md (other root
-//!   writes require approval → hard-error)
+//! - root files: only memory.md, read+write. Every other root file is denied
+//!   (see `ROOT_READABLE`): the root holds config.yaml and its migration
+//!   backups, which carry API keys.
 
 use serde_json::{Value, json};
 use tokio::fs;
@@ -113,6 +114,14 @@ fn read_window(content: &str, offset: usize, limit: usize) -> Result<String, Str
 /// don't: a rolling backup, an atomic replace, and a refusal to shrink it
 /// sharply without having read what it is replacing.
 const MEMORY_FILE: &str = "memory.md";
+/// The only vault-root files a model may read. An allowlist on purpose: the
+/// root holds `config.yaml` (API keys, OAuth tokens) and migration backups like
+/// `config.yaml.pre-0.4.bak` that carry the same secrets, and a denylist of
+/// config names would lose to the next backup suffix. Other root data (e.g. the
+/// legacy `ramble_history.yaml`) is denied too; anything a model should see
+/// belongs in `notes/`. Denial is a plain access error: the existence of
+/// config.yaml is not a secret, only its contents.
+const ROOT_READABLE: &[&str] = &[MEMORY_FILE];
 /// Kept at the vault root. Dot-prefixed deliberately: `read_file` rejects
 /// unlisted nested directories, while `list_directory`, `search_directory`,
 /// vault search, and the file watcher all skip dotfiles — so backups stay out
@@ -168,7 +177,22 @@ fn check_permission(path: &str, op: Op) -> Option<String> {
 
     // Root-level file
     match op {
-        Op::Read => None,
+        Op::Read if ROOT_READABLE.contains(&normalized.as_str()) => None,
+        // The root itself and the readable directories, addressed without a
+        // trailing slash (as `list_directory` does). Names are not secrets;
+        // only file contents are.
+        Op::Read
+            if normalized == "."
+                || dir_segments
+                    .iter()
+                    .any(|(prefix, can_read, _)| *can_read && prefix.trim_end_matches('/') == normalized) =>
+        {
+            None
+        }
+        Op::Read => Some(format!(
+            "Access denied: \"{}\" is not readable. At the vault root only memory.md is; notes live in notes/.",
+            path
+        )),
         Op::Write => {
             if normalized == "memory.md" {
                 None
@@ -205,8 +229,12 @@ pub async fn execute_read(
     // a generic "not found" without the filesystem being touched at all.
     if crate::tools::mounts::is_mount_path(path) {
         let not_found = || format!("File not found: {}", path);
-        return match crate::tools::mounts::resolve_for(&registry.config, path, ctx.model_is_local)
-        {
+        return match crate::tools::mounts::resolve_for(
+            &registry.config,
+            registry.vault.root(),
+            path,
+            ctx.model_is_local,
+        ) {
             Ok(Some(abs)) => {
                 // Reading a local-only mount taints this turn, so the record of
                 // it does not become a cloud-readable copy.
@@ -496,18 +524,23 @@ pub async fn execute_list_directory(
     // host path.
     if crate::tools::mounts::is_mount_path(path) {
         let not_found = || format!("Directory not found: {}", path);
-        let abs =
-            match crate::tools::mounts::resolve_for(&registry.config, path, ctx.model_is_local) {
-                Ok(Some(abs)) => abs,
-                _ => return Err(not_found()),
-            };
+        let abs = match crate::tools::mounts::resolve_for(
+            &registry.config,
+            registry.vault.root(),
+            path,
+            ctx.model_is_local,
+        ) {
+            Ok(Some(abs)) => abs,
+            _ => return Err(not_found()),
+        };
         // Excludes carve out nested mounts as well as configured excludeDirs,
         // so a parent listing never surfaces a nested mount's files under the
         // parent's address.
         if crate::tools::mounts::is_private_path(path) {
             ctx.mark_private_read();
         }
-        let excludes = crate::tools::mounts::exclude_roots(&registry.config, path);
+        let excludes =
+            crate::tools::mounts::exclude_roots(&registry.config, registry.vault.root(), path);
         return list_dir_json(&abs, path, &opts, &excludes).await;
     }
     if let Some(msg) = check_permission(path, Op::Read) {
@@ -785,6 +818,84 @@ mod tests {
     #[test]
     fn permission_root_other_writes_blocked() {
         assert!(check_permission("config.yaml", Op::Write).is_some());
+    }
+
+    #[test]
+    fn permission_root_reads_are_an_allowlist() {
+        assert!(check_permission("memory.md", Op::Read).is_none());
+        // Directories stay listable by bare name, and so does the root.
+        for dir in [".", "notes", "skills", "conversations", "tasks"] {
+            assert!(check_permission(dir, Op::Read).is_none(), "{dir}");
+        }
+        for secret in [
+            "config.yaml",
+            "config.yaml.pre-0.4.bak",
+            "config.yaml.v1-backup-20260727-174739",
+            "ramble_history.yaml",
+            "anything-new-at-the-root.txt",
+        ] {
+            let err = check_permission(secret, Op::Read).expect(secret);
+            assert!(err.starts_with("Access denied"), "{err}");
+        }
+    }
+
+    /// The canary: a real-looking key in config.yaml (and its backups) must
+    /// never reach a tool result — for local or cloud models, and through the
+    /// registry dispatch that MCP (Claude CLI, Codex) shares with the tool loop.
+    #[tokio::test]
+    async fn config_secrets_never_reach_a_tool_result() {
+        const KEY: &str = "sk-or-v1-CANARY0123456789abcdef";
+        let vault = TempDir::new("config-canary");
+        let reg = memory_registry(&vault.0, "# Memory\n- likes tea\n");
+        for name in [
+            "config.yaml",
+            "config.yaml.pre-0.4.bak",
+            "config.yaml.v1-backup-20260727-174739",
+        ] {
+            std::fs::write(vault.0.join(name), format!("apiKey: {KEY}\n")).unwrap();
+        }
+
+        for local in [false, true] {
+            for name in [
+                "config.yaml",
+                "config.yaml.pre-0.4.bak",
+                "config.yaml.v1-backup-20260727-174739",
+                "./config.yaml",
+            ] {
+                let call = crate::types::ToolCall {
+                    id: "t".into(),
+                    name: "read_file".into(),
+                    input: serde_json::json!({ "path": name }),
+                };
+                let result = reg.execute(&call, &ctx(local)).await;
+                assert_eq!(result.is_error, Some(true), "{name} (local={local})");
+                assert!(!result.content.contains(KEY), "{name} leaked: {}", result.content);
+            }
+
+            // Search and listing can't surface it either.
+            for (tool, input) in [
+                ("search_directory", serde_json::json!({ "query": KEY })),
+                ("list_directory", serde_json::json!({ "path": "." })),
+            ] {
+                let call = crate::types::ToolCall {
+                    id: "t".into(),
+                    name: tool.into(),
+                    input,
+                };
+                let result = reg.execute(&call, &ctx(local)).await;
+                assert!(!result.content.contains(KEY), "{tool} leaked: {}", result.content);
+            }
+
+            // memory.md stays readable and still arms the memory-write guard.
+            let c = ctx(local);
+            let memory = execute_read(&reg, &c, &serde_json::json!({ "path": "memory.md" }))
+                .await
+                .unwrap();
+            assert!(memory.contains("likes tea"));
+            assert!(c
+                .memory_read_this_turn
+                .load(std::sync::atomic::Ordering::Relaxed));
+        }
     }
 
     #[test]

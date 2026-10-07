@@ -110,7 +110,12 @@ pub async fn execute(
     // result `path` fields read as `private/<alias>/…`, `shared/<alias>/…`, or
     // `notes/…` — never the host path.
     let search_path = if mount {
-        match crate::tools::mounts::resolve_for(&registry.config, directory, ctx.model_is_local) {
+        match crate::tools::mounts::resolve_for(
+            &registry.config,
+            registry.vault.root(),
+            directory,
+            ctx.model_is_local,
+        ) {
             Ok(Some(abs)) => abs,
             _ => return Err(format!("Directory not found: {}", directory)),
         }
@@ -124,7 +129,7 @@ pub async fn execute(
         if crate::tools::mounts::is_private_path(directory) {
             ctx.mark_private_read();
         }
-        crate::tools::mounts::exclude_roots(&registry.config, directory)
+        crate::tools::mounts::exclude_roots(&registry.config, registry.vault.root(), directory)
     } else if !ctx.model_is_local
         && crate::tools::conversation_privacy::is_conversation_path(directory)
     {
