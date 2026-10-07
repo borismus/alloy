@@ -4,6 +4,21 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.41
+
+- **Your API keys stay out of every model's reach.** Models could read
+  `config.yaml`, and the backups of it, from the vault root, keys included.
+  Now the only root file a model can read is `memory.md`. A notes folder that
+  contains the vault can't be used to get around that either.
+- **Oversized PDFs fail loudly with Claude.** The Claude CLI silently drops
+  PDFs over about 15 MB, so the model answered as if nothing was attached.
+  Alloy now warns when you attach one and stops the send with a clear message
+  (shrink it, or use an OpenRouter model).
+- **Possible fix for mobile taps and scrolling getting stuck** after switching
+  away from the app and back: the layout now re-measures the screen when Alloy
+  returns to the foreground.
+- Messages now record whether they were sent from mobile or desktop.
+
 ## 0.4.40
 
 - **The model knows when you said things.** Each message you send now carries
