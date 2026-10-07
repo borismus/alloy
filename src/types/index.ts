@@ -106,6 +106,8 @@ export interface Message {
   role: 'user' | 'assistant' | 'log' | 'compacted';
   timestamp: string;
   content: string;
+  /** Kind of device a user message was sent from, for usage stats. */
+  client?: 'mobile' | 'desktop';
   /** Persisted backend failure for an assistant turn. May accompany partial content/tools. */
   error?: string;
   /**

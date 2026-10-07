@@ -4,7 +4,7 @@ import { skillRegistry } from '../services/skills';
 import { ServerStreamError } from '../services/server-streaming';
 import { vaultService } from '../services/vault';
 import type { Config, Conversation } from '../types';
-import { useSendMessage } from './useSendMessage';
+import { sendingClient, useSendMessage } from './useSendMessage';
 
 const serverMock = vi.hoisted(() => ({ execute: vi.fn() }));
 
@@ -93,6 +93,11 @@ describe('useSendMessage server-owned errors', () => {
     // The initial user-message save remains client-owned. There must be no
     // second save after SSE reports a backend-persisted error.
     expect(save).toHaveBeenCalledTimes(1);
+    // The saved user message records which kind of device sent it.
+    expect(save.mock.calls[0][0].messages.at(-1)).toMatchObject({
+      role: 'user',
+      client: expect.stringMatching(/^(mobile|desktop)$/),
+    });
     expect(vaultService.loadConversation).toHaveBeenCalledWith('conv-error');
     expect(setDraftConversation).toHaveBeenLastCalledWith(expect.any(Function));
     expect(setConversations).toHaveBeenLastCalledWith(expect.any(Function));
@@ -103,5 +108,20 @@ describe('useSendMessage server-owned errors', () => {
       error: 'model returned no final text',
       toolUse: [{ type: 'search_directory' }],
     });
+  });
+});
+
+describe('sendingClient', () => {
+  const pointer = (coarse: boolean) =>
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: coarse } as MediaQueryList);
+
+  it('reports a touchscreen device as mobile', () => {
+    pointer(true);
+    expect(sendingClient()).toBe('mobile');
+  });
+
+  it('reports a mouse or trackpad device as desktop, however narrow the window', () => {
+    pointer(false);
+    expect(sendingClient()).toBe('desktop');
   });
 });

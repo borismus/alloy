@@ -72,6 +72,7 @@ export function useSendMessage(deps: UseSendMessageDeps) {
       role: 'user',
       timestamp: new Date().toISOString(),
       content,
+      client: sendingClient(),
       attachments: attachments.length > 0 ? attachments : undefined,
     };
 
@@ -272,4 +273,14 @@ export function useSendMessage(deps: UseSendMessageDeps) {
   }, []);
 
   return { handleSendMessage, handleSaveAttachment, handleLoadImageAsBase64 };
+}
+
+/**
+ * Which kind of device a message is being sent from, recorded on user messages
+ * for desktop-vs-mobile usage stats. A touchscreen as the primary pointer means
+ * a phone or tablet; unlike the mobile layout query, a narrow desktop window
+ * still counts as desktop.
+ */
+export function sendingClient(): 'mobile' | 'desktop' {
+  return window.matchMedia?.('(pointer: coarse)').matches ? 'mobile' : 'desktop';
 }
