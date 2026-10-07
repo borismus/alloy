@@ -69,6 +69,35 @@ describe('useVisualViewport', () => {
     expect(appHeight()).toBe('390px');
   });
 
+  it('re-reads when the app returns to the foreground', () => {
+    // Suspected mobile bug: leave the app with the keyboard up, come back with
+    // it gone, and iOS fires no viewport event — so the shrunken height stays
+    // and scrollers (and tap targets) are sized for a keyboard that isn't there.
+    const vv = installViewport(400, 300);
+    renderHook(() => useVisualViewport());
+    expect(appHeight()).toBe('400px');
+
+    vv.height = 800;
+    vv.offsetTop = 0;
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(1000);
+
+    expect(appHeight()).toBe('800px');
+    expect(document.documentElement.style.getPropertyValue('--app-top')).toBe('0px');
+  });
+
+  it('re-reads when the page is restored from the back/forward cache', () => {
+    const vv = installViewport(400);
+    renderHook(() => useVisualViewport());
+
+    vv.height = 800;
+    window.dispatchEvent(new Event('pageshow'));
+    vi.advanceTimersByTime(1000);
+
+    expect(appHeight()).toBe('800px');
+  });
+
   it('still tracks plain visualViewport resizes (software keyboard)', () => {
     const vv = installViewport(800);
     renderHook(() => useVisualViewport());
@@ -88,6 +117,9 @@ describe('useVisualViewport', () => {
     vv.height = 123;
     vi.advanceTimersByTime(1000);
     vv.emit('resize');
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('pageshow'));
+    vi.advanceTimersByTime(1000);
 
     // No writes after unmount.
     expect(appHeight()).toBe('800px');

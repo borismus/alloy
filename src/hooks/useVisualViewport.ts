@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 
 /**
- * Re-read points after an orientation change, in ms. iOS reports transitional
- * viewport metrics while the rotation animation runs and does not reliably fire
- * a final `visualViewport` resize once it settles, so a single measurement can
- * be left describing the previous orientation. Sampling across the animation is
- * cheap (a few style writes) and converges on the settled value.
+ * Re-read points after an orientation change or a return to the foreground, in
+ * ms. iOS reports transitional viewport metrics while the rotation animation
+ * runs and does not reliably fire a final `visualViewport` resize once it
+ * settles, so a single measurement can be left describing the previous
+ * orientation. The same goes for coming back from another app: a keyboard that
+ * was up when the app was backgrounded may be gone on return with no resize
+ * event, leaving the shrunken height in place. Sampling across the transition
+ * is cheap (a few style writes) and converges on the settled value.
  */
 const RESETTLE_DELAYS_MS = [50, 150, 350, 600];
 
@@ -45,8 +48,8 @@ export function useVisualViewport() {
       }
     };
 
-    // Re-measure across the rotation animation rather than trusting the single
-    // event that starts it.
+    // Re-measure across the rotation animation (or the return from another app)
+    // rather than trusting the single event that starts it.
     const timers: ReturnType<typeof setTimeout>[] = [];
     let frame = 0;
     const resettle = () => {
@@ -67,6 +70,13 @@ export function useVisualViewport() {
     // window `resize` is the backup for engines that only fire that one.
     window.addEventListener('orientationchange', resettle);
     window.addEventListener('resize', resettle);
+    // Returning to the app (switching back from another app, or a restore from
+    // the back/forward cache) can leave stale metrics with no viewport event.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') resettle();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', resettle);
 
     return () => {
       timers.forEach(clearTimeout);
@@ -75,6 +85,8 @@ export function useVisualViewport() {
       vv.removeEventListener('scroll', update);
       window.removeEventListener('orientationchange', resettle);
       window.removeEventListener('resize', resettle);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', resettle);
     };
   }, []);
 }
