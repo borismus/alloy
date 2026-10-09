@@ -88,13 +88,21 @@ fn failure_report(email: &TaskEmail<'_>) -> String {
     )
 }
 
+/// Render a result the way the app does. The app's renderer (`remark-breaks`)
+/// treats every newline as a line break, and models lean on that: a digest of
+/// one item per line with single newlines between them. Standard Markdown
+/// turns those soft breaks into spaces, which ran the items together into one
+/// paragraph in the email, so soft breaks become hard breaks here too.
 fn render_result_markdown(markdown: &str) -> String {
-    use pulldown_cmark::{html, Options, Parser};
+    use pulldown_cmark::{html, Event, Options, Parser};
 
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
-    let parser = Parser::new_ext(markdown, options);
+    let parser = Parser::new_ext(markdown, options).map(|event| match event {
+        Event::SoftBreak => Event::HardBreak,
+        other => other,
+    });
     let mut rendered = String::new();
     html::push_html(&mut rendered, parser);
     rendered
@@ -189,6 +197,22 @@ mod tests {
             occurred_at: "2026-07-20T09:00:00Z",
             idempotency_key: "task-abc-2026-07-20T02:00:00Z",
         }
+    }
+
+    /// The geopolitics digest: one item per line, single newlines between them.
+    /// The app shows four lines; the email ran them into one paragraph.
+    #[test]
+    fn single_newlines_stay_line_breaks_like_in_the_app() {
+        let digest = "**Iran–US** — first item. ([Reuters](https://r.example/1))\n\
+                      **Iran–US** — second item. ([Reuters](https://r.example/2))\n\
+                      **Ukraine–Russia** — third item.";
+        let html = render_result_markdown(digest);
+        assert_eq!(html.matches("<br />").count(), 2, "{html}");
+        assert_eq!(html.matches("<p>").count(), 1, "{html}");
+        // Paragraphs separated by a blank line are still paragraphs.
+        let paragraphs = render_result_markdown("one\n\ntwo");
+        assert_eq!(paragraphs.matches("<p>").count(), 2, "{paragraphs}");
+        assert!(!paragraphs.contains("<br />"), "{paragraphs}");
     }
 
     #[test]
