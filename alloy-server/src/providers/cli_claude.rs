@@ -572,11 +572,13 @@ impl Provider for CliClaudeProvider {
                                 }
                                 Some("result") => {
                                     if v.get("is_error").and_then(Value::as_bool).unwrap_or(false) {
-                                        error_msg = Some(
-                                            v.get("result").and_then(Value::as_str)
-                                                .unwrap_or("claude CLI reported an error")
-                                                .to_string(),
-                                        );
+                                        error_msg = Some(auth_failure_message(&v).unwrap_or_else(|| {
+                                            format!(
+                                                "claude CLI: {}",
+                                                v.get("result").and_then(Value::as_str)
+                                                    .unwrap_or("claude CLI reported an error")
+                                            )
+                                        }));
                                     }
                                     if let Some(t) = v.get("result").and_then(Value::as_str) {
                                         result_text = Some(t.to_string());
@@ -622,7 +624,7 @@ impl Provider for CliClaudeProvider {
         }
 
         if let Some(msg) = error_msg {
-            anyhow::bail!("claude CLI: {}", msg);
+            anyhow::bail!("{}", msg);
         }
         if !cancelled && content.is_empty() {
             let failed = status.map(|s| !s.success()).unwrap_or(true);
@@ -741,6 +743,27 @@ fn deliverable_attachments(
     }
     attachments.retain(|att| !is_oversized_pdf(att));
     Ok(attachments)
+}
+
+/// An actionable message when a `result` event says the Claude login or token
+/// was rejected, `None` for any other error. Keyed on the CLI's structured
+/// fields (an error result with HTTP status 401, or its "Failed to
+/// authenticate" text) rather than matching "auth" in arbitrary output. The
+/// subscription login expires on its own and the fix is interactive, so the
+/// raw text alone ("OAuth access token is invalid", "OAuth session expired and
+/// could not be refreshed") reads like something a retry might fix.
+fn auth_failure_message(result: &Value) -> Option<String> {
+    let text = result.get("result").and_then(Value::as_str).unwrap_or("");
+    let status_401 = result.get("api_error_status").and_then(Value::as_u64) == Some(401);
+    if !status_401 && !text.starts_with("Failed to authenticate") {
+        return None;
+    }
+    Some(format!(
+        "Claude isn't signed in on this machine: its login or token was rejected ({}). \
+         Run `claude setup-token`, put the new token in config.yaml as `oauthToken` on the \
+         Claude provider, and restart Alloy. (Or run `claude` here to log in again.)",
+        text.trim().trim_end_matches('.')
+    ))
 }
 
 /// Pull the system prompt out, flatten the remaining turns into one transcript
@@ -1005,6 +1028,35 @@ mod tests {
         let (_, _, atts) = flatten_conversation(&msgs);
         assert_eq!(atts.len(), 1, "carried forward from the earlier turn");
         assert!(deliverable_attachments(&msgs, atts).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_rejected_login_becomes_an_actionable_error() {
+        // Real CLI 2.1.288 output for an invalid token.
+        let invalid = json!({
+            "type": "result", "subtype": "success", "is_error": true,
+            "result": "Failed to authenticate. API Error: 401 OAuth access token is invalid.",
+            "api_error_status": 401
+        });
+        let msg = auth_failure_message(&invalid).unwrap();
+        assert!(msg.starts_with("Claude isn't signed in on this machine"), "{msg}");
+        assert!(msg.contains("OAuth access token is invalid"), "{msg}");
+        assert!(msg.contains("claude setup-token"), "{msg}");
+
+        // The expired-session shape seen on the always-on Mac.
+        let expired = json!({
+            "type": "result", "is_error": true,
+            "result": "Failed to authenticate: OAuth session expired and could not be refreshed"
+        });
+        assert!(auth_failure_message(&expired).unwrap().contains("session expired"));
+
+        // Unrelated failures keep their own message, even ones mentioning auth.
+        for other in [
+            json!({"type": "result", "is_error": true, "result": "Prompt is too long", "api_error_status": 400}),
+            json!({"type": "result", "is_error": true, "result": "The auth tool returned nothing", "api_error_status": 500}),
+        ] {
+            assert!(auth_failure_message(&other).is_none(), "{other}");
+        }
     }
 
     #[test]
