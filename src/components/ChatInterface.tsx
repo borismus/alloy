@@ -244,7 +244,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   const { setShouldAutoScroll, handleScroll, handleWheel } = useAutoScroll({
     containerRef: messagesContainerRef,
-    dependencies: [conversation?.messages, streamingContent],
+    // Everything that can grow the view while a reply streams, not just its
+    // text: tool pills and sub-agents often arrive with no new text at all.
+    dependencies: [conversation?.messages, streamingContent, streamingToolUse, activeSubagents, streamingThinking],
   });
 
   // Clear streaming content once the assistant message appears in the conversation

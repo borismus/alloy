@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChatInterface } from './ChatInterface';
-import { StreamingProvider } from '../contexts/StreamingContext';
+import { StreamingProvider, useStreamingContext } from '../contexts/StreamingContext';
 import { MessageQueueProvider } from '../contexts/MessageQueueContext';
 import type { Attachment, Conversation, Message } from '../types';
 
@@ -268,5 +268,51 @@ describe('ChatInterface image preparation feedback', () => {
       expect.stringContaining('Failed to save attachments'),
       expect.any(Error),
     );
+  });
+});
+
+describe('ChatInterface autoscroll', () => {
+  it('stays pinned to the bottom when a tool pill arrives with no new text', () => {
+    // Regression: the pin only re-ran on new reply text, so a run of tool calls
+    // grew the view below the fold without scrolling to follow it.
+    let streaming!: ReturnType<typeof useStreamingContext>;
+    function Probe() {
+      streaming = useStreamingContext();
+      return null;
+    }
+    const { container } = render(
+      <StreamingProvider>
+        <Probe />
+        <MessageQueueProvider>
+          <ChatInterface
+            conversation={withMessages('hello', 'hi there')}
+            onSendMessage={vi.fn(async () => {})}
+            onSaveAttachment={vi.fn()}
+            loadImageAsBase64={vi.fn(async () => ({ base64: '', mimeType: 'image/png' }))}
+            hasProvider
+            onModelChange={vi.fn()}
+            availableModels={[]}
+          />
+        </MessageQueueProvider>
+      </StreamingProvider>,
+    );
+    const messages = container.querySelector('.messages-container') as HTMLElement;
+    let contentHeight = 600;
+    let scrollTop = 0;
+    Object.defineProperty(messages, 'scrollHeight', { configurable: true, get: () => contentHeight });
+    Object.defineProperty(messages, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => { scrollTop = value; },
+    });
+
+    act(() => { streaming.startStreaming(conversation.id); });
+    contentHeight = 900;
+    act(() => { streaming.addToolUse(conversation.id, { type: 'search_directory' }, 'call-1'); });
+    expect(scrollTop).toBe(900);
+
+    contentHeight = 1100;
+    act(() => { streaming.addToolUse(conversation.id, { type: 'read_file' }, 'call-2'); });
+    expect(scrollTop).toBe(1100);
   });
 });
