@@ -114,6 +114,11 @@ fn read_window(content: &str, offset: usize, limit: usize) -> Result<String, Str
 /// don't: a rolling backup, an atomic replace, and a refusal to shrink it
 /// sharply without having read what it is replacing.
 const MEMORY_FILE: &str = "memory.md";
+/// How a proposal's tool result begins. It is what marks a persisted
+/// `write_file` to memory.md as a pending proposal: writes from before
+/// proposals existed (applied directly) and no-op calls don't start with it,
+/// so they never offer Accept. Mirrored in src/services/memoryProposals.ts.
+pub const MEMORY_PROPOSAL_RESULT: &str = "Proposed a change to memory.md.";
 /// The only vault-root files a model may read. An allowlist on purpose: the
 /// root holds `config.yaml` (API keys, OAuth tokens) and migration backups like
 /// `config.yaml.pre-0.4.bak` that carry the same secrets, and a denylist of
@@ -387,7 +392,7 @@ async fn propose_memory(
         return Ok(format!("{MEMORY_FILE} already says exactly this; nothing to change."));
     }
     Ok(format!(
-        "Proposed a change to {MEMORY_FILE}. It has NOT been saved: the user will review \
+        "{MEMORY_PROPOSAL_RESULT} It has NOT been saved: the user will review \
          it in the conversation and accept or reject it. Tell them it's waiting for their \
          approval rather than saying it was saved."
     ))

@@ -225,7 +225,17 @@ pub struct MemoryProposal {
     pub decision: Option<String>,
 }
 
+/// A `write_file` to memory.md whose result says it was proposed: not a write
+/// from before proposals existed, and not a no-op.
 fn is_memory_proposal(tool: &Value) -> bool {
+    let proposed = tool
+        .get("result")
+        .and_then(Value::as_str)
+        .is_some_and(|r| r.starts_with(crate::tools::files::MEMORY_PROPOSAL_RESULT));
+    proposed && is_memory_write(tool)
+}
+
+fn is_memory_write(tool: &Value) -> bool {
     let is_write = tool
         .get("type")
         .and_then(Value::as_str)
@@ -444,7 +454,8 @@ mod tests {
             "id: c1\nmodel: claude/opus\ncreated: x\nupdated: x\nmessages:\n\
              - id: m1\n  role: assistant\n  content: ok\n  toolUse:\n\
              \x20 - type: mcp__alloy__read_file\n    input:\n      path: memory.md\n\
-             \x20 - type: mcp__alloy__write_file\n    input:\n      path: memory.md\n      content: \"# Memory\\n- likes tea\\n\"\n",
+             \x20 - type: mcp__alloy__write_file\n    input:\n      path: memory.md\n      content: \"# Memory\\n- likes tea\\n\"\n    result: \"Proposed a change to memory.md. It has NOT been saved.\"\n\
+             \x20 - type: write_file\n    input:\n      path: memory.md\n      content: old\n    result: Successfully wrote to memory.md\n",
         )
         .unwrap();
         let vault = Vault::new(dir.path().to_path_buf()).unwrap();
@@ -453,8 +464,10 @@ mod tests {
         assert_eq!(p.content, "# Memory\n- likes tea\n");
         assert!(p.decision.is_none());
 
-        // Only a write to memory.md is a proposal.
+        // Only a write to memory.md is a proposal, and only one made as a
+        // proposal: a direct write from before proposals existed is not.
         assert!(memory_proposal(&vault, "c1", "m1", 0).await.is_err());
+        assert!(memory_proposal(&vault, "c1", "m1", 2).await.is_err());
         assert!(memory_proposal(&vault, "c1", "nope", 1).await.is_err());
 
         record_memory_decision(&vault, "c1", "m1", 1, "accepted").await.unwrap();

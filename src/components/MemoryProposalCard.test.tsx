@@ -72,9 +72,23 @@ it('keeps the proposal when the server refuses', async () => {
 
 it('recognizes memory proposals across providers', () => {
   const content = '# Memory\n';
-  expect(isMemoryProposal({ type: 'write_file', input: { path: 'memory.md', content } })).toBe(true);
-  expect(isMemoryProposal({ type: 'mcp__alloy__write_file', input: { path: './memory.md', content } })).toBe(true);
-  expect(isMemoryProposal({ type: 'write_file', input: { path: 'notes/memory.md', content } })).toBe(false);
-  expect(isMemoryProposal({ type: 'read_file', input: { path: 'memory.md' } })).toBe(false);
-  expect(isMemoryProposal({ type: 'write_file', input: { path: 'memory.md', content }, isError: true })).toBe(false);
+  const result = 'Proposed a change to memory.md. It has NOT been saved.';
+  expect(isMemoryProposal({ type: 'write_file', input: { path: 'memory.md', content }, result })).toBe(true);
+  expect(isMemoryProposal({ type: 'mcp__alloy__write_file', input: { path: './memory.md', content }, result })).toBe(true);
+  expect(isMemoryProposal({ type: 'write_file', input: { path: 'notes/memory.md', content }, result })).toBe(false);
+  expect(isMemoryProposal({ type: 'read_file', input: { path: 'memory.md' }, result })).toBe(false);
+  expect(isMemoryProposal({ type: 'write_file', input: { path: 'memory.md', content }, result, isError: true })).toBe(false);
+});
+
+it('ignores memory writes from before proposals existed, and no-ops', () => {
+  const input = { path: 'memory.md', content: '# Memory\n' };
+  expect(isMemoryProposal({ type: 'write_file', input, result: 'Successfully wrote to memory.md' })).toBe(false);
+  expect(isMemoryProposal({ type: 'write_file', input, result: 'memory.md already says exactly this; nothing to change.' })).toBe(false);
+  expect(isMemoryProposal({ type: 'write_file', input })).toBe(false);
+});
+
+it('says so instead of offering an empty change', async () => {
+  renderCard({ proposed: '# Memory\n- likes tea\n' });
+  expect(await screen.findByText('Memory already matches this change.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
 });

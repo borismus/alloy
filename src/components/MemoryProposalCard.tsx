@@ -54,6 +54,14 @@ export function MemoryProposalCard({
     }
   };
 
+  if (!decision && current !== null && current === proposed) {
+    return (
+      <div className="memory-proposal decided" role="status">
+        Memory already matches this change.
+      </div>
+    );
+  }
+
   if (decision) {
     return (
       <div className="memory-proposal decided" role="status">

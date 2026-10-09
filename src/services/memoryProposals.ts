@@ -6,6 +6,11 @@ import { getApiBase, getAuthHeadersForApi } from './server-streaming';
  * until the user accepts it (see alloy-server/src/routes/memory.rs).
  */
 export function isMemoryProposal(tool: ToolUse): boolean {
+  // Only a call whose result says it was proposed. Writes from before
+  // proposals existed were applied directly ("Successfully wrote…"), and a
+  // no-op call changes nothing; neither should offer Accept. Mirrors
+  // MEMORY_PROPOSAL_RESULT in alloy-server/src/tools/files.rs.
+  if (!tool.result?.startsWith('Proposed a change to memory.md.')) return false;
   const isWrite = tool.type === 'write_file' || tool.type.endsWith('__write_file');
   const path = typeof tool.input?.path === 'string'
     ? tool.input.path.trim().replace(/^\.\//, '').replace(/\\/g, '/')
