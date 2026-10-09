@@ -95,6 +95,15 @@ struct CodexModelEntry {
     is_default: bool,
 }
 
+/// Codex features that would let the model read files directly, bypassing the
+/// scoping of Alloy's MCP tools. Codex's sandbox restricts writes but can read
+/// the whole disk: with its shell on, a `cat` of the vault's `config.yaml` (API
+/// keys) or of a local-only private note succeeds, so it must never run. A
+/// browser can open `file://` URLs. Alloy's tools over MCP are the only way
+/// Codex reaches the vault — the same rule the Claude CLI provider enforces by
+/// disallowing Claude Code's native tools.
+const DISABLED_FEATURES: &[&str] = &["shell_tool", "browser_use", "in_app_browser", "computer_use"];
+
 impl CliCodexProvider {
     pub fn new(cfg: &ProviderConfig) -> Self {
         Self {
@@ -178,6 +187,9 @@ impl CliCodexProvider {
     fn command(&self) -> Command {
         let mut cmd = Command::new(&self.command);
         cmd.current_dir(std::env::temp_dir());
+        for feature in DISABLED_FEATURES {
+            cmd.arg("-c").arg(format!("features.{feature}=false"));
+        }
         let home = std::env::var("HOME").unwrap_or_default();
         let existing = std::env::var("PATH").unwrap_or_default();
         cmd.env(
@@ -224,11 +236,10 @@ impl CliCodexProvider {
             //
             // `--approve-for-me` is mutually exclusive with `--sandbox` (the CLI
             // rejects both: "cannot be used with"), and implies workspace-write.
-            // That is contained here because `command()` runs Codex from
-            // `std::env::temp_dir()`, never the vault or a project checkout, so
-            // its native tools can only touch scratch space — the vault is
-            // reachable solely through Alloy's MCP tools, which enforce their own
-            // scoping.
+            // Writes stay contained because `command()` runs Codex from
+            // `std::env::temp_dir()`. Reads would not — Codex's sandbox can read
+            // the whole disk — which is why `command()` switches off every
+            // native tool that could read a file (see `DISABLED_FEATURES`).
             cmd.arg("--approve-for-me");
         } else {
             // No tools this turn: keep the strictest sandbox.
@@ -734,7 +745,20 @@ fn app_server_thread_start_params(model: &str, has_mcp: bool) -> Value {
         // reviewed internally instead of becoming unanswered client requests.
         "approvalsReviewer": if has_mcp { Value::String("auto_review".into()) } else { Value::Null },
         "ephemeral": true,
+        // Per thread, not just on the command line: `-c` overrides did not
+        // reach app-server turns (a live turn still ran `cat` on a canary).
+        "config": { "features": disabled_features_config() },
     })
+}
+
+/// `{ "shell_tool": false, ... }` for every entry in `DISABLED_FEATURES`.
+fn disabled_features_config() -> Value {
+    Value::Object(
+        DISABLED_FEATURES
+            .iter()
+            .map(|feature| (feature.to_string(), Value::Bool(false)))
+            .collect(),
+    )
 }
 
 /// Build one app-server turn from Alloy's flattened transcript plus every image
@@ -1249,6 +1273,34 @@ mod tests {
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
             .collect()
+    }
+
+    /// Regression: Codex's sandbox reads the whole disk, so a live Codex turn
+    /// `cat`-ed a canary config.yaml outside its folder. Every launch path must
+    /// switch off the native tools that can read files.
+    #[test]
+    fn every_launch_disables_native_file_access() {
+        let bridge = McpBridge {
+            base_url: "http://127.0.0.1:4321".into(),
+            session_id: "sess-1".into(),
+            token: "tok-2".into(),
+        };
+        for args in [args_for(None), args_for(Some(&bridge)), app_server_args(Some(&bridge))] {
+            for feature in DISABLED_FEATURES {
+                let flag = format!("features.{feature}=false");
+                assert!(
+                    args.windows(2).any(|w| w[0] == "-c" && w[1] == flag),
+                    "missing {flag} in {args:?}"
+                );
+            }
+        }
+        assert!(DISABLED_FEATURES.contains(&"shell_tool"));
+        for has_mcp in [false, true] {
+            let params = app_server_thread_start_params("default", has_mcp);
+            for feature in DISABLED_FEATURES {
+                assert_eq!(params["config"]["features"][*feature], json!(false), "{params}");
+            }
+        }
     }
 
     fn app_server_args(mcp: Option<&McpBridge>) -> Vec<String> {
