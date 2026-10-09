@@ -218,6 +218,92 @@ pub async fn update_title(vault: &Vault, conversation_id: &str, new_title: &str)
     Ok(())
 }
 
+/// A model's proposed memory.md change, as persisted on a tool call: the full
+/// proposed text and the user's decision, if any.
+pub struct MemoryProposal {
+    pub content: String,
+    pub decision: Option<String>,
+}
+
+fn is_memory_proposal(tool: &Value) -> bool {
+    let is_write = tool
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| t == "write_file" || t.ends_with("__write_file"));
+    let path = tool
+        .get("input")
+        .and_then(|i| i.get("path"))
+        .and_then(Value::as_str)
+        .map(|p| p.trim().trim_start_matches("./").replace('\\', "/"));
+    is_write && path.as_deref() == Some("memory.md")
+}
+
+fn proposal_tool<'a>(
+    conversation: &'a mut Conversation,
+    message_id: &str,
+    tool_index: usize,
+) -> anyhow::Result<&'a mut serde_yaml::Mapping> {
+    let message = conversation
+        .messages
+        .iter_mut()
+        .find(|m| m.get("id").and_then(Value::as_str) == Some(message_id))
+        .ok_or_else(|| anyhow::anyhow!("message {message_id} not found"))?;
+    let tool = message
+        .get_mut("toolUse")
+        .and_then(Value::as_sequence_mut)
+        .and_then(|tools| tools.get_mut(tool_index))
+        .ok_or_else(|| anyhow::anyhow!("tool call {tool_index} not found"))?;
+    if !is_memory_proposal(tool) {
+        anyhow::bail!("tool call {tool_index} is not a memory.md proposal");
+    }
+    tool.as_mapping_mut()
+        .ok_or_else(|| anyhow::anyhow!("malformed tool call"))
+}
+
+/// Read a memory proposal from the conversation file. The text that gets
+/// written always comes from here, never from the client, so only what the
+/// user was shown can be saved.
+pub async fn memory_proposal(
+    vault: &Vault,
+    conversation_id: &str,
+    message_id: &str,
+    tool_index: usize,
+) -> anyhow::Result<MemoryProposal> {
+    let path = find_conversation_file(vault, conversation_id).await?;
+    let mut conversation: Conversation = serde_yaml::from_str(&fs::read_to_string(&path).await?)?;
+    let tool = proposal_tool(&mut conversation, message_id, tool_index)?;
+    let content = tool
+        .get(Value::String("input".into()))
+        .and_then(|i| i.get("content"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("proposal has no content"))?
+        .to_string();
+    let decision = tool
+        .get(Value::String("proposal".into()))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Ok(MemoryProposal { content, decision })
+}
+
+/// Record the user's decision (`accepted` or `rejected`) on a memory proposal.
+pub async fn record_memory_decision(
+    vault: &Vault,
+    conversation_id: &str,
+    message_id: &str,
+    tool_index: usize,
+    decision: &str,
+) -> anyhow::Result<()> {
+    let path = find_conversation_file(vault, conversation_id).await?;
+    let mut conversation: Conversation = serde_yaml::from_str(&fs::read_to_string(&path).await?)?;
+    proposal_tool(&mut conversation, message_id, tool_index)?.insert(
+        Value::String("proposal".into()),
+        Value::String(decision.to_string()),
+    );
+    write_atomic(&path, &serde_yaml::to_string(&conversation)?).await?;
+    let _ = write_atomic(&path.with_extension("md"), &render_markdown_preview(&conversation)).await;
+    Ok(())
+}
+
 pub(crate) async fn find_conversation_file(vault: &Vault, conversation_id: &str) -> anyhow::Result<PathBuf> {
     let dir = vault.resolve("conversations")?;
     let mut entries = fs::read_dir(&dir).await?;
@@ -348,6 +434,33 @@ fn render_markdown_preview(c: &Conversation) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn memory_proposals_are_found_and_decided_on_the_tool_call() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("conversations")).unwrap();
+        std::fs::write(
+            dir.path().join("conversations/c1-remember.yaml"),
+            "id: c1\nmodel: claude/opus\ncreated: x\nupdated: x\nmessages:\n\
+             - id: m1\n  role: assistant\n  content: ok\n  toolUse:\n\
+             \x20 - type: mcp__alloy__read_file\n    input:\n      path: memory.md\n\
+             \x20 - type: mcp__alloy__write_file\n    input:\n      path: memory.md\n      content: \"# Memory\\n- likes tea\\n\"\n",
+        )
+        .unwrap();
+        let vault = Vault::new(dir.path().to_path_buf()).unwrap();
+
+        let p = memory_proposal(&vault, "c1", "m1", 1).await.unwrap();
+        assert_eq!(p.content, "# Memory\n- likes tea\n");
+        assert!(p.decision.is_none());
+
+        // Only a write to memory.md is a proposal.
+        assert!(memory_proposal(&vault, "c1", "m1", 0).await.is_err());
+        assert!(memory_proposal(&vault, "c1", "nope", 1).await.is_err());
+
+        record_memory_decision(&vault, "c1", "m1", 1, "accepted").await.unwrap();
+        let p = memory_proposal(&vault, "c1", "m1", 1).await.unwrap();
+        assert_eq!(p.decision.as_deref(), Some("accepted"));
+    }
 
     #[test]
     fn slug_basics() {

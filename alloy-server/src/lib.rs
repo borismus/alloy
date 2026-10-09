@@ -87,6 +87,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::search::router())
         .merge(routes::tasks::router())
         .merge(routes::titles::router())
+        .merge(routes::memory::router())
         .merge(routes::mcp::router())
         // SPA static assets are a FALLBACK — they only run for paths with
         // no declared route. Using a fallback instead of a /{*path}

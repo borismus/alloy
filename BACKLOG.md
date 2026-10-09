@@ -26,9 +26,9 @@ and the mobile-reliability checklist are archived in
 - **~~Separate the vault into local and cloud zones~~ — decided against (2026-10-07).**
   Too onerous for the remaining risk. Private-material marking covers the
   laundering paths instead: conversations (2026-09) and notes (2026-10) that hold
-  private material are marked and hidden from cloud models. Known remaining gap:
-  `memory.md` is writable by any model and sent to every provider, so a local
-  model could save private material into it.
+  private material are marked and hidden from cloud models. `memory.md`, which is
+  sent to every provider, can only change through a proposal the user accepts in
+  the conversation (2026-10), with a warning when the conversation is private.
 
 - **Plugin architecture** — return Alloy to an extensible, plugin-oriented app.
   Core model: **Resource → Workspace → Host capabilities**. Dogfood the extension

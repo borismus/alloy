@@ -9,6 +9,9 @@ When the user asks to remember something:
 
 1. First read the current `memory.md`
 2. Then call `write_file` with path `memory.md` and the COMPLETE updated content
+3. Tell the user the change is waiting for their approval. `write_file` on
+   `memory.md` only *proposes* the change: the user sees the diff in the
+   conversation and accepts or rejects it. Never say it was saved.
 
 **CRITICAL:** Only use the file `memory.md`. Never create other files like `notes/`, `preferences.md`, etc. All memories go in `memory.md`.
 

@@ -1,0 +1,37 @@
+.memory-proposal {
+  margin: 0.75rem 0;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+}
+
+.memory-proposal.decided {
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.memory-proposal-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.memory-proposal-note {
+  margin: 0 0 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.memory-proposal-error {
+  margin: 0.5rem 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.memory-proposal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}

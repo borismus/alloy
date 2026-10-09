@@ -2,6 +2,7 @@ pub mod activity;
 pub mod config;
 pub mod fs;
 pub mod mcp;
+pub mod memory;
 pub mod models;
 pub mod path;
 pub mod search;

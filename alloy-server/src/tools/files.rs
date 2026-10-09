@@ -357,13 +357,25 @@ async fn back_up_memory(registry: &ToolRegistry, current: &str) -> std::io::Resu
     Ok(())
 }
 
-/// Write `memory.md`: review, back up, then replace atomically.
-async fn write_memory(
-    registry: &ToolRegistry,
+/// What a model's `write_file` to memory.md does: nothing on disk. memory.md
+/// goes into every system prompt, for every provider, so each change is a
+/// proposal the user accepts or rejects in the conversation (see
+/// `routes::memory`). The full proposed text travels in the persisted tool
+/// call, which is what the user is shown and what acceptance writes. A
+/// scheduled task or sub-agent has no one to ask, so it is refused outright.
+/// The destructive-rewrite review still applies, so a careless proposal is
+/// turned back to the model instead of reaching the user.
+async fn propose_memory(
     ctx: &ToolContext,
     resolved: &std::path::Path,
     next: &str,
 ) -> Result<String, String> {
+    if ctx.execution_policy.is_task || ctx.inside_subagent {
+        return Err(format!(
+            "Refused: changes to {MEMORY_FILE} need the user's approval, which a scheduled \
+             task or sub-agent can't ask for. Leave {MEMORY_FILE} unchanged."
+        ));
+    }
     let current = fs::read_to_string(resolved).await.ok();
     review_memory_write(
         current.as_deref(),
@@ -371,6 +383,21 @@ async fn write_memory(
         ctx.memory_read_this_turn
             .load(std::sync::atomic::Ordering::Relaxed),
     )?;
+    if current.as_deref() == Some(next) {
+        return Ok(format!("{MEMORY_FILE} already says exactly this; nothing to change."));
+    }
+    Ok(format!(
+        "Proposed a change to {MEMORY_FILE}. It has NOT been saved: the user will review \
+         it in the conversation and accept or reject it. Tell them it's waiting for their \
+         approval rather than saying it was saved."
+    ))
+}
+
+/// Write an accepted memory change: back up the outgoing version, then
+/// replace atomically. Only reachable through the user's approval.
+pub async fn apply_memory(registry: &ToolRegistry, next: &str) -> Result<String, String> {
+    let resolved = registry.vault.resolve(MEMORY_FILE).map_err(|e| e.to_string())?;
+    let current = fs::read_to_string(&resolved).await.ok();
 
     let mut backed_up = false;
     if let Some(previous) = current.as_deref() {
@@ -388,7 +415,7 @@ async fn write_memory(
         }
     }
 
-    write_atomic(resolved, next.as_bytes())
+    write_atomic(&resolved, next.as_bytes())
         .await
         .map_err(|e| format!("Error writing file: {}", e))?;
     tracing::info!(
@@ -398,7 +425,7 @@ async fn write_memory(
         "memory.md replaced"
     );
     Ok(format!(
-        "Successfully wrote to {}{}",
+        "Saved {}{}",
         MEMORY_FILE,
         if backed_up {
             " (previous version kept in the rolling backup set)"
@@ -425,7 +452,7 @@ pub async fn execute_write(
     // Ordinary notes keep their existing plain-overwrite behaviour; only the
     // one irreplaceable file gets the extra protection.
     if path.replace('\\', "/") == MEMORY_FILE {
-        return write_memory(registry, ctx, &resolved, content).await;
+        return propose_memory(ctx, &resolved, content).await;
     }
     let content = if note_needs_marker(path, &resolved, ctx)? {
         crate::tools::conversation_privacy::mark_note(content)
@@ -453,6 +480,12 @@ pub async fn execute_append_to_note(
     }
     if let Some(msg) = check_permission(path, Op::Write) {
         return Err(msg);
+    }
+    if path.replace('\\', "/") == MEMORY_FILE {
+        return Err(format!(
+            "Refused: propose changes to {MEMORY_FILE} with write_file and its complete updated \
+             text, so the user can review the whole change."
+        ));
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
     let mark = note_needs_marker(path, &resolved, ctx)?;
@@ -1692,8 +1725,9 @@ mod tests {
         let vault = TempDir::new("vault-mem");
         let reg = memory_registry(&vault.0, "# Memory\n- original curated line\n");
 
-        let input = json!({ "path": "memory.md", "content": "# Memory\n- original curated line\n- added\n" });
-        let out = execute_write(&reg, &ctx(false), &input).await.unwrap();
+        let out = apply_memory(&reg, "# Memory\n- original curated line\n- added\n")
+            .await
+            .unwrap();
         assert!(out.contains("backup"), "{out}");
 
         assert_eq!(
@@ -1728,21 +1762,61 @@ mod tests {
         assert_eq!(std::fs::read_to_string(vault.0.join("memory.md")).unwrap(), curated);
         assert!(backups(&vault.0).is_empty(), "a refused write backs up nothing");
 
-        // Reading it first makes the same write a deliberate edit.
+        // Reading it first makes the same change a deliberate proposal, which
+        // still writes nothing until the user accepts it.
         let context = ctx(false);
         execute_read(&reg, &context, &json!({ "path": "memory.md" })).await.unwrap();
-        execute_write(&reg, &context, &input).await.unwrap();
-        assert_eq!(std::fs::read_to_string(vault.0.join("memory.md")).unwrap(), "- oops");
-        assert_eq!(backups(&vault.0).len(), 1, "and the old version is still recoverable");
+        let proposed = execute_write(&reg, &context, &input).await.unwrap();
+        assert!(proposed.contains("NOT been saved"), "{proposed}");
+        assert_eq!(std::fs::read_to_string(vault.0.join("memory.md")).unwrap(), curated);
+    }
+
+    /// Every model-initiated memory change waits for the user: nothing is
+    /// written, and the model is told so.
+    #[tokio::test]
+    async fn a_model_memory_write_is_only_a_proposal() {
+        let vault = TempDir::new("vault-mem-propose");
+        let reg = memory_registry(&vault.0, "# Memory\n- likes tea\n");
+        let input = json!({ "path": "memory.md", "content": "# Memory\n- likes tea\n- private thing\n" });
+        for local in [false, true] {
+            let out = execute_write(&reg, &ctx(local), &input).await.unwrap();
+            assert!(out.contains("NOT been saved"), "{out}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(vault.0.join("memory.md")).unwrap(),
+            "# Memory\n- likes tea\n"
+        );
+        assert!(backups(&vault.0).is_empty());
+
+        // Appending would bypass the full-diff review, so it is refused.
+        let append = execute_append_to_note(
+            &reg,
+            &ctx(true),
+            &json!({ "path": "memory.md", "content": "- sneaky" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(append.contains("write_file"), "{append}");
+
+        // Nobody can approve a task's or sub-agent's change, so they are refused.
+        let mut task = ctx(true);
+        task.execution_policy.is_task = true;
+        assert!(execute_write(&reg, &task, &input).await.unwrap_err().contains("Refused"));
+        let mut sub = ctx(true);
+        sub.inside_subagent = true;
+        assert!(execute_write(&reg, &sub, &input).await.unwrap_err().contains("Refused"));
+        assert_eq!(
+            std::fs::read_to_string(vault.0.join("memory.md")).unwrap(),
+            "# Memory\n- likes tea\n"
+        );
     }
 
     #[tokio::test]
     async fn identical_rewrites_do_not_evict_older_backups() {
         let vault = TempDir::new("vault-mem3");
         let reg = memory_registry(&vault.0, "# Memory\n- one\n");
-        let same = json!({ "path": "memory.md", "content": "# Memory\n- one\n" });
-        execute_write(&reg, &ctx(false), &same).await.unwrap();
-        execute_write(&reg, &ctx(false), &same).await.unwrap();
+        apply_memory(&reg, "# Memory\n- one\n").await.unwrap();
+        apply_memory(&reg, "# Memory\n- one\n").await.unwrap();
         assert!(backups(&vault.0).is_empty(), "nothing changed, nothing to keep");
     }
 
@@ -1751,8 +1825,7 @@ mod tests {
         let vault = TempDir::new("vault-mem4");
         let reg = memory_registry(&vault.0, "# Memory\n- v0\n");
         for i in 1..=MEMORY_BACKUPS_KEPT + 4 {
-            let input = json!({ "path": "memory.md", "content": format!("# Memory\n- v{i}\n") });
-            execute_write(&reg, &ctx(false), &input).await.unwrap();
+            apply_memory(&reg, &format!("# Memory\n- v{i}\n")).await.unwrap();
             // Distinct millisecond stamps.
             tokio::time::sleep(std::time::Duration::from_millis(2)).await;
         }
@@ -1770,9 +1843,7 @@ mod tests {
     async fn backups_are_outside_everything_the_model_can_see() {
         let vault = TempDir::new("vault-mem5");
         let reg = memory_registry(&vault.0, "# Memory\n- secret curated note\n");
-        execute_write(&reg, &ctx(false), &json!({ "path": "memory.md", "content": "# Memory\n- replaced\n" }))
-            .await
-            .unwrap();
+        apply_memory(&reg, "# Memory\n- replaced\n").await.unwrap();
         let name = backups(&vault.0).remove(0);
 
         let read = execute_read(&reg, &ctx(false), &json!({ "path": format!("{MEMORY_BACKUP_DIR}/{name}") })).await;

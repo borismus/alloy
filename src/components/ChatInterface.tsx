@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import { Conversation, Message, ModelInfo, Attachment, PendingAttachment, getProviderFromModel, getModelIdFromModel } from '../types';
 import { toPendingAttachments } from '../utils/attachments';
+import { isMemoryProposal } from '../services/memoryProposals';
+import { MemoryProposalCard } from './MemoryProposalCard';
 import { generateMessageId } from '../utils/ids';
 import { chooseDefaultModel, PROVIDER_NAMES } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
@@ -353,6 +355,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             usage={message.usage}
             incompleteReason={message.incompleteReason}
           />
+          {message.id && message.toolUse?.map((tool, toolIndex) => isMemoryProposal(tool) && (
+            <MemoryProposalCard
+              key={`memory-${toolIndex}`}
+              conversationId={conversation.id}
+              messageId={message.id!}
+              toolIndex={toolIndex}
+              proposed={tool.input!.content as string}
+              decision={tool.proposal}
+              isPrivateConversation={conversation.private === true}
+            />
+          ))}
         </div>
       );
     });
