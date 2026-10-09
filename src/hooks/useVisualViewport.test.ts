@@ -98,6 +98,35 @@ describe('useVisualViewport', () => {
     expect(appHeight()).toBe('800px');
   });
 
+  it('re-reads after a keyboard resize reports in-between metrics', () => {
+    // The keyboard's animation can deliver its last resize mid-way, with no
+    // event once it settles — the stale height that only toggling the
+    // keyboard again used to clear.
+    const vv = installViewport(800);
+    renderHook(() => useVisualViewport());
+
+    vv.height = 520; // mid-animation
+    vv.emit('resize');
+    expect(appHeight()).toBe('520px');
+
+    vv.height = 400; // settled, silently
+    vi.advanceTimersByTime(1000);
+    expect(appHeight()).toBe('400px');
+  });
+
+  it('re-reads when focus leaves a field (keyboard dismissal)', () => {
+    const vv = installViewport(400, 300);
+    renderHook(() => useVisualViewport());
+
+    vv.height = 800;
+    vv.offsetTop = 0;
+    document.dispatchEvent(new FocusEvent('focusout'));
+    vi.advanceTimersByTime(1000);
+
+    expect(appHeight()).toBe('800px');
+    expect(document.documentElement.style.getPropertyValue('--app-top')).toBe('0px');
+  });
+
   it('still tracks plain visualViewport resizes (software keyboard)', () => {
     const vv = installViewport(800);
     renderHook(() => useVisualViewport());
@@ -119,6 +148,7 @@ describe('useVisualViewport', () => {
     vv.emit('resize');
     document.dispatchEvent(new Event('visibilitychange'));
     window.dispatchEvent(new Event('pageshow'));
+    document.dispatchEvent(new FocusEvent('focusout'));
     vi.advanceTimersByTime(1000);
 
     // No writes after unmount.

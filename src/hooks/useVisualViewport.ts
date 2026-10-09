@@ -64,8 +64,16 @@ export function useVisualViewport() {
     };
 
     update();
-    vv.addEventListener('resize', update);
+    // The keyboard's show/hide animation is a transition too: its last resize
+    // event can carry an in-between height, and nothing fires once it settles.
+    // Reported symptom: Send and scrolling stuck until the keyboard is toggled,
+    // i.e. until another resize happens to land on settled metrics.
+    vv.addEventListener('resize', resettle);
     vv.addEventListener('scroll', update);
+    // Focus moving into or out of a field is when the keyboard starts to
+    // appear or leave, sometimes before any viewport event.
+    document.addEventListener('focusin', resettle);
+    document.addEventListener('focusout', resettle);
     // `orientationchange` is the reliable signal that a rotation happened;
     // window `resize` is the backup for engines that only fire that one.
     window.addEventListener('orientationchange', resettle);
@@ -81,8 +89,10 @@ export function useVisualViewport() {
     return () => {
       timers.forEach(clearTimeout);
       cancelAnimationFrame(frame);
-      vv.removeEventListener('resize', update);
+      vv.removeEventListener('resize', resettle);
       vv.removeEventListener('scroll', update);
+      document.removeEventListener('focusin', resettle);
+      document.removeEventListener('focusout', resettle);
       window.removeEventListener('orientationchange', resettle);
       window.removeEventListener('resize', resettle);
       document.removeEventListener('visibilitychange', onVisibilityChange);
