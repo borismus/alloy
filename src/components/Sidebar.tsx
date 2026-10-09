@@ -12,6 +12,7 @@ import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
 import { AlloyDialog, AlloyMenu, SegmentedControl } from './ui';
+import { TitleSuggestions } from './TitleSuggestions';
 import './Sidebar.css';
 
 interface CreationActionsProps {
@@ -694,6 +695,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 className="rename-input"
                 {...textareaProps}
               />
+              {renamingType === 'conversation' && (
+                <TitleSuggestions conversationId={renamingId} onPick={setRenameValue} />
+              )}
               <div className="rename-buttons">
                 <button onClick={cancelRename} className="cancel-button">Cancel</button>
                 <button onClick={confirmRename} className="confirm-button">Rename</button>

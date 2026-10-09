@@ -8,4 +8,5 @@ pub mod search;
 pub mod static_files;
 pub mod stream;
 pub mod tasks;
+pub mod titles;
 pub mod watch;

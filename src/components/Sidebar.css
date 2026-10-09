@@ -387,6 +387,37 @@
   border-color: var(--color-accent);
 }
 
+.title-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: -0.5rem 0 1rem;
+}
+
+.title-suggestion {
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.title-suggestion:hover,
+.title-suggestion:focus-visible {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.title-suggestions-status {
+  margin: -0.5rem 0 1rem;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
 .rename-buttons {
   display: flex;
   gap: 0.75rem;

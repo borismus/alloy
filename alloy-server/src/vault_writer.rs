@@ -218,7 +218,7 @@ pub async fn update_title(vault: &Vault, conversation_id: &str, new_title: &str)
     Ok(())
 }
 
-async fn find_conversation_file(vault: &Vault, conversation_id: &str) -> anyhow::Result<PathBuf> {
+pub(crate) async fn find_conversation_file(vault: &Vault, conversation_id: &str) -> anyhow::Result<PathBuf> {
     let dir = vault.resolve("conversations")?;
     let mut entries = fs::read_dir(&dir).await?;
     let exact = format!("{}.yaml", conversation_id);

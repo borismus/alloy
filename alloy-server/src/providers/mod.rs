@@ -366,7 +366,7 @@ pub(crate) fn sanitize_title(raw: &str, user_msg: &str) -> String {
 
 /// Remove `<think>…</think>` / `<thinking>…</thinking>` spans, including an
 /// unclosed trailing block (which a token limit can produce).
-fn strip_think_blocks(s: &str) -> String {
+pub(crate) fn strip_think_blocks(s: &str) -> String {
     let mut out = s.to_string();
     for (open, close) in [("<think>", "</think>"), ("<thinking>", "</thinking>")] {
         while let Some(start) = out.find(open) {
