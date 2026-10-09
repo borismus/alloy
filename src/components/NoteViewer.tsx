@@ -142,6 +142,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
           favoriteModels={favoriteModels}
           onToggleFavorite={onToggleFavorite}
           onSetDefault={onSetDefault}
+          isPrivate={frontmatter.private === true}
         />
       )}
     </div>

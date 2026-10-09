@@ -7,6 +7,8 @@ import { useTextareaProps } from '../utils/textareaProps';
 import { hasDiff } from '../utils/lineDiff';
 import { ModelSelector } from './ModelSelector';
 import { DiffView } from './DiffView';
+import { AlloyDialog, Button } from './ui';
+import { isLocalModel, providerLabel } from '../utils/models';
 import './AiEditPanel.css';
 
 interface AiEditPanelProps {
@@ -31,6 +33,12 @@ interface AiEditPanelProps {
   favoriteModels?: string[];
   onToggleFavorite?: (modelKey: string) => void;
   onSetDefault?: (modelKey: string) => void;
+  /**
+   * The document is marked private (only local models may read it). Sending
+   * it to a cloud model then asks first, like switching a local conversation
+   * to a cloud model.
+   */
+  isPrivate?: boolean;
 }
 
 /** Strip a single surrounding ``` code fence, if the model wrapped its output. */
@@ -61,6 +69,7 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
   favoriteModels,
   onToggleFavorite,
   onSetDefault,
+  isPrivate = false,
 }) => {
   const [input, setInput] = useState('');
   const [model, setModel] = useState(defaultModel);
@@ -69,6 +78,10 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   // Snapshot of the document at generate-time, plus the model's proposal.
   const [proposal, setProposal] = useState<{ before: string; after: string } | null>(null);
+  // A private document (only local models may read it) is about to go to a
+  // cloud model: ask first, once per model for this panel.
+  const [confirmingCloud, setConfirmingCloud] = useState(false);
+  const [cloudConfirmedFor, setCloudConfirmedFor] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -76,7 +89,7 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
 
   useAutoResizeTextarea(textareaRef, input);
 
-  const doSubmit = useCallback(async () => {
+  const generate = useCallback(async () => {
     const instruction = input.trim();
     if (!instruction || isGenerating) return;
 
@@ -105,6 +118,15 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
       abortRef.current = null;
     }
   }, [input, isGenerating, getCurrentContent, model, buildSystemPrompt, resolveProposal]);
+
+  const doSubmit = useCallback(() => {
+    if (!input.trim() || isGenerating) return;
+    if (isPrivate && !isLocalModel(model, availableModels) && cloudConfirmedFor !== model) {
+      setConfirmingCloud(true);
+      return;
+    }
+    void generate();
+  }, [input, isGenerating, isPrivate, model, availableModels, cloudConfirmedFor, generate]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -212,6 +234,39 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
           </button>
         )}
       </div>
+      {confirmingCloud && (
+        <AlloyDialog
+          isOpen
+          onOpenChange={(open) => { if (!open) setConfirmingCloud(false); }}
+          size="compact"
+          title="Send to the cloud?"
+        >
+          {() => (
+            <div className="disclosure-dialog">
+              <p className="disclosure-lede">This note is private: only local models can read it.</p>
+              <p className="disclosure-detail">
+                Editing it sends the whole note to{' '}
+                <strong>{providerLabel(undefined, model).replace(/\s*\(subscription\)$/, '')}</strong>.
+              </p>
+              <div className="disclosure-actions">
+                <Button variant="secondary" onPress={() => setConfirmingCloud(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onPress={() => {
+                    setConfirmingCloud(false);
+                    setCloudConfirmedFor(model);
+                    void generate();
+                  }}
+                >
+                  Send anyway
+                </Button>
+              </div>
+            </div>
+          )}
+        </AlloyDialog>
+      )}
     </form>
   );
 };
