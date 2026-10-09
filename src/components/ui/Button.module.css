@@ -118,6 +118,15 @@
   animation: pulse-recording 1.5s ease-in-out infinite;
 }
 
+/* Recording reads as "live", hovered or not (the pointer is usually still
+   over the mic right after tapping it). */
+.composer.secondary[data-recording],
+.composer.secondary[data-recording][data-hovered] {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+}
+
 @keyframes pulse-recording {
   0%, 100% { box-shadow: 0 0 0 0 rgb(239 68 68 / 40%); }
   50% { box-shadow: 0 0 0 6px rgb(239 68 68 / 0%); }
