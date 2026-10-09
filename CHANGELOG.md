@@ -4,6 +4,13 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.43
+
+- **Another fix for mobile taps and scrolling getting stuck.** Toggling the
+  keyboard used to clear it, a sign the layout was sized from a measurement
+  taken mid-animation. Alloy now re-measures the screen as the keyboard
+  finishes appearing or disappearing.
+
 ## 0.4.42
 
 - **Title suggestions when renaming.** The rename dialog now offers three
