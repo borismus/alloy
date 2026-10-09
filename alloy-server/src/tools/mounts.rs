@@ -162,6 +162,17 @@ pub fn resolve_for(
     {
         return Err(DENY.into());
     }
+    // `excludeDirs` must mean "never seen", not just "not listed": walking
+    // already skips these folders, and a read by exact path is refused the
+    // same way, with the generic denial so it doesn't confirm they exist.
+    if dir
+        .exclude_dirs
+        .iter()
+        .filter_map(|ex| root_canon.join(ex).canonicalize().ok())
+        .any(|excluded| target_canon.starts_with(excluded))
+    {
+        return Err(DENY.into());
+    }
 
     // Judge the file by where it actually landed. A nested mount governs its own
     // subtree, so reaching those files through the parent's prefix is refused,
@@ -415,6 +426,35 @@ mod tests {
         let denied = resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/a.md", CLOUD).unwrap_err();
         let missing = resolve_for(&cfg, NO_VAULT.as_ref(), "private/nope/a.md", CLOUD).unwrap_err();
         assert_eq!(denied, missing);
+    }
+
+    #[test]
+    fn excluded_folders_cannot_be_read_by_exact_path() {
+        let notes = TempDir::new("excluded-read");
+        fs::create_dir_all(notes.0.join("Journal/2026")).unwrap();
+        fs::write(notes.0.join("Journal/2026/entry.md"), "dear diary").unwrap();
+        fs::write(notes.0.join("Ideas.md"), "public-ish").unwrap();
+        let mut mount = dir("notes", &notes.0, Audience::Local);
+        mount.exclude_dirs = vec!["Journal".into()];
+        let cfg = config_with(vec![mount]);
+
+        for path in [
+            "private/notes/Journal/2026/entry.md",
+            "private/notes/Journal",
+            "private/notes/Journal/2026",
+        ] {
+            assert!(resolve_for(&cfg, NO_VAULT.as_ref(), path, LOCAL).is_err(), "{path}");
+        }
+        // The refusal is the same generic denial as an unknown path.
+        assert_eq!(
+            resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/Journal/2026/entry.md", LOCAL)
+                .unwrap_err(),
+            resolve_for(&cfg, NO_VAULT.as_ref(), "private/nope/x.md", LOCAL).unwrap_err()
+        );
+        // The rest of the mount is unaffected.
+        assert!(resolve_for(&cfg, NO_VAULT.as_ref(), "private/notes/Ideas.md", LOCAL)
+            .unwrap()
+            .is_some());
     }
 
     /// The real layout: the Alloy vault lives inside the mounted Obsidian
