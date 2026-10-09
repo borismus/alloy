@@ -14,6 +14,12 @@
 //! reads, searches, *and* listings: snippets return content, and conversation
 //! filenames are slugs of their titles, so a bare listing leaks the subject of
 //! every private conversation without opening one.
+//!
+//! Notes get the same treatment. A local model that read private material can
+//! write a summary into `notes/`, which every model could otherwise read, so a
+//! note written or appended to in such a turn carries `private: true` in its
+//! frontmatter, and marked notes are hidden from cloud callers exactly like
+//! marked conversations. Reading a marked note taints a local turn in turn.
 
 use std::path::{Path, PathBuf};
 
@@ -99,6 +105,116 @@ pub async fn hidden_paths(dir: &Path) -> Vec<PathBuf> {
         }
     }
     hidden
+}
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+/// True when `request_path` addresses the vault's notes, the directory itself
+/// included.
+pub fn is_note_path(request_path: &str) -> bool {
+    let rel = request_path.trim_start_matches('/').replace('\\', "/");
+    let rel = rel.trim_end_matches('/');
+    rel == "notes" || rel.starts_with("notes/")
+}
+
+/// True when the note's frontmatter carries the marker. Fails closed on a
+/// partial read: the head is decoded lossily, so a multi-byte character cut at
+/// the boundary can't turn a marked note into an unmarked one.
+pub fn note_is_marked_private(path: &Path) -> bool {
+    read_head(path).is_ok_and(|bytes| frontmatter_has_marker(&String::from_utf8_lossy(&bytes)))
+}
+
+/// Only the frontmatter block counts, so a `private: true` line in a note's body
+/// (or after a `---` horizontal rule) is not mistaken for the marker.
+fn frontmatter_has_marker(text: &str) -> bool {
+    let marker = format!("{MARKER_KEY}: true");
+    let mut lines = text.lines();
+    if lines.next().map(str::trim_end) != Some("---") {
+        return false;
+    }
+    for line in lines {
+        let line = line.trim_end();
+        if line == "---" {
+            return false;
+        }
+        if line == marker {
+            return true;
+        }
+    }
+    false
+}
+
+/// Add the marker to a note's content, as the first frontmatter key so it is
+/// always within the bytes [`note_is_marked_private`] reads. Leaves an already
+/// marked note untouched.
+pub fn mark_note(content: &str) -> String {
+    if frontmatter_has_marker(content) {
+        return content.to_string();
+    }
+    if let Some(rest) = content.strip_prefix("---\n") {
+        if rest.lines().any(|line| line.trim_end() == "---") {
+            return format!("---\n{MARKER_KEY}: true\n{rest}");
+        }
+    }
+    format!("---\n{MARKER_KEY}: true\n---\n\n{content}")
+}
+
+/// Whether the file a caller asked for is a marked conversation or note.
+pub fn is_marked(request_path: &str, resolved: &Path) -> bool {
+    if is_conversation_path(request_path) {
+        return is_marked_private(resolved);
+    }
+    is_note_path(request_path) && resolved.is_file() && note_is_marked_private(resolved)
+}
+
+/// Paths under `dir` that a cloud caller must not see: marked conversations and
+/// marked notes anywhere beneath it. Covers listing or searching a parent (the
+/// vault root, recursively) as well as the directories themselves, since a
+/// filename alone can leak a subject.
+pub async fn hidden_for_cloud(vault_root: &Path, dir: &Path) -> Vec<PathBuf> {
+    let conversations = vault_root.join("conversations");
+    let notes = vault_root.join("notes");
+    let covers = |sub: &Path| sub.starts_with(dir) || dir.starts_with(sub);
+    let mut hidden = Vec::new();
+    if covers(&conversations) {
+        hidden.extend(hidden_paths(&conversations).await);
+    }
+    if covers(&notes) {
+        let notes = notes.clone();
+        if let Ok(marked) = tokio::task::spawn_blocking(move || marked_notes(&notes)).await {
+            hidden.extend(marked);
+        }
+    }
+    hidden
+}
+
+/// Every marked Markdown note under `root`, skipping dot-directories.
+fn marked_notes(root: &Path) -> Vec<PathBuf> {
+    let mut marked = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let hidden_name = entry.file_name().to_string_lossy().starts_with('.');
+            match entry.file_type() {
+                Ok(t) if t.is_dir() && !hidden_name => stack.push(path),
+                Ok(t) if t.is_file() => {
+                    if path.extension().and_then(|e| e.to_str()) == Some("md")
+                        && note_is_marked_private(&path)
+                    {
+                        marked.push(path);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    marked
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +371,34 @@ pub fn insert_marker(original: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_frontmatter_marks_a_note() {
+        assert!(frontmatter_has_marker("---\nprivate: true\ntitle: x\n---\nbody"));
+        assert!(frontmatter_has_marker("---\ntitle: x\nprivate: true\n---\nbody"));
+        assert!(!frontmatter_has_marker("no frontmatter\nprivate: true\n"));
+        // After the closing fence it's body text, not the marker.
+        assert!(!frontmatter_has_marker("---\ntitle: x\n---\nprivate: true\n"));
+        // A horizontal rule mid-note isn't frontmatter.
+        assert!(!frontmatter_has_marker("Intro\n\n---\nprivate: true\n---\n"));
+    }
+
+    #[test]
+    fn marking_a_note_keeps_its_content() {
+        assert_eq!(mark_note("hello"), "---\nprivate: true\n---\n\nhello");
+        assert_eq!(
+            mark_note("---\ntitle: x\n---\nhello"),
+            "---\nprivate: true\ntitle: x\n---\nhello"
+        );
+        let marked = "---\nprivate: true\n---\nhello";
+        assert_eq!(mark_note(marked), marked);
+        // A note that opens with a rule but has no closing fence isn't treated
+        // as having frontmatter.
+        assert_eq!(mark_note("---\nhello"), "---\nprivate: true\n---\n\n---\nhello");
+        for content in ["hello", "---\ntitle: x\n---\nhello"] {
+            assert!(frontmatter_has_marker(&mark_note(content)));
+        }
+    }
     use std::fs;
 
     struct TempDir(PathBuf);

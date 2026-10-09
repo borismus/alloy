@@ -130,13 +130,12 @@ pub async fn execute(
             ctx.mark_private_read();
         }
         crate::tools::mounts::exclude_roots(&registry.config, registry.vault.root(), directory)
-    } else if !ctx.model_is_local
-        && crate::tools::conversation_privacy::is_conversation_path(directory)
-    {
+    } else if !ctx.model_is_local {
         // Snippets are content, so a search is a read in miniature: conversations
-        // carrying private material have to drop out of the candidate set before
-        // anything is scanned.
-        crate::tools::conversation_privacy::hidden_paths(&search_path).await
+        // and notes carrying private material have to drop out of the candidate
+        // set before anything is scanned.
+        crate::tools::conversation_privacy::hidden_for_cloud(registry.vault.root(), &search_path)
+            .await
     } else {
         Vec::new()
     };

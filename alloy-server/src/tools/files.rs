@@ -253,12 +253,10 @@ pub async fn execute_read(
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
-    // A conversation carrying private material is invisible to cloud callers,
-    // and taints a local caller's turn so the marking travels with the content
-    // instead of stopping at the first hop.
-    if crate::tools::conversation_privacy::is_conversation_path(path)
-        && crate::tools::conversation_privacy::is_marked_private(&resolved)
-    {
+    // A conversation or note carrying private material is invisible to cloud
+    // callers, and taints a local caller's turn so the marking travels with the
+    // content instead of stopping at the first hop.
+    if crate::tools::conversation_privacy::is_marked(path, &resolved) {
         if !ctx.model_is_local {
             return Err(format!("File not found: {}", path));
         }
@@ -429,6 +427,11 @@ pub async fn execute_write(
     if path.replace('\\', "/") == MEMORY_FILE {
         return write_memory(registry, ctx, &resolved, content).await;
     }
+    let content = if note_needs_marker(path, &resolved, ctx)? {
+        crate::tools::conversation_privacy::mark_note(content)
+    } else {
+        content.to_string()
+    };
     if let Some(parent) = resolved.parent() {
         let _ = fs::create_dir_all(parent).await;
     }
@@ -452,6 +455,7 @@ pub async fn execute_append_to_note(
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
+    let mark = note_needs_marker(path, &resolved, ctx)?;
 
     // Provenance: link each non-empty line back to the conversation+message
     // that produced it, matching the SPA's `&[[convId^msgId]]` marker format.
@@ -483,6 +487,11 @@ pub async fn execute_append_to_note(
     } else {
         format!("{}\n\n{}", existing.trim_end(), new_block)
     };
+    let merged = if mark {
+        crate::tools::conversation_privacy::mark_note(&merged)
+    } else {
+        merged
+    };
 
     if let Some(parent) = resolved.parent() {
         let _ = fs::create_dir_all(parent).await;
@@ -491,6 +500,23 @@ pub async fn execute_append_to_note(
         .await
         .map_err(|e| format!("Error appending to note: {}", e))?;
     Ok(format!("Appended to {}", path))
+}
+
+/// Whether a write to `path` must carry the private marker, refusing a cloud
+/// caller that targets a note it may not see. A note is marked when the turn
+/// has touched private material (so a summary can't become a cloud-readable
+/// copy), and stays marked when rewritten (so a later write that never read it
+/// can't silently drop the marker).
+fn note_needs_marker(path: &str, resolved: &std::path::Path, ctx: &ToolContext) -> Result<bool, String> {
+    if !crate::tools::conversation_privacy::is_note_path(path) {
+        return Ok(false);
+    }
+    let already_marked =
+        resolved.is_file() && crate::tools::conversation_privacy::note_is_marked_private(resolved);
+    if already_marked && !ctx.model_is_local {
+        return Err(format!("File not found: {}", path));
+    }
+    Ok(already_marked || ctx.read_private_this_turn())
 }
 
 struct ListOpts {
@@ -547,12 +573,12 @@ pub async fn execute_list_directory(
         return Err(msg);
     }
     let resolved = registry.vault.resolve(path).map_err(|e| e.to_string())?;
-    // Filenames are slugs of conversation titles, so a listing leaks the subject
-    // of every private conversation even though no file is opened.
-    let hidden = if !ctx.model_is_local
-        && crate::tools::conversation_privacy::is_conversation_path(path)
-    {
-        crate::tools::conversation_privacy::hidden_paths(&resolved).await
+    // Filenames are slugs of conversation and note titles, so a listing leaks
+    // the subject of every private one even though no file is opened. Applies
+    // to parents too: a recursive listing of the root reaches both.
+    let hidden = if !ctx.model_is_local {
+        crate::tools::conversation_privacy::hidden_for_cloud(registry.vault.root(), &resolved)
+            .await
     } else {
         Vec::new()
     };
@@ -1234,6 +1260,108 @@ mod tests {
             local.read_private_this_turn(),
             "reading a marked conversation must taint the turn that read it"
         );
+    }
+
+    /// The laundering path conversations already closed, through notes: a local
+    /// model reads private material and writes a summary into notes/, which
+    /// every model could otherwise read.
+    #[tokio::test]
+    async fn a_note_written_after_a_private_read_is_invisible_to_cloud_models() {
+        let vault = TempDir::new("vault-notepriv");
+        let external = TempDir::new("ext-notepriv");
+        std::fs::write(external.0.join("journal.md"), "PRIVATE-CANARY feelings").unwrap();
+        std::fs::create_dir_all(vault.0.join("notes/sub")).unwrap();
+        std::fs::write(vault.0.join("notes/plain.md"), "ordinary note").unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+
+        // A local turn reads the private journal, then writes and appends notes.
+        let local = ctx(true);
+        execute_read(&reg, &local, &json!({ "path": "private/notes/journal.md" }))
+            .await
+            .unwrap();
+        execute_write(
+            &reg,
+            &local,
+            &json!({ "path": "notes/sub/summary.md", "content": "PRIVATE-CANARY summary" }),
+        )
+        .await
+        .unwrap();
+        execute_append_to_note(
+            &reg,
+            &local,
+            &json!({ "path": "notes/appended.md", "content": "PRIVATE-CANARY line" }),
+        )
+        .await
+        .unwrap();
+        for name in ["notes/sub/summary.md", "notes/appended.md"] {
+            let written = std::fs::read_to_string(vault.0.join(name)).unwrap();
+            assert!(written.starts_with("---\nprivate: true\n"), "{name}: {written}");
+        }
+
+        // Cloud: not readable, not listed (directly or via a recursive root
+        // listing), not searchable, not writable.
+        let cloud = ctx(false);
+        for name in ["notes/sub/summary.md", "notes/appended.md"] {
+            let err = execute_read(&reg, &cloud, &json!({ "path": name })).await.unwrap_err();
+            assert!(err.starts_with("File not found"), "{name}: {err}");
+        }
+        for input in [
+            json!({ "path": "notes", "recursive": true, "limit": 200 }),
+            json!({ "path": ".", "recursive": true, "limit": 200 }),
+        ] {
+            let listing = execute_list_directory(&reg, &cloud, &input).await.unwrap();
+            assert!(!listing.contains("summary"), "{listing}");
+            assert!(!listing.contains("appended"), "{listing}");
+            assert!(listing.contains("plain"), "{listing}");
+        }
+        let results = crate::tools::search::execute(
+            &reg,
+            &cloud,
+            &json!({ "directory": "notes", "query": "PRIVATE-CANARY" }),
+        )
+        .await
+        .unwrap();
+        assert!(results.contains("\"returned\": 0"), "{results}");
+        let overwrite = execute_write(
+            &reg,
+            &cloud,
+            &json!({ "path": "notes/sub/summary.md", "content": "clobbered" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(overwrite.starts_with("File not found"), "{overwrite}");
+        assert!(std::fs::read_to_string(vault.0.join("notes/sub/summary.md"))
+            .unwrap()
+            .contains("PRIVATE-CANARY"));
+
+        // Ordinary notes are unaffected for cloud callers.
+        assert!(execute_read(&reg, &cloud, &json!({ "path": "notes/plain.md" }))
+            .await
+            .unwrap()
+            .contains("ordinary note"));
+        execute_write(&reg, &cloud, &json!({ "path": "notes/new.md", "content": "hi" }))
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(vault.0.join("notes/new.md")).unwrap(), "hi");
+
+        // A local rewrite in an untainted turn keeps the marker...
+        let fresh = ctx(true);
+        execute_write(
+            &reg,
+            &fresh,
+            &json!({ "path": "notes/sub/summary.md", "content": "rewritten" }),
+        )
+        .await
+        .unwrap();
+        assert!(std::fs::read_to_string(vault.0.join("notes/sub/summary.md"))
+            .unwrap()
+            .starts_with("---\nprivate: true\n"));
+        // ...and reading a marked note taints the turn, so the mark spreads.
+        let reader = ctx(true);
+        execute_read(&reg, &reader, &json!({ "path": "notes/appended.md" }))
+            .await
+            .unwrap();
+        assert!(reader.read_private_this_turn());
     }
 
     /// The backfill decides a persisted read was refused by matching the error

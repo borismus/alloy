@@ -24,24 +24,12 @@ and the mobile-reliability checklist are archived in
 
 ## Future epics (not scheduled — no `- [ ]`, so the runner skips them)
 
-- **Separate the vault into local and cloud zones.** Today the trust boundary is
-  enforced when a file is read and forgotten when one is written: `private/`
-  mounts are local-only, but anything a local model learns from them is persisted
-  into `conversations/` and `notes/`, which every model can read — and `notes/` is
-  writable by every model too. `memory.md` is worse: it is injected into every
-  system prompt with no locality check, so anything in it reaches cloud providers
-  on every turn. Per-feature taint tracking can close each hole individually, but
-  the durable fix is structural: give the vault two zones with one-way flow —
-  local models read both and write to the local zone, cloud models see only the
-  cloud zone. The boundary becomes a location the user can see in Obsidian rather
-  than a flag they cannot, and one rule covers conversations, derived notes,
-  memory, riffs, and task output instead of each re-implementing it. Design
-  through: which zone a conversation belongs to when its model is switched
-  mid-thread (fixing the zone at creation and warning on switch looks better than
-  moving files and breaking ids and links); wiki links that point from the cloud
-  zone into the local one; splitting memory so a local memory is never sent to a
-  cloud provider; and migrating existing conversations and notes by provenance
-  rather than by hand.
+- **~~Separate the vault into local and cloud zones~~ — decided against (2026-10-07).**
+  Too onerous for the remaining risk. Private-material marking covers the
+  laundering paths instead: conversations (2026-09) and notes (2026-10) that hold
+  private material are marked and hidden from cloud models. Known remaining gap:
+  `memory.md` is writable by any model and sent to every provider, so a local
+  model could save private material into it.
 
 - **Plugin architecture** — return Alloy to an extensible, plugin-oriented app.
   Core model: **Resource → Workspace → Host capabilities**. Dogfood the extension
