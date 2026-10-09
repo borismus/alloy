@@ -4,6 +4,19 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.44
+
+- **Codex can no longer read files on its own.** Codex's built-in shell could
+  read any file on the machine, including your API keys and private notes,
+  bypassing Alloy's protections. Its shell and browser tools are now off; it
+  reaches your vault only through Alloy's tools, like Claude. Codex can no
+  longer run code itself.
+- **Dialogs stay above the keyboard on your phone.** The rename field no longer
+  hides behind the keyboard while you type.
+- **Private notes, more reliably.** A note saved later in a conversation that
+  read your private notes is now marked private too, not only one written in
+  the same turn as the reading.
+
 ## 0.4.43
 
 - **Another fix for mobile taps and scrolling getting stuck.** Toggling the
