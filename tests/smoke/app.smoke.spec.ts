@@ -541,3 +541,21 @@ test('mobile dialogs stay above the software keyboard', async ({ page }, testInf
   const inputBox = await input.boundingBox();
   expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(keyboardTop);
 });
+
+test('memory changed on disk refreshes the open memory view', async ({ page }, testInfo) => {
+  // Regression: the watcher reported memory.md changes to a callback the app
+  // never provided, so an accepted memory proposal (written by the server)
+  // left the app's memory, which feeds every system prompt, stale.
+  await page.getByRole('radio', { name: 'Notes' }).click();
+  const memoryRow = page.locator('.timeline-item', { hasText: 'memory' });
+  await memoryRow.first().click();
+  // Projects run in sequence against one vault copy, so don't rely on the
+  // fixture's original text: wait for the memory view itself.
+  await expect(page.locator('.note-viewer')).toBeVisible();
+
+  const marker = `Moved to Seattle (${testInfo.project.name})`;
+  await page.request.post('/api/fs/writeTextFile', {
+    data: { path: '/memory.md', content: `# Memory\n\n- ${marker}\n` },
+  });
+  await expect(page.getByText(marker)).toBeVisible({ timeout: 10_000 });
+});

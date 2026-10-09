@@ -548,6 +548,13 @@ function AppContent() {
     }
   }, [handleConversationModified]);
 
+  // memory.md changes outside the app (an accepted memory proposal, an edit in
+  // Obsidian, a sync) must refresh the in-memory copy the system prompt uses,
+  // not just the notes list. The watcher reports them separately from notes.
+  const handleMemoryChanged = useCallback(() => {
+    void handleNoteModified('memory.md');
+  }, [handleNoteModified]);
+
   const { markSelfWrite } = useVaultWatcher(
     {
       vaultPath,
@@ -562,6 +569,7 @@ function AppContent() {
       onNoteAdded: handleNoteChanged,
       onNoteRemoved: handleNoteChanged,
       onNoteModified: handleNoteModified,
+      onMemoryChanged: handleMemoryChanged,
       onTaskAdded: handleTaskAdded,
       onTaskRemoved: handleTaskRemoved,
       onTaskModified: handleTaskModified,
