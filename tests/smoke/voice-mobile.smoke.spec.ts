@@ -130,31 +130,60 @@ async function rejectModelRequest(page: Page) {
   }));
 }
 
-test('conversation voice: microphone toggles manual recording and sends once', async ({ page }) => {
+test('conversation voice: stopping the microphone leaves the transcript to edit', async ({ page }) => {
   const transcript = 'Manual voice turn';
   const session = await installMockMicrophone(page, transcript, false);
   await rejectModelRequest(page);
-  let startRequests = 0;
+  const startRequests: string[] = [];
   page.on('request', request => {
-    if (request.url().endsWith('/api/stream/start')) startRequests++;
+    if (request.url().endsWith('/api/stream/start')) startRequests.push(request.postDataJSON().userMessageContent);
   });
   await openConversation(page);
+  const textarea = page.locator('.input-row textarea');
 
   await page.getByRole('button', { name: 'Start voice input' }).click();
   await expect.poll(() => session.configs.length).toBe(1);
   expect(session.configs[0].enable_endpoint_detection).toBe(false);
-  await expect(page.locator('.input-row textarea')).toHaveValue(transcript);
-  expect(startRequests).toBe(0);
+  await expect(textarea).toHaveValue(transcript);
 
-  await page.getByRole('button', { name: 'Stop and send voice input' }).click();
+  await page.getByRole('button', { name: 'Stop voice input' }).click();
   await expect.poll(() => session.stopSignals.length).toBe(1);
-
-  const startRequest = page.waitForRequest(request => request.url().endsWith('/api/stream/start'));
   session.finish();
-  const request = await startRequest;
 
-  expect(request.postDataJSON().userMessageContent).toBe(transcript);
+  // Nothing is sent; the transcript is editable in the composer.
+  await expect(textarea).toBeEnabled();
+  await expect(textarea).toHaveValue(transcript);
+  await page.waitForTimeout(300);
+  expect(startRequests).toEqual([]);
+
+  await textarea.fill(`${transcript}, edited`);
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect.poll(() => startRequests).toEqual([`${transcript}, edited`]);
+});
+
+test('conversation voice: send during dictation sends the full transcript once', async ({ page }) => {
+  // Regression: Send mid-dictation posted the partial transcript while
+  // recording continued, then posted the full one again when the mic stopped.
+  const transcript = 'Send while still talking';
+  const session = await installMockMicrophone(page, transcript, false);
+  await rejectModelRequest(page);
+  const startRequests: string[] = [];
+  page.on('request', request => {
+    if (request.url().endsWith('/api/stream/start')) startRequests.push(request.postDataJSON().userMessageContent);
+  });
+  await openConversation(page);
+
+  await page.getByRole('button', { name: 'Start voice input' }).click();
   await expect(page.locator('.input-row textarea')).toHaveValue(transcript);
+
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect.poll(() => session.stopSignals.length).toBe(1);
+  expect(startRequests).toEqual([]);
+
+  session.finish();
+  await expect.poll(() => startRequests).toEqual([transcript]);
+  await page.waitForTimeout(300);
+  expect(startRequests).toEqual([transcript]);
 });
 
 test('conversation voice: holding Space records and release sends', async ({ page }) => {

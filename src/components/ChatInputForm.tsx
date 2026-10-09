@@ -75,6 +75,12 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const preDictationTextRef = useRef('');
+  // Whether the dictation in progress should send once it finishes. The mic
+  // button only dictates: stopping it leaves the transcript in the composer to
+  // edit. Send (and releasing push-to-talk Space) is what sends. Sending mid-
+  // dictation used to post the partial transcript while recording continued,
+  // then post the full one again when the mic stopped.
+  const sendOnFinishRef = useRef(false);
   const spaceHoldTextRef = useRef('');
   const textareaProps = useTextareaProps();
 
@@ -183,6 +189,15 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     // Set the completed transcript first. If the parent rejects submission,
     // doSubmit deliberately leaves this text available for a later retry.
     setInput(fullText);
+    const send = sendOnFinishRef.current;
+    sendOnFinishRef.current = false;
+    if (!send) {
+      // Stopped with the mic: the transcript stays for editing. The textarea
+      // re-enables once dictation goes idle, so focus on the next frame.
+      preDictationTextRef.current = '';
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
     if (doSubmit(fullText)) {
       preDictationTextRef.current = '';
     }
@@ -203,6 +218,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
 
   const startVoiceInput = useCallback((mode: DictationMode) => {
     preDictationTextRef.current = input;
+    sendOnFinishRef.current = false;
     startDictation(mode);
   }, [input, startDictation]);
 
@@ -221,6 +237,8 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     const textBeforeSpace = spaceHoldTextRef.current;
     preDictationTextRef.current = textBeforeSpace;
     setInput(textBeforeSpace);
+    // Releasing a held Space is a deliberate "done": push-to-talk sends.
+    sendOnFinishRef.current = true;
     startDictation('push-to-talk');
   }, [startDictation]);
 
@@ -233,6 +251,13 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (dictationState !== 'idle') {
+      // Finish recording and send the complete transcript once, rather than
+      // the partial text showing right now.
+      sendOnFinishRef.current = true;
+      finishDictation();
+      return;
+    }
     doSubmit();
   };
 
@@ -290,12 +315,12 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   const voiceLabel = dictationMode === 'push-to-talk'
     ? 'Release Space to send voice input'
     : isDictating
-      ? 'Stop and send voice input'
+      ? 'Stop voice input'
       : 'Start voice input';
   const voiceHint = dictationMode === 'push-to-talk'
     ? 'Release Space to send'
     : isDictating
-      ? 'Listening — press to stop and send'
+      ? 'Listening — press to stop and edit, or send with ↑'
       : 'Press to dictate · hold Space for push-to-talk';
 
   return (
@@ -416,7 +441,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
               variant="primary"
               size="composer"
               data-composer-control="send"
-              isDisabled={!input.trim() && pendingAttachments.length === 0}
+              isDisabled={!isDictating && !input.trim() && pendingAttachments.length === 0}
               aria-label={isStreaming ? 'Queue message' : 'Send message'}
             >
               ↑
