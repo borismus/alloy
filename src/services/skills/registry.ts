@@ -90,8 +90,15 @@ export class SkillRegistry {
     // Add skill summaries (name + description only)
     if (skills.length > 0) {
       prompt += '# Available Skills\n\n';
-      prompt += 'You have access to the following skills. To use a skill, call the `use_skill` tool with the skill name. ';
-      prompt += 'The tool will return detailed instructions that you should follow to complete the task.\n\n';
+      // Spelled out because Codex has its own skill library and a shell: told
+      // only to "call use_skill", it hunted for SKILL.md under ~/.agents/skills
+      // or declared the skill unavailable without trying. This wording took it
+      // from 1 of 3 to 4 of 4 skill loads on gpt-5.6-sol, with no use_skill
+      // call on an unrelated question.
+      prompt += 'These are Alloy skills, not files on disk and not part of any skill library of your own. ';
+      prompt += 'The only way to load one is the `use_skill` tool (it may appear as `alloy.use_skill` or `mcp__alloy__use_skill`). ';
+      prompt += 'When a request matches a skill, call `use_skill` with its name and follow the instructions it returns. ';
+      prompt += 'Never look for SKILL.md files with a shell or file search, and never conclude a skill is unavailable without calling `use_skill`.\n\n';
 
       for (const skill of skills) {
         prompt += `- **${skill.name}**: ${skill.description}\n`;
