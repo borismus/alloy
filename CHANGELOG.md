@@ -4,6 +4,22 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.42
+
+- **Title suggestions when renaming.** The rename dialog now offers three
+  alternative titles based on the conversation so far, written by the model
+  that wrote its last reply, so nothing goes to a model that hasn't seen it.
+- **Private notes stay private.** A note a model writes after reading your
+  private material is marked private and hidden from cloud models, the same
+  way private conversations already are.
+- **Codex uses your Alloy skills.** Codex used to look for skills on disk or
+  declare them unavailable; it now loads them like other models do.
+- **Longer research in chat.** A chat turn can use up to 20 rounds of tool
+  calls, up from 10, so questions that need reading many notes don't stop
+  halfway.
+- **Task emails keep their line breaks.** A result written one item per line
+  showed as one run-on paragraph in the email; it now matches the app.
+
 ## 0.4.41
 
 - **Your API keys stay out of every model's reach.** Models could read
