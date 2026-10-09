@@ -9,12 +9,16 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const INTERACTIVE_MAX_ITERATIONS: u32 = 10;
+/// Raised from 10: vault research ("synthesize my values from everything I've
+/// written") legitimately needs dozens of reads, and two such local-model
+/// chats were cut off mid-research. The per-turn context budget now prevents
+/// overflowing the model's window, so this only guards runaway loops and cost.
+pub const INTERACTIVE_MAX_ITERATIONS: u32 = 20;
 pub const INTERACTIVE_MAX_WEB_SEARCHES: u32 = 3;
 pub const INTERACTIVE_MAX_SUBAGENTS: u32 = 3;
 pub const INTERACTIVE_MAX_OUTPUT_TOKENS: u32 = 8_192;
-/// Claude Code owns its agent loop, and historically interactive Alloy gave it
-/// 20 turns. Keep that unchanged even though Alloy's own loop uses 10 rounds.
+/// Claude Code owns its agent loop; interactive Alloy gives it 20 turns, the
+/// same budget as Alloy's own loop.
 pub const INTERACTIVE_CLI_AGENT_TURNS: u32 = 20;
 
 pub const TASK_MAX_ITERATIONS: u32 = 30;
@@ -135,11 +139,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn interactive_policy_keeps_the_existing_limits() {
+    fn interactive_policy_limits() {
         assert_eq!(
             ExecutionPolicy::interactive(),
             ExecutionPolicy {
-                max_iterations: 10,
+                max_iterations: 20,
                 max_web_searches: 3,
                 max_subagents: 3,
                 max_output_tokens: 8_192,
