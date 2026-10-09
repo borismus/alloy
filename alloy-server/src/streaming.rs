@@ -519,6 +519,14 @@ async fn run_stream(
             inner.private_read.clone(),
         )
     };
+    // The history sent with this turn is part of its context. If an earlier
+    // turn already marked the conversation private, this turn carries that
+    // material even if it reads nothing new, so start it tainted: a note it
+    // writes must be marked too. (Observed: turn 1 read private notes, turn 2
+    // wrote a summary note that went out unmarked.)
+    if !params.skip_persist && conversation_is_private(&vault, &params.conversation_id).await {
+        private_read.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     let loop_req = LoopRequest {
         provider: provider.clone(),
         model: upstream_model.clone(),
@@ -667,6 +675,15 @@ async fn run_stream(
             let persisted = persist_conversation_error(&session, &vault, &params, &msg).await;
             mark_error(&session, msg, persisted);
         }
+    }
+}
+
+/// Whether the persisted conversation is already marked as holding private
+/// material. A missing file (a brand-new conversation) is not private.
+async fn conversation_is_private(vault: &Vault, conversation_id: &str) -> bool {
+    match vault_writer::find_conversation_file(vault, conversation_id).await {
+        Ok(path) => crate::tools::conversation_privacy::is_marked_private(&path),
+        Err(_) => false,
     }
 }
 
@@ -1140,6 +1157,27 @@ mod tests {
         let reg = SkillRegistry::new();
         reg.load(dir.path());
         reg
+    }
+
+    #[tokio::test]
+    async fn a_marked_conversation_taints_every_later_turn() {
+        let dir = tempfile::tempdir().unwrap();
+        let conversations = dir.path().join("conversations");
+        std::fs::create_dir_all(&conversations).unwrap();
+        std::fs::write(
+            conversations.join("c-private-movie.yaml"),
+            "id: c-private\nmodel: mlx/q\ncreated: x\nupdated: x\nprivate: true\nmessages: []\n",
+        )
+        .unwrap();
+        std::fs::write(
+            conversations.join("c-plain-chat.yaml"),
+            "id: c-plain\nmodel: mlx/q\ncreated: x\nupdated: x\nmessages: []\n",
+        )
+        .unwrap();
+        let vault = Vault::new(dir.path().to_path_buf()).unwrap();
+        assert!(conversation_is_private(&vault, "c-private").await);
+        assert!(!conversation_is_private(&vault, "c-plain").await);
+        assert!(!conversation_is_private(&vault, "brand-new").await);
     }
 
     #[test]
