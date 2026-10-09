@@ -512,3 +512,32 @@ test('mobile: the composer stays within two rows', async ({ page }, testInfo) =>
   });
   expect(rowCount).toBeLessThanOrEqual(2);
 });
+
+test('mobile dialogs stay above the software keyboard', async ({ page }, testInfo) => {
+  // Regression: the rename sheet was pinned to the bottom of the layout
+  // viewport, which iOS does not shrink for the keyboard, so the field being
+  // typed in sat behind it. A headless browser has no software keyboard, so
+  // simulate its effect the way iOS reports it: the visible area shrinks,
+  // which useVisualViewport publishes as --app-height.
+  test.skip(!testInfo.project.name.startsWith('mobile'), 'mobile-only layout');
+  const row = page.locator('.timeline-item').filter({ hasText: 'Welcome to Alloy' });
+  await row.getByRole('button', { name: 'More actions' }).click();
+  await page.getByText('Rename', { exact: true }).click();
+  const input = page.locator('.rename-input');
+  await expect(input).toBeVisible();
+
+  const keyboardTop = 360;
+  await page.evaluate((height) => {
+    document.documentElement.style.setProperty('--app-height', `${height}px`);
+    document.documentElement.style.setProperty('--app-top', '0px');
+  }, keyboardTop);
+
+  const dialog = page.getByRole('dialog');
+  await expect(async () => {
+    const box = await dialog.boundingBox();
+    expect(box, 'dialog rendered').not.toBeNull();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(keyboardTop + 1);
+  }).toPass();
+  const inputBox = await input.boundingBox();
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(keyboardTop);
+});

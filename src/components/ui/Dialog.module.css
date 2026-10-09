@@ -87,16 +87,23 @@
 }
 
 @media (max-width: 600px) {
+  /* A bottom sheet must sit above the software keyboard. `inset: 0` covers the
+     layout viewport, which iOS does not shrink for the keyboard, so the sheet's
+     bottom (and the field being typed in) ended up behind it. Size the overlay
+     to the visible area instead, like the app shell (see useVisualViewport). */
   .overlay {
     align-items: flex-end;
     padding: 0;
+    inset: auto 0 auto 0;
+    top: var(--app-top, 0px);
+    height: var(--app-height, 100dvh);
   }
 
   .modal,
   .compact {
     width: 100%;
     max-width: none;
-    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+    max-height: calc(var(--app-height, 100dvh) - env(safe-area-inset-top, 0px) - 24px);
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
