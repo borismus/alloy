@@ -4,6 +4,12 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.46
+
+- **A live level meter while dictating.** The recording button now shows bars
+  that move with your voice instead of a second microphone icon, so it's clear
+  you're recording and that the mic is actually hearing you.
+
 ## 0.4.45
 
 - **You approve every change to memory.** Memory goes to every model in every
