@@ -52,14 +52,32 @@ export function providerTag(providerId: string | undefined, modelKey: string): s
   return PROVIDER_TAGS[id as ProviderType] || id.slice(0, 3).toUpperCase();
 }
 
+/** A configured provider and whether the backend trusts it as local. */
+export interface ProviderLocality {
+  id: string;
+  local: boolean;
+}
+
 /**
  * Whether a model runs locally (on-device / trusted hardware), for the privacy
- * badge. Locality comes from the backend's endpoint classification rather than
- * the provider name, so a compatible endpoint on a routable host is not
- * accidentally trusted with private data.
+ * badge and warnings. Decided from config via the backend (`/api/providers`),
+ * never from discovery: whether the model's host is reachable right now has no
+ * bearing on whether it is local. Resolves the provider the way the backend
+ * does: a `provider/` prefix naming a configured provider, else the default
+ * (first) provider. Only while the provider list hasn't loaded does it fall
+ * back to the discovered catalog's flag.
  */
-export function isLocalModel(modelKey: string, availableModels: ModelInfo[]): boolean {
-  return availableModels.some(m => m.key === modelKey && m.local);
+export function isLocalModel(
+  modelKey: string,
+  providers: ProviderLocality[],
+  availableModels: ModelInfo[] = [],
+): boolean {
+  if (providers.length === 0) {
+    return availableModels.some(m => m.key === modelKey && m.local);
+  }
+  const prefix = modelKey.split('/')[0];
+  const provider = providers.find(p => p.id === prefix) ?? providers[0];
+  return provider.local;
 }
 
 /**

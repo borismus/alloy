@@ -559,3 +559,14 @@ test('memory changed on disk refreshes the open memory view', async ({ page }, t
   });
   await expect(page.getByText(marker)).toBeVisible({ timeout: 10_000 });
 });
+
+test('a local model keeps its Local tag while its host is unreachable', async ({ page }) => {
+  // offline-mlx is configured local but refuses connections, so discovery
+  // finds none of its models. Whether a model is reachable has no bearing on
+  // whether it is local.
+  const row = page.locator('.timeline-item', { hasText: 'Private local chat' });
+  await expect(row).toBeVisible();
+  await expect(row.locator('.type-badge.local')).toHaveText('Local');
+  const cloudRow = page.locator('.timeline-item', { hasText: 'Welcome to Alloy' });
+  await expect(cloudRow.locator('.type-badge.local')).toHaveCount(0);
+});

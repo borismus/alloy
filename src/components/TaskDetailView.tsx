@@ -11,6 +11,7 @@ import { ModelSelector } from './ModelSelector';
 import { Button, Switch } from './ui';
 import { describeTaskSchedule, parseTaskCron } from '../utils/taskSchedule';
 import { providerLabel, isLocalModel } from '../utils/models';
+import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import './TaskDetailView.css';
 
 // The editable config subset shown/diffed in the AI edit composer. Run history,
@@ -143,7 +144,8 @@ export function TaskDetailView({
 }: TaskDetailViewProps) {
   const modelInfo = availableModels.find(m => m.key === task.model);
   const modelProvider = providerLabel(modelInfo?.provider, task.model);
-  const modelIsLocal = isLocalModel(task.model, availableModels);
+  const providerLocalities = useProviderLocalities();
+  const modelIsLocal = isLocalModel(task.model, providerLocalities, availableModels);
   // Unknown = not in the reachable list AND not a known-local provider (mlx is
   // expected to be offline sometimes, so don't flag it Unavailable).
   const modelIsKnown = modelInfo !== undefined || modelIsLocal;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelInfo } from '../types';
-import { chooseDefaultModel, providerLabel, providerTag } from './models';
+import { chooseDefaultModel, isLocalModel, providerLabel, providerTag } from './models';
 
 const models: ModelInfo[] = [
   { key: 'provider/default', name: 'Configured default', provider: 'openai' },
@@ -48,5 +48,29 @@ describe('chooseDefaultModel', () => {
   it('uses the first configured favorite when neither catalog nor default exists', () => {
     expect(chooseDefaultModel('', ['provider/favorite-a', 'provider/favorite-b'], []))
       .toBe('provider/favorite-a');
+  });
+});
+
+describe('isLocalModel', () => {
+  const providers = [
+    { id: 'claude-cli', local: false },
+    { id: 'mlx', local: true },
+  ];
+
+  it('follows the configured provider even when the model was not discovered', () => {
+    // The oMLX host is asleep: discovery found nothing, yet the model is local.
+    expect(isLocalModel('mlx/Qwen3.8-27B-MLX-4bit', providers, [])).toBe(true);
+    expect(isLocalModel('claude-cli/opus', providers, [])).toBe(false);
+  });
+
+  it('resolves an unprefixed or unknown model to the default provider', () => {
+    expect(isLocalModel('opus', providers)).toBe(false);
+    expect(isLocalModel('mlx', [{ id: 'mlx', local: true }])).toBe(true);
+  });
+
+  it('falls back to the discovered catalog only before providers load', () => {
+    const catalog = [{ key: 'mlx/q', name: 'q', local: true }];
+    expect(isLocalModel('mlx/q', [], catalog)).toBe(true);
+    expect(isLocalModel('mlx/q', [{ id: 'mlx', local: false }], catalog)).toBe(false);
   });
 });

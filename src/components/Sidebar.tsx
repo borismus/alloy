@@ -11,6 +11,7 @@ import { useWindowedList } from '../hooks/useWindowedList';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
+import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import { AlloyDialog, AlloyMenu, SegmentedControl } from './ui';
 import { TitleSuggestions } from './TitleSuggestions';
 import './Sidebar.css';
@@ -268,6 +269,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingType, setRenamingType] = useState<'conversation' | 'riff' | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const providerLocalities = useProviderLocalities();
   const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'task' | 'riff'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -459,7 +461,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   };
 
   const isLocalConversation = (item: TimelineItem) =>
-    item.type === 'conversation' && !!item.conversation && isLocalModel(item.conversation.model, availableModels);
+    item.type === 'conversation' && !!item.conversation && isLocalModel(item.conversation.model, providerLocalities, availableModels);
 
   // Filter items by type and search query
   const filteredItems = useMemo(() => {
@@ -536,7 +538,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             {item.task && !item.task.enabled && (
               <span className="type-badge task-disabled" title="Disabled — will not run on its schedule">Disabled</span>
             )}
-            {item.task && isLocalModel(item.task.model, availableModels) && (
+            {item.task && isLocalModel(item.task.model, providerLocalities, availableModels) && (
               <span className="type-badge local" title="Uses a local model">Local</span>
             )}
           </>

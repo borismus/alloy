@@ -9,6 +9,7 @@ import { ModelSelector } from './ModelSelector';
 import { DiffView } from './DiffView';
 import { AlloyDialog, Button } from './ui';
 import { isLocalModel, providerLabel } from '../utils/models';
+import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import './AiEditPanel.css';
 
 interface AiEditPanelProps {
@@ -73,6 +74,7 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
 }) => {
   const [input, setInput] = useState('');
   const [model, setModel] = useState(defaultModel);
+  const providerLocalities = useProviderLocalities();
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,12 +123,12 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
 
   const doSubmit = useCallback(() => {
     if (!input.trim() || isGenerating) return;
-    if (isPrivate && !isLocalModel(model, availableModels) && cloudConfirmedFor !== model) {
+    if (isPrivate && !isLocalModel(model, providerLocalities, availableModels) && cloudConfirmedFor !== model) {
       setConfirmingCloud(true);
       return;
     }
     void generate();
-  }, [input, isGenerating, isPrivate, model, availableModels, cloudConfirmedFor, generate]);
+  }, [input, isGenerating, isPrivate, model, providerLocalities, availableModels, cloudConfirmedFor, generate]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();

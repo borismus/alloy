@@ -18,3 +18,10 @@ providers:
     kind: openai_compatible
     baseUrl: http://127.0.0.1:1/v1
     apiKey: smoke-test-key
+  # A local provider whose host is unreachable (port 2 refuses immediately),
+  # like an oMLX machine that's asleep. Its conversations must still show the
+  # Local tag: locality comes from config, not from discovery.
+  - id: offline-mlx
+    kind: openai_compatible
+    baseUrl: http://127.0.0.1:2/v1
+    local: true

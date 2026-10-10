@@ -102,7 +102,34 @@ pub struct ModelInfo {
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/models", get(list_models))
+    Router::new()
+        .route("/api/models", get(list_models))
+        .route("/api/providers", get(list_providers))
+}
+
+/// One configured provider and whether it's trusted as local. Decided from
+/// config alone (`local::provider_is_local`, the same rule privacy enforcement
+/// uses), never by contacting the provider: whether a model is reachable right
+/// now has no bearing on whether it is local.
+#[derive(Debug, Serialize, PartialEq)]
+struct ProviderLocality {
+    id: String,
+    local: bool,
+}
+
+fn provider_localities(config: &Config) -> Vec<ProviderLocality> {
+    config
+        .providers
+        .iter()
+        .map(|p| ProviderLocality {
+            id: p.id.clone(),
+            local: crate::local::provider_is_local(p),
+        })
+        .collect()
+}
+
+async fn list_providers(State(state): State<AppState>) -> Json<Vec<ProviderLocality>> {
+    Json(provider_localities(&state.config))
 }
 
 struct CachedProviderModels {
@@ -626,6 +653,31 @@ mod tests {
         // Claude's stream-json protocol carries base64 image blocks (verified
         // end to end against the real CLI).
         assert!(CliClaudeProvider::new(&cfg(CliAdapter::Claude)).supports_images(""));
+    }
+
+    #[test]
+    fn provider_locality_comes_from_config_not_reachability() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(
+            &path,
+            "version: 2\nproviders:\n\
+             - id: openrouter\n  kind: openai_compatible\n  apiKey: x\n\
+             - id: mlx\n  kind: openai_compatible\n  baseUrl: http://127.0.0.1:1/v1\n  local: true\n\
+             - id: lan\n  kind: openai_compatible\n  baseUrl: http://192.168.4.11:8000/v1\n  local: true\n",
+        )
+        .unwrap();
+        let config = Config::load(&path).unwrap();
+        // Port 1 on loopback refuses every connection: the mlx endpoint is
+        // unreachable, and must still count as local.
+        assert_eq!(
+            provider_localities(&config),
+            vec![
+                ProviderLocality { id: "openrouter".into(), local: false },
+                ProviderLocality { id: "mlx".into(), local: true },
+                ProviderLocality { id: "lan".into(), local: true },
+            ]
+        );
     }
 
     #[test]

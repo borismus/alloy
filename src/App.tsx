@@ -27,7 +27,8 @@ import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
 import { openInEditor, type ExternalEditor } from './utils/openInEditor';
-import { chooseDefaultModel, providerLabel } from './utils/models';
+import { chooseDefaultModel, providerLabel, type ProviderLocality } from './utils/models';
+import { ProviderLocalityContext } from './contexts/ProviderLocalityContext';
 import { modelSwitchDisclosure, type DisclosureReason } from './utils/privateContext';
 import { AlloyDialog, Button } from './components/ui';
 import {
@@ -112,6 +113,12 @@ function isBackendUnreachable(err: unknown): boolean {
       || msg.includes('econnrefused');
   }
   return false;
+}
+
+async function fetchProviderLocalities(): Promise<ProviderLocality[]> {
+  const res = await fetch(`${getEmbeddedApiBase()}/api/providers`);
+  if (!res.ok) throw new Error(`Provider list failed: HTTP ${res.status}`);
+  return res.json();
 }
 
 async function fetchAvailableModelList(): Promise<ModelInfo[]> {
@@ -233,6 +240,7 @@ function AppContent() {
   const [initError, setInitError] = useState<{ title: string; detail: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [providerLocalities, setProviderLocalities] = useState<ProviderLocality[]>([]);
   // Model the user picked for a conversation whose contents haven't reached that
   // provider yet, pending their confirmation that sending them is intended.
   const [pendingModelSwitch, setPendingModelSwitch] = useState<
@@ -832,6 +840,12 @@ function AppContent() {
         // real vault that was ~6.6s of the ~7.0s startup, with all vault I/O
         // finishing in the remaining ~0.3s. The picker fills in when discovery
         // lands; until then the config-declared model is used.
+        // Which providers are local comes from config, so it's known even
+        // when a local model's host can't be reached for discovery.
+        void fetchProviderLocalities()
+          .then(setProviderLocalities)
+          .catch(e => console.warn('[App] /api/providers fetch failed (non-fatal):', e));
+
         void fetchAvailableModelList()
           .then(loadedModels => {
             if (loadedModels.length > 0) saveCachedModelCatalog(path, loadedModels);
@@ -1367,6 +1381,7 @@ function AppContent() {
 
   return (
     <TaskProvider tasks={tasks}>
+      <ProviderLocalityContext.Provider value={providerLocalities}>
       <SettingsLauncherProvider open={() => setShowSettings(true)}>
         <UpdateChecker />
         {pendingModelSwitch && (
@@ -1690,6 +1705,7 @@ function AppContent() {
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       </div>
       </SettingsLauncherProvider>
+      </ProviderLocalityContext.Provider>
     </TaskProvider>
   );
 }
