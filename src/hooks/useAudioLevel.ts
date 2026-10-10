@@ -1,9 +1,15 @@
 import { RefObject, useEffect } from 'react';
 
+/** Loudness mapped to the bottom and top of the meter, in dBFS. */
+const FLOOR_DB = -50;   // room noise sits at or below this: meter at rest
+const CEILING_DB = -10; // loud speech close to the mic: meter full
+
 /**
  * Loudness of one analyser frame, 0..1, from 8-bit time-domain samples
- * (128 = silence). RMS, boosted so ordinary speech reaches the upper half of
- * the meter, and clamped.
+ * (128 = silence). On a decibel scale rather than linear RMS: speech into a
+ * laptop mic is quiet in absolute terms (RMS ~0.02–0.1), so a linear meter
+ * barely moved between silence and talking. -50..-10 dBFS spans room noise to
+ * loud speech, which is also closer to how loudness is perceived.
  */
 export function levelFromSamples(samples: Uint8Array): number {
   if (samples.length === 0) return 0;
@@ -13,7 +19,9 @@ export function levelFromSamples(samples: Uint8Array): number {
     sum += v * v;
   }
   const rms = Math.sqrt(sum / samples.length);
-  return Math.min(1, rms * 4);
+  if (rms === 0) return 0;
+  const db = 20 * Math.log10(rms);
+  return Math.min(1, Math.max(0, (db - FLOOR_DB) / (CEILING_DB - FLOOR_DB)));
 }
 
 /**
