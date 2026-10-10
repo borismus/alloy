@@ -4,6 +4,30 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.45
+
+- **You approve every change to memory.** Memory goes to every model in every
+  conversation, so a model can no longer change `memory.md` on its own. When it
+  wants to remember something, the conversation shows the change as a diff
+  with Accept and Reject, plus a warning if the conversation holds private
+  material. Scheduled tasks can't change memory at all. Memory changes made
+  outside Alloy (an accepted change, an edit in Obsidian) now also take effect
+  right away instead of after a restart.
+- **Line breaks on your phone.** Return now adds a new line on touchscreens;
+  send with the arrow button.
+- **Dictation, untangled.** The mic button now only dictates: tap to stop and
+  the text stays in the box to edit. The send button sends, and mid-dictation it
+  finishes and sends your words once (it used to send twice). Holding Space
+  still sends on release. While recording, the mic shows a red microphone
+  rather than a stop square, so it can't be confused with stopping the model.
+- **A clear message when Claude isn't signed in,** naming the fix
+  (`claude setup-token`) instead of a raw authentication error.
+- **Excluded folders stay excluded.** A notes folder you exclude can no longer be
+  read by exact path.
+- **A warning before editing a private note with a cloud model.**
+- **The reply stays in view while tools run.** Autoscroll now follows tool
+  calls, not only new text.
+
 ## 0.4.44
 
 - **Codex can no longer read files on its own.** Codex's built-in shell could
