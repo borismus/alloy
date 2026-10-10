@@ -290,7 +290,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 <div className="settings-row-text">
                   <h3>Share on network</h3>
                   <p className="settings-description">
-                    Let other devices on your LAN or Tailnet open this vault in a browser.
+                    Let your other devices open this vault in a browser over Tailscale, or through a tunnel running on this computer. Other network connections are refused.
                   </p>
                 </div>
                 <Switch
