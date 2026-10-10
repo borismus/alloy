@@ -10,8 +10,19 @@ interface MockVoiceSession {
 
 async function installMockMicrophone(page: Page, transcript: string, automaticEndpoint: boolean): Promise<MockVoiceSession> {
   await page.addInitScript(() => {
+    // Counts track stops so tests can check the microphone is released.
+    const track = {
+      stop: () => {
+        const w = window as unknown as { __micTracksStopped?: number };
+        w.__micTracksStopped = (w.__micTracksStopped ?? 0) + 1;
+      },
+    };
+    // Soniox clones a stream it is given (real MediaStreams have clone()) and
+    // stops the clone. The clone's track is not counted, so the release check
+    // proves Alloy stops the stream it opened.
     const fakeStream = {
-      getTracks: () => [{ stop: () => {} }],
+      getTracks: () => [track],
+      clone: () => ({ getTracks: () => [{ stop: () => {} }] }),
     } as unknown as MediaStream;
 
     Object.defineProperty(navigator, 'mediaDevices', {
@@ -150,8 +161,11 @@ test('conversation voice: stopping the microphone leaves the transcript to edit'
   await expect.poll(() => session.stopSignals.length).toBe(1);
   session.finish();
 
-  // Nothing is sent; the transcript is editable in the composer.
+  // Nothing is sent; the transcript is editable in the composer, and the
+  // microphone Alloy opened has been released.
   await expect(textarea).toBeEnabled();
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { __micTracksStopped?: number }).__micTracksStopped ?? 0)).toBeGreaterThan(0);
   await expect(textarea).toHaveValue(transcript);
   await page.waitForTimeout(300);
   expect(startRequests).toEqual([]);
@@ -210,4 +224,16 @@ test('conversation voice: holding Space records and release sends', async ({ pag
 
   expect(request.postDataJSON().userMessageContent).toBe(`Existing context ${transcript}`);
   await expect(textarea).toHaveValue(`Existing context ${transcript}`);
+});
+
+test('conversation voice: the recording button shows a level meter', async ({ page }) => {
+  await installMockMicrophone(page, 'Level meter check', false);
+  await openConversation(page);
+
+  await page.getByRole('button', { name: 'Start voice input' }).click();
+  const stop = page.getByRole('button', { name: 'Stop voice input' });
+  await expect(stop).toBeVisible();
+  // Bars, not the microphone glyph or a stop square.
+  await expect(stop.locator('span[aria-hidden="true"] > span')).toHaveCount(4);
+  await expect(stop.locator('svg')).toHaveCount(0);
 });

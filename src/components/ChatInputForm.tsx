@@ -204,6 +204,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   }, [doSubmit, transcriptWithPrefix]);
 
   const {
+    stream: dictationStream,
     dictationState,
     dictationMode,
     error: dictationError,
@@ -413,6 +414,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
           <AlloyTooltip content={voiceHint}>
             <DictationButton
               dictationState={dictationState}
+              stream={dictationStream}
               data-dictation-mode={dictationMode ?? undefined}
               onPress={handleVoiceToggle}
               isDisabled={dictationState === 'stopping'}

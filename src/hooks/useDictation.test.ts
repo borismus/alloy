@@ -54,21 +54,41 @@ function token(text: string, start: number, isFinal = true) {
   };
 }
 
+// Alloy opens the microphone itself before starting Soniox.
+const mic = vi.hoisted(() => ({ stops: 0, deny: false }));
+
+function installMicrophone() {
+  mic.stops = 0;
+  mic.deny = false;
+  const stream = { getTracks: () => [{ stop: () => { mic.stops++; } }] };
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn(async () => {
+        if (mic.deny) throw new Error('NotAllowedError');
+        return stream;
+      }),
+    },
+  });
+  return stream;
+}
+
 describe('useDictation modes', () => {
   beforeEach(() => {
     sonioxMock.instances.length = 0;
+    installMicrophone();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('keeps Riff continuous mode running after an automatic endpoint', () => {
+  it('keeps Riff continuous mode running after an automatic endpoint', async () => {
     const onTranscript = vi.fn();
     const onEndpoint = vi.fn();
     const { result } = renderHook(() => useDictation({ apiKey: 'key', onTranscript, onEndpoint }));
 
-    act(() => result.current.startDictation('continuous'));
+    await act(async () => { result.current.startDictation('continuous'); });
     const client = sonioxMock.instances[0];
     expect(client.audioOptions.enableEndpointDetection).toBe(true);
 
@@ -79,7 +99,7 @@ describe('useDictation modes', () => {
     expect(client.stop).not.toHaveBeenCalled();
   });
 
-  it('keeps manual dictation running until explicitly stopped', () => {
+  it('keeps manual dictation running until explicitly stopped', async () => {
     const onTranscript = vi.fn();
     const onEndpoint = vi.fn();
     const { result } = renderHook(() => useDictation({
@@ -88,7 +108,7 @@ describe('useDictation modes', () => {
       onEndpoint,
     }));
 
-    act(() => result.current.startDictation('manual'));
+    await act(async () => { result.current.startDictation('manual'); });
     const client = sonioxMock.instances[0];
     expect(client.audioOptions.enableEndpointDetection).toBe(false);
     act(() => client.emitState('Running'));
@@ -108,7 +128,7 @@ describe('useDictation modes', () => {
     expect(onEndpoint).toHaveBeenCalledWith('keep listening');
   });
 
-  it('disables automatic endpoints for push-to-talk and submits on release', () => {
+  it('disables automatic endpoints for push-to-talk and submits on release', async () => {
     const onEndpoint = vi.fn();
     const { result } = renderHook(() => useDictation({
       apiKey: 'key',
@@ -116,7 +136,7 @@ describe('useDictation modes', () => {
       onEndpoint,
     }));
 
-    act(() => result.current.startDictation('push-to-talk'));
+    await act(async () => { result.current.startDictation('push-to-talk'); });
     const client = sonioxMock.instances[0];
     expect(client.audioOptions.enableEndpointDetection).toBe(false);
     act(() => client.emitState('Running'));
@@ -135,7 +155,7 @@ describe('useDictation modes', () => {
     expect(onEndpoint).toHaveBeenCalledWith('hold me');
   });
 
-  it('keeps the last push-to-talk partial across an empty terminal packet', () => {
+  it('keeps the last push-to-talk partial across an empty terminal packet', async () => {
     const onEndpoint = vi.fn();
     const { result } = renderHook(() => useDictation({
       apiKey: 'key',
@@ -143,7 +163,7 @@ describe('useDictation modes', () => {
       onEndpoint,
     }));
 
-    act(() => result.current.startDictation('push-to-talk'));
+    await act(async () => { result.current.startDictation('push-to-talk'); });
     const client = sonioxMock.instances[0];
     act(() => client.emitState('Running'));
     act(() => client.emitTokens([token('last partial', 0, false)]));
@@ -157,19 +177,50 @@ describe('useDictation modes', () => {
     expect(onEndpoint).toHaveBeenCalledWith('last partial');
   });
 
-  it('honors a push-to-talk release that occurs while recording is starting', () => {
+  it('honors a push-to-talk release that occurs while recording is starting', async () => {
     const { result } = renderHook(() => useDictation({
       apiKey: 'key',
       onTranscript: vi.fn(),
       onEndpoint: vi.fn(),
     }));
 
-    act(() => result.current.startDictation('push-to-talk'));
+    await act(async () => { result.current.startDictation('push-to-talk'); });
     const client = sonioxMock.instances[0];
     act(() => result.current.finishDictation());
     expect(client.stop).not.toHaveBeenCalled();
 
     act(() => client.emitState('Running'));
     expect(client.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands Soniox the microphone stream and exposes it while recording', async () => {
+    const { result } = renderHook(() => useDictation({ apiKey: 'key', onTranscript: vi.fn(), onEndpoint: vi.fn() }));
+    await act(async () => { result.current.startDictation('manual'); });
+    const client = sonioxMock.instances[0];
+    expect(client.audioOptions.stream).toBeTruthy();
+    expect(result.current.stream).toBe(client.audioOptions.stream);
+
+    act(() => client.emitState('Running'));
+    act(() => result.current.finishDictation());
+    act(() => client.finish());
+    expect(result.current.stream).toBeNull();
+    expect(mic.stops).toBe(1);
+  });
+
+  it('releases the microphone when dictation is cancelled', async () => {
+    const { result } = renderHook(() => useDictation({ apiKey: 'key', onTranscript: vi.fn(), onEndpoint: vi.fn() }));
+    await act(async () => { result.current.startDictation('push-to-talk'); });
+    act(() => result.current.cancelDictation());
+    expect(mic.stops).toBe(1);
+    expect(result.current.stream).toBeNull();
+  });
+
+  it('reports a denied microphone instead of starting', async () => {
+    mic.deny = true;
+    const { result } = renderHook(() => useDictation({ apiKey: 'key', onTranscript: vi.fn(), onEndpoint: vi.fn() }));
+    await act(async () => { result.current.startDictation('manual'); });
+    expect(result.current.error).toMatch(/microphone/);
+    expect(result.current.dictationState).toBe('idle');
+    expect(sonioxMock.instances[0].start).not.toHaveBeenCalled();
   });
 });

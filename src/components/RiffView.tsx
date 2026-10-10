@@ -116,7 +116,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
     preExistingTextRef.current = '';
   }, [sendMessage]);
 
-  const { dictationState, error: dictationError, toggleDictation, cancelDictation } = useDictation({
+  const { stream: dictationStream, dictationState, error: dictationError, toggleDictation, cancelDictation } = useDictation({
     apiKey: sonioxApiKey,
     onTranscript: handleTranscript,
     onEndpoint: handleEndpoint,
@@ -388,6 +388,7 @@ export const RiffView: React.FC<RiffViewProps> = ({
           {sonioxApiKey && (
             <DictationButton
               dictationState={dictationState}
+              stream={dictationStream}
               onPress={handleToggleDictation}
               isDisabled={isProcessing || isDictationBusy}
               aria-label={isRecording ? 'Stop dictation' : 'Start dictation'}

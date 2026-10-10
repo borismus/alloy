@@ -11,6 +11,8 @@ interface UseDictationOptions {
 }
 
 interface UseDictationReturn {
+  /** The live microphone stream while recording, for a level meter. */
+  stream: MediaStream | null;
   dictationState: DictationState;
   dictationMode: DictationMode | null;
   error: string | null;
@@ -83,11 +85,24 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
   // Track current speaker for diarization — insert line breaks on speaker changes
   const accSpeakerRef = useRef<string | null>(null);
 
+  // Alloy opens the microphone itself and hands the stream to Soniox, so the
+  // same stream can drive the recording button's level meter. Soniox stops the
+  // tracks when it finishes; releasing them here too covers cancel and errors.
+  const streamRef = useRef<MediaStream | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const releaseStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    setStream(null);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       clientRef.current?.cancel();
       clientRef.current = null;
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
     };
   }, []);
 
@@ -180,6 +195,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       },
       onError: (_status, message) => {
         console.error('[Dictation] error:', _status, message);
+        releaseStream();
         setError(message || 'Dictation error');
         setDictationState('idle');
         setDictationMode(null);
@@ -203,18 +219,42 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
         modeRef.current = null;
         finishRequestedRef.current = false;
         clientRef.current = null;
+        releaseStream();
       },
     });
 
     clientRef.current = client;
 
-    void client.start({
-      model: 'stt-rt-preview',
-      languageHints: ['en'],
-      enableEndpointDetection: mode === 'continuous',
-      enableSpeakerDiarization: true,
-    });
-  }, [apiKey]);
+    void (async () => {
+      let micStream: MediaStream;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        if (clientRef.current !== client) return;
+        console.error('[Dictation] microphone unavailable:', e);
+        setError('Couldn\'t open the microphone. Check that Alloy has microphone access.');
+        setDictationState('idle');
+        setDictationMode(null);
+        modeRef.current = null;
+        clientRef.current = null;
+        return;
+      }
+      // Cancelled while the permission prompt was up.
+      if (clientRef.current !== client) {
+        micStream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      streamRef.current = micStream;
+      setStream(micStream);
+      void client.start({
+        model: 'stt-rt-preview',
+        languageHints: ['en'],
+        enableEndpointDetection: mode === 'continuous',
+        enableSpeakerDiarization: true,
+        stream: micStream,
+      });
+    })();
+  }, [apiKey, releaseStream]);
 
   const finishDictation = useCallback(() => {
     const client = clientRef.current;
@@ -231,11 +271,12 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       clientRef.current.cancel();
       clientRef.current = null;
     }
+    releaseStream();
     finishRequestedRef.current = false;
     modeRef.current = null;
     setDictationState('idle');
     setDictationMode(null);
-  }, []);
+  }, [releaseStream]);
 
   const toggleDictation = useCallback(() => {
     if (dictationState === 'idle') {
@@ -246,6 +287,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
   }, [dictationState, startDictation, finishDictation]);
 
   return {
+    stream,
     dictationState,
     dictationMode,
     error,

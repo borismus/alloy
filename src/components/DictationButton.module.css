@@ -1,0 +1,29 @@
+/* Recording level meter: four bars whose heights follow --level (0..1), set
+   per animation frame by useAudioLevel on the button. At rest (silence, or no
+   level data) they sit as short, even bars. */
+.bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+}
+
+.bars > span {
+  width: 3px;
+  height: calc(6px + var(--level, 0) * 12px * var(--scale));
+  border-radius: 2px;
+  background: currentColor;
+  transition: height 60ms linear;
+}
+
+.bars > span:nth-child(1) { --scale: 0.55; }
+.bars > span:nth-child(2) { --scale: 1; }
+.bars > span:nth-child(3) { --scale: 0.8; }
+.bars > span:nth-child(4) { --scale: 0.45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bars > span {
+    height: calc(6px + 6px * var(--scale));
+    transition: none;
+  }
+}
