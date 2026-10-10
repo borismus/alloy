@@ -63,6 +63,19 @@ If Alloy cannot discover the binary, set the provider's `command` to its
 absolute path. Interactive Codex turns require a current CLI with app-server
 support. Restart Alloy after changing CLI installation or `config.yaml`.
 
+If a Claude turn fails saying the login expired, log in again with `claude` on
+that machine, or use a long-lived token from `claude setup-token` as the
+provider's `oauthToken` (see [README.md](README.md#claude-subscription-mode)).
+
+Keep the CLIs current on the machine running Alloy, especially an always-on
+Mac that nobody uses directly. An old CLI may not list the newest models, and
+a broken release can fail in odd ways, such as web search always timing out.
+With Homebrew:
+
+```bash
+brew upgrade --cask codex claude-code
+```
+
 ### Port already in use
 
 The desktop server uses a random loopback port. Network sharing uses the fixed
@@ -143,6 +156,17 @@ credits, and backend logs. HTTP provider keys are sent only to their configured
 upstream. Claude/Codex adapters use their CLI login and still send prompts to
 the respective cloud service.
 
+### A local model fails with "No route to host"
+
+If a local model on another machine (for example oMLX at
+`http://192.168.x.x:8000`) fails with `No route to host (os error 65)` while
+`curl` from Terminal reaches it, macOS is blocking Alloy from the local network.
+This can happen after an update. Open **System Settings → Privacy & Security →
+Local Network**, turn Alloy off and on again, and restart Alloy.
+
+The model's **Local** tag stays either way: it comes from config, not from
+whether the host is reachable.
+
 ### Built-in web search says the key is missing
 
 Add a top-level Serper key and restart Alloy:
@@ -194,16 +218,17 @@ backend logs; a manual reload is a workaround, not expected normal behavior.
 ### Restoring `memory.md` after a bad write
 
 `memory.md` is injected into every system prompt and is hand-curated, so Alloy
-protects it more than ordinary notes. Before each replacement it keeps a copy of
-the outgoing version in `.memory-backups/` at the vault root, retaining the last
-ten distinct versions. That directory is dot-prefixed on purpose: reads, vault
-search, directory listings, and the file watcher all skip it, so backups never
-re-enter a prompt or the timeline.
+protects it more than ordinary notes. A model can only propose a change; it's
+written when you accept it in the conversation. Before each accepted change,
+Alloy keeps a copy of the outgoing version in `.memory-backups/` at the vault
+root, retaining the last ten distinct versions. That directory is dot-prefixed
+on purpose: reads, vault search, directory listings, and the file watcher all
+skip it, so backups never re-enter a prompt or the timeline.
 
-A write is refused outright — leaving the file untouched — if it would empty the
-file, or if it would cut it by more than half without that turn having read the
-current version first. If you meant such an edit, ask again in a conversation
-where the model reads `memory.md` first.
+A proposal is refused outright if it would empty the file, or if it would cut
+it by more than half without that turn having read the current version first.
+If you meant such an edit, ask again in a conversation where the model reads
+`memory.md` first.
 
 To see and restore previous versions:
 
@@ -304,6 +329,15 @@ These files sit unencrypted beside a private vault, so they deliberately record
 **metadata only** — never message text, prompts, tool arguments or results, note
 contents, URLs, model reasoning, or credentials. Answer *shape* is logged as a
 classification (`prose`, `empty`, `tool_call_markup`) rather than the text.
+
+### Error log in the vault
+
+Every turn that fails, and every tool call that errors (including skill loads),
+adds one line to `<vault>/logs/errors/<host>.jsonl`. Each machine writes its
+own file, so the log syncs with the vault without conflicts, and each entry
+says which machine it came from. Entries are pointers: time, machine, provider
+and model, the conversation, and which tools failed. The details stay in that
+conversation. Delete lines once you've dealt with them.
 
 Desktop development logs also appear in the terminal running `npm run tauri dev`:
 

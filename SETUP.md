@@ -53,8 +53,16 @@ Your vault will be initialized with:
 ### Starting a Conversation
 
 1. Click the `+` button in the sidebar
-2. Type your message and press Enter (Shift+Enter for new lines)
+2. Type your message and press Enter (Shift+Enter for new lines). On a phone
+   or tablet, Enter inserts a new line and the Send button sends.
 3. Conversations are automatically saved to your vault
+
+### Voice Input
+
+With a `sonioxApiKey` in `config.yaml`, the composer shows a microphone. Tap it
+to dictate into the message box, and tap it again to stop and edit. Send stops
+dictation and sends. On desktop, hold Space for push-to-talk, which sends when
+you release it.
 
 ### Searching Conversations
 
@@ -62,7 +70,12 @@ Use the search box in the sidebar to search conversation, note, and riff titles 
 
 ### Memory
 
-Edit `memory.md` in your vault folder to add personal context that will be included with every conversation.
+Edit `memory.md` in your vault folder to add personal context that will be included with every conversation. Models can propose changes to it, which you accept or reject in the conversation; see [README.md](README.md#memory).
+
+### Using Alloy on Your Phone
+
+Run Alloy on an always-on Mac and open it from your phone's browser. See
+[README.md](README.md#using-alloy-on-your-phone).
 
 ## Building for Production
 
@@ -85,7 +98,7 @@ Or restart your terminal after installing Rust.
 
 ### Provider Issues
 
-Provider configuration lives in `[vault-path]/config.yaml`; Settings opens that file for editing. Config v2 is strict and rejects obsolete provider kinds. Claude requires a logged-in `claude` CLI, Codex requires `codex login`, and local OpenAI-compatible endpoints should set `local: true` only when they use a private-network URL.
+Provider configuration lives in `[vault-path]/config.yaml`; Settings opens that file for editing. Config v2 is strict and rejects obsolete provider kinds. Claude requires a logged-in `claude` CLI, Codex requires `codex login`, and local OpenAI-compatible endpoints should set `local: true` only when they use a private-network URL. For more, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ### Conversations Not Loading
 

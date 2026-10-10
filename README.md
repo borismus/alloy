@@ -26,19 +26,23 @@ Everything lives in your vault folder as plain files:
 ├── config.yaml              # API keys and settings
 ├── memory.md                # Persistent context injected into system prompt
 ├── conversations/           # Chat history (YAML)
-│   └── attachments/         # Image attachments
+│   └── attachments/         # Image and PDF attachments
 ├── notes/                   # AI-managed notes (Markdown)
 ├── tasks/                   # Scheduled tasks (YAML; optional delivery conditions)
 ├── skills/                  # Custom skills (Markdown)
-└── riffs/                   # Draft notes (Markdown)
+├── riffs/                   # Draft notes (Markdown)
+└── logs/errors/             # Failed turns and tool calls, one file per machine
 ```
+
+PDFs are sent to the model as-is, for providers that accept them; Alloy never
+extracts their text.
 
 Conversations are YAML files:
 
 ```yaml
 id: 2025-06-15-1750012200-bike-kickstand
 created: 2025-06-15T11:30:00Z
-model: anthropic/claude-opus-4-6
+model: openrouter/anthropic/claude-opus-4.6
 title: Kickstand won't stay tight
 
 messages:
@@ -63,14 +67,15 @@ Skills are markdown files that teach the AI new behaviors and give it access to 
 
 ```markdown
 ---
-name: memory
-description: Remember things about the user across conversations
+name: reading-list
+description: Keep a running list of books the user mentions wanting to read
 ---
 
-# Memory Skill
+# Reading List Skill
 
-When you learn something important about the user, save it to `memory.md`
-using `append_to_note`. Before answering, check `memory.md` for context.
+When the user mentions a book they want to read, add it to
+`notes/reading-list.md` using `append_to_note`, with the author and one line
+on why it came up.
 ```
 
 Invoke a skill explicitly with `/skill-name`; that is the deterministic path.
@@ -82,7 +87,7 @@ best-effort.
 | Tool | Description |
 |------|-------------|
 | `read_file` | Read files from your vault |
-| `write_file` | Create or update notes and `memory.md` |
+| `write_file` | Create or update notes; changes to `memory.md` are proposed for your approval |
 | `append_to_note` | Append to notes with provenance tracking |
 | `list_directory` | List files in vault directories |
 | `search_directory` | Search files and content |
@@ -111,6 +116,65 @@ more tool rounds, web searches, sub-agents, and reply tokens than an interactive
 chat. Cron and **Run now** resolve identical limits. Tune them globally with
 `taskExecution` in `config.yaml`, or per task with an `execution:` block; both
 are clamped, so a generous value can never become an unbounded one.
+
+## Memory
+
+`memory.md` is included in every conversation, so Alloy guards it. You can edit
+it directly at any time. A model can't change it on its own: when it wants to,
+the conversation shows the proposed change, and nothing is written until you
+accept it. Accepted changes keep a backup of the previous version (see
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md#restoring-memorymd-after-a-bad-write)).
+Scheduled tasks and sub-agents can't propose memory changes.
+
+## Privacy and local models
+
+A provider is **local** only when its config says `local: true` and its address
+is on your machine or private network. That decision comes from config alone:
+an oMLX host that's asleep or unreachable still counts as local, and its
+conversations and tasks keep their **Local** tag. Everything else, including
+the Claude and Codex subscriptions, is treated as cloud.
+
+Folders outside the vault can be made readable to models with
+`privateReadOnlyDirs`:
+
+```yaml
+privateReadOnlyDirs:
+  - alias: journal
+    path: /Users/you/Documents/Journal   # absolute path
+    description: My personal journal
+    # audience: local          # default: local models only (`private/journal/`)
+  - alias: recipes
+    path: /Users/you/Documents/Recipes
+    audience: all              # cloud models may read it too (`shared/recipes/`)
+    excludeDirs: [drafts]      # skipped when listing and searching
+```
+
+Mounts can't point inside the vault, and a path that isn't absolute or doesn't
+exist is skipped with a warning in the log. Privacy then follows the data:
+
+- **A conversation that reads local-only material is marked private** and stays
+  that way. Cloud models can't read it from the vault, and switching it to a
+  cloud model asks first.
+- **A note written after reading private material is marked private**
+  (`private: true` in its frontmatter), so a summary can't become a
+  cloud-readable copy. Cloud models can't read private notes.
+- **Codex's own shell and browser tools are disabled**, so it only sees the
+  vault through Alloy's tools and their privacy checks.
+
+## Using Alloy on your phone
+
+Alloy can run on an always-on Mac and serve the full app to your phone's
+browser. Turn on **Settings → Share on network** on that Mac; it then serves
+the app on `sharePort` (3001 by default). On iOS, open it in Safari and use
+**Add to Home Screen** for a full-screen app.
+
+Alloy has no login of its own. It only accepts connections from the Mac itself
+and from Tailscale addresses (`100.x`). To reach it from your phone, use
+[Tailscale](https://tailscale.com/), or run a tunnel on the same Mac with its
+own authentication in front, such as Cloudflare Tunnel with Cloudflare Access.
+
+Model calls, tools, and the subscription CLIs all run on that Mac, so set up
+providers there. Voice input needs a `sonioxApiKey`.
 
 ## Supported Providers
 
@@ -156,6 +220,12 @@ Requires the [`claude` CLI](https://claude.com/claude-code) installed and logged
 in to your subscription (run `claude` once to log in). These models pick up
 Alloy's built-in tools — web search, reading/writing vault files, notes, skills —
 just like every other provider.
+
+On an always-on Mac, an interactive login can expire while nobody is there to
+renew it. Instead, run `claude setup-token` on that machine and put the
+long-lived token in the provider's `oauthToken`. Each machine can use its own
+token, so you can revoke one without affecting the others. When a login does
+expire, the turn fails with a message explaining how to fix it.
 
 ### Codex subscription mode
 

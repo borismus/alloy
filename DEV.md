@@ -124,7 +124,7 @@ prompts leave the machine.
 ```yaml
 id: 2025-06-15-1750012200-bike-kickstand
 created: 2025-06-15T11:30:00Z
-model: anthropic/claude-opus-4-6
+model: openrouter/anthropic/claude-opus-4.6
 messages:
   - role: user
     timestamp: 2025-06-15T11:30:00Z
@@ -198,7 +198,7 @@ All vault operations can be inspected by looking at the files in your vault fold
 - **Test persistence**: Check your vault folder to verify files
 - **Web mode**: `npm run dev` for faster iteration — Vite frontend + auto-rebuilding `alloy-server` on :3030, one command (vault from `.env`)
 - **Search**: Sidebar body search runs server-side through `/api/search`; do not eagerly load vault bodies into React state
-- **Memory**: Edit `memory.md` to customize AI context
+- **Memory**: Edit `memory.md` to customize AI context; model changes need your approval
 
 ## Common Issues
 
