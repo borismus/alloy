@@ -242,11 +242,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
   const { queue, enqueue, drainQueue, removeQueued } = useMessageQueue(conversation?.id ?? null);
 
-  const { setShouldAutoScroll, handleScroll, handleWheel } = useAutoScroll({
+  // Follows anything that grows the view (text, tool pills, thinking,
+  // sub-agents) while the reader is at the bottom.
+  const { setShouldAutoScroll, scrollProps } = useAutoScroll({
     containerRef: messagesContainerRef,
-    // Everything that can grow the view while a reply streams, not just its
-    // text: tool pills and sub-agents often arrive with no new text at all.
-    dependencies: [conversation?.messages, streamingContent, streamingToolUse, activeSubagents, streamingThinking],
   });
 
   // Clear streaming content once the assistant message appears in the conversation
@@ -404,15 +403,10 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     // Skip if we have a pending scroll target - let the scroll-to-message effect handle it
     if (scrollToMessageId) return;
 
+    // Start each conversation at the bottom, following. Later layout growth
+    // (images, code blocks) is followed by useAutoScroll.
     if (conversation && conversation.messages.length > 0) {
-      const container = messagesContainerRef.current;
-      if (container) {
-        // Reset scroll position first, then scroll to bottom after layout completes
-        container.scrollTop = 0;
-        requestAnimationFrame(() => {
-          container.scrollTop = container.scrollHeight;
-        });
-      }
+      setShouldAutoScroll(true);
     }
   }, [conversation?.id, scrollToMessageId]);
 
@@ -708,7 +702,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           </Button>
         )}
       </ItemHeader>
-      <div className="messages-container" ref={messagesContainerRef} onScroll={handleScroll} onWheel={handleWheel}>
+      <div className="messages-container" ref={messagesContainerRef} {...scrollProps}>
         {conversation.messagesLoaded === false ? (
           <div className="loading-conversation">
             <div className="thinking-indicator"><span></span><span></span><span></span></div>

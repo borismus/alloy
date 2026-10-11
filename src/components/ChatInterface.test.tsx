@@ -315,4 +315,63 @@ describe('ChatInterface autoscroll', () => {
     act(() => { streaming.addToolUse(conversation.id, { type: 'read_file' }, 'call-2'); });
     expect(scrollTop).toBe(1100);
   });
+
+  /** Render a chat whose container reports a fixed size; count scroll writes. */
+  function renderScrollable() {
+    const conversation = withMessages('hello', 'hi there');
+    const tree = () => (
+      <StreamingProvider>
+        <MessageQueueProvider>
+          <ChatInterface
+            conversation={conversation}
+            onSendMessage={vi.fn(async () => {})}
+            onSaveAttachment={vi.fn()}
+            loadImageAsBase64={vi.fn(async () => ({ base64: '', mimeType: 'image/png' }))}
+            hasProvider
+            onModelChange={vi.fn()}
+            availableModels={[]}
+          />
+        </MessageQueueProvider>
+      </StreamingProvider>
+    );
+    const result = render(tree());
+    const el = result.container.querySelector('.messages-container') as HTMLElement;
+    const state = { scrollTop: 0, writes: 0 };
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 1000 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 400 });
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => state.scrollTop,
+      set: (value: number) => { state.writes++; state.scrollTop = Math.min(value, 600); },
+    });
+    // A fresh element each time, so React actually re-renders.
+    return { el, state, rerender: () => result.rerender(tree()) };
+  }
+
+  it('does not touch the scroll position when an idle re-render changes nothing', () => {
+    // Regression: the pin re-ran on every render (a dependency was a fresh []),
+    // snapping the view while the user scrolled even with nothing streaming.
+    const { state, rerender } = renderScrollable();
+    rerender();
+    const writes = state.writes;
+    rerender();
+    rerender();
+    expect(state.writes).toBe(writes);
+  });
+
+  it('stops following as soon as the user scrolls up, even slightly', () => {
+    const { el, state, rerender } = renderScrollable();
+    state.scrollTop = 600;
+    fireEvent.scroll(el);
+    // A small touch or trackpad scroll-up that never fires a wheel event.
+    state.scrollTop = 580;
+    fireEvent.scroll(el);
+    rerender();
+    expect(state.scrollTop).toBe(580);
+
+    // Back at the bottom: following resumes.
+    state.scrollTop = 600;
+    fireEvent.scroll(el);
+    expect(state.scrollTop).toBe(600);
+  });
 });
