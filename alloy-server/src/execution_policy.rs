@@ -17,6 +17,11 @@ pub const INTERACTIVE_MAX_ITERATIONS: u32 = 20;
 pub const INTERACTIVE_MAX_WEB_SEARCHES: u32 = 3;
 pub const INTERACTIVE_MAX_SUBAGENTS: u32 = 3;
 pub const INTERACTIVE_MAX_OUTPUT_TOKENS: u32 = 8_192;
+/// Local models get the largest reply budget even in chat. Their tokens cost
+/// nothing, and a reasoning model's hidden thinking counts against the same
+/// cap: a Qwen synthesis stopped mid-sentence at 8,192 after spending ~6k on
+/// thinking. The per-turn context budget reserves this, so it can't overflow.
+pub const LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS: u32 = HARD_MAX_OUTPUT_TOKENS;
 /// Claude Code owns its agent loop; interactive Alloy gives it 20 turns, the
 /// same budget as Alloy's own loop.
 pub const INTERACTIVE_CLI_AGENT_TURNS: u32 = 20;
@@ -84,6 +89,20 @@ impl ExecutionPolicy {
             max_output_tokens: INTERACTIVE_MAX_OUTPUT_TOKENS,
             cli_agent_turns: INTERACTIVE_CLI_AGENT_TURNS,
             is_task: false,
+        }
+    }
+
+    /// The policy for a turn on a local or cloud model. Interactive turns on a
+    /// local model get `LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS`; tasks keep their
+    /// resolved (possibly configured) values.
+    pub fn for_locality(self, model_is_local: bool) -> Self {
+        if model_is_local && !self.is_task {
+            Self {
+                max_output_tokens: LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS,
+                ..self
+            }
+        } else {
+            self
         }
     }
 

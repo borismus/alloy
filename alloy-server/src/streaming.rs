@@ -509,6 +509,7 @@ async fn run_stream(
     });
 
     let model_is_local = crate::local::model_is_local(&tools.config, &params.model);
+    let execution_policy = params.execution_policy.for_locality(model_is_local);
     // One lock: two `lock()` calls inside the struct literal below would
     // deadlock, because the first guard is a temporary that lives until the end
     // of the statement and std's Mutex is not reentrant.
@@ -534,7 +535,7 @@ async fn run_stream(
         tools: tools_for_stream(
             provider.supports_tools(&upstream_model),
             model_is_local,
-            params.execution_policy,
+            execution_policy,
         ),
         delta_tx,
         cancel: cancel.clone(),
@@ -544,13 +545,13 @@ async fn run_stream(
             conversation_id: Some(format!("conversations/{}", params.conversation_id)),
             inside_subagent: false,
             model_is_local,
-            execution_policy: params.execution_policy,
+            execution_policy,
             memory_read_this_turn: Default::default(),
             private_read_this_turn: private_read,
         },
         mcp,
         context_window: cw,
-        execution_policy: params.execution_policy,
+        execution_policy,
     };
 
     let started = std::time::Instant::now();
@@ -1372,6 +1373,93 @@ mod tests {
             session.inner.lock().unwrap().final_title.as_deref(),
             Some("Codex Conversation Naming")
         );
+    }
+
+    struct OutputCapProvider {
+        received: Arc<Mutex<Vec<u32>>>,
+    }
+
+    #[async_trait]
+    impl Provider for OutputCapProvider {
+        async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
+            self.received
+                .lock()
+                .unwrap()
+                .push(req.execution_policy.max_output_tokens);
+            Ok(StreamResult {
+                content: "ok".into(),
+                usage: None,
+                stop_reason: "end_turn".into(),
+                tool_calls: vec![],
+            })
+        }
+
+        async fn generate_title(&self, _user: &str, _assistant: &str, _model: &str) -> String {
+            String::new()
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            false
+        }
+    }
+
+    /// A reasoning model's hidden thinking counts against the reply cap, so a
+    /// local model's chat turn gets the largest budget; cloud chat keeps 8,192.
+    #[tokio::test]
+    async fn local_chat_turns_get_the_largest_reply_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("conversations")).unwrap();
+        let config_path = dir.path().join("config.yaml");
+        std::fs::write(
+            &config_path,
+            "version: 2\nproviders:\n\
+             - id: mlx\n  kind: openai_compatible\n  baseUrl: http://127.0.0.1:1/v1\n  local: true\n\
+             - id: cloud\n  kind: openai_compatible\n  baseUrl: https://example.com/v1\n  apiKey: x\n",
+        )
+        .unwrap();
+        let config = Arc::new(Config::load(&config_path).unwrap());
+
+        for (provider_id, expected) in [
+            ("mlx", crate::execution_policy::LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS),
+            ("cloud", crate::execution_policy::INTERACTIVE_MAX_OUTPUT_TOKENS),
+        ] {
+            let received = Arc::new(Mutex::new(Vec::new()));
+            let provider = Arc::new(OutputCapProvider { received: received.clone() });
+            let vault = Arc::new(Vault::new(dir.path().to_path_buf()).unwrap());
+            let providers = ProviderRegistry::from_test_provider(provider_id, provider);
+            let tools = Arc::new(ToolRegistry::new(
+                config.clone(),
+                vault.clone(),
+                providers.clone(),
+                Arc::new(SkillRegistry::new()),
+            ));
+            run_to_completion(
+                &SessionRegistry::new(),
+                providers,
+                vault,
+                tools,
+                Arc::new(ModelCache::new()),
+                CompactionSettings::default(),
+                None,
+                StartParams {
+                    session_id: format!("{provider_id}-session"),
+                    conversation_id: format!("{provider_id}-conv"),
+                    assistant_message_id: Some("assistant".into()),
+                    model: format!("{provider_id}/model"),
+                    messages: vec![user_msg("synthesize my notes")],
+                    system_prompt: None,
+                    is_first_message: false,
+                    user_message_content: "synthesize my notes".into(),
+                    invoke_skill: None,
+                    skip_persist: true,
+                    retry_connect: false,
+                    execution_policy: ExecutionPolicy::interactive(),
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(*received.lock().unwrap(), vec![expected], "{provider_id}");
+        }
     }
 
     #[tokio::test]
