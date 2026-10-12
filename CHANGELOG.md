@@ -4,6 +4,23 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.47
+
+- **Smoother autoscroll.** The chat no longer jitters or snaps back while you
+  scroll, streaming or not. It follows new text, tool calls and thinking only
+  while you're fully at the bottom, and stops the moment you scroll up.
+- **Local models can finish long answers.** In chat, local models now get a
+  32,768-token reply budget instead of 8,192, so a reasoning model like Qwen
+  has room to think and still write the whole answer.
+- **The Local tag no longer disappears when the model's machine is offline.**
+  Whether a model is local now comes from your config, not from whether it
+  answered just now.
+- **Accurate "Share on network" description.** It now says the vault is
+  reachable over Tailscale or a tunnel on the same computer, which is what's
+  actually allowed.
+- **Updated docs** for memory approval, privacy and local models, and using
+  Alloy on your phone.
+
 ## 0.4.46
 
 - **A live level meter while dictating.** The recording button now shows bars
