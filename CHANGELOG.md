@@ -4,6 +4,18 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.48
+
+- **Finding old notes.** Vault search can now sort oldest-first or by number of
+  matches, and both search and folder listings can filter by modified date
+  ("before 2015"). Every search also reports how many notes match in total and
+  the date range they span, so the model knows when older notes exist beyond
+  the first page.
+- **Stop no longer sends what you queued.** Stopping a reply while another
+  message is queued now puts the queued text back in the composer instead of
+  sending it, invisibly, as the next turn. A message sent while a stopped reply
+  is still being saved waits for it instead of racing it.
+
 ## 0.4.47
 
 - **Smoother autoscroll.** The chat no longer jitters or snaps back while you
