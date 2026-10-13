@@ -214,6 +214,12 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   // True while image attachments are being persisted, before any model
   // request exists — deliberately distinct from the streaming/thinking state.
   const [isPreparingAttachments, setIsPreparingAttachments] = useState(false);
+  // Conversations with a send still settling: streaming, or a stopped turn
+  // still being written back. A new turn for one of them waits in the queue;
+  // starting it early let the old turn's cleanup mark the new one finished
+  // (hiding it while it ran) and save over the stopped reply.
+  const [settlingIds, setSettlingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const isSettling = !!conversation && settlingIds.has(conversation.id);
   const dragCounterRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -423,9 +429,17 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
     }
   }, [conversation?.id]);
 
+  // Stop means "hold on": anything queued goes back to the composer to edit or
+  // send, instead of going out as the next turn.
   const handleStop = useCallback(() => {
+    const queued = drainQueue();
+    if (queued.length > 0) {
+      chatInputRef.current?.prependText(queued.map(m => m.content).join('\n\n'));
+      const attachments = queued.flatMap(m => m.pendingAttachments);
+      if (attachments.length > 0) chatInputRef.current?.addAttachments(attachments);
+    }
     stopStreaming();
-  }, [stopStreaming]);
+  }, [drainQueue, stopStreaming]);
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -470,52 +484,60 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     // Capture the conversation ID at submission time - user may navigate away during streaming
     const submittedConversationId = conversation.id;
-
-    // Save attachments to the vault. Persisting can take seconds and no
-    // model request has started yet, so show a distinct "Preparing attachments…"
-    // state immediately — without it the cleared composer looks like the send
-    // was ignored. It hands off to the streaming state once saves finish.
-    const attachments: Attachment[] = [];
-    if (pendingAttachments.length > 0) {
-      setIsPreparingAttachments(true);
-      try {
-        for (const pending of pendingAttachments) {
-          const attachment = await onSaveAttachment(conversation.id, pending.data, pending.mimeType, pending.name);
-          attachments.push(attachment);
-          if (pending.preview) URL.revokeObjectURL(pending.preview);
-        }
-      } catch (error) {
-        setIsPreparingAttachments(false);
-        console.error('[ChatInterface] Failed to save attachments:', error);
-        return;
-      }
-    }
-
-    setShouldAutoScroll(true);
-
-    // Start streaming and get AbortController. Batched with the preparing
-    // reset so the indicator swaps for the streaming state in one render.
-    const abortController = startStreaming();
-    setIsPreparingAttachments(false);
-    if (!abortController) return;
-
-    // Helper to check if user is still viewing this conversation
-    const checkIfStillViewing = () => {
-      return currentConversationIdRef.current === submittedConversationId;
-    };
-
+    setSettlingIds(prev => new Set(prev).add(submittedConversationId));
     try {
-      await onSendMessage(message, attachments, (chunk) => {
-        updateContent(chunk);
-      }, abortController.signal);
-      completeStreaming(checkIfStillViewing());
-    } catch (error) {
-      completeStreaming(checkIfStillViewing());
-      // Don't rethrow if it was an abort
-      if (error instanceof Error && error.name === 'AbortError') {
-        return;
+      // Save attachments to the vault. Persisting can take seconds and no
+      // model request has started yet, so show a distinct "Preparing attachments…"
+      // state immediately — without it the cleared composer looks like the send
+      // was ignored. It hands off to the streaming state once saves finish.
+      const attachments: Attachment[] = [];
+      if (pendingAttachments.length > 0) {
+        setIsPreparingAttachments(true);
+        try {
+          for (const pending of pendingAttachments) {
+            const attachment = await onSaveAttachment(conversation.id, pending.data, pending.mimeType, pending.name);
+            attachments.push(attachment);
+            if (pending.preview) URL.revokeObjectURL(pending.preview);
+          }
+        } catch (error) {
+          setIsPreparingAttachments(false);
+          console.error('[ChatInterface] Failed to save attachments:', error);
+          return;
+        }
       }
-      throw error;
+
+      setShouldAutoScroll(true);
+
+      // Start streaming and get AbortController. Batched with the preparing
+      // reset so the indicator swaps for the streaming state in one render.
+      const abortController = startStreaming();
+      setIsPreparingAttachments(false);
+      if (!abortController) return;
+
+      // Helper to check if user is still viewing this conversation
+      const checkIfStillViewing = () => {
+        return currentConversationIdRef.current === submittedConversationId;
+      };
+
+      try {
+        await onSendMessage(message, attachments, (chunk) => {
+          updateContent(chunk);
+        }, abortController.signal);
+        completeStreaming(checkIfStillViewing());
+      } catch (error) {
+        completeStreaming(checkIfStillViewing());
+        // Don't rethrow if it was an abort
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        throw error;
+      }
+    } finally {
+      setSettlingIds(prev => {
+        const next = new Set(prev);
+        next.delete(submittedConversationId);
+        return next;
+      });
     }
   }, [conversation, onSaveAttachment, onSendMessage, startStreaming, updateContent, completeStreaming]);
 
@@ -528,7 +550,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     // Queue during preparation too — attachment saves haven't started the
     // stream yet, and a second concurrent processAndSend would race it.
-    if (isStreaming || isPreparingAttachments) {
+    if (isStreaming || isPreparingAttachments || isSettling) {
       enqueue({
         id: generateMessageId(),
         content: message,
@@ -539,19 +561,19 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
     void processAndSend(message, pendingAttachments);
     return true;
-  }, [conversation, isStreaming, isPreparingAttachments, enqueue, processAndSend]);
+  }, [conversation, isStreaming, isPreparingAttachments, isSettling, enqueue, processAndSend]);
 
   // Process queued messages when streaming completes. Everything queued during
   // the turn is folded into a single follow-up send (content joined by blank
   // lines, images concatenated) so N queued messages produce one reply, not N.
   useEffect(() => {
-    if (isStreaming || isPreparingAttachments || queue.length === 0) return;
+    if (isStreaming || isPreparingAttachments || isSettling || queue.length === 0) return;
     const drained = drainQueue();
     if (drained.length === 0) return;
     const combinedContent = drained.map(m => m.content).join('\n\n');
     const combinedAttachments = drained.flatMap(m => m.pendingAttachments);
     processAndSend(combinedContent, combinedAttachments);
-  }, [isStreaming, isPreparingAttachments, queue.length, drainQueue, processAndSend]);
+  }, [isStreaming, isPreparingAttachments, isSettling, queue.length, drainQueue, processAndSend]);
 
   // Global Escape key handler for stopping streaming
   useGlobalEscape(handleStop, isStreaming);

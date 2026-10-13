@@ -42,6 +42,8 @@ export interface ChatInputFormHandle {
   focus: () => void;
   addAttachments: (attachments: PendingAttachment[]) => void;
   setText: (text: string) => void;
+  /** Put text before whatever is already in the composer. */
+  prependText: (text: string) => void;
 }
 
 export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInputFormProps>(({
@@ -115,6 +117,7 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     focus: () => textareaRef.current?.focus(),
     addAttachments: (attachments: PendingAttachment[]) => setPendingAttachments(prev => [...prev, ...attachments]),
     setText: (text: string) => setInput(text),
+    prependText: (text: string) => setInput(prev => (prev.trim() ? `${text}\n\n${prev}` : text)),
   }));
 
   useAutoResizeTextarea(textareaRef, input);

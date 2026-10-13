@@ -21,7 +21,8 @@ interface Deferred {
 
 function renderChat(overrides: {
   onSaveAttachment: (id: string, data: Uint8Array, mime: string) => Promise<Attachment>;
-  onSendMessage?: () => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onSendMessage?: (...args: any[]) => Promise<void>;
   conversation?: Conversation;
   onNewConversation?: () => void;
   onMobileBack?: () => void;
@@ -373,5 +374,85 @@ describe('ChatInterface autoscroll', () => {
     state.scrollTop = 600;
     fireEvent.scroll(el);
     expect(state.scrollTop).toBe(600);
+  });
+});
+
+describe('ChatInterface stopping with queued messages', () => {
+  const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
+
+  /** A send that runs until stopped, then settles when `settle` is called. */
+  function stoppableSend() {
+    const settles: Array<() => void> = [];
+    const finishes: Array<() => void> = [];
+    const onSendMessage = vi.fn(
+      (_content: string, _attachments: unknown[], _onChunk: unknown, signal: AbortSignal) =>
+        new Promise<void>((resolve, reject) => {
+          finishes.push(resolve);
+          // Stopping writes the partial reply back before the send settles.
+          signal.addEventListener('abort', () => settles.push(() => reject(abortError())));
+        }),
+    );
+    return { onSendMessage, settle: () => act(() => settles.shift()?.()), finish: () => act(() => finishes.shift()?.()) };
+  }
+
+  function type(text: string) {
+    const textarea = screen.getByPlaceholderText('Send a message...') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: text } });
+    return textarea;
+  }
+
+  async function sendThenQueue(onSendMessage: ReturnType<typeof stoppableSend>['onSendMessage']) {
+    renderChat({ onSaveAttachment: vi.fn(), onSendMessage });
+    type('give me some lorem ipsum');
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(onSendMessage).toHaveBeenCalledTimes(1));
+    type('now in French');
+    fireEvent.click(screen.getByRole('button', { name: 'Queue message' }));
+    expect(await screen.findByText('now in French')).toBeTruthy();
+  }
+
+  it('puts queued messages back in the composer on Stop instead of sending them', async () => {
+    // Regression: Stop sent the queued message at once; the stopped turn's
+    // cleanup then hid the new turn, which ran (and saved) invisibly.
+    const { onSendMessage, settle } = stoppableSend();
+    await sendThenQueue(onSendMessage);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
+    await settle();
+
+    const textarea = screen.getByPlaceholderText('Send a message...') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('now in French');
+    expect(document.querySelector('.queued-message')).toBeNull();
+    await act(async () => { await new Promise(r => setTimeout(r, 20)); });
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a send made while a stopped turn settles, then sends it visibly', async () => {
+    const { onSendMessage, settle } = stoppableSend();
+    renderChat({ onSaveAttachment: vi.fn(), onSendMessage });
+    type('give me some lorem ipsum');
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(onSendMessage).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
+    // Sent before the stopped reply has been written back: it must wait.
+    type('something else');
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
+
+    await settle();
+    await waitFor(() => expect(onSendMessage).toHaveBeenCalledTimes(2));
+    expect(onSendMessage.mock.calls[1][0]).toBe('something else');
+    // The new turn is shown as running and can itself be stopped.
+    expect(screen.getByRole('button', { name: 'Stop generating' })).toBeTruthy();
+  });
+
+  it('still sends the queue once a reply finishes normally', async () => {
+    const { onSendMessage, finish } = stoppableSend();
+    await sendThenQueue(onSendMessage);
+
+    await finish();
+    await waitFor(() => expect(onSendMessage).toHaveBeenCalledTimes(2));
+    expect(onSendMessage.mock.calls[1][0]).toBe('now in French');
   });
 });
