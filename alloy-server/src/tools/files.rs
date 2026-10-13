@@ -561,8 +561,20 @@ struct ListOpts {
     limit: usize,
     offset: usize,
     recursive: bool,
-    /// Most-recent-first (default) vs. dirs-first-alphabetical (`sort=name`).
-    by_recent: bool,
+    sort: ListSort,
+    /// When set, only files modified in the range are listed (directories are
+    /// still walked when recursive, but not listed themselves).
+    range: crate::tools::modified::ModifiedRange,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum ListSort {
+    /// Newest modified first (the default).
+    Recent,
+    /// Oldest modified first.
+    Oldest,
+    /// Directories first, then alphabetical.
+    Name,
 }
 
 pub async fn execute_list_directory(
@@ -580,7 +592,17 @@ pub async fn execute_list_directory(
             .clamp(1, LIST_MAX_LIMIT),
         offset: input_usize(input, "offset").unwrap_or(0),
         recursive: input_bool(input, "recursive").unwrap_or(false),
-        by_recent: input_string(input, "sort").map(|s| s != "name").unwrap_or(true),
+        sort: match input_string(input, "sort").map(str::trim).unwrap_or("recent") {
+            "" | "recent" => ListSort::Recent,
+            "oldest" => ListSort::Oldest,
+            "name" => ListSort::Name,
+            other => {
+                return Err(format!(
+                    "Invalid sort \"{other}\": use \"recent\", \"oldest\", or \"name\""
+                ));
+            }
+        },
+        range: crate::tools::modified::ModifiedRange::from_input(input)?,
     };
 
     // External mount: listable per its audience; a caller that may not read it
@@ -689,6 +711,9 @@ async fn list_dir_json(
             if opts.recursive && is_directory && depth < LIST_MAX_DEPTH {
                 stack.push((entry_abs, rel.clone(), depth + 1));
             }
+            if opts.range.is_set() && (is_directory || !opts.range.contains(modified)) {
+                continue;
+            }
             out.push(ListEntry {
                 name: rel,
                 is_directory,
@@ -701,18 +726,15 @@ async fn list_dir_json(
         return Err(format!("Directory not found: {}", label));
     }
 
-    if opts.by_recent {
-        out.sort_by(|a, b| {
-            b.modified
-                .cmp(&a.modified)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
-    } else {
-        out.sort_by(|a, b| match (a.is_directory, b.is_directory) {
+    let by_name = |a: &ListEntry, b: &ListEntry| a.name.to_lowercase().cmp(&b.name.to_lowercase());
+    match opts.sort {
+        ListSort::Recent => out.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| by_name(a, b))),
+        ListSort::Oldest => out.sort_by(|a, b| a.modified.cmp(&b.modified).then_with(|| by_name(a, b))),
+        ListSort::Name => out.sort_by(|a, b| match (a.is_directory, b.is_directory) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        });
+            _ => by_name(a, b),
+        }),
     }
 
     let total = out.len();
@@ -1030,6 +1052,57 @@ mod tests {
 
     /// Build a registry whose vault is `vault_dir` and whose only private mount
     /// is `private/notes -> external_dir`.
+    /// Write `name` with `body`, last modified on `date` (YYYY-MM-DD, UTC).
+    fn write_dated(dir: &std::path::Path, name: &str, body: &str, date: &str) {
+        let path = dir.join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&path, body).unwrap();
+        let t = crate::tools::modified::parse_date_bound(date).unwrap();
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(t).unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_sorts_oldest_first_and_filters_by_modified_date() {
+        let vault = TempDir::new("vault-list-dated");
+        let external = TempDir::new("ext-list-dated");
+        write_dated(&external.0, "a.md", "a", "2006-01-01");
+        write_dated(&external.0, "sub/b.md", "b", "2012-01-01");
+        write_dated(&external.0, "c.md", "c", "2026-01-01");
+        let reg = registry_with_private(&vault.0, &external.0);
+        let list = |extra: Value| {
+            let reg = reg.clone();
+            async move {
+                let mut input = json!({ "path": "private/notes", "recursive": true });
+                for (k, v) in extra.as_object().unwrap() {
+                    input[k] = v.clone();
+                }
+                let out = execute_list_directory(&reg, &ctx(true), &input).await.unwrap();
+                let v: Value = serde_json::from_str(&out).unwrap();
+                let names: Vec<String> = v["files"].as_array().unwrap().iter()
+                    .map(|f| f["name"].as_str().unwrap().to_string()).collect();
+                (v["total"].as_u64().unwrap(), names)
+            }
+        };
+
+        let (_, oldest) = list(json!({ "sort": "oldest" })).await;
+        assert_eq!(oldest[0], "a.md");
+
+        // A date filter lists matching files only, not the folders walked.
+        let (total, before) = list(json!({ "modified_before": "2020", "sort": "oldest" })).await;
+        assert_eq!((total, before), (2, vec!["a.md".to_string(), "sub/b.md".to_string()]));
+
+        let err = execute_list_directory(
+            &reg,
+            &ctx(true),
+            &json!({ "path": "private/notes", "sort": "size" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("oldest"), "{err}");
+    }
+
     fn registry_with_private(
         vault_dir: &std::path::Path,
         external_dir: &std::path::Path,

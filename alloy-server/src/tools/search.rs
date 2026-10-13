@@ -33,6 +33,8 @@ const TEXT_EXTENSIONS: &[&str] = &["md", "txt", "yaml", "yml", "json", "js", "ts
 struct FileMatch {
     path: String,
     modified: String,
+    #[serde(skip)]
+    mtime: SystemTime,
     #[serde(rename = "matchCount")]
     match_count: usize,
     /// Bounded to `MAX_LOCATED_MATCHES`: enough to aim a ranged read, few
@@ -104,6 +106,17 @@ pub async fn execute(
         .clamp(1, MAX_LIMIT);
     let offset = input_usize(input, "offset").unwrap_or(0);
     let file_ext = input_string(input, "file_extension").map(|s| s.to_string());
+    let sort = match input_string(input, "sort").map(str::trim).unwrap_or("recent") {
+        "" | "recent" => SearchSort::Recent,
+        "oldest" => SearchSort::Oldest,
+        "matches" => SearchSort::Matches,
+        other => {
+            return Err(format!(
+                "Invalid sort \"{other}\": use \"recent\", \"oldest\", or \"matches\""
+            ));
+        }
+    };
+    let range = crate::tools::modified::ModifiedRange::from_input(input)?;
 
     // Mount roots resolve to an external absolute path; vault searches go
     // through the sandbox. Either way the label stays the request path so
@@ -141,29 +154,23 @@ pub async fn execute(
     };
 
     // Phase 1: gather candidate text files (path + mtime only — no content
-    // reads), then order most-recent-first so both the scan and the result page
-    // come from recent files rather than arbitrary fs order.
+    // reads) within the date range, most recent first.
     let mut candidates =
         collect_candidates(&search_path, directory, file_ext.as_deref(), &excludes).await;
+    candidates.retain(|c| range.contains(c.2));
     candidates.sort_by(|a, b| b.2.cmp(&a.2));
 
-    // Phase 2: scan content in recency order until offset+limit matches or the
-    // content-read budget is hit.
+    // Phase 2: scan every candidate. The full set of matches gives the total
+    // and the date range, so a caller shown only the newest page knows when
+    // older material exists (a grep over these notes is sub-second).
     let query_lower = query.to_lowercase();
     let terms: Vec<String> = if fuzzy {
         query_lower.split_whitespace().map(str::to_string).collect()
     } else {
         Vec::new()
     };
-    let want = offset + limit;
     let mut matched: Vec<FileMatch> = Vec::new();
     for (abs, rel, mtime) in candidates {
-        // Recency-first: once the requested page is full we can stop. For rare
-        // terms (few/no matches) this reads the whole vault — which is cheap
-        // (grep over these notes is sub-second).
-        if matched.len() >= want {
-            break;
-        }
         let filename_lower = Path::new(&rel)
             .file_name()
             .map(|n| n.to_string_lossy().to_lowercase())
@@ -212,26 +219,52 @@ pub async fn execute(
             matched.push(FileMatch {
                 path: rel,
                 modified: iso(mtime),
+                mtime,
                 match_count: count,
                 matches,
             });
         }
     }
 
+    // Candidates were scanned newest first, so `matched` is already in
+    // `recent` order; the other orders are stable re-sorts of it.
+    match sort {
+        SearchSort::Recent => {}
+        SearchSort::Oldest => matched.sort_by(|a, b| a.mtime.cmp(&b.mtime)),
+        SearchSort::Matches => matched.sort_by(|a, b| b.match_count.cmp(&a.match_count)),
+    }
+
     let total_matched = matched.len();
+    let oldest = matched.iter().map(|m| m.mtime).min();
+    let newest = matched.iter().map(|m| m.mtime).max();
     let page: Vec<&FileMatch> = matched.iter().skip(offset).take(limit).collect();
     let returned = page.len();
     let mut obj = json!({
         "directory": directory,
         "query": query,
+        "totalMatches": total_matched,
         "offset": offset,
         "returned": returned,
         "files": page,
     });
+    if let (Some(oldest), Some(newest)) = (oldest, newest) {
+        obj["oldestModified"] = json!(crate::tools::modified::date(oldest));
+        obj["newestModified"] = json!(crate::tools::modified::date(newest));
+    }
     if offset + returned < total_matched {
         obj["nextOffset"] = json!(offset + returned);
     }
     Ok(serde_json::to_string_pretty(&obj).unwrap_or_default())
+}
+
+#[derive(Clone, Copy)]
+enum SearchSort {
+    /// Newest modified first (the default).
+    Recent,
+    /// Oldest modified first.
+    Oldest,
+    /// Most matches first; ties newest first.
+    Matches,
 }
 
 /// Walk `root` (bounded by depth and MAX_CANDIDATES), collecting text files as
@@ -563,6 +596,103 @@ mod tests {
     impl Drop for TempDir {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Write `name` with `body`, last modified on `date` (YYYY-MM-DD, UTC).
+    fn write_dated(dir: &std::path::Path, name: &str, body: &str, date: &str) {
+        let path = dir.join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&path, body).unwrap();
+        let t = crate::tools::modified::parse_date_bound(date).unwrap();
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(t).unwrap();
+    }
+
+    /// Four notes on one topic spanning two decades, plus one off-topic.
+    fn dated_notes() -> (TempDir, TempDir, Arc<ToolRegistry>) {
+        let vault = TempDir::new("vault-dated");
+        let external = TempDir::new("ext-dated");
+        write_dated(&external.0, "2006 pace.md", "pace layers once", "2006-03-14");
+        write_dated(&external.0, "old/2012 pace.md", "pace layers\npace layers\npace layers", "2012-07-01");
+        write_dated(&external.0, "2019 pace.md", "pace layers\npace layers", "2019-05-05");
+        write_dated(&external.0, "2026 pace.md", "pace layers once more", "2026-10-01");
+        write_dated(&external.0, "2026 other.md", "nothing relevant", "2026-10-02");
+        let reg = registry_with_private(&vault.0, &external.0);
+        (vault, external, reg)
+    }
+
+    async fn search(reg: &ToolRegistry, extra: Value) -> Value {
+        let mut input = json!({ "directory": "private/notes", "query": "pace layers" });
+        for (k, v) in extra.as_object().unwrap() {
+            input[k] = v.clone();
+        }
+        serde_json::from_str(&execute(reg, &ctx(true), &input).await.unwrap()).unwrap()
+    }
+
+    fn paths(v: &Value) -> Vec<String> {
+        v["files"].as_array().unwrap().iter()
+            .map(|f| f["path"].as_str().unwrap().trim_start_matches("private/notes/").to_string())
+            .collect()
+    }
+
+    /// Old notes were only reachable by paging: a page of the newest matches
+    /// came back with no sign that older ones existed.
+    #[tokio::test]
+    async fn search_reports_every_match_even_when_the_page_is_short() {
+        let (_v, _e, reg) = dated_notes();
+        let v = search(&reg, json!({ "limit": 1 })).await;
+        assert_eq!(paths(&v), ["2026 pace.md"]);
+        assert_eq!(v["totalMatches"], 4);
+        assert_eq!(v["oldestModified"], "2006-03-14");
+        assert_eq!(v["newestModified"], "2026-10-01");
+        assert_eq!(v["nextOffset"], 1);
+    }
+
+    #[tokio::test]
+    async fn search_sorts_by_recent_oldest_or_matches() {
+        let (_v, _e, reg) = dated_notes();
+        assert_eq!(
+            paths(&search(&reg, json!({})).await),
+            ["2026 pace.md", "2019 pace.md", "old/2012 pace.md", "2006 pace.md"]
+        );
+        assert_eq!(
+            paths(&search(&reg, json!({ "sort": "oldest" })).await),
+            ["2006 pace.md", "old/2012 pace.md", "2019 pace.md", "2026 pace.md"]
+        );
+        // Most matches first; ties newest first.
+        assert_eq!(
+            paths(&search(&reg, json!({ "sort": "matches" })).await),
+            ["old/2012 pace.md", "2019 pace.md", "2026 pace.md", "2006 pace.md"]
+        );
+    }
+
+    #[tokio::test]
+    async fn search_filters_by_modified_date() {
+        let (_v, _e, reg) = dated_notes();
+        let before = search(&reg, json!({ "modified_before": "2015" })).await;
+        assert_eq!(paths(&before), ["old/2012 pace.md", "2006 pace.md"]);
+        assert_eq!(before["totalMatches"], 2);
+        assert_eq!(before["newestModified"], "2012-07-01");
+
+        let between = search(&reg, json!({ "modified_after": "2012-07", "modified_before": "2019-05-05" })).await;
+        assert_eq!(paths(&between), ["old/2012 pace.md"]);
+
+        let none = search(&reg, json!({ "modified_after": "2027" })).await;
+        assert_eq!(none["totalMatches"], 0);
+        assert!(none.get("oldestModified").is_none());
+    }
+
+    #[tokio::test]
+    async fn search_rejects_an_unknown_sort_or_date() {
+        let (_v, _e, reg) = dated_notes();
+        for bad in [json!({ "sort": "relevance" }), json!({ "modified_before": "last year" })] {
+            let mut input = json!({ "directory": "private/notes", "query": "pace layers" });
+            for (k, v) in bad.as_object().unwrap() {
+                input[k] = v.clone();
+            }
+            assert!(execute(&reg, &ctx(true), &input).await.is_err(), "{bad}");
         }
     }
 

@@ -7,6 +7,7 @@
 pub mod conversation_privacy;
 pub mod files;
 pub mod http;
+pub mod modified;
 pub mod mounts;
 pub mod search;
 pub mod skills;
