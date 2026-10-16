@@ -4,6 +4,22 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.4.49
+
+- **Drafts stay with their conversation.** Text you type but don't send now
+  belongs to that conversation instead of following you into every other one.
+  Switch away and back and it's still there, even after a reload. Conversations
+  with an unsent draft show a ✎ in the list. Drafts are kept on the device you
+  typed them on.
+- **Fast scrolling no longer ends on a blank list.** Flinging through a long
+  conversation list on a phone could speed up on its own and stop on an empty
+  screen. It now scrolls and stops on visible rows.
+- **Long-press on list rows removed.** The ⋯ button on each row opens the same
+  menu; tapping a row just opens it.
+- **Viewport debug overlay.** Settings → Diagnostics shows live viewport
+  measurements and where each tap registers, on this device only. It's for
+  tracking down a mobile bug where the layout draws lower than where taps land.
+
 ## 0.4.48
 
 - **Finding old notes.** Vault search can now sort oldest-first or by number of
