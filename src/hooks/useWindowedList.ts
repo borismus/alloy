@@ -27,14 +27,6 @@ const MEASURE_SAMPLE = 10;
 /** Ignore sub-pixel noise; only react to a materially different row height. */
 const HEIGHT_EPSILON = 0.5;
 
-/**
- * Weight of a fresh measurement when refining the estimate. Rows vary in height
- * (a title may wrap to one line or two), so each window measures a slightly
- * different average; smoothing converges instead of chasing whichever rows are
- * currently on screen.
- */
-const HEIGHT_SMOOTHING = 0.3;
-
 export interface WindowedRange {
   /** First rendered index. */
   startIndex: number;
@@ -79,14 +71,22 @@ export function useWindowedList({
     setRange(prev => (prev.start === start && prev.end === end ? prev : { start, end }));
   }, [containerRef, itemCount, overscan]);
 
-  // Recalibrate from real rows. Measure the row-to-row *pitch* rather than each
+  // Calibrate from real rows. Measure the row-to-row *pitch* rather than each
   // row's own height: rows carry a bottom margin, which offsetHeight excludes,
   // and under-counting even 8px per row compounds over a thousand rows into a
   // list whose end cannot be scrolled to. Pitch also absorbs any gap or border
   // without needing to know the stylesheet. Sampling a handful of rows keeps
   // this far cheaper than the full-list measurement the reorder animation does.
+  //
+  // Measure once, and again only after a resize (rotation, or a width change
+  // that re-wraps titles), never on every render. The top spacer is
+  // startIndex × rowHeight, so the estimate must not change under a range that
+  // was chosen with a different one: deep in the list a 1px change moves the
+  // rows by hundreds of pixels. Refining the estimate per window did exactly
+  // that, and on iOS a fling sped up and then stopped on a blank screen.
+  // Whenever the estimate does change, the range is recomputed with it.
   useLayoutEffect(() => {
-    if (!enabled) return;
+    if (!enabled || calibratedRef.current) return;
     const el = containerRef.current;
     if (!el) return;
     const rows = el.querySelectorAll<HTMLElement>('[data-item-id]');
@@ -103,20 +103,10 @@ export function useWindowedList({
     }
     if (measured <= 0) return;
 
-    const next = calibratedRef.current
-      ? rowHeightRef.current * (1 - HEIGHT_SMOOTHING) + measured * HEIGHT_SMOOTHING
-      : measured;
-    const changed = Math.abs(next - rowHeightRef.current) > HEIGHT_EPSILON;
-    rowHeightRef.current = next;
-
-    // Measuring must not drive a render, or variable row heights loop forever:
-    // recomputing swaps in a different set of rows, whose average differs, which
-    // recomputes again. Only the very first calibration corrects the range
-    // directly; later refinements are picked up by the next scroll or resize,
-    // which is exactly when they matter.
-    if (!calibratedRef.current) {
-      calibratedRef.current = true;
-      if (changed) recompute();
+    calibratedRef.current = true;
+    if (Math.abs(measured - rowHeightRef.current) > HEIGHT_EPSILON) {
+      rowHeightRef.current = measured;
+      recompute();
     }
   });
 
@@ -144,7 +134,10 @@ export function useWindowedList({
 
     recompute();
     el.addEventListener('scroll', onScroll, { passive: true });
-    const observer = new ResizeObserver(() => recompute());
+    const observer = new ResizeObserver(() => {
+      calibratedRef.current = false;
+      recompute();
+    });
     observer.observe(el);
     return () => {
       el.removeEventListener('scroll', onScroll);

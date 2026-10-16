@@ -175,4 +175,54 @@ describe('useWindowedList', () => {
     expect(endIndex - startIndex).toBeLessThan(60);
     expect(startIndex).toBeGreaterThan(0);
   });
+
+  // Regression: on iOS a fling through a long list sped up and then stopped on
+  // a blank screen. Each window nudged the row-height estimate, and the top
+  // spacer (startIndex × estimate) was then sized with a different estimate
+  // than the one that chose startIndex. Deep in the list a 1px change moves
+  // the rows by hundreds of pixels, so they slid out from under the viewport
+  // and nothing re-rendered once the scroll stopped.
+  it('keeps the rendered rows under the viewport when row pitch varies', async () => {
+    let renderedStart = 0;
+    const pitchAt = (start: number) => (Math.floor(start / 10) % 2 === 0 ? 92 : 112);
+    const listeners = new Map<string, () => void>();
+    const el = {
+      scrollTop: 0,
+      clientHeight: VIEWPORT,
+      addEventListener: (t: string, fn: () => void) => listeners.set(t, fn),
+      removeEventListener: (t: string) => listeners.delete(t),
+      querySelectorAll: () => {
+        const pitch = pitchAt(renderedStart);
+        return Array.from({ length: 20 }, (_, i) => ({
+          offsetHeight: pitch - 8,
+          getBoundingClientRect: () => ({ top: i * pitch }),
+        })) as unknown as NodeListOf<HTMLElement>;
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ref = { current: el as any };
+
+    const { result, rerender } = renderHook(() => {
+      const r = useWindowedList({ containerRef: ref, itemCount: 2000, enabled: true });
+      renderedStart = r.startIndex;
+      return r;
+    });
+    await settle();
+
+    // A fling: many scroll events, each landing on a new window of rows. The
+    // sidebar also re-renders for its own reasons (streaming state, list
+    // updates) without the window moving, which is when a refined estimate
+    // reaches the spacer.
+    for (let top = 2000; top <= 60000; top += 2000) {
+      el.scrollTop = top;
+      listeners.get('scroll')?.();
+      await settle();
+      rerender();
+    }
+
+    const { startIndex, endIndex, topPadding } = result.current;
+    const renderedBottom = topPadding + (endIndex - startIndex) * pitchAt(startIndex);
+    expect(topPadding).toBeLessThanOrEqual(el.scrollTop);
+    expect(renderedBottom).toBeGreaterThanOrEqual(el.scrollTop + VIEWPORT);
+  });
 });
