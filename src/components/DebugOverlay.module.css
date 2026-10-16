@@ -1,0 +1,26 @@
+/* Diagnostic chrome: deliberately loud and above everything, and never
+   intercepts a tap — it must not change the behaviour it is measuring. */
+.readout {
+  position: fixed;
+  left: 4px;
+  top: calc(env(safe-area-inset-top, 0px) + 60px);
+  z-index: 100000;
+  pointer-events: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgb(200 0 0 / 85%);
+  color: #fff;
+  font: 11px/1.3 var(--font-mono);
+  white-space: pre;
+}
+
+.tapMarker {
+  position: fixed;
+  z-index: 100000;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: lime;
+  pointer-events: none;
+}

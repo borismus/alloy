@@ -8,6 +8,7 @@ import { AlloyDialog, Switch } from './ui';
 import { CheckResult } from './UpdateChecker';
 import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { getAutoUpdate, loadAutoUpdate, setAutoUpdate } from '../services/autoUpdate';
+import { getDebugOverlay, setDebugOverlay } from '../services/debugOverlay';
 import packageInfo from '../../package.json';
 import './Settings.css';
 
@@ -55,6 +56,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
     });
     return () => { cancelled = true; };
   }, []);
+  const [debugOverlay, setDebugOverlayState] = useState(getDebugOverlay);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   const handleCheckForUpdates = async () => {
@@ -366,6 +368,23 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 </span>
               )}
             </div>
+          </div>
+
+          <div className="settings-section">
+            <div className="settings-row">
+              <div className="settings-row-text">
+                <h3>Diagnostics</h3>
+                <p className="settings-description">
+                  Viewport debug overlay: live viewport measurements, and a dot where each tap registers.
+                </p>
+              </div>
+              <Switch
+                aria-label="Viewport debug overlay"
+                isSelected={debugOverlay}
+                onChange={(v) => { setDebugOverlayState(v); setDebugOverlay(v); }}
+              />
+            </div>
+            <p className="settings-hint">Applies to this device only.</p>
           </div>
 
           <div className="settings-section settings-section-danger">

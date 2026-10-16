@@ -7,6 +7,7 @@ import { riffService } from './services/riff';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useVisualViewport } from './hooks/useVisualViewport';
+import { DebugOverlay } from './components/DebugOverlay';
 import { useToasts } from './hooks/useToasts';
 import { useNavigation } from './hooks/useNavigation';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -1703,6 +1704,7 @@ function AppContent() {
         />
       )}
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
+      <DebugOverlay />
       </div>
       </SettingsLauncherProvider>
       </ProviderLocalityContext.Provider>
