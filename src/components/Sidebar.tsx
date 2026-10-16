@@ -7,6 +7,7 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useWindowedList } from '../hooks/useWindowedList';
+import { useComposerDraftIds } from '../services/composerDrafts';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
@@ -499,6 +500,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     // be a dependency — otherwise the list keeps the pre-search result.
   }, [timelineItems, activeFilter, searchQuery, serverMatches]);
 
+  const draftIds = useComposerDraftIds();
+
   // Render only the visible slice once the list gets long.
   const windowingEnabled = filteredItems.length > WINDOW_THRESHOLD;
   const { startIndex, endIndex, topPadding, bottomPadding } = useWindowedList({
@@ -643,6 +646,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 )}
                 {getTypeBadge(item)}
                 {item.title}
+                {item.type === 'conversation' && draftIds.has(item.id) && (
+                  <span className="draft-indicator" role="img" aria-label="Unsent draft" title="Unsent draft">✎</span>
+                )}
               </div>
               {renderSearchSnippet(item)}
               <div className="item-meta">

@@ -3,6 +3,7 @@ import { createRef } from 'react';
 import { cleanup, render, screen, act, fireEvent } from '@testing-library/react';
 import { ChatInputForm, type ChatInputFormHandle } from './ChatInputForm';
 import type { ModelInfo } from '../types';
+import { getComposerDraft, resetComposerDraftsForTest } from '../services/composerDrafts';
 
 const VISION: ModelInfo = { key: 'anthropic/claude', name: 'Claude Sonnet 5', provider: 'anthropic' };
 // The backend omits `supportsImages` when true, so only an explicit false blocks.
@@ -194,5 +195,63 @@ describe('attachment gating', () => {
     });
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getByText('notes.md')).toBeTruthy();
+  });
+});
+
+describe('per-conversation drafts', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetComposerDraftsForTest();
+  });
+
+  function renderWithDraftKey(draftKey: string | null, onSubmit = vi.fn(() => true)) {
+    const props = {
+      onSubmit,
+      onStop: vi.fn(),
+      isStreaming: false,
+      model: VISION.key,
+      onModelChange: vi.fn(),
+      availableModels: [VISION],
+    };
+    const view = render(<ChatInputForm {...props} draftKey={draftKey} />);
+    return {
+      ...view,
+      switchTo: (key: string | null) => view.rerender(<ChatInputForm {...props} draftKey={key} />),
+    };
+  }
+
+  const composer = () => screen.getByPlaceholderText('Send a message...') as HTMLTextAreaElement;
+
+  it('keeps unsent text with the thread it was typed in', () => {
+    const { switchTo } = renderWithDraftKey('thread-a');
+    fireEvent.change(composer(), { target: { value: 'half a thought' } });
+
+    switchTo('thread-b');
+    expect(composer().value).toBe('');
+    fireEvent.change(composer(), { target: { value: 'something else' } });
+
+    switchTo('thread-a');
+    expect(composer().value).toBe('half a thought');
+    switchTo('thread-b');
+    expect(composer().value).toBe('something else');
+  });
+
+  it('restores a draft after a reload', () => {
+    renderWithDraftKey('thread-a');
+    fireEvent.change(composer(), { target: { value: 'survives reload' } });
+    cleanup();
+
+    resetComposerDraftsForTest(); // a fresh page reads only what was stored
+    renderWithDraftKey('thread-a');
+    expect(composer().value).toBe('survives reload');
+  });
+
+  it('clears the draft once the message is sent', () => {
+    renderWithDraftKey('thread-a');
+    fireEvent.change(composer(), { target: { value: 'send me' } });
+    fireEvent.submit(composer().closest('form')!);
+
+    expect(composer().value).toBe('');
+    expect(getComposerDraft('thread-a')).toBe('');
   });
 });

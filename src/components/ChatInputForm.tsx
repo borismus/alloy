@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { ModelInfo, PendingAttachment } from '../types';
 import { useAutoResizeTextarea } from '../hooks/useAutoResizeTextarea';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
@@ -10,6 +10,7 @@ import { DictationButton } from './DictationButton';
 import { AlloyTooltip, Button } from './ui';
 import { SlashCommandMenu, SlashCommandItem } from './SlashCommandMenu';
 import { skillRegistry } from '../services/skills';
+import { getComposerDraft, setComposerDraft } from '../services/composerDrafts';
 import { slashQuery } from '../utils/slashCommand';
 import {
   ATTACHMENT_ACCEPT,
@@ -36,6 +37,8 @@ interface ChatInputFormProps {
   onToggleFavorite?: (modelKey: string) => void;
   onSetDefault?: (modelKey: string) => void;
   sonioxApiKey?: string;
+  /** Conversation whose unsent text this composer keeps; null keeps none. */
+  draftKey?: string | null;
 }
 
 export interface ChatInputFormHandle {
@@ -58,8 +61,22 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
   onToggleFavorite,
   onSetDefault,
   sonioxApiKey,
+  draftKey = null,
 }, ref) => {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(() => getComposerDraft(draftKey));
+
+  // Unsent text belongs to its conversation: switching threads swaps in that
+  // thread's draft, and every edit is saved under the thread it was typed in.
+  // A layout effect, so the old thread's text never paints in the new one.
+  const draftKeyRef = useRef(draftKey);
+  useLayoutEffect(() => {
+    if (draftKeyRef.current !== draftKey) {
+      draftKeyRef.current = draftKey;
+      setInput(getComposerDraft(draftKey));
+      return;
+    }
+    setComposerDraft(draftKey, input);
+  }, [draftKey, input]);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
 
   // Some models can't take some attachment types (PDFs need native support;

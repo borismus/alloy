@@ -836,6 +836,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         onToggleFavorite={onToggleFavorite}
         onSetDefault={onSetDefault}
         sonioxApiKey={sonioxApiKey}
+        draftKey={conversation?.id ?? null}
       />
     </div>
   );

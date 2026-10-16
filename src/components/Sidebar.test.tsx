@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TaskProvider } from '../contexts/TaskContext';
 import type { ScheduledTask, TimelineItem } from '../types';
 import { Sidebar } from './Sidebar';
+import { resetComposerDraftsForTest, setComposerDraft } from '../services/composerDrafts';
 
 const ITEM: TimelineItem = {
   type: 'conversation',
@@ -173,4 +174,17 @@ it('moves creation actions into the header in mobile full-screen mode', () => {
   expect(header?.contains(creationOverflow)).toBe(true);
   expect(searchRow?.contains(newConversation)).toBe(false);
   expect(searchRow?.contains(creationOverflow)).toBe(false);
+});
+
+it('marks conversations that hold unsent composer text', () => {
+  localStorage.clear();
+  resetComposerDraftsForTest();
+  renderSidebar();
+  expect(screen.queryByRole('img', { name: 'Unsent draft' })).toBeNull();
+
+  act(() => setComposerDraft(ITEM.id, 'not sent yet'));
+  expect(screen.getByRole('img', { name: 'Unsent draft' })).toBeTruthy();
+
+  act(() => setComposerDraft(ITEM.id, ''));
+  expect(screen.queryByRole('img', { name: 'Unsent draft' })).toBeNull();
 });

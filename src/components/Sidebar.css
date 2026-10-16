@@ -207,6 +207,11 @@
   user-select: none;
 }
 
+.draft-indicator {
+  margin-left: 0.35rem;
+  color: var(--color-text-secondary);
+}
+
 .item-menu-btn {
   position: absolute;
   top: 0.4rem;
