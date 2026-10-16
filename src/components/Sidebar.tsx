@@ -6,7 +6,6 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
-import { useLongPress } from '../hooks/useLongPress';
 import { useWindowedList } from '../hooks/useWindowedList';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
@@ -426,11 +425,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     void openItemMenu(item);
   };
 
-  // Touch: long-press a row (mobile) opens the same menu right-click does.
-  const { getHandlers: getRowLongPress, didLongPress } = useLongPress<TimelineItem>((item) => {
-    void openItemMenu(item);
-  });
-
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -612,16 +606,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               }${streamingConversationIds.includes(item.id) ? ' streaming' : ''}${
                 latestTaskError(item) ? ' task-failed' : ''
               }`}
-              onClick={() => {
-                // A long-press already opened the menu; don't also select.
-                if (didLongPress.current) {
-                  didLongPress.current = false;
-                  return;
-                }
-                handleSelectItem(item);
-              }}
+              onClick={() => handleSelectItem(item)}
               onContextMenu={(e) => handleContextMenu(e, item)}
-              {...getRowLongPress(item)}
             >
               <button
                 type="button"

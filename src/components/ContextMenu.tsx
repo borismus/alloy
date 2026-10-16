@@ -26,7 +26,7 @@ export const ContextMenu: React.FC = () => {
     const openedAt = Date.now();
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       // Ignore the trailing events of the gesture that opened the menu (e.g. the
-      // synthesized mousedown from a long-press release on touch).
+      // synthesized mousedown from a tap release on touch).
       if (Date.now() - openedAt < 300) return;
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         hideMenu();

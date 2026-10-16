@@ -36,7 +36,7 @@ if (typeof window !== 'undefined') {
   });
 
   // Touch devices never fire the mouse/contextmenu events above until release,
-  // so track the touch point for long-press and tap-to-open (mobile) menus.
+  // so track the touch point for tap-to-open (mobile) menus.
   document.addEventListener(
     'touchstart',
     (e) => {

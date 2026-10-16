@@ -201,8 +201,7 @@
   cursor: pointer;
   transition: background 0.2s;
   border: 1px solid transparent;
-  /* Suppress the iOS long-press text-selection callout so the gesture is free
-     to open the context menu. */
+  /* Suppress the iOS press-and-hold text-selection callout on rows. */
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
