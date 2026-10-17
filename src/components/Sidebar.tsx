@@ -634,7 +634,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           isOpen
           onOpenChange={(o) => { if (!o) cancelRename(); }}
           size="compact"
-          title="Rename Conversation"
+          title="Rename conversation"
         >
           {() => (
             <div className="dialog-body">
@@ -662,12 +662,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           isOpen
           onOpenChange={(o) => { if (!o) cancelDelete(); }}
           size="compact"
-          title={`Delete ${deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'task' ? 'Task' : 'Note'}`}
+          title={`Delete “${timelineItems.find(i => i.id === deletingItem.id && i.type === deletingItem.type)?.title ?? deletingItem.type}”?`}
         >
           {() => (
             <div className="dialog-body">
               <p className="delete-warning">
-                Are you sure you want to delete this {deletingItem.type}? This action cannot be undone.
+                This removes the {deletingItem.type === 'conversation' ? 'conversation' : deletingItem.type} from your vault. You can&apos;t undo it.
               </p>
               <div className="rename-buttons">
                 <button onClick={cancelDelete} className="cancel-button">Cancel</button>

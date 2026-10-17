@@ -23,7 +23,7 @@ function estimateMessageTokens(message: Message): number {
 }
 
 function formatTokens(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
   return String(n);
 }
 

@@ -95,7 +95,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
       </div>
       {canAiEdit && (
         <AiEditPanel
-          placeholder="Edit this note"
+          placeholder="Ask for a change to this note…"
           getCurrentContent={getCurrentContent}
           buildSystemPrompt={noteEditPrompt}
           applyNewContent={applyNoteEdit}

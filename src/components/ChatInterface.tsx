@@ -648,14 +648,14 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
           onDrop={handleDrop}
         >
           <ItemHeader
-            title="New Conversation"
+            title="New conversation"
             onBack={handleBack}
             canGoBack={showBackButton}
           />
           <div className="messages-container" ref={messagesContainerRef}>
             <div className="welcome-message">
               <h2>Start a conversation</h2>
-              <p>Ask me anything. Your conversation will be saved as a YAML file in your vault.</p>
+              <p>Ask anything. Conversations are saved in your vault.</p>
             </div>
           </div>
           <ChatInputForm
@@ -688,7 +688,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
       onDrop={handleDrop}
     >
       <ItemHeader
-        title={conversation?.title || 'New Conversation'}
+        title={conversation?.title || 'New conversation'}
         onBack={handleBack}
         canGoBack={showBackButton}
       >
@@ -711,7 +711,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
         ) : conversation.messages.length === 0 && !showStreamingMessage && (
           <div className="welcome-message">
             <h2>Start a conversation</h2>
-            <p>Ask me anything. Your conversation will be saved as a YAML file in your vault.</p>
+            <p>Ask anything. Conversations are saved in your vault.</p>
           </div>
         )}
 

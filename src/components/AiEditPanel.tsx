@@ -13,7 +13,7 @@ import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import './AiEditPanel.css';
 
 interface AiEditPanelProps {
-  /** Composer placeholder, e.g. "Edit this note". */
+  /** Composer placeholder, e.g. "Ask for a change to this note…". */
   placeholder: string;
   /** Current document text — what we diff against and send to the model. */
   getCurrentContent: () => string;

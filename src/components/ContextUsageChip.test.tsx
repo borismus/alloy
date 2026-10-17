@@ -35,7 +35,7 @@ describe('ContextUsageChip', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'Context usage' }).textContent)
-      .toContain('16.0K');
+      .toContain('/ 16K');
     expect(screen.getByRole('button', { name: 'Context usage' }).textContent)
       .not.toContain('262');
   });

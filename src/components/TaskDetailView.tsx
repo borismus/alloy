@@ -408,7 +408,7 @@ export function TaskDetailView({
             </div>
             {!task.enabled ? (
               <div className="task-next-run paused">
-                <span>Paused</span>This task will not run on its schedule. “Run now” still works.
+                <span>Paused</span>It won&apos;t run on its schedule. Run now still works.
               </div>
             ) : schedule.nextRun && (
               <div className="task-next-run"><span>Next</span>{schedule.nextRun}</div>
@@ -576,7 +576,7 @@ export function TaskDetailView({
 
       {canAiEdit && (
         <AiEditPanel
-          placeholder="Edit this task"
+          placeholder="Ask for a change to this task…"
           getCurrentContent={getTaskConfig}
           buildSystemPrompt={taskEditPrompt}
           applyNewContent={applyTaskEdit}
