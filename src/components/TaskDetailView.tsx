@@ -382,11 +382,7 @@ export function TaskDetailView({
         onBack={onBack}
         canGoBack={canGoBack}
         onClose={onClose}
-      >
-        <Button variant="primary" size="small" onPress={handleRunNow} isDisabled={isChecking}>
-          {isChecking ? 'Running…' : 'Run now'}
-        </Button>
-      </ItemHeader>
+      />
 
       <div className="task-detail-content">
         {latestError && (
@@ -499,6 +495,11 @@ export function TaskDetailView({
               {hasDelivered && (
                 <button className="btn-ask-about-inline" onClick={() => onAskAbout(task)}>Ask about this</button>
               )}
+              {/* In the page rather than the header: on the phone the header has
+                  no room for it beside + and Settings. */}
+              <Button variant="primary" size="small" onPress={handleRunNow} isDisabled={isChecking}>
+                {isChecking ? 'Running…' : 'Run now'}
+              </Button>
             </div>
           </div>
 

@@ -203,3 +203,23 @@ describe('TaskDetailView configuration controls', () => {
     expect(screen.queryByText(/disabled/i)).toBeNull();
   });
 });
+
+describe('TaskDetailView run now', () => {
+  it('sits with the run history, not in the header', () => {
+    render(
+      <TaskProvider tasks={[task]}>
+        <TaskDetailView
+          task={task}
+          availableModels={models}
+          onRunComplete={vi.fn()}
+          onAskAbout={vi.fn()}
+          onTaskUpdated={vi.fn()}
+        />
+      </TaskProvider>,
+    );
+
+    const runNow = screen.getByRole('button', { name: 'Run now' });
+    expect(runNow.closest('.item-header')).toBeNull();
+    expect(runNow.closest('.task-history-section')).not.toBeNull();
+  });
+});
