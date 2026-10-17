@@ -671,6 +671,30 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn history_never_carries_what_earlier_tools_read() {
+        // The local airlock: a private conversation moved from a local model to
+        // a cloud one must hand over only the visible conversation. Even if the
+        // SPA sent a turn's tool results or sub-agent transcripts, the wire
+        // format has nowhere to put them, so they never reach a provider.
+        let secret = "JOURNAL-LINE-only-the-local-model-may-read";
+        let body = serde_json::json!([
+            { "role": "user", "content": "What did I write about the trip?" },
+            {
+                "role": "assistant",
+                "content": "You wrote that the trip was restful.",
+                "toolUse": [{ "type": "read_file", "result": secret }],
+                "subagentResponses": [{ "name": "Research", "content": secret }],
+                "reasoning": secret
+            },
+            { "role": "user", "content": "Plan a similar trip." }
+        ]);
+        let wire: Vec<WireMessage> = serde_json::from_value(body).unwrap();
+        let chat = wire_to_chat(&wire, None, None).await;
+        assert_eq!(chat.len(), 3);
+        assert!(!format!("{chat:?}").contains(secret));
+    }
+
+    #[tokio::test]
     async fn prefixes_user_turns_with_their_send_time() {
         let wire = |role: &str| WireMessage {
             id: None,
