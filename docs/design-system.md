@@ -34,6 +34,7 @@ shadow tokens. Nothing else in the app branches on the theme.
 | `--color-text`, `--color-text-secondary`, `--color-text-muted` | Body text, supporting text, hints and metadata |
 | `--color-accent`, `--color-accent-strong`, `--color-accent-end` | Brand accent; `strong` for hover or text on soft fills; `end` closes the gradient |
 | `--color-accent-soft` | Selected rows, accent badges |
+| `--color-accent-fill`, `--color-accent-fill-end` | The accent as a fill behind white text (`--gradient-accent`); darker than `--color-accent` for contrast |
 | `--color-on-accent` | Text and icons on the accent gradient or a danger fill |
 | `--color-danger`, `--color-success`, `--color-warning` and their `-soft` pairs | Status: the strong value for text and icons, `-soft` for fills |
 | `--color-focus` | Focus rings (via `--shadow-focus` or a 3px outline) |

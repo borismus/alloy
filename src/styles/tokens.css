@@ -36,6 +36,10 @@
   --color-overlay: rgb(0 0 0 / 40%);
   /* Text and icons drawn on the accent gradient or a danger fill. */
   --color-on-accent: #ffffff;
+  /* Accent as a fill behind --color-on-accent: darker than --color-accent so
+     white text clears 4.5:1 in both themes. */
+  --color-accent-fill: #5a67d8;
+  --color-accent-fill-end: #764ba2;
 
   /* Repeated surface accents (tokenized so they adapt to theme) */
   --color-chip: #f1f3f5;
@@ -91,7 +95,7 @@
   --radius-md: 8px;
   --radius-panel: 12px;
   --radius-pill: 999px;
-  --gradient-accent: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+  --gradient-accent: linear-gradient(135deg, var(--color-accent-fill), var(--color-accent-fill-end));
   --shadow-focus: 0 0 0 3px var(--color-focus);
   --shadow-control: 0 2px 8px rgb(102 126 234 / 30%);
   --shadow-popover: 0 8px 24px rgb(0 0 0 / 14%);
@@ -164,6 +168,7 @@
   --color-warning: #fbbf24;
   --color-warning-soft: rgb(251 191 36 / 14%);
   --color-overlay: rgb(0 0 0 / 60%);
+  --color-accent-fill-end: #6d5bd0;
 
   --color-chip: #2b3039;
   --color-chip-border: #3a414d;
