@@ -40,7 +40,7 @@ struct ClientProvider {
 /// Soniox dictation client-side.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ClientConfig {
+pub(crate) struct ClientConfig {
     version: Option<u32>,
     default_model: Option<String>,
     favorite_models: Vec<String>,
@@ -79,9 +79,14 @@ fn adapter_str(adapter: Option<CliAdapter>) -> Option<&'static str> {
 }
 
 async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientConfig>>, AppError> {
+    Ok(Json(client_config(&state).await?))
+}
+
+/// The resolved config `/api/config` serves; also part of `/api/startup`.
+pub(crate) async fn client_config(state: &AppState) -> Result<Option<ClientConfig>, AppError> {
     let path = state.vault.resolve("config.yaml")?;
     if !path.exists() {
-        return Ok(Json(None));
+        return Ok(None);
     }
     let text = tokio::fs::read_to_string(&path)
         .await
@@ -91,7 +96,7 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
     // its detailed migration error before this endpoint can be served.
     let raw = match parse_raw_config(&text) {
         Ok(raw) => raw,
-        Err(_) => return Ok(Json(None)),
+        Err(_) => return Ok(None),
     };
     let providers = raw
         .providers
@@ -113,7 +118,7 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
         .map(|runner| crate::host::is_current_host(runner, state.runner_host.as_str()))
         .unwrap_or(true)
         && state.tasks.host_lock_held();
-    Ok(Json(Some(ClientConfig {
+    Ok(Some(ClientConfig {
         version: raw.version,
         default_model: raw.default_model,
         favorite_models: raw.favorite_models.unwrap_or_default(),
@@ -135,7 +140,7 @@ async fn get_config(State(state): State<AppState>) -> Result<Json<Option<ClientC
                 .and_then(|c| c.trigger_tokens)
                 .unwrap_or(crate::compaction::DEFAULT_TRIGGER_TOKENS),
         },
-    })))
+    }))
 }
 
 #[derive(Deserialize)]

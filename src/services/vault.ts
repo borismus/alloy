@@ -18,6 +18,33 @@ export function extractCoreId(filenameOrId: string): string {
   return name;
 }
 
+/** A file's text (or its first bytes) and modified time, as the server lists it. */
+interface FileHeader {
+  content: string;
+  mtime: number;
+}
+
+/** `GET /api/startup`: the raw files, keyed by file (or skill folder) name. */
+interface StartupResponse {
+  complete: boolean;
+  config: Config | null;
+  memory: FileHeader | null;
+  conversations: Record<string, FileHeader>;
+  notes: Record<string, FileHeader>;
+  tasks: Record<string, FileHeader>;
+  skills: Record<string, string>;
+}
+
+export interface StartupData {
+  config: Config | null;
+  conversations: Conversation[];
+  tasks: ScheduledTask[];
+  notes: NoteInfo[];
+  memory: { content: string; sizeBytes: number } | null;
+  /** SKILL.md texts by folder name, for skillRegistry.loadSkillFiles. */
+  skillFiles: Record<string, string>;
+}
+
 export class VaultService {
   // Path used as the base for HTTP/IPC API calls. In server mode this is
   // always '/' because the server already owns the vault root; in pre-Phase-2
@@ -407,9 +434,12 @@ providers:
     if (!(await exists(conversationsPath))) return [];
 
     const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
-    const headers: Record<string, { content: string; mtime: number }> =
+    const headers: Record<string, FileHeader> =
       await readDirHeaders(conversationsPath, '.yaml', 512);
+    return this.parseConversationSummaries(headers);
+  }
 
+  private parseConversationSummaries(headers: Record<string, FileHeader>): Conversation[] {
     const summaries: Conversation[] = [];
     for (const [name, { content, mtime }] of Object.entries(headers)) {
       // The header read is truncated mid-file, so the messages array is
@@ -490,20 +520,30 @@ providers:
     if (!(await exists(tasksPath))) return [];
 
     const entries = await readDir(tasksPath);
-    const results = await Promise.all(
+    const files = await Promise.all(
       entries.filter(entry => entry.name?.endsWith('.yaml')).map(async (entry) => {
         try {
-          const content = await readTextFile(await join(tasksPath, entry.name!));
-          const task = yaml.load(content) as ScheduledTask;
-          return task?.id && task?.prompt && task?.schedule ? task : null;
+          return [entry.name!, await readTextFile(await join(tasksPath, entry.name!))] as const;
         } catch (error) {
           console.error(`[VaultService] Failed to load task ${entry.name}:`, error);
           return null;
         }
       })
     );
+    return this.parseTasks(files.filter(file => file !== null));
+  }
+
+  private parseTasks(files: Iterable<readonly [string, string]>): ScheduledTask[] {
+    const results: ScheduledTask[] = [];
+    for (const [name, content] of files) {
+      try {
+        const task = yaml.load(content) as ScheduledTask;
+        if (task?.id && task?.prompt && task?.schedule) results.push(task);
+      } catch (error) {
+        console.error(`[VaultService] Failed to load task ${name}:`, error);
+      }
+    }
     return results
-      .filter((task): task is ScheduledTask => task !== null)
       .sort((a, b) => new Date(b.updated || b.created).getTime() - new Date(a.updated || a.created).getTime());
   }
 
@@ -760,10 +800,39 @@ providers:
     const memoryPath = await join(this.vaultPath, 'memory.md');
     if (!(await exists(memoryPath))) return null;
 
-    const content = await readTextFile(memoryPath);
-    const sizeBytes = new TextEncoder().encode(content).length;
+    return this.parseMemory(await readTextFile(memoryPath));
+  }
 
-    return { content, sizeBytes };
+  private parseMemory(content: string): { content: string; sizeBytes: number } {
+    return { content, sizeBytes: new TextEncoder().encode(content).length };
+  }
+
+  /**
+   * Everything startup loads, from one `GET /api/startup` instead of a round
+   * trip per file. The server returns the raw files and these are the same
+   * parsers the per-file loaders use, so the result is identical. Returns null
+   * when the server predates the route or the vault needs setup
+   * (initializeVault): the caller then takes the per-file path.
+   */
+  async loadStartup(): Promise<StartupData | null> {
+    if (!this.vaultPath) return null;
+    let res: Response;
+    try {
+      res = await fetch(`${getApiBase()}/api/startup`);
+    } catch {
+      return null;
+    }
+    if (!res.ok) return null;
+    const files = await res.json() as StartupResponse;
+    if (!files.complete) return null;
+    return {
+      config: files.config,
+      conversations: this.parseConversationSummaries(files.conversations),
+      tasks: this.parseTasks(Object.entries(files.tasks).map(([name, { content }]) => [name, content] as const)),
+      notes: this.parseNotes(files.memory, files.notes),
+      memory: files.memory ? this.parseMemory(files.memory.content) : null,
+      skillFiles: files.skills,
+    };
   }
 
   async getConfigFilePath(): Promise<string | null> {
@@ -846,20 +915,13 @@ providers:
       return [];
     }
 
-    const notes: NoteInfo[] = [];
-
     // Check for memory.md at vault root (always first)
+    let memory: FileHeader | null = null;
     const memoryPath = await join(this.vaultPath, 'memory.md');
     if (await exists(memoryPath)) {
       const fileStat = await stat(memoryPath);
-      const lastModified = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
-      const content = await readTextFile(memoryPath);
-      notes.push({
-        filename: 'memory.md',
-        lastModified,
-        hasSkillContent: false,
-        content,
-      });
+      const mtime = fileStat.mtime ? new Date(fileStat.mtime).getTime() : 0;
+      memory = { content: await readTextFile(memoryPath), mtime };
     }
 
     const notesPath = await join(this.vaultPath, 'notes');
@@ -867,7 +929,7 @@ providers:
     // Auto-create notes directory if missing
     if (!(await exists(notesPath))) {
       await mkdir(notesPath, { recursive: true });
-      return notes; // Return just memory.md if notes dir is empty
+      return this.parseNotes(memory, {}); // Return just memory.md if notes dir is empty
     }
 
     // Names and mtimes only. Bodies used to be pulled down in full (a 1MB cap
@@ -876,8 +938,21 @@ providers:
     // load is wasted payload and parse time. Note text is still read on demand
     // when a note is opened.
     const { readDirHeaders } = await import('@tauri-apps/plugin-fs') as any;
-    const noteHeaders: Record<string, { content: string; mtime: number }> =
+    const noteHeaders: Record<string, FileHeader> =
       await readDirHeaders(notesPath, '.md', 0);
+    return this.parseNotes(memory, noteHeaders);
+  }
+
+  private parseNotes(memory: FileHeader | null, noteHeaders: Record<string, FileHeader>): NoteInfo[] {
+    const notes: NoteInfo[] = [];
+    if (memory) {
+      notes.push({
+        filename: 'memory.md',
+        lastModified: memory.mtime,
+        hasSkillContent: false,
+        content: memory.content,
+      });
+    }
     for (const [name, { mtime }] of Object.entries(noteHeaders)) {
       notes.push({ filename: name, lastModified: mtime, hasSkillContent: false });
     }

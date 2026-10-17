@@ -1,5 +1,6 @@
 import { Skill } from '../../types/skills';
-import { loadSkillsFromVault } from './loader';
+import { join } from '@tauri-apps/api/path';
+import { loadSkillsFromVault, parseSkill } from './loader';
 import { loadBundledSkills } from './bundled';
 
 export class SkillRegistry {
@@ -25,18 +26,30 @@ export class SkillRegistry {
   }
 
   async loadSkills(): Promise<void> {
+    this.setSkills(this.vaultPath ? await loadSkillsFromVault(this.vaultPath) : []);
+  }
+
+  /** Load vault skills from SKILL.md texts already read, keyed by folder name
+   * (the startup response), instead of reading each from the vault. */
+  async loadSkillFiles(files: Record<string, string>): Promise<void> {
+    if (!this.vaultPath) return this.setSkills([]);
+    const skillsPath = await join(this.vaultPath, 'skills');
+    const skills = await Promise.all(
+      Object.entries(files).map(async ([name, content]) => parseSkill(await join(skillsPath, name), content))
+    );
+    this.setSkills(skills.filter((skill): skill is Skill => skill !== null));
+  }
+
+  private setSkills(vaultSkills: Skill[]): void {
     // Start with bundled skills
     this.skills.clear();
     for (const skill of this.bundledSkills) {
       this.skills.set(skill.name, skill);
     }
 
-    // Load vault skills (can override bundled skills)
-    if (this.vaultPath) {
-      const vaultSkills = await loadSkillsFromVault(this.vaultPath);
-      for (const skill of vaultSkills) {
-        this.skills.set(skill.name, skill);
-      }
+    // Vault skills can override bundled skills
+    for (const skill of vaultSkills) {
+      this.skills.set(skill.name, skill);
     }
   }
 

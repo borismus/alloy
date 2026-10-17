@@ -6,6 +6,7 @@ pub mod memory;
 pub mod models;
 pub mod path;
 pub mod search;
+pub mod startup;
 pub mod static_files;
 pub mod stream;
 pub mod tasks;

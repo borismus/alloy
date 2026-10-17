@@ -18,6 +18,30 @@ test('renders the seeded vault instead of the setup screen', async ({ page }) =>
   expect(await page.locator('.timeline-item').count()).toBeGreaterThanOrEqual(4);
 });
 
+test('startup reads the vault in one request and shows what the per-file path shows', async ({ page }) => {
+  const reloadAndRecord = async () => {
+    const requests: string[] = [];
+    const record = (request: { url(): string }) => requests.push(new URL(request.url()).pathname);
+    page.on('request', record);
+    await page.reload();
+    await expect(page.locator('.timeline-item').first()).toBeVisible();
+    page.off('request', record);
+    return { requests, rows: await page.locator('.timeline-item').allInnerTexts() };
+  };
+
+  const oneRequest = await reloadAndRecord();
+  expect(oneRequest.requests).toContain('/api/startup');
+  expect(oneRequest.requests.filter(path => path.startsWith('/api/fs/'))).toEqual([]);
+
+  // An older server has no startup route; the app reads file by file instead.
+  await page.route('**/api/startup', route => route.fulfill({ status: 404, body: 'endpoint not found\n' }));
+  const perFile = await reloadAndRecord();
+  expect(perFile.requests).toContain('/api/fs/readDirHeaders');
+
+  expect(oneRequest.rows.length).toBeGreaterThanOrEqual(4);
+  expect(oneRequest.rows).toEqual(perFile.rows);
+});
+
 test('every header offers new conversation and settings at the top right', async ({ page }, testInfo) => {
   const listHeader = page.locator('.mobile-sidebar-header');
   const itemHeader = page.locator('.item-header');

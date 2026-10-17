@@ -85,6 +85,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::stream::router())
         .merge(routes::models::router())
         .merge(routes::search::router())
+        .merge(routes::startup::router())
         .merge(routes::tasks::router())
         .merge(routes::titles::router())
         .merge(routes::memory::router())

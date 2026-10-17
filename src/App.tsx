@@ -730,9 +730,15 @@ function AppContent() {
       }
 
       vaultService.setVaultPath(path);
-      // Ensure vault structure exists (creates missing dirs/skills)
-      await vaultService.initializeVault(path);
-      const loadedConfig = await vaultService.loadConfig();
+      skillRegistry.setVaultPath(path);
+      // One request for everything below. Null when the vault needs setup or
+      // the server is older; then each piece is read on its own.
+      const startup = await vaultService.loadStartup();
+      if (!startup) {
+        // Ensure vault structure exists (creates missing dirs/skills)
+        await vaultService.initializeVault(path);
+      }
+      const loadedConfig = startup ? startup.config : await vaultService.loadConfig();
 
       if (loadedConfig) {
         setConfig(loadedConfig);
@@ -793,17 +799,23 @@ function AppContent() {
           .catch(e => console.warn('[App] /api/models fetch failed (non-fatal):', e));
 
         // Load all vault data in parallel
-        skillRegistry.setVaultPath(path);
-
-        const [loadedConversations, loadedTasks, loadedNotes, , loadedMemory] = await Promise.all([
-          // Metadata-only summaries (one batched header read); message bodies are
-          // loaded lazily when a conversation is opened.
-          vaultService.loadConversationSummaries(),
-          vaultService.loadTasks(),
-          vaultService.loadNotes(),
-          skillRegistry.loadSkills(),
-          vaultService.loadMemory(),
-        ]);
+        const [loadedConversations, loadedTasks, loadedNotes, , loadedMemory] = startup
+          ? await Promise.all([
+            startup.conversations,
+            startup.tasks,
+            startup.notes,
+            skillRegistry.loadSkillFiles(startup.skillFiles),
+            startup.memory,
+          ])
+          : await Promise.all([
+            // Metadata-only summaries (one batched header read); message bodies are
+            // loaded lazily when a conversation is opened.
+            vaultService.loadConversationSummaries(),
+            vaultService.loadTasks(),
+            vaultService.loadNotes(),
+            skillRegistry.loadSkills(),
+            vaultService.loadMemory(),
+          ]);
 
         setConversations(loadedConversations);
         setTasks(loadedTasks);

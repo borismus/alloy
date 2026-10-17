@@ -46,6 +46,22 @@ function parseFrontmatter(content: string): { metadata: SkillMetadata | null; bo
   };
 }
 
+/** A skill from its folder path and SKILL.md text, or null if the frontmatter is invalid. */
+export function parseSkill(skillPath: string, content: string): Skill | null {
+  const { metadata, body } = parseFrontmatter(content);
+
+  if (!metadata) {
+    console.warn(`Invalid SKILL.md frontmatter at ${skillPath}`);
+    return null;
+  }
+
+  return {
+    ...metadata,
+    instructions: body,
+    path: skillPath,
+  };
+}
+
 export async function loadSkillFromPath(skillPath: string): Promise<Skill | null> {
   try {
     const skillMdPath = await join(skillPath, 'SKILL.md');
@@ -55,19 +71,7 @@ export async function loadSkillFromPath(skillPath: string): Promise<Skill | null
       return null;
     }
 
-    const content = await readTextFile(skillMdPath);
-    const { metadata, body } = parseFrontmatter(content);
-
-    if (!metadata) {
-      console.warn(`Invalid SKILL.md frontmatter at ${skillPath}`);
-      return null;
-    }
-
-    return {
-      ...metadata,
-      instructions: body,
-      path: skillPath,
-    };
+    return parseSkill(skillPath, await readTextFile(skillMdPath));
   } catch (error) {
     console.error(`Error loading skill from ${skillPath}:`, error);
     return null;

@@ -224,16 +224,30 @@ async fn read_dir_headers(
     let max_bytes = req.bytes.unwrap_or(512);
     let ext_filter = req.ext.unwrap_or_default();
 
-    let mut entries = fs::read_dir(&resolved)
+    let files = read_headers(&resolved, &ext_filter, Some(max_bytes))
         .await
-        .map_err(|_| AppError::NotFound(format!("Directory not found: {}", req.path)))?;
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                AppError::NotFound(format!("Directory not found: {}", req.path))
+            }
+            _ => AppError::Internal(e.to_string()),
+        })?;
+
+    Ok(Json(json!({ "files": files })))
+}
+
+/// `{ name: { content, mtime } }` for each file in `dir` whose name ends with
+/// `ext`: the first `max_bytes` of it, or the whole file when `None`. A file
+/// that can't be opened is skipped rather than failing the listing.
+pub(crate) async fn read_headers(
+    dir: &std::path::Path,
+    ext_filter: &str,
+    max_bytes: Option<usize>,
+) -> std::io::Result<serde_json::Map<String, Value>> {
+    let mut entries = fs::read_dir(dir).await?;
 
     let mut files = serde_json::Map::new();
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?
-    {
+    while let Some(entry) = entries.next_entry().await? {
         let file_type = match entry.file_type().await {
             Ok(ft) => ft,
             Err(_) => continue,
@@ -242,21 +256,30 @@ async fn read_dir_headers(
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !ext_filter.is_empty() && !name.ends_with(&ext_filter) {
+        if !ext_filter.is_empty() && !name.ends_with(ext_filter) {
             continue;
         }
 
         let file_path = entry.path();
-        // Read up to max_bytes from the start of the file.
-        let mut buf = vec![0u8; max_bytes];
-        let read_len = match tokio::fs::File::open(&file_path).await {
-            Ok(mut f) => {
-                use tokio::io::AsyncReadExt;
-                f.read(&mut buf).await.unwrap_or(0)
+        let buf = match max_bytes {
+            // Read up to max_bytes from the start of the file.
+            Some(max_bytes) => {
+                let mut buf = vec![0u8; max_bytes];
+                let read_len = match tokio::fs::File::open(&file_path).await {
+                    Ok(mut f) => {
+                        use tokio::io::AsyncReadExt;
+                        f.read(&mut buf).await.unwrap_or(0)
+                    }
+                    Err(_) => continue,
+                };
+                buf.truncate(read_len);
+                buf
             }
-            Err(_) => continue,
+            None => match fs::read(&file_path).await {
+                Ok(buf) => buf,
+                Err(_) => continue,
+            },
         };
-        buf.truncate(read_len);
 
         let metadata = match fs::metadata(&file_path).await {
             Ok(m) => m,
@@ -280,7 +303,7 @@ async fn read_dir_headers(
         );
     }
 
-    Ok(Json(json!({ "files": files })))
+    Ok(files)
 }
 
 #[derive(Deserialize)]
