@@ -188,8 +188,7 @@
   line-height: 1;
 }
 
-/* Indicators and badges, then the title in its own column, so a long title
-   wraps beside its badges rather than under them. */
+/* Status indicators, then the title. Badges live on the meta line below. */
 .item-preview {
   display: flex;
   align-items: baseline;
@@ -231,12 +230,24 @@
 
 .item-meta {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
+.item-meta-start {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* The date and badges keep their size; the model name truncates instead. */
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .item-model {
+  min-width: 0;
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;

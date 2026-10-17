@@ -595,7 +595,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                  (unreadConversationIds.includes(item.id) || deliveredTaskIds.includes(item.id)) && (
                   <span className="unread-indicator" title={deliveredTaskIds.includes(item.id) ? "Task result delivered" : "New response"}>●</span>
                 )}
-                {getTypeBadge(item)}
                 <span className="item-title">
                   {highlightMatches(item.title)}
                   {item.type === 'conversation' && draftIds.has(item.id) && (
@@ -605,7 +604,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               </div>
               {renderSearchSnippet(item)}
               <div className="item-meta">
-                <span className="item-date">{formatDate(item.lastUpdated)}</span>
+                {/* Badges ride on the meta line so the title always gets the
+                    full row width. */}
+                <span className="item-meta-start">
+                  <span className="item-date">{formatDate(item.lastUpdated)}</span>
+                  {getTypeBadge(item)}
+                </span>
                 {item.type === 'conversation' && item.conversation && (
                   <span className="item-model" title={item.conversation.model}>
                     {getModelDisplayName(item.conversation.model)}
