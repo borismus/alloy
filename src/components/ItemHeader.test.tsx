@@ -52,5 +52,8 @@ describe('ItemHeader actions', () => {
     expect(screen.getByRole('heading', { name: 'Trip planning' }).hasAttribute('data-tauri-drag-region')).toBe(true);
     await user.click(screen.getByRole('button', { name: 'Copy title' }));
     expect(await navigator.clipboard.readText()).toBe('Trip planning');
+    // The hover-revealed button stays visible while it shows the check.
+    const copied = screen.getByRole('button', { name: 'Copied' });
+    expect(copied.closest('.item-header-copy')?.hasAttribute('data-copied')).toBe(true);
   });
 });

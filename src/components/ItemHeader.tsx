@@ -1,7 +1,6 @@
 import React from 'react';
 import { HeaderActions } from './HeaderActions';
-import { CopyButton } from './CodeBlock';
-import { AlloyTooltip, Button } from './ui';
+import { AlloyTooltip, Button, CopyButton } from './ui';
 import './ItemHeader.css';
 
 interface ItemHeaderProps {

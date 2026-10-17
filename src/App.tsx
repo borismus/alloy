@@ -69,24 +69,14 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'system-ui' }}>
-          <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Something went wrong</h1>
-          <p style={{ color: '#888', marginBottom: '1rem', fontSize: '0.875rem' }}>
+        <div style={{ padding: 'var(--space-8)', textAlign: 'center', fontFamily: 'var(--font-ui)', color: 'var(--color-text)' }}>
+          <h1 style={{ fontSize: 'var(--text-xl)', marginBottom: 'var(--space-2)' }}>Something went wrong</h1>
+          <p style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-md)' }}>
             {this.state.error?.message || 'An unexpected error occurred.'}
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '6px',
-              border: '1px solid #555',
-              background: 'transparent',
-              color: 'inherit',
-              cursor: 'pointer',
-            }}
-          >
+          <Button variant="secondary" onPress={() => window.location.reload()}>
             Reload
-          </button>
+          </Button>
         </div>
       );
     }
@@ -1190,10 +1180,10 @@ function AppContent() {
 
   if (initError) {
     return (
-      <div className="loading" style={{ flexDirection: 'column', gap: 16, padding: 32, textAlign: 'center' }}>
+      <div className="loading" style={{ flexDirection: 'column', gap: 'var(--space-4)', padding: 'var(--space-8)', textAlign: 'center' }}>
         <div style={{ fontWeight: 600 }}>{initError.title}</div>
         <div style={{ maxWidth: 480, opacity: 0.85, whiteSpace: 'pre-wrap' }}>{initError.detail}</div>
-        <button onClick={() => window.location.reload()}>Retry</button>
+        <Button variant="secondary" onPress={() => window.location.reload()}>Retry</Button>
       </div>
     );
   }

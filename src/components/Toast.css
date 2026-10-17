@@ -1,25 +1,26 @@
 .toast-container {
   position: fixed;
-  bottom: 1.5rem;
+  bottom: var(--space-6);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 9999;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
   pointer-events: none;
 }
 
+/* Neutral by default: inverted, like the tooltip. */
 .toast {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: #333;
-  color: #fff;
-  font-size: 0.875rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-text);
+  color: var(--color-canvas);
+  font-size: var(--text-md);
+  box-shadow: var(--shadow-popover);
   pointer-events: auto;
   cursor: pointer;
   animation: toast-slide-in 0.2s ease-out;
@@ -37,34 +38,39 @@
 }
 
 .toast-info {
-  background: #3b82f6;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
+/* Inverted text: dark on the bright dark-theme amber, light on the deeper
+   light-theme one. */
 .toast-warning {
-  background: #f59e0b;
-  color: #1a1a1a;
+  background: var(--color-warning);
+  color: var(--color-canvas);
 }
 
 .toast-error {
-  background: #ef4444;
+  background: var(--color-danger);
+  color: var(--color-on-accent);
 }
 
 .toast-message {
   flex: 1;
 }
 
+/* The dismiss icon takes the toast's text color on every tone. */
 .toast-dismiss {
-  background: none;
-  border: none;
+  display: flex;
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2)) calc(-1 * var(--space-1)) 0;
+}
+
+.toast-dismiss > button,
+.toast-dismiss > button[data-hovered] {
   color: inherit;
-  font-size: 1.25rem;
-  line-height: 1;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
+  background: transparent;
   opacity: 0.7;
 }
 
-.toast-dismiss:hover {
+.toast-dismiss > button[data-hovered] {
   opacity: 1;
 }

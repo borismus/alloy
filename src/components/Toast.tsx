@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { IconButton } from './ui';
 import './Toast.css';
 
 export interface ToastMessage {
@@ -24,7 +25,13 @@ export const Toast: React.FC<ToastProps> = ({ message, onDismiss, duration = 200
   return (
     <div className={`toast toast-${message.type || 'info'}`} onClick={() => onDismiss(message.id)}>
       <span className="toast-message">{message.message}</span>
-      <button className="toast-dismiss" aria-label="Dismiss">×</button>
+      <span className="toast-dismiss">
+        <IconButton label="Dismiss" size="compactIcon" onPress={() => onDismiss(message.id)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </IconButton>
+      </span>
     </div>
   );
 };

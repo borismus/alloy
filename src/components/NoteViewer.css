@@ -10,7 +10,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 2rem;
+  padding: var(--space-8);
   min-width: 0;
 }
 
@@ -34,8 +34,8 @@
   }
 
   .note-content-container {
-    padding: 1rem;
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    padding: var(--space-4);
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
   }
 
   .note-content {
