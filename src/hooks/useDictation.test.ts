@@ -83,22 +83,6 @@ describe('useDictation modes', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps continuous mode running after an automatic endpoint', async () => {
-    const onTranscript = vi.fn();
-    const onEndpoint = vi.fn();
-    const { result } = renderHook(() => useDictation({ apiKey: 'key', onTranscript, onEndpoint }));
-
-    await act(async () => { result.current.startDictation('continuous'); });
-    const client = sonioxMock.instances[0];
-    expect(client.audioOptions.enableEndpointDetection).toBe(true);
-
-    act(() => client.emitTokens([token('hello', 0), token('<end>', 10)]));
-
-    expect(onTranscript).toHaveBeenLastCalledWith('hello');
-    expect(onEndpoint).toHaveBeenCalledWith('hello');
-    expect(client.stop).not.toHaveBeenCalled();
-  });
-
   it('keeps manual dictation running until explicitly stopped', async () => {
     const onTranscript = vi.fn();
     const onEndpoint = vi.fn();

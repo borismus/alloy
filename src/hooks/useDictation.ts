@@ -2,7 +2,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { SonioxClient, type RecorderState } from '@soniox/speech-to-text-web';
 
 export type DictationState = 'idle' | 'starting' | 'recording' | 'stopping';
-export type DictationMode = 'continuous' | 'manual' | 'push-to-talk';
+/** Both modes record until told to stop: `manual` by the voice button,
+ *  `push-to-talk` by releasing a held Space. */
+export type DictationMode = 'manual' | 'push-to-talk';
 
 interface UseDictationOptions {
   apiKey: string | undefined;
@@ -16,9 +18,8 @@ interface UseDictationReturn {
   dictationState: DictationState;
   dictationMode: DictationMode | null;
   error: string | null;
-  startDictation: (mode?: DictationMode) => void;
+  startDictation: (mode: DictationMode) => void;
   finishDictation: () => void;
-  toggleDictation: () => void;
   cancelDictation: () => void;
 }
 
@@ -106,7 +107,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     };
   }, []);
 
-  const startDictation = useCallback((mode: DictationMode = 'continuous') => {
+  const startDictation = useCallback((mode: DictationMode) => {
     if (!apiKey) {
       setError('Soniox API key not configured. Add sonioxApiKey to config.yaml.');
       return;
@@ -155,17 +156,9 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
           const fullText = accFinalTextRef.current + tokensToText(newTokens, accSpeakerRef, !!accFinalTextRef.current);
           latestTextRef.current = fullText;
           console.log('[Dictation] <end>, fullText:', JSON.stringify(fullText));
+          // Endpoint detection is off, so this is not a cue to submit: that
+          // happens only on the voice button or a Space release.
           onTranscriptRef.current(fullText);
-
-          // Continuous dictation still treats each endpoint as a new
-          // segment. Conversation modes disable endpoint detection and submit
-          // only after an explicit button press or Space release.
-          if (modeRef.current === 'continuous') {
-            onEndpointRef.current(fullText);
-            accFinalTextRef.current = '';
-            accFinalEndMsRef.current = -1;
-            latestTextRef.current = '';
-          }
         } else {
           // Streaming partial — accumulate final tokens, show accumulated + non-final
           const finalTokens = tokens.filter(t => t.is_final);
@@ -205,11 +198,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       onFinished: () => {
         const mode = modeRef.current;
         const finalText = latestTextRef.current;
-        if (
-          (mode === 'manual' || mode === 'push-to-talk')
-          && !submissionCompletedRef.current
-          && finalText.trim()
-        ) {
+        if (mode && !submissionCompletedRef.current && finalText.trim()) {
           submissionCompletedRef.current = true;
           onTranscriptRef.current(finalText);
           onEndpointRef.current(finalText);
@@ -249,7 +238,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
       void client.start({
         model: 'stt-rt-preview',
         languageHints: ['en'],
-        enableEndpointDetection: mode === 'continuous',
+        enableEndpointDetection: false,
         enableSpeakerDiarization: true,
         stream: micStream,
       });
@@ -278,14 +267,6 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     setDictationMode(null);
   }, [releaseStream]);
 
-  const toggleDictation = useCallback(() => {
-    if (dictationState === 'idle') {
-      startDictation('continuous');
-    } else if (dictationState === 'recording') {
-      finishDictation();
-    }
-  }, [dictationState, startDictation, finishDictation]);
-
   return {
     stream,
     dictationState,
@@ -293,7 +274,6 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
     error,
     startDictation,
     finishDictation,
-    toggleDictation,
     cancelDictation,
   };
 }
