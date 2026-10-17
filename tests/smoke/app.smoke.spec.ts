@@ -427,7 +427,7 @@ test('task model and email controls persist direct changes', async ({ page }) =>
   await scheduleToggle.click();
   await expect(scheduleSwitch).not.toBeChecked();
   await expect(page.locator('.task-schedule-card.paused')).toBeVisible();
-  await expect(page.locator('.task-kind.paused')).toHaveText('Disabled');
+  await expect(page.locator('.task-next-run.paused')).toContainText('Paused');
 
   // Both controls write the task file rather than changing only local UI state.
   await page.reload();

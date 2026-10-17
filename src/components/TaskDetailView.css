@@ -75,12 +75,6 @@
   background: var(--color-success-soft);
 }
 
-.task-kind.paused {
-  color: var(--color-warning);
-  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
-}
-
 .task-schedule-card {
   padding: 1.1rem 1.2rem;
   border: 1px solid var(--border-color, var(--color-border));
@@ -284,35 +278,6 @@
   min-width: 44px;
   min-height: 44px;
   justify-content: center;
-}
-
-.task-state-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.12rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.task-state-tag.on {
-  background: var(--color-success-soft);
-  color: var(--color-success);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.task-state-tag.off {
-  background: var(--color-code-bg);
-  color: var(--color-text-secondary);
-  border: 1px solid rgba(107, 114, 128, 0.25);
-}
-
-.task-state-tag.disabled {
-  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
-  color: var(--color-warning);
-  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
 }
 
 .task-config-update-error {

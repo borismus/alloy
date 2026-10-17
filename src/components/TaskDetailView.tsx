@@ -401,13 +401,9 @@ export function TaskDetailView({
           <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''} ${task.enabled ? '' : 'paused'}`}>
             <div className="task-schedule-card-header">
               <div className="task-schedule-description">{schedule.description}</div>
-              {task.enabled ? (
-                <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
-                  {task.trigger ? 'Conditional' : 'Every run'}
-                </span>
-              ) : (
-                <span className="task-kind paused">Disabled</span>
-              )}
+              <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
+                {task.trigger ? 'Conditional' : 'Every run'}
+              </span>
             </div>
             <div className="task-schedule-technical">
               <span>{schedule.timezone}</span>
@@ -455,7 +451,7 @@ export function TaskDetailView({
               <span className="task-field-label">Schedule</span>
               <div
                 className="task-model-value task-switch-control"
-                title={task.enabled ? 'This task runs on its schedule' : 'This task is disabled and will not run on its schedule'}
+                title={task.enabled ? 'This task runs on its schedule' : 'This task is paused and will not run on its schedule'}
               >
                 <Switch
                   aria-label="Run this task on its schedule"
@@ -463,9 +459,6 @@ export function TaskDetailView({
                   onChange={handleToggleEnabled}
                   isDisabled={isToggling}
                 />
-                <span className={`task-state-tag ${task.enabled ? 'on' : 'disabled'}`}>
-                  {task.enabled ? 'Enabled' : 'Disabled'}
-                </span>
               </div>
             </div>
             <div className="task-toggle">
@@ -480,9 +473,6 @@ export function TaskDetailView({
                   onChange={handleEmailChange}
                   isDisabled={updatingField !== null}
                 />
-                <span className={`task-state-tag ${task.email ? 'on' : 'off'}`}>
-                  {task.email ? 'On' : 'Off'}
-                </span>
               </div>
             </div>
           </div>
@@ -561,9 +551,11 @@ export function TaskDetailView({
           ) : (
             <div className="no-response">
               <p>No runs yet.</p>
-              <p className="no-response-hint">
-                {task.enabled ? 'The task has not run yet — use “Run now” or wait for the next scheduled run.' : 'This task is disabled.'}
-              </p>
+              {task.enabled && (
+                <p className="no-response-hint">
+                  The task has not run yet — use “Run now” or wait for the next scheduled run.
+                </p>
+              )}
             </div>
           )}
         </section>

@@ -196,9 +196,10 @@ describe('TaskDetailView configuration controls', () => {
       </TaskProvider>,
     );
 
-    expect(screen.getByText('Disabled', { selector: '.task-kind.paused' })).toBeTruthy();
-    expect(screen.getByText('Disabled', { selector: '.task-state-tag.disabled' })).toBeTruthy();
     expect(document.querySelector('.task-schedule-card.paused')).not.toBeNull();
+    expect(screen.getByText('Paused', { selector: '.task-next-run.paused span' })).toBeTruthy();
     expect(screen.getByText(/will not run on its schedule/)).toBeTruthy();
+    // Said once on the page, in one word: no "Disabled" anywhere.
+    expect(screen.queryByText(/disabled/i)).toBeNull();
   });
 });
