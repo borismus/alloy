@@ -5,16 +5,16 @@
   flex-shrink: 0;
 }
 
-.header-actions > button {
-  width: 36px;
-  height: 36px;
-}
-
 /* Keep in sync with MOBILE_MEDIA_QUERY in src/hooks/useIsMobile.ts. */
 @media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
   .header-actions > button {
     width: 40px;
     height: 40px;
     touch-action: manipulation;
+  }
+
+  .header-actions svg {
+    width: 24px;
+    height: 24px;
   }
 }

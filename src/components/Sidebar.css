@@ -565,9 +565,14 @@
   background: var(--color-border);
 }
 
-.mobile-app-icon {
+.mobile-app-icon,
+.sidebar-app-icon {
   flex-shrink: 0;
-  color: var(--color-text);
+  border-radius: 8px;
+}
+
+.sidebar-app-icon {
+  border-radius: 7px;
 }
 
 /* Hide desktop back button in full-screen mode */

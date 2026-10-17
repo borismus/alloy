@@ -20,6 +20,7 @@ import './Sidebar.css';
 
 interface SidebarSearchControlProps {
   onQueryChange: (query: string) => void;
+  showLogo: boolean;
 }
 
 /**
@@ -30,6 +31,7 @@ interface SidebarSearchControlProps {
 const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlProps>(
   function SidebarSearchControl({
     onQueryChange,
+    showLogo,
   }, ref) {
     const textareaProps = useTextareaProps();
     const [value, setValue] = useState('');
@@ -52,6 +54,9 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
 
     return (
       <div className="search-box" data-tauri-drag-region>
+        {showLogo && (
+          <img src="/icon-192.png" alt="Alloy" className="sidebar-app-icon" width="32" height="32" />
+        )}
         <div className="search-input-wrapper">
           <input
             ref={ref}
@@ -480,10 +485,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     <div className={`sidebar ${fullScreen ? 'full-screen' : ''}`}>
       {fullScreen && onMobileBack && (
         <div className="mobile-sidebar-header">
-          <svg className="mobile-app-icon" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 2.5 22 20.5H2z" />
-            <path d="M12 9.5 16.4 17.2H7.6z" />
-          </svg>
+          <img src="/icon-192.png" alt="Alloy" className="mobile-app-icon" width="40" height="40" />
           <h2>Alloy</h2>
           <HeaderActions />
         </div>
@@ -491,6 +493,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       <SidebarSearchControl
         ref={searchInputRef}
         onQueryChange={setSearchQuery}
+        showLogo={!fullScreen}
       />
 
       <div className="filter-tabs-container">
