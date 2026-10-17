@@ -187,8 +187,8 @@
     min-width: 0;
   }
 
-  .ai-edit-row .model-selector-button {
-    width: 100%;
+  .ai-edit-row .model-selector-container > button {
+    flex: 1;
     max-width: none;
   }
 

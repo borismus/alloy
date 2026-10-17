@@ -513,6 +513,26 @@ test('mobile: the composer stays within two rows', async ({ page }, testInfo) =>
   expect(rowCount).toBeLessThanOrEqual(2);
 });
 
+test('mobile: the note and task edit composers stay within two rows', async ({ page }, testInfo) => {
+  // Regression: the edit composer's mobile rules targeted a picker class the
+  // rebuilt ModelSelector no longer has, so the picker, the field and a lone
+  // send button stacked into three rows.
+  test.skip(testInfo.project.name !== 'mobile', 'mobile-only layout check');
+
+  for (const title of ['project-ideas', 'Daily standup prompt']) {
+    await page.locator('.timeline-item').filter({ hasText: title }).click();
+    await expect(page.locator('.ai-edit-row textarea')).toBeVisible();
+    const rowCount = await page.evaluate(() => {
+      const visible = [...document.querySelectorAll('.ai-edit-row > *')].filter(
+        (el) => (el as HTMLElement).offsetParent !== null,
+      );
+      return new Set(visible.map((el) => Math.round(el.getBoundingClientRect().top))).size;
+    });
+    expect(rowCount).toBeLessThanOrEqual(2);
+    await page.getByRole('button', { name: 'Go back' }).first().click();
+  }
+});
+
 test('mobile dialogs stay above the software keyboard', async ({ page }, testInfo) => {
   // Regression: the rename sheet was pinned to the bottom of the layout
   // viewport, which iOS does not shrink for the keyboard, so the field being

@@ -210,16 +210,18 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
           disabled={isGenerating}
           {...textareaProps}
         />
-        <ModelSelector
-          value={model}
-          onChange={setModel}
-          disabled={isGenerating}
-          models={availableModels}
-          favoriteModels={favoriteModels}
-          defaultModel={defaultModel}
-          onToggleFavorite={onToggleFavorite}
-          onSetDefault={onSetDefault}
-        />
+        <div className="model-selector-container">
+          <ModelSelector
+            value={model}
+            onChange={setModel}
+            disabled={isGenerating}
+            models={availableModels}
+            favoriteModels={favoriteModels}
+            defaultModel={defaultModel}
+            onToggleFavorite={onToggleFavorite}
+            onSetDefault={onSetDefault}
+          />
+        </div>
         {isGenerating ? (
           <button type="button" className="ai-edit-submit stop" onClick={handleStop} aria-label="Stop">
             ■
