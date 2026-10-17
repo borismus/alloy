@@ -13,6 +13,7 @@ import {
 } from 'react-aria-components';
 import { ModelInfo } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { Badge } from './ui';
 import { modelDisplayName, providerLabel, providerTag } from '../utils/models';
 import styles from './ModelSelector.module.css';
 
@@ -34,15 +35,16 @@ function LockIcon({ size = 10 }: { size?: number }) {
 function ProviderTag({ model }: { model: ModelInfo }) {
   const tag = providerTag(model.provider, model.key);
   const full = providerLabel(model.provider, model.key);
-  if (model.local) {
-    return (
-      <span className={`${styles.providerTag} ${styles.providerTagLocal}`} title={`${full} · runs locally, not sent to the cloud`}>
-        <LockIcon /> {tag}
-      </span>
-    );
-  }
   return (
-    <span className={styles.providerTag} title={full}>{tag}</span>
+    <span className={styles.providerTag}>
+      {model.local ? (
+        <Badge tone="success" title={`${full} · runs locally, not sent to the cloud`}>
+          <span className={styles.providerTagContent}><LockIcon /> {tag}</span>
+        </Badge>
+      ) : (
+        <Badge title={full}>{tag}</Badge>
+      )}
+    </span>
   );
 }
 
