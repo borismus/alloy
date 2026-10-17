@@ -1,10 +1,3 @@
-/* ConversationView - reusable message list component */
-.conversation-view {
-  flex: 1;
-  overflow-y: auto;
-  padding: 2rem;
-}
-
 .chat-interface {
   flex: 1;
   display: flex;
@@ -32,25 +25,25 @@
   content: 'Drop files here';
   position: absolute;
   inset: 0;
-  background: rgba(102, 126, 234, 0.1);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   border: 3px dashed var(--color-accent);
-  border-radius: 12px;
-  margin: 1rem;
+  border-radius: var(--radius-panel);
+  margin: var(--space-4);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--color-accent);
   pointer-events: none;
-  z-index: 100;
+  z-index: var(--z-popover);
 }
 
 .messages-container {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 2rem;
+  padding: var(--space-8);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
@@ -65,11 +58,9 @@
 }
 
 .welcome-message,
-.no-conversation,
-.no-provider,
-.api-key-setup {
+.no-provider {
   text-align: center;
-  padding: 4rem 2rem;
+  padding: 4rem var(--space-8);
   color: var(--color-text-secondary);
 }
 
@@ -77,21 +68,19 @@
 .loading-conversation {
   display: flex;
   justify-content: center;
-  padding: 4rem 2rem;
+  padding: 4rem var(--space-8);
 }
 
 .welcome-message h2,
-.no-conversation h2,
-.no-provider h2,
-.api-key-setup h2 {
-  margin: 0 0 1rem 0;
+.no-provider h2 {
+  margin: 0 0 var(--space-4) 0;
   color: var(--color-text);
 }
 
 .model-info {
   text-align: center;
-  padding: 1rem 0 2rem 0;
-  font-size: 0.875rem;
+  padding: var(--space-4) 0 var(--space-8) 0;
+  font-size: var(--text-md);
   color: var(--color-text-muted);
 }
 
@@ -101,7 +90,7 @@
 }
 
 .model-separator {
-  margin: 0 0.5rem;
+  margin: 0 var(--space-2);
 }
 
 .model-name {
@@ -109,7 +98,7 @@
 }
 
 .message {
-  margin-bottom: 2rem;
+  margin-bottom: var(--space-8);
   max-width: 800px;
 }
 
@@ -119,7 +108,7 @@
 }
 
 @keyframes message-highlight-pulse {
-  0% { background-color: rgba(59, 130, 246, 0.3); }
+  0% { background-color: color-mix(in srgb, var(--color-accent) 30%, transparent); }
   100% { background-color: transparent; }
 }
 
@@ -129,28 +118,17 @@
   margin-left: auto;
 }
 
-.message-role {
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--color-text-secondary);
-}
-
-.message.user .message-role {
-  text-align: right;
-}
-
 .message-content {
-  padding: 1rem 1.25rem;
-  border-radius: 12px;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-panel);
   line-height: 1.6;
   word-wrap: break-word;
   overflow: hidden;
 }
 
 .message.user .message-content {
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: white;
+  background: var(--gradient-accent);
+  color: var(--color-on-accent);
   margin-left: auto;
 }
 
@@ -167,8 +145,8 @@
 /* Thinking animation - shared across all chat contexts */
 .thinking-indicator {
   display: flex;
-  gap: 4px;
-  padding: 4px 0;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
 }
 
 .thinking-indicator span {
@@ -207,7 +185,7 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.5rem 1rem;
+  padding: var(--space-2) var(--space-4);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-style: italic;
@@ -219,10 +197,10 @@
 
 .input-form {
   border-top: 1px solid var(--color-border);
-  padding: 1.5rem;
+  padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-3);
   background: var(--color-canvas);
   flex-shrink: 0;
   touch-action: manipulation;
@@ -232,7 +210,7 @@
 
 .input-row {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: flex-end;
 }
 
@@ -249,8 +227,8 @@
    Without this the attachment was dropped silently and the model answered the
    bare text, which reads as a broken upload. */
 .attachment-warning {
-  margin: 0 0 0.5rem 0;
-  padding: 0.5rem 0.75rem;
+  margin: 0 0 var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
   background: var(--color-warning-soft);
   color: var(--color-warning);
@@ -267,7 +245,7 @@
 /* Pending images preview */
 .pending-images {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -281,7 +259,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
 }
 
@@ -289,31 +267,6 @@
   position: absolute;
   top: -8px;
   right: -8px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid white;
-  background: rgba(17, 24, 39, 0.85);
-  color: white;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  transition: background-color 0.15s ease, transform 0.15s ease;
-}
-
-.remove-image:hover {
-  background: var(--color-danger);
-  transform: scale(1.05);
-}
-
-.remove-image:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.4);
 }
 
 /* Pending/sent file attachments (PDF, Markdown) */
@@ -326,7 +279,7 @@
 .attachment-chip {
   display: inline-block;
   max-width: 16rem;
-  padding: 0.375rem 0.75rem;
+  padding: 0.375rem var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   font-size: var(--text-sm);
@@ -338,68 +291,38 @@
 .message-files {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .message.user .attachment-chip {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: color-mix(in srgb, var(--color-on-accent) 30%, transparent);
 }
 
 /* Message images */
 .message-image {
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-3);
 }
 
 .message-image img {
   max-width: 100%;
   max-height: 400px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
 }
 
 .message.user .message-image img {
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.model-selector {
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  font-size: 1rem;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
-  background: var(--color-surface-raised);
-  cursor: pointer;
-  color: var(--color-text);
-  font-weight: 500;
-  min-width: 140px;
-  height: 48px;
-}
-
-.model-selector option {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
-  font-size: 1rem;
-  font-weight: 400;
-}
-
-.model-selector:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  color: var(--color-text-muted);
-}
-
-.model-selector:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  border-color: color-mix(in srgb, var(--color-on-accent) 30%, transparent);
 }
 
 .input-form textarea {
   flex: 1;
-  padding: 0.75rem 1rem;
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  font-size: 1rem;
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: var(--text-base);
   font-family: inherit;
   resize: none;
   /* Cap by viewport height, not a fixed 200px. A phone in landscape is ~874px
@@ -424,7 +347,7 @@
 
 .input-form textarea::-webkit-scrollbar-thumb {
   background: var(--color-scrollbar);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .input-form textarea::-webkit-scrollbar-thumb:hover {
@@ -434,114 +357,37 @@
 .input-form textarea:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  box-shadow: var(--shadow-focus);
 }
 
 .input-form textarea::placeholder {
   color: var(--color-text-muted);
 }
 
-.api-key-setup {
-  max-width: 500px;
-  margin: auto;
-}
-
-.api-key-input {
-  width: 100%;
-  padding: 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 1rem;
-  margin-bottom: 1rem;
-}
-
-.api-key-submit {
-  padding: 1rem 2rem;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.api-key-note {
-  margin-top: 1rem;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
-
-.api-key-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.api-key-modal-content {
-  background: var(--color-surface-raised);
-  padding: 2rem;
-  border-radius: 12px;
-  max-width: 400px;
-  width: 90%;
-}
-
-.api-key-modal-actions {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.api-key-modal-actions button {
-  flex: 1;
-  padding: 0.75rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.api-key-modal-actions button:first-child {
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: white;
-}
-
-.api-key-modal-actions button:last-child {
-  background: var(--color-border);
-  color: var(--color-text);
-}
-
 /* User-message Markdown overrides. Shared element styling lives in
    MarkdownContent.css; this block only adapts it to the accent bubble. */
 .message.user .message-content code {
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--color-on-accent) 20%, transparent);
 }
 
 .message.user .message-content blockquote {
-  border-left-color: rgba(255, 255, 255, 0.5);
-  color: rgba(255, 255, 255, 0.9);
+  border-left-color: color-mix(in srgb, var(--color-on-accent) 50%, transparent);
+  color: color-mix(in srgb, var(--color-on-accent) 90%, transparent);
 }
 
 .message.user .message-content th,
 .message.user .message-content td {
-  border-color: rgba(255, 255, 255, 0.3);
+  border-color: color-mix(in srgb, var(--color-on-accent) 30%, transparent);
   color: var(--color-text);
-  background: rgba(255, 255, 255, 0.9);
+  background: color-mix(in srgb, var(--color-on-accent) 90%, transparent);
 }
 
 .message.user .message-content th {
-  background: rgba(255, 255, 255, 0.95);
+  background: color-mix(in srgb, var(--color-on-accent) 95%, transparent);
 }
 
 .message.user .message-content a {
-  color: white;
+  color: var(--color-on-accent);
   text-decoration: underline;
 }
 
@@ -549,40 +395,40 @@
    colors are fixed rather than theme tokens (accent-soft is a translucent
    indigo in dark mode, which vanished against the gradient). */
 .message.user .message-content a.wiki-link {
-  color: white;
-  background: rgba(255, 255, 255, 0.2);
+  color: var(--color-on-accent);
+  background: color-mix(in srgb, var(--color-on-accent) 20%, transparent);
 }
 
 .message.user .message-content a.wiki-link:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--color-on-accent) 30%, transparent);
 }
 
 .message.user .message-content a.provenance-link {
-  color: rgba(255, 255, 255, 0.7);
+  color: color-mix(in srgb, var(--color-on-accent) 70%, transparent);
 }
 
 .message.user .message-content a.provenance-link:hover {
-  color: white;
+  color: var(--color-on-accent);
 }
 
 .message.user .message-content hr {
-  border-top-color: rgba(255, 255, 255, 0.3);
+  border-top-color: color-mix(in srgb, var(--color-on-accent) 30%, transparent);
 }
 
 /* Log messages */
 .message.log {
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
   max-width: none;
   text-align: center;
 }
 
 .log-content {
   display: inline-block;
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
-  padding: 0.25rem 0.75rem;
+  padding: var(--space-1) var(--space-3);
   background: var(--color-surface);
-  border-radius: 12px;
+  border-radius: var(--radius-panel);
 }
 
 /* Error logs: align the text with a copy button so the full upstream message
@@ -590,7 +436,7 @@
 .message.log.error .log-content {
   display: inline-flex;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: var(--space-2);
   max-width: min(680px, 90%);
   text-align: left;
   color: var(--color-danger);
@@ -602,50 +448,21 @@
   word-break: break-word;
 }
 
-.log-copy-button {
+.log-copy {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-danger);
-  opacity: 0.65;
-  cursor: pointer;
-  transition: opacity 0.12s, background-color 0.12s, color 0.12s;
-}
-
-.log-copy-button:hover {
-  opacity: 1;
-  background: rgba(180, 35, 42, 0.1);
-}
-
-.log-copy-button.copied {
-  color: var(--color-success);
-  opacity: 1;
 }
 
 /* Compacted summary divider */
 .message.compacted {
-  margin: 0.5rem 0 1rem;
+  margin: var(--space-2) 0 var(--space-4);
   max-width: none;
 }
 
 .compacted-toggle {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 100%;
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: 0.75rem;
-  cursor: pointer;
-  padding: 0.25rem 0;
 }
 
 .compacted-toggle::before,
@@ -665,22 +482,22 @@
 }
 
 .compacted-chevron {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 
 .compacted-summary {
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
+  margin-top: var(--space-2);
+  font-size: var(--text-md);
   color: var(--color-text-secondary);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
 }
 
 .thinking-disclosure {
-  margin: 0.25rem 0 0.75rem;
-  color: var(--text-tertiary, var(--color-text-muted));
+  margin: var(--space-1) 0 var(--space-3);
+  color: var(--color-text-muted);
 }
 
 .thinking-disclosure-heading {
@@ -698,12 +515,12 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .thinking-disclosure.active .thinking-disclosure-toggle {
-  color: var(--text-secondary, var(--color-text-secondary));
+  color: var(--color-text-secondary);
 }
 
 .thinking-disclosure-toggle:disabled {
@@ -714,7 +531,7 @@
 .thinking-disclosure-toggle[data-focus-visible] {
   outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
   outline-offset: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .thinking-chevron {
@@ -737,11 +554,11 @@
   max-height: 15rem;
   overflow: auto;
   margin-top: 0.45rem;
-  padding: 0.55rem 0.75rem;
+  padding: 0.55rem var(--space-3);
   border-left: 2px solid color-mix(in srgb, currentColor 28%, transparent);
   background: color-mix(in srgb, currentColor 4%, transparent);
-  color: var(--text-secondary, var(--color-text-secondary));
-  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -750,9 +567,9 @@
 .response-summary {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 2rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-8);
 }
 
 /* Top-level answers read like documents on the canvas. Nested response cards
@@ -771,7 +588,7 @@
 .messages-container > [data-message-id] > .response-summary .markdown-content,
 .messages-container > .response-summary .markdown-content {
   font-family: var(--font-ui);
-  font-size: 1.035rem;
+  font-size: var(--text-base);
   font-weight: 400;
   line-height: 1.68;
 }
@@ -783,17 +600,17 @@
 
 .messages-container > [data-message-id] > .response-summary .markdown-content h1,
 .messages-container > .response-summary .markdown-content h1 {
-  font-size: 1.375rem;
+  font-size: 1.375rem; /* ds-allow: answer h1 sits between --text-xl and the Markdown h2 */
 }
 
 .messages-container > [data-message-id] > .response-summary .markdown-content h2,
 .messages-container > .response-summary .markdown-content h2 {
-  font-size: 1.2rem;
+  font-size: var(--text-xl);
 }
 
 .messages-container > [data-message-id] > .response-summary .markdown-content h3,
 .messages-container > .response-summary .markdown-content h3 {
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
 }
 
 .messages-container > [data-message-id] > .response-summary .markdown-content :is(h2, h3),
@@ -803,18 +620,18 @@
 
 .messages-container > [data-message-id] > .response-summary .markdown-content table,
 .messages-container > .response-summary .markdown-content table {
-  font-size: 0.92rem;
+  font-size: var(--text-md);
 }
 
 .response-summary-header {
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--text-md);
   color: var(--color-accent);
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
 }
 
 .response-summary-content {
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   color: var(--color-text);
   line-height: 1.6;
 }
@@ -823,8 +640,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .messages-container > [data-message-id] > .response-summary .response-footer,
@@ -834,40 +651,15 @@
 }
 
 .response-summary .usage-badge {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
 /* Response latency, shown left of the token badge in the footer. */
 .response-summary .latency-badge {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
-}
-
-.copy-response-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 4px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.copy-response-button:hover {
-  color: var(--color-accent);
-  background: rgba(102, 126, 234, 0.1);
-}
-
-.copy-response-button.copied {
-  opacity: 1;
-  color: #4caf50;
 }
 
 .response-summary .waiting-text {
@@ -886,13 +678,13 @@
    error — the content above it is real — but attached to the answer, not the
    footer, so it reads as a qualifier on what was just said. */
 .response-summary .response-incomplete-notice {
-  margin: 0.75rem 0 0;
-  padding: 0.5rem 0.7rem;
-  border-left: 3px solid var(--warning-text);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) 0.7rem;
+  border-left: 3px solid var(--color-warning);
   border-radius: var(--radius-sm);
-  background: var(--warning-bg);
+  background: var(--color-warning-soft);
   color: var(--color-text-secondary);
-  font-size: 0.85rem;
+  font-size: var(--text-md);
   line-height: 1.45;
   -webkit-user-select: text;
   user-select: text;
@@ -904,7 +696,7 @@
   height: 8px;
   background: var(--color-accent);
   border-radius: 50%;
-  margin-left: 0.5rem;
+  margin-left: var(--space-2);
   animation: pulse 1s ease-in-out infinite;
 }
 
@@ -927,13 +719,13 @@
   }
 
   .input-form {
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
   .input-form .input-row {
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .input-form .input-row textarea {
@@ -970,10 +762,10 @@
 
 /* Queued messages */
 .queued-messages {
-  padding: 0.5rem 1.5rem;
+  padding: var(--space-2) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
   flex-shrink: 0;
   max-height: 150px;
   overflow-y: auto;
@@ -983,19 +775,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.35rem 0.75rem;
+  padding: 0.35rem var(--space-3);
   background: var(--color-surface);
   border: 1px solid var(--color-surface-hover);
-  border-radius: 8px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   color: var(--color-text-secondary);
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .queued-message-content {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
 }
@@ -1012,24 +804,14 @@
 }
 
 .queued-images-badge {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   background: var(--color-surface-hover);
   padding: 0.15rem 0.4rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 
 .queued-message-remove {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.1rem;
-  color: var(--color-text-muted);
-  padding: 0.2rem 0.4rem;
+  font-size: var(--text-lg);
   line-height: 1;
-  flex-shrink: 0;
-}
-
-.queued-message-remove:hover {
-  color: var(--color-danger);
 }

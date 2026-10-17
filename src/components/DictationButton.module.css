@@ -11,7 +11,7 @@
 .bars > span {
   width: 3px;
   height: calc(4px + var(--level, 0) * 18px * var(--scale));
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: currentColor;
   transition: height 60ms linear;
 }

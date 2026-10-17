@@ -18,6 +18,7 @@ import { ThreadCostChip } from './ThreadCostChip';
 import { MarkdownContent } from './MarkdownContent';
 import { ChatInputForm, ChatInputFormHandle } from './ChatInputForm';
 import { QueuedMessagesList } from './QueuedMessagesList';
+import { Button, CopyButton } from './ui';
 import './ChatInterface.css';
 
 interface UserMessageProps {
@@ -63,35 +64,11 @@ const UserMessage = React.memo(({ message, getImageUrl, onNavigateToNote, onNavi
 // get a copy button so the full upstream message can be grabbed for debugging.
 const LogMessage = React.memo(({ message }: { message: Message }) => {
   const isError = message.content.startsWith('Error:');
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [message.content]);
   return (
     <div className={`message log${isError ? ' error' : ''}`}>
       <div className="log-content">
         <span className="log-text">{message.content}</span>
-        {isError && (
-          <button
-            className={`log-copy-button ${copied ? 'copied' : ''}`}
-            onClick={handleCopy}
-            title="Copy error"
-            aria-label="Copy error"
-          >
-            {copied ? (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            )}
-          </button>
-        )}
+        {isError && <CopyButton text={message.content} label="Copy error" className="log-copy" />}
       </div>
     </div>
   );
@@ -105,16 +82,18 @@ const CompactedMessage = React.memo(({ message }: { message: Message }) => {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="message compacted">
-      <button
-        type="button"
-        className="compacted-toggle"
-        onClick={() => setExpanded(e => !e)}
-        aria-expanded={expanded}
-      >
-        <span className="compacted-icon">⤵</span>
-        <span className="compacted-label">Earlier conversation summarized to save context</span>
-        <span className="compacted-chevron">{expanded ? '▾' : '▸'}</span>
-      </button>
+      <div className="compacted-toggle">
+        <Button
+          variant="quiet"
+          size="small"
+          onPress={() => setExpanded(e => !e)}
+          aria-expanded={expanded}
+        >
+          <span className="compacted-icon">⤵</span>
+          <span className="compacted-label">Earlier conversation summarized to save context</span>
+          <span className="compacted-chevron">{expanded ? '▾' : '▸'}</span>
+        </Button>
+      </div>
       {expanded && (
         <div className="compacted-summary">
           <MarkdownContent content={message.content} />

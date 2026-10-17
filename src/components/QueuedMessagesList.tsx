@@ -1,5 +1,6 @@
 import React from 'react';
 import type { QueuedMessage } from '../types';
+import { IconButton } from './ui';
 
 interface QueuedMessagesListProps {
   queue: QueuedMessage[];
@@ -23,13 +24,9 @@ export const QueuedMessagesList = React.memo(({ queue, onRemove }: QueuedMessage
               {qm.content}
             </span>
           </div>
-          <button
-            className="queued-message-remove"
-            onClick={() => onRemove(qm.id)}
-            aria-label="Remove queued message"
-          >
-            ×
-          </button>
+          <IconButton label="Remove queued message" size="compactIcon" onPress={() => onRemove(qm.id)}>
+            <span className="queued-message-remove" aria-hidden="true">×</span>
+          </IconButton>
         </div>
       ))}
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { suggestTitles } from '../services/titleSuggestions';
+import { Button } from './ui';
 
 interface TitleSuggestionsProps {
   conversationId: string;
@@ -30,9 +31,9 @@ export function TitleSuggestions({ conversationId, onPick }: TitleSuggestionsPro
   return (
     <div className="title-suggestions" role="group" aria-label="Suggested titles">
       {titles.map(title => (
-        <button key={title} type="button" className="title-suggestion" onClick={() => onPick(title)}>
+        <Button key={title} size="small" onPress={() => onPick(title)}>
           {title}
-        </button>
+        </Button>
       ))}
     </div>
   );

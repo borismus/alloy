@@ -7,7 +7,7 @@ import { useHoldToDictate } from '../hooks/useHoldToDictate';
 import { useTextareaProps } from '../utils/textareaProps';
 import { ModelSelector } from './ModelSelector';
 import { DictationButton } from './DictationButton';
-import { AlloyTooltip, Button } from './ui';
+import { AlloyTooltip, Button, IconButton } from './ui';
 import { SlashCommandMenu, SlashCommandItem } from './SlashCommandMenu';
 import { skillRegistry } from '../services/skills';
 import { getComposerDraft, setComposerDraft } from '../services/composerDrafts';
@@ -371,14 +371,16 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
               {attachment.preview
                 ? <img src={attachment.preview} alt={`Pending ${idx + 1}`} />
                 : <span className="attachment-chip" title={attachment.name}>{attachment.name}</span>}
-              <button
-                type="button"
-                className="remove-image"
-                aria-label={`Remove ${attachment.name}`}
-                onClick={() => handleRemoveAttachment(idx)}
-              >
-                ×
-              </button>
+              <span className="remove-image">
+                <IconButton
+                  label={`Remove ${attachment.name}`}
+                  variant="secondary"
+                  size="compactIcon"
+                  onPress={() => handleRemoveAttachment(idx)}
+                >
+                  <span aria-hidden="true">×</span>
+                </IconButton>
+              </span>
             </div>
           ))}
         </div>
