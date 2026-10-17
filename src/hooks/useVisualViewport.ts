@@ -35,6 +35,17 @@ export function useVisualViewport() {
     let lastTop = '';
 
     const update = () => {
+      // The page itself never scrolls (html, body and #root are fixed), so an
+      // offset with no keyboard up is one iOS left behind after the keyboard
+      // went away. Following it would draw the app that far down, header under
+      // the status bar, until something else reset the scroll (two rotations
+      // did). Scroll back instead; the resulting viewport scroll event calls
+      // update again with the settled offset. A keyboard shrinks the visual
+      // viewport below the layout viewport, and then the offset is real.
+      const keyboardUp = vv.height < window.innerHeight - 1;
+      if (!keyboardUp && (vv.offsetTop > 0 || window.scrollY > 0)) {
+        window.scrollTo(0, 0);
+      }
       const style = document.documentElement.style;
       const height = `${vv.height}px`;
       const top = `${vv.offsetTop}px`;
@@ -70,6 +81,7 @@ export function useVisualViewport() {
     // i.e. until another resize happens to land on settled metrics.
     vv.addEventListener('resize', resettle);
     vv.addEventListener('scroll', update);
+    window.addEventListener('scroll', update);
     // Focus moving into or out of a field is when the keyboard starts to
     // appear or leave, sometimes before any viewport event.
     document.addEventListener('focusin', resettle);
@@ -91,6 +103,7 @@ export function useVisualViewport() {
       cancelAnimationFrame(frame);
       vv.removeEventListener('resize', resettle);
       vv.removeEventListener('scroll', update);
+      window.removeEventListener('scroll', update);
       document.removeEventListener('focusin', resettle);
       document.removeEventListener('focusout', resettle);
       window.removeEventListener('orientationchange', resettle);

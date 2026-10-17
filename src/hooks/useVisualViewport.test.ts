@@ -127,6 +127,38 @@ describe('useVisualViewport', () => {
     expect(document.documentElement.style.getPropertyValue('--app-top')).toBe('0px');
   });
 
+  it('scrolls the page back when it is left scrolled with no keyboard up', () => {
+    // Recorded on an iPhone: after the keyboard went away, the document stayed
+    // scrolled by 62px (scrollY 62, vv.offsetTop 62, vv.height == innerHeight).
+    // --app-top followed the stale offset, so the app was drawn 62px low with
+    // its header under the status bar until two rotations reset the scroll.
+    Object.defineProperty(window, 'innerHeight', { value: 812, configurable: true });
+    const vv = installViewport(812, 62);
+    const scrollTo = vi.fn(() => {
+      vv.offsetTop = 0;
+      vv.emit('scroll');
+    });
+    vi.stubGlobal('scrollTo', scrollTo);
+    renderHook(() => useVisualViewport());
+
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    expect(document.documentElement.style.getPropertyValue('--app-top')).toBe('0px');
+  });
+
+  it('leaves the scroll alone while the keyboard is up', () => {
+    // With the keyboard showing, iOS scrolls the page on purpose to keep the
+    // focused field visible; that offset is real and --app-top must follow it.
+    Object.defineProperty(window, 'innerHeight', { value: 812, configurable: true });
+    installViewport(450, 300);
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    renderHook(() => useVisualViewport());
+    vi.advanceTimersByTime(1000);
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(document.documentElement.style.getPropertyValue('--app-top')).toBe('300px');
+  });
+
   it('still tracks plain visualViewport resizes (software keyboard)', () => {
     const vv = installViewport(800);
     renderHook(() => useVisualViewport());
