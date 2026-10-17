@@ -296,50 +296,19 @@ export interface ConversationStreamingState {
 }
 
 // Timeline filter type (replaces old SidebarTab)
-export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'tasks' | 'riffs';
-
-export type RiffArtifactType = 'note' | 'mermaid' | 'table' | 'summary';
-
-export interface RiffMessage {
-  role: 'user';
-  timestamp: string;
-  content: string;
-}
-
-export type RiffInterventionType = 'big-question' | 'memory-recall' | 'question-answer' | 'oblique-strategy';
-
-export interface RiffInterventionAnchor {
-  paragraphIndex: number;
-  snippet: string;
-}
-
-export interface RiffIntervention {
-  id: string;
-  type: RiffInterventionType;
-  timestamp: string;
-  anchor: RiffInterventionAnchor;
-  content: string;
-  metadata?: {
-    noteReference?: string;   // For memory-recall type
-    obliqueCard?: string;      // For oblique-strategy type
-  };
-}
+export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'tasks';
 
 // Note metadata for sidebar display
 export interface NoteInfo {
   filename: string;        // e.g., "my-note.md"
   lastModified: number;    // Unix timestamp for sorting
   hasSkillContent: boolean; // true if contains &[[...]] markers
-  isRiff?: boolean;      // true if in riffs/ directory
-  isIntegrated?: boolean;  // for riffs: whether integrated into notes
-  title?: string;          // for riffs: custom title from frontmatter
-  artifactType?: RiffArtifactType;  // for riffs: what kind of artifact
   content?: string;        // note body text, loaded for full-text search
 }
 
 // Unified timeline item for sidebar display
 export interface TimelineItem {
-  type: 'conversation' | 'note' | 'task' | 'riff';
+  type: 'conversation' | 'note' | 'task';
   id: string;              // conversation id, note filename, or task id
   title: string;           // display title
   lastUpdated: number;     // unix timestamp for sorting
@@ -356,12 +325,3 @@ export type SelectedItem =
   | { type: 'note'; id: string }      // id = filename
   | { type: 'task'; id: string }
   | null;
-
-// Riff mode: proposed changes to integrate into other notes
-export interface ProposedChange {
-  type: 'create' | 'update' | 'append';
-  path: string;              // e.g., "notes/topic.md"
-  description: string;       // Human-readable description of change
-  newContent: string;        // Content to write/append
-  reasoning: string;         // Why this change is proposed
-}

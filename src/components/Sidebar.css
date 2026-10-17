@@ -293,20 +293,6 @@
   color: white;
 }
 
-.type-badge.riff {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-}
-
-.type-badge.riff.draft {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  border: 1px dashed rgba(255, 255, 255, 0.5);
-}
-
-.type-badge.riff.integrated {
-  background: linear-gradient(135deg, #84cc16 0%, #65a30d 100%);
-}
-
 /* Body padding for AlloyDialog content (the dialog shell owns the header). */
 .dialog-body {
   padding: 1.25rem 1.5rem;

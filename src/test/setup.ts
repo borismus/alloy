@@ -14,6 +14,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   readDir: vi.fn(),
   remove: vi.fn(),
   rename: vi.fn(),
+  stat: vi.fn(),
+  readDirHeaders: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/path', () => ({

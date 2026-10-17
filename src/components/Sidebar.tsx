@@ -178,7 +178,6 @@ interface SidebarProps {
   unreadConversationIds: string[];
   availableModels: ModelInfo[];
   onRenameConversation: (oldId: string, newTitle: string) => void;
-  onRenameRiff: (oldFilename: string, newName: string) => void;
   onDeleteConversation: (id: string) => void;
   onDeleteTask: (id: string) => void;
   onDeleteNote: (filename: string) => void;
@@ -202,7 +201,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   unreadConversationIds,
   availableModels,
   onRenameConversation,
-  onRenameRiff,
   onDeleteConversation,
   onDeleteTask,
   onDeleteNote,
@@ -215,14 +213,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const deliveredTaskIds = deliveredResults.map(result => result.taskId);
   const [searchQuery, setSearchQuery] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renamingType, setRenamingType] = useState<'conversation' | 'riff' | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const providerLocalities = useProviderLocalities();
-  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'task' | 'riff'; id: string } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ type: 'conversation' | 'note' | 'task'; id: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Client-side filtering can only see timeline metadata. The hook scans note,
-  // riff, and conversation bodies server-side, retains snippets for display,
+  // Client-side filtering can only see timeline metadata. The hook scans note
+  // and conversation bodies server-side, retains snippets for display,
   // and prevents responses from an older query leaking into a newer one.
   const { matches: serverMatches, loading: searchLoading, error: searchError } = useVaultSearch(searchQuery);
   useEffect(() => {
@@ -250,39 +247,23 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     onSelectItem(item);
   };
 
-  const startRename = (id: string, type: 'conversation' | 'riff') => {
-    const item = timelineItems.find(i => i.id === id && i.type === type);
+  const startRename = (id: string) => {
+    const item = timelineItems.find(i => i.id === id && i.type === 'conversation');
     if (!item) return;
-
-    let currentTitle: string;
-    if (type === 'conversation') {
-      currentTitle = item.conversation?.title || 'New conversation';
-    } else {
-      // For riffs, title is the filename without path and extension
-      currentTitle = item.title;
-    }
-
     setRenamingId(id);
-    setRenamingType(type);
-    setRenameValue(currentTitle);
+    setRenameValue(item.conversation?.title || 'New conversation');
   };
 
   const confirmRename = () => {
     if (renamingId && renameValue.trim() !== '') {
-      if (renamingType === 'conversation') {
-        onRenameConversation(renamingId, renameValue.trim());
-      } else if (renamingType === 'riff') {
-        onRenameRiff(renamingId, renameValue.trim());
-      }
+      onRenameConversation(renamingId, renameValue.trim());
     }
     setRenamingId(null);
-    setRenamingType(null);
     setRenameValue('');
   };
 
   const cancelRename = () => {
     setRenamingId(null);
-    setRenamingType(null);
     setRenameValue('');
   };
 
@@ -292,7 +273,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         onDeleteConversation(deletingItem.id);
       } else if (deletingItem.type === 'task') {
         onDeleteTask(deletingItem.id);
-      } else if (deletingItem.type === 'note' || deletingItem.type === 'riff') {
+      } else if (deletingItem.type === 'note') {
         onDeleteNote(deletingItem.id);
       }
     }
@@ -310,7 +291,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       filePath = await vaultService.getConversationFilePath(item.id);
     } else if (item.type === 'task') {
       filePath = await vaultService.getTaskFilePath(item.id);
-    } else if (item.type === 'note' || item.type === 'riff') {
+    } else if (item.type === 'note') {
       filePath = await vaultService.getNoteFilePath(item.id);
     }
 
@@ -319,13 +300,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     try {
       const menuItems = [];
 
-      // Rename is available for conversations and riffs
-      if (item.type === 'conversation' || item.type === 'riff') {
+      if (item.type === 'conversation') {
         menuItems.push({
           id: 'rename',
           text: 'Rename',
           action: () => {
-            startRename(item.id, item.type as 'conversation' | 'riff');
+            startRename(item.id);
           }
         });
       }
@@ -413,7 +393,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         if (activeFilter === 'conversations' && item.type !== 'conversation') return false;
         if (activeFilter === 'notes' && item.type !== 'note') return false;
         if (activeFilter === 'tasks' && item.type !== 'task') return false;
-        if (activeFilter === 'riffs' && item.type !== 'riff') return false;
       }
 
       // Apply search filter
@@ -422,9 +401,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         const matchesTitle = item.title.toLowerCase().includes(query);
         const matchesId = item.id.toLowerCase().includes(query);
         const matchesPreview = item.preview?.toLowerCase().includes(query);
-        // Note and riff bodies are no longer shipped to the client; /api/search
-        // covers them (see serverMatchIds below). Riffs still carry a small
-        // frontmatter snippet, so keep matching whatever content is present.
+        // Note bodies are no longer shipped to the client; /api/search covers
+        // them (see serverMatchIds below). memory.md still carries its content,
+        // so keep matching whatever content is present.
         const matchesContent = item.note?.content?.toLowerCase().includes(query);
 
         // For conversations, also search message content
@@ -435,7 +414,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           if (hasMatchingMessage) return true;
         }
 
-        // Server-side full-text hit (conversation transcripts, note/riff bodies).
+        // Server-side full-text hit (conversation transcripts, note bodies).
         if (item.type !== 'task' && serverMatches.has(vaultSearchHitKey(item.type, item.id))) return true;
 
         if (!matchesTitle && !matchesId && !matchesPreview && !matchesContent) return false;
@@ -492,12 +471,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             )}
           </>
         );
-      case 'riff':
-        return (
-          <span className={`type-badge riff ${item.note?.isIntegrated ? 'integrated' : 'draft'}`}>
-            {item.note?.isIntegrated ? 'Riff' : 'Draft'}
-          </span>
-        );
       default:
         return null;
     }
@@ -530,7 +503,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             { id: 'conversations', label: 'Chats' },
             { id: 'notes', label: 'Notes' },
             { id: 'tasks', label: 'Tasks' },
-            { id: 'riffs', label: 'Riffs' },
           ]}
         />
       </div>
@@ -625,7 +597,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           isOpen
           onOpenChange={(o) => { if (!o) cancelRename(); }}
           size="compact"
-          title={`Rename ${renamingType === 'riff' ? 'Riff' : 'Conversation'}`}
+          title="Rename Conversation"
         >
           {() => (
             <div className="dialog-body">
@@ -638,9 +610,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 className="rename-input"
                 {...textareaProps}
               />
-              {renamingType === 'conversation' && (
-                <TitleSuggestions conversationId={renamingId} onPick={setRenameValue} />
-              )}
+              <TitleSuggestions conversationId={renamingId} onPick={setRenameValue} />
               <div className="rename-buttons">
                 <button onClick={cancelRename} className="cancel-button">Cancel</button>
                 <button onClick={confirmRename} className="confirm-button">Rename</button>
@@ -655,7 +625,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           isOpen
           onOpenChange={(o) => { if (!o) cancelDelete(); }}
           size="compact"
-          title={`Delete ${deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'task' ? 'Task' : deletingItem.type === 'riff' ? 'Riff' : 'Note'}`}
+          title={`Delete ${deletingItem.type === 'conversation' ? 'Conversation' : deletingItem.type === 'task' ? 'Task' : 'Note'}`}
         >
           {() => (
             <div className="dialog-body">

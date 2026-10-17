@@ -92,7 +92,8 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
 
   return {
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
-      // Handle provenance markers (&[[...]]) - these link to conversations/riff with optional message ID
+      // Handle provenance markers (&[[...]]) - these link to conversations with optional message ID.
+      // riff_history markers were written by the removed riff feature; keep labelling them.
       // Format: &[[conversationPath^messageId]] or &[[conversationPath^messageId|Label]]
       if (href?.startsWith('provenance:')) {
         const rawTarget = decodeURIComponent(href.replace('provenance:', ''));

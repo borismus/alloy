@@ -341,7 +341,7 @@ export async function executeViaServer(
 /**
  * Convenience wrapper for "send a model call and get back the text" — no
  * conversation persistence, no UI streaming required from the caller.
- * Used by riffs and scheduled tasks. Internally still uses the streaming
+ * Used by the note and task AI edit composer. Internally still uses the streaming
  * endpoint so the server runs its tool loop and prompt-caching machinery.
  */
 export async function executeChatOnce(

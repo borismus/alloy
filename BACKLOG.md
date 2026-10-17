@@ -32,7 +32,7 @@ and the mobile-reliability checklist are archived in
 
 - **Plugin architecture** — return Alloy to an extensible, plugin-oriented app.
   Core model: **Resource → Workspace → Host capabilities**. Dogfood the extension
-  API with first-party Notes, Tasks, Comparison, Council, Riff, and eventually
+  API with first-party Notes, Tasks, Comparison, Council, and eventually
   Chat modules; add an **MCP client** for external capabilities and declarative
   vault packs as the no-code on-ramp. Full design, boundaries, trust model, and
   sequencing in [docs/plugin-architecture.md](docs/plugin-architecture.md).

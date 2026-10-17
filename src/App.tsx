@@ -3,7 +3,6 @@ import { vaultService } from './services/vault';
 import { loadSelectedItem } from './services/selectionStorage';
 import { loadCachedModelCatalog, saveCachedModelCatalog } from './services/modelCatalogCache';
 import { skillRegistry } from './services/skills';
-import { riffService } from './services/riff';
 import { useVaultWatcher } from './hooks/useVaultWatcher';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useVisualViewport } from './hooks/useVisualViewport';
@@ -41,9 +40,6 @@ import {
 import { reconnectToActiveSessions } from './services/server-streaming';
 import { getEmbeddedApiBase, loadEmbeddedServerUrl, setEmbeddedVaultPath } from './services/tauri-bootstrap';
 import { ContextMenuProvider } from './contexts/ContextMenuContext';
-import { RiffProvider, useRiffContext } from './contexts/RiffContext';
-import { RiffBatchApprovalModal } from './components/RiffBatchApprovalModal';
-import { RiffView } from './components/RiffView';
 import { ContextMenu } from './components/ContextMenu';
 import { ToastContainer } from './components/Toast';
 import './App.css';
@@ -206,7 +202,7 @@ const taskSignature = (t: ScheduledTask) =>
 
 // `lastModified` covers body edits; the rest are the fields the sidebar renders.
 const noteSignature = (n: NoteInfo) =>
-  `${n.filename}|${n.lastModified}|${n.isIntegrated ?? ''}|${n.title ?? ''}`;
+  `${n.filename}|${n.lastModified}`;
 
 /**
  * Merge a disk-loaded conversation with the in-memory copy, re-appending any
@@ -287,10 +283,6 @@ function AppContent() {
     loadSelectedItem() ? 'conversation' : 'list'
   );
 
-  // Check if selected note is a draft (for mobile riff mode)
-  const isViewingDraft = selectedNote?.filename.startsWith('riffs/') &&
-    !selectedNote.content.includes('integrated: true');
-
   // Message ID to scroll to after navigating to a conversation (for provenance links)
   const [pendingScrollToMessageId, setPendingScrollToMessageId] = useState<string | null>(null);
   const chatInterfaceRef = useRef<ChatInterfaceHandle>(null);
@@ -305,53 +297,6 @@ function AppContent() {
     getStreamingConversationIds, getUnreadConversationIds, markAsRead, addToolUse,
     startSubagents, updateSubagentContent, addSubagentToolUse, completeSubagent,
   } = useStreamingContext();
-  const riffContext = useRiffContext();
-
-  // Check if selected note is a riff/draft on desktop (not integrated)
-  const isRiffNote = selectedNote?.filename.startsWith('riffs/') &&
-    !selectedNote.content.includes('integrated: true');
-
-  // Determine if user has selected a non-riff item (conversation, task, or integrated note)
-  const hasNonRiffSelection = !!(currentConversation || selectedTask || (selectedNote && (!selectedNote.filename.startsWith('riffs/') || selectedNote.content.includes('integrated: true'))));
-
-  // Auto-enter riff mode when viewing a draft note (desktop)
-  useEffect(() => {
-    if (!isMobile && isRiffNote && selectedNote) {
-      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
-        riffContext.enterRiffMode(selectedNote.filename);
-      }
-    }
-  }, [isMobile, isRiffNote, selectedNote, riffContext.isRiffMode, riffContext.draftFilename]);
-
-  // Auto-exit riff mode when user navigates to a non-riff item (desktop)
-  useEffect(() => {
-    if (!isMobile && riffContext.isRiffMode && hasNonRiffSelection) {
-      riffContext.exitRiffMode();
-    }
-  }, [isMobile, hasNonRiffSelection, riffContext]);
-
-  // Auto-enter riff mode when viewing drafts on mobile
-  useEffect(() => {
-    if (isMobile && isViewingDraft && selectedNote) {
-      if (!riffContext.isRiffMode || riffContext.draftFilename !== selectedNote.filename) {
-        riffContext.enterRiffMode(selectedNote.filename);
-      }
-    }
-  }, [isMobile, isViewingDraft, selectedNote, riffContext]);
-
-  // Integrate handler (for NoteViewer)
-  const handleIntegrateNote = useCallback(async (filename: string) => {
-    const model = chooseDefaultModel(
-      config?.defaultModel,
-      config?.favoriteModels,
-      availableModels,
-    ) || '';
-    if (model && filename) {
-      riffContext.setConfig(model, notes);
-      await riffContext.enterRiffMode(filename);
-      await riffContext.integrateNow();
-    }
-  }, [riffContext, config?.defaultModel, config?.favoriteModels, availableModels, notes]);
 
   // Vault watcher callbacks
   const handleConversationAdded = useCallback(async (id: string) => {
@@ -739,9 +684,7 @@ function AppContent() {
   // Handle selecting an item from the timeline
   const handleSelectItem = useCallback(async (item: TimelineItem) => {
     // Navigate to the selected item
-    if (item.type === 'riff') {
-      navigateTo({ type: 'note', id: item.id });
-    } else if (item.type === 'note') {
+    if (item.type === 'note') {
       navigateTo({ type: 'note', id: item.id });
     } else if (item.type === 'conversation') {
       (window as { __chatClickAt?: { id: string; t: number } }).__chatClickAt = { id: item.id, t: performance.now() };
@@ -761,7 +704,7 @@ function AppContent() {
     if (item.type === 'conversation') {
       // Mark as read when user selects the conversation
       markAsRead(item.id);
-    } else if (item.type === 'note' || item.type === 'riff') {
+    } else if (item.type === 'note') {
       // Load note content
       try {
         setNoteContent(await vaultService.readNote(item.id));
@@ -861,7 +804,6 @@ function AppContent() {
 
         // Load all vault data in parallel
         skillRegistry.setVaultPath(path);
-        riffService.setVaultPath(path);
 
         const [loadedConversations, loadedTasks, loadedNotes, , loadedMemory] = await Promise.all([
           // Metadata-only summaries (one batched header read); message bodies are
@@ -1044,10 +986,10 @@ function AppContent() {
   // Keep the main pane useful without a separate landing mode: desktop starts a
   // transient draft when nothing is selected; mobile does so on entering chat.
   useEffect(() => {
-    if ((!isMobile || mobileView === 'conversation') && !selectedItem && !riffContext.isRiffMode && config && availableModels.length > 0) {
+    if ((!isMobile || mobileView === 'conversation') && !selectedItem && config && availableModels.length > 0) {
       handleNewConversation();
     }
-  }, [isMobile, mobileView, selectedItem, riffContext.isRiffMode, config, availableModels.length]);
+  }, [isMobile, mobileView, selectedItem, config, availableModels.length]);
 
   const handleSelectNote = async (filename: string) => {
     if (!vaultService.getVaultPath()) return;
@@ -1209,34 +1151,6 @@ function AppContent() {
     } catch (error) {
       console.error('Error renaming conversation:', error);
       showToast('Failed to rename conversation. Please try again.', 'error');
-    }
-  };
-
-  const handleRenameRiff = async (oldFilename: string, newName: string) => {
-    try {
-      const vaultPathForRename = vaultService.getVaultPath();
-      if (vaultPathForRename) {
-        // Mark old file for self-write
-        markSelfWrite(`${vaultPathForRename}/${oldFilename}`);
-        // Mark new file path
-        const sanitizedName = newName.replace(/\.md$/, '').replace(/[/\\:*?"<>|]/g, '-').trim();
-        markSelfWrite(`${vaultPathForRename}/riffs/${sanitizedName}.md`);
-      }
-
-      const newFilename = await vaultService.renameRiff(oldFilename, newName);
-      if (newFilename) {
-        // Reload notes to get updated list
-        const updatedNotes = await vaultService.loadNotes();
-        setNotes(updatedNotes);
-
-        // Update selection if this riff was selected
-        if (selectedItem?.type === 'note' && selectedItem.id === oldFilename) {
-          setSelectedItem({ type: 'note', id: newFilename });
-        }
-      }
-    } catch (error) {
-      console.error('Error renaming riff:', error);
-      showToast('Failed to rename riff. Please try again.', 'error');
     }
   };
 
@@ -1427,14 +1341,6 @@ function AppContent() {
             onEdit={() => handleSelectNote('memory.md')}
           />
         )}
-        {riffContext.phase === 'approving' && (
-          <RiffBatchApprovalModal
-            proposedChanges={riffContext.proposedChanges}
-            isProcessing={riffContext.isProcessing}
-            onApply={riffContext.applyChanges}
-            onCancel={riffContext.cancelIntegration}
-          />
-        )}
         <div className="app">
         {isMobile ? (
           // Mobile layout - show one view at a time
@@ -1456,7 +1362,6 @@ function AppContent() {
               availableModels={availableModels}
               externalEditor={externalEditor}
               onRenameConversation={handleRenameConversation}
-              onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTask={handleDeleteTask}
               onDeleteNote={handleDeleteNote}
@@ -1496,26 +1401,14 @@ function AppContent() {
                 />
               </React.Suspense>
             ) : selectedItem?.type === 'note' ? (
-              // Mobile: viewing a note or draft
-              isViewingDraft ? (
-                <RiffView
-                  notes={notes}
-                  model={getDefaultModel() || ''}
-                  sonioxApiKey={config?.sonioxApiKey}
-                  onNavigateToNote={handleSelectNote}
-                  onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-                  conversations={conversations}
-                  onBack={() => setMobileView('list')}
-                  canGoBack={true}
-                />
-              ) : selectedNote ? (
+              // Mobile: viewing a note
+              selectedNote ? (
                 <NoteViewer
                   key={selectedNote.filename}
                   content={selectedNote.content}
                   filename={selectedNote.filename}
                   onNavigateToNote={handleSelectNote}
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-                  onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
                   onSaveNote={handleSaveNoteEdit}
                   availableModels={availableModels}
                   favoriteModels={config?.favoriteModels}
@@ -1532,18 +1425,6 @@ function AppContent() {
                   <span>Loading...</span>
                 </div>
               )
-            ) : riffContext.isRiffMode && !selectedItem ? (
-              // Mobile: fresh riff mode (no item selected)
-              <RiffView
-                notes={notes}
-                model={getDefaultModel() || ''}
-                sonioxApiKey={config?.sonioxApiKey}
-                onNavigateToNote={handleSelectNote}
-                onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-                conversations={conversations}
-                onBack={() => setMobileView('list')}
-                canGoBack={true}
-              />
             ) : (
               // Mobile: conversation view
               <ChatInterface
@@ -1585,7 +1466,6 @@ function AppContent() {
               availableModels={availableModels}
               externalEditor={externalEditor}
               onRenameConversation={handleRenameConversation}
-              onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
               onDeleteTask={handleDeleteTask}
               onDeleteNote={handleDeleteNote}
@@ -1598,18 +1478,7 @@ function AppContent() {
             onClose={() => setShowFind(false)}
           />
         )}
-        {isRiffNote || (riffContext.isRiffMode && !hasNonRiffSelection) ? (
-          <RiffView
-            notes={notes}
-            model={getDefaultModel() || ''}
-            sonioxApiKey={config?.sonioxApiKey}
-            onNavigateToNote={handleSelectNote}
-            onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-            conversations={conversations}
-            onBack={goBack}
-            canGoBack={canGoBack}
-          />
-        ) : selectedTask ? (
+        {selectedTask ? (
           <React.Suspense fallback={<div className="loading">Loading task…</div>}>
             <TaskDetailView
               key={selectedTask.id}
@@ -1640,7 +1509,6 @@ function AppContent() {
             filename={selectedNote.filename}
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
-            onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
             onSaveNote={handleSaveNoteEdit}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}
@@ -1700,12 +1568,10 @@ function App() {
     <ErrorBoundary>
       <StreamingProvider>
         <MessageQueueProvider>
-          <RiffProvider>
-            <ContextMenuProvider>
-              <AppContent />
-              <ContextMenu />
-            </ContextMenuProvider>
-          </RiffProvider>
+          <ContextMenuProvider>
+            <AppContent />
+            <ContextMenu />
+          </ContextMenuProvider>
         </MessageQueueProvider>
       </StreamingProvider>
     </ErrorBoundary>

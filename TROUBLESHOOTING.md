@@ -198,8 +198,8 @@ looking only at the browser console.
 
 ### Search misses known content
 
-Sidebar body search is server-side and case-insensitive across conversations,
-notes, and riffs. Test the backend directly:
+Sidebar body search is server-side and case-insensitive across conversations
+and notes. Test the backend directly:
 
 ```bash
 curl --get 'http://localhost:3030/api/search' --data-urlencode 'q=known phrase'

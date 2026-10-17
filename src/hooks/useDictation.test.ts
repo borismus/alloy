@@ -83,7 +83,7 @@ describe('useDictation modes', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps Riff continuous mode running after an automatic endpoint', async () => {
+  it('keeps continuous mode running after an automatic endpoint', async () => {
     const onTranscript = vi.fn();
     const onEndpoint = vi.fn();
     const { result } = renderHook(() => useDictation({ apiKey: 'key', onTranscript, onEndpoint }));

@@ -44,7 +44,6 @@ Your vault will be initialized with:
 - `notes/` — AI-managed notes (Markdown)
 - `tasks/` — Cron-based scheduled tasks (YAML)
 - `skills/` — Custom skills (Markdown)
-- `riffs/` — Draft notes (Markdown)
 - `memory.md` — Persistent context injected into system prompt
 - `config.yaml` — API keys and settings
 
@@ -66,7 +65,7 @@ you release it.
 
 ### Searching Conversations
 
-Use the search box in the sidebar to search conversation, note, and riff titles and bodies. Matching context appears as a snippet; body search runs in the Rust backend rather than loading the whole vault into the browser.
+Use the search box in the sidebar to search conversation and note titles and bodies. Matching context appears as a snippet; body search runs in the Rust backend rather than loading the whole vault into the browser.
 
 ### Memory
 

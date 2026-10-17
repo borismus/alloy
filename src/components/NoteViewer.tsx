@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { AiEditPanel } from './AiEditPanel';
@@ -25,10 +25,9 @@ RULES:
 
 interface NoteViewerProps {
   content: string;
-  filename?: string; // Used to detect riff notes for auto-scroll
+  filename?: string;
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
-  onIntegrate?: () => void; // Called when user wants to integrate a riff
   conversations?: ConversationInfo[]; // For looking up conversation titles
   onBack?: () => void;
   canGoBack?: boolean;
@@ -47,7 +46,6 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   filename,
   onNavigateToNote,
   onNavigateToConversation,
-  onIntegrate,
   conversations,
   onBack,
   canGoBack = false,
@@ -60,12 +58,9 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   defaultModel,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
-  const prevContentLengthRef = useRef<number>(0);
 
   // Parse frontmatter and get body content
   const { frontmatter, body } = useMemo(() => parseFrontmatter(content), [content]);
-  const isRiffNote = filename?.startsWith('riffs/');
-  const isUnintegrated = isRiffNote && frontmatter.integrated === false;
 
   // AI edit: diff/rewrite the body, preserving any raw frontmatter block.
   const rawFrontmatter = useMemo(() => content.match(/^---\n[\s\S]*?\n---\n/)?.[0] ?? '', [content]);
@@ -75,17 +70,6 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
     await onSaveNote(filename, rawFrontmatter + newBody.replace(/\n*$/, '') + '\n');
   }, [filename, onSaveNote, rawFrontmatter]);
   const canAiEdit = !!(filename && onSaveNote && defaultModel && availableModels && availableModels.length > 0);
-
-  // Auto-scroll to bottom for riff notes when content grows
-  useEffect(() => {
-    if (isRiffNote && contentRef.current) {
-      // Only scroll if content has grown (not on initial load or content changes)
-      if (body.length > prevContentLengthRef.current && prevContentLengthRef.current > 0) {
-        contentRef.current.scrollTop = contentRef.current.scrollHeight;
-      }
-      prevContentLengthRef.current = body.length;
-    }
-  }, [body, isRiffNote]);
 
   // Get display name from filename
   const displayName = filename
@@ -100,14 +84,6 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
         canGoBack={canGoBack}
         onClose={onClose}
       />
-      {isUnintegrated && onIntegrate && (
-        <div className="riff-integrate-bar">
-          <span className="integrate-hint">This riff hasn't been integrated yet</span>
-          <button className="integrate-btn" onClick={onIntegrate}>
-            Integrate
-          </button>
-        </div>
-      )}
       <div className="note-content-container" ref={contentRef}>
         <MarkdownContent
           content={body}

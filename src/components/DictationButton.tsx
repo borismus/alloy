@@ -11,7 +11,7 @@ interface DictationButtonProps extends Omit<ButtonProps, 'children' | 'variant' 
 }
 
 /**
- * Shared microphone control used by Riff and conversation composers. While
+ * Shared microphone control used by the conversation composer. While
  * recording it shows a live level meter (red, pulsing) rather than a stop
  * square or a second mic, so it can't be mistaken for "stop generating"
  * beside it or for the idle mic, and shows the mic is actually hearing you.

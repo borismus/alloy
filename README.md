@@ -30,7 +30,6 @@ Everything lives in your vault folder as plain files:
 ├── notes/                   # AI-managed notes (Markdown)
 ├── tasks/                   # Scheduled tasks (YAML; optional delivery conditions)
 ├── skills/                  # Custom skills (Markdown)
-├── riffs/                   # Draft notes (Markdown)
 └── logs/errors/             # Failed turns and tool calls, one file per machine
 ```
 
@@ -182,7 +181,7 @@ All models are configured under a single `providers:` list in config v2
 (`version: 2`). Local trust is explicit: only `local: true` grants the Local
 badge and private-directory access; omission is treated as cloud.
 
-`defaultModel` is the authoritative model for new conversations, riffs, and
+`defaultModel` is the authoritative model for new conversations and
 other default-seeded work. The picker keeps it fixed at the top with a distinct
 default marker and divider; its star cannot be changed there. Every other model
 has an independent favorite toggle plus a **Set default** action on hover (always

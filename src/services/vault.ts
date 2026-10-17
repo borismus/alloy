@@ -601,16 +601,6 @@ providers:
     return this.absoluteVaultPath ?? this.vaultPath;
   }
 
-  async ensureRiffsDirectory(): Promise<string | null> {
-    if (!this.vaultPath) return null;
-
-    const riffsPath = await join(this.vaultPath, 'riffs');
-    if (!(await exists(riffsPath))) {
-      await mkdir(riffsPath, { recursive: true });
-    }
-    return riffsPath;
-  }
-
   extractConversationIdFromPath(filePath: string): string | null {
     const filename = filePath.split('/').pop() || '';
     if (!filename.endsWith('.yaml')) return null;
@@ -799,8 +789,9 @@ providers:
 
   /**
    * Server-relative API path for a note filename, used for all /api/fs/*
-   * operations (read/write/exists/remove). memory.md and riffs/ live at the
-   * vault root; regular notes under notes/. This is the path the server
+   * operations (read/write/exists/remove). memory.md and riffs/ (notes left
+   * from the removed riff feature) live at the vault root; regular notes under
+   * notes/. This is the path the server
    * resolves against its own vault root — it MUST stay relative (base
    * this.vaultPath === '/'). Passing an absolute path here makes the server
    * re-root it under the vault, producing a doubled path
@@ -851,39 +842,6 @@ providers:
     return false;
   }
 
-  async renameRiff(oldFilename: string, newName: string): Promise<string | null> {
-    if (!this.vaultPath) return null;
-    if (!oldFilename.startsWith('riffs/')) return null;
-
-    // Sanitize new name - remove .md if provided, sanitize for filesystem
-    const sanitizedName = newName
-      .replace(/\.md$/, '')
-      .replace(/[/\\:*?"<>|]/g, '-')
-      .trim();
-
-    if (!sanitizedName) return null;
-
-    const oldPath = await join(this.vaultPath, oldFilename);
-    const newFilename = `riffs/${sanitizedName}.md`;
-    const newPath = await join(this.vaultPath, newFilename);
-
-    // Don't rename if same name
-    if (oldFilename === newFilename) return oldFilename;
-
-    // Check if target already exists
-    if (await exists(newPath)) return null;
-
-    // Read content, write to new path, delete old
-    if (await exists(oldPath)) {
-      const content = await readTextFile(oldPath);
-      await writeTextFile(newPath, content);
-      await remove(oldPath);
-      return newFilename;
-    }
-
-    return null;
-  }
-
   async loadNotes(): Promise<NoteInfo[]> {
     if (!this.vaultPath) {
       return [];
@@ -925,14 +883,13 @@ providers:
       notes.push({ filename: name, lastModified: mtime, hasSkillContent: false });
     }
 
-    // Load riff notes from riffs/ directory — batch-read all headers in one HTTP request.
+    // Notes left in riffs/ by the removed riff feature load as ordinary notes.
     const riffsPath = await join(this.vaultPath, 'riffs');
     if (await exists(riffsPath)) {
-      const headers: Record<string, { content: string; mtime: number }> = await readDirHeaders(riffsPath, '.md', 300);
-      for (const [name, { content, mtime }] of Object.entries(headers)) {
-        const lastModified = mtime;
-        const riffInfo = this.parseRiffFrontmatter(name, content, lastModified);
-        notes.push(riffInfo);
+      const riffHeaders: Record<string, { content: string; mtime: number }> =
+        await readDirHeaders(riffsPath, '.md', 0);
+      for (const [name, { mtime }] of Object.entries(riffHeaders)) {
+        notes.push({ filename: `riffs/${name}`, lastModified: mtime, hasSkillContent: false });
       }
     }
 
@@ -940,39 +897,9 @@ providers:
     return notes.sort((a, b) => b.lastModified - a.lastModified);
   }
 
-  private parseRiffFrontmatter(name: string, content: string, lastModified: number): NoteInfo {
-    let isIntegrated = false;
-    let title: string | undefined;
-    let artifactType: 'note' | 'mermaid' | undefined;
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (frontmatterMatch) {
-      try {
-        const frontmatter = yaml.load(frontmatterMatch[1]) as Record<string, unknown>;
-        isIntegrated = frontmatter.integrated === true;
-        if (typeof frontmatter.title === 'string') {
-          title = frontmatter.title;
-        }
-        if (frontmatter.artifactType === 'note' || frontmatter.artifactType === 'mermaid') {
-          artifactType = frontmatter.artifactType;
-        }
-      } catch {
-        // Ignore frontmatter parse errors
-      }
-    }
-    return {
-      filename: `riffs/${name}`,
-      lastModified,
-      hasSkillContent: false,
-      isRiff: true,
-      isIntegrated,
-      title,
-      artifactType,
-    };
-  }
-
   /**
    * Build a unified timeline of all content types, sorted by last updated.
-   * Returns conversations, notes (excluding riffs), scheduled tasks, and riffs.
+   * Returns conversations, notes and scheduled tasks.
    */
   buildTimeline(
     conversations: Conversation[],
@@ -997,30 +924,14 @@ providers:
       });
     }
 
-    // Add notes (separate regular notes from riffs)
     for (const note of notes) {
-      if (note.isRiff) {
-        // Riff items - title is the filename without extension
-        const title = note.filename.replace('riffs/', '').replace('.md', '');
-
-        items.push({
-          type: 'riff',
-          id: note.filename,
-          title,
-          lastUpdated: note.lastModified,
-          preview: note.isIntegrated ? 'Integrated' : 'Draft',
-          note,
-        });
-      } else {
-        // Regular note items
-        items.push({
-          type: 'note',
-          id: note.filename,
-          title: note.filename.replace('.md', ''),
-          lastUpdated: note.lastModified,
-          note,
-        });
-      }
+      items.push({
+        type: 'note',
+        id: note.filename,
+        title: note.filename.replace(/^riffs\//, '').replace('.md', ''),
+        lastUpdated: note.lastModified,
+        note,
+      });
     }
 
     // Add scheduled tasks. Activity is either a delivery or a user edit; a

@@ -180,7 +180,7 @@ export function useVaultWatcher(
             callbacksRef.current.onConfigChanged();
           }
         } else if (isNoteFile) {
-          // For riff files, include the riffs/ prefix in filename
+          // Notes left in riffs/ (from the removed riff feature) keep their prefix
           const baseFilename = filePath.split('/').pop() || '';
           const filename = isRiffFile ? `riffs/${baseFilename}` : baseFilename;
           // For rename events (macOS deletion), check if file still exists

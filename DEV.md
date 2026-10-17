@@ -21,12 +21,10 @@ alloy/
 │   ├── components/           # Feature UI components
 │   │   ├── ui/               # Alloy-owned React Aria primitives + CSS Modules
 │   │   ├── ChatInterface.tsx # Main chat UI
-│   │   ├── RiffView.tsx      # Draft note editing
 │   │   ├── Sidebar.tsx       # Timeline and vault search
 │   │   └── Settings.tsx      # Settings panel
 │   ├── services/             # Business logic
 │   │   ├── vault.ts          # File system operations
-│   │   ├── riff.ts           # Draft integration logic
 │   │   ├── server-streaming.ts # Backend stream client
 │   │   ├── skills/           # Skill loading and execution
 │   │   ├── context/          # Context window estimation
@@ -66,7 +64,7 @@ directions:
 
 - **Plugin architecture** — returning Alloy to an extensible, plugin-oriented app
   around **Resource → Workspace → Host capabilities**, dogfooded by first-party
-  Notes, Tasks, Comparison, Council, Riff, and Chat extensions; external tools
+  Notes, Tasks, Comparison, Council, and Chat extensions; external tools
   arrive through an MCP client and declarative vault packs. See
   [docs/plugin-architecture.md](docs/plugin-architecture.md).
 

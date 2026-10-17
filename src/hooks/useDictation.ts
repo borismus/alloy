@@ -157,7 +157,7 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
           console.log('[Dictation] <end>, fullText:', JSON.stringify(fullText));
           onTranscriptRef.current(fullText);
 
-          // Continuous Riff dictation still treats each endpoint as a new
+          // Continuous dictation still treats each endpoint as a new
           // segment. Conversation modes disable endpoint detection and submit
           // only after an explicit button press or Space release.
           if (modeRef.current === 'continuous') {

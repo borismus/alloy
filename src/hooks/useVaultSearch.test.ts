@@ -38,7 +38,6 @@ describe('useVaultSearch', () => {
     vi.mocked(searchVault).mockResolvedValue([
       hit('shared-id', 'conversation context'),
       { type: 'note', id: 'shared-id', title: 'Note', snippet: 'note context' },
-      { type: 'riff', id: 'draft.md', title: 'Draft', snippet: 'riff context' },
     ]);
 
     const { result } = renderHook(() => useVaultSearch('context'));
@@ -48,8 +47,6 @@ describe('useVaultSearch', () => {
       .toBe('conversation context');
     expect(result.current.matches.get(vaultSearchHitKey('note', 'shared-id'))?.snippet)
       .toBe('note context');
-    expect(result.current.matches.get(vaultSearchHitKey('riff', 'draft.md'))?.snippet)
-      .toBe('riff context');
   });
 
   it('clears old matches and ignores a stale response after the query changes', async () => {

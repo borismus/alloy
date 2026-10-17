@@ -75,7 +75,7 @@
   padding: 0;
 }
 
-/* Chat and Riff share this exact control geometry with their 48px textareas
+/* The chat composer uses this exact control geometry with its 48px textarea
    and model picker. Variant refinements below preserve the established
    attach/mic/send appearance while centralizing interaction behavior. */
 .composer {

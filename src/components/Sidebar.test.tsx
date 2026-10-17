@@ -45,7 +45,6 @@ function renderSidebar(overrides: {
         unreadConversationIds={[]}
         availableModels={[]}
         onRenameConversation={vi.fn()}
-        onRenameRiff={vi.fn()}
         onDeleteConversation={vi.fn()}
         onDeleteTask={vi.fn()}
         onDeleteNote={vi.fn()}

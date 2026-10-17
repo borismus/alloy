@@ -48,7 +48,7 @@ struct SearchHit {
     /// "conversation" | "note" — mirrors the timeline item kinds.
     #[serde(rename = "type")]
     kind: String,
-    /// Conversation id, or vault-relative path for a note/riff.
+    /// Conversation id, or vault-relative path for a note.
     id: String,
     title: String,
     snippet: String,
@@ -67,13 +67,14 @@ async fn search(State(state): State<AppState>, Query(q): Query<SearchQuery>) -> 
 async fn search_vault(root: &Path, query: &str) -> Vec<SearchHit> {
     let mut hits = Vec::new();
     // Do not stop after an arbitrary global number of conversation hits: that
-    // used to prevent notes and riffs from being searched at all for broad
+    // used to prevent notes from being searched at all for broad
     // queries. The timeline is already sorted and decides what is visible, so
     // return every matching id and let it preserve the correct ordering.
     for (dir, kind) in [
         ("conversations", "conversation"),
         ("notes", "note"),
-        ("riffs", "riff"),
+        // Notes left by the removed riff feature; the app lists them as notes.
+        ("riffs", "note"),
     ] {
         scan_dir(&root.join(dir), dir, kind, query, &mut hits).await;
     }
@@ -83,7 +84,7 @@ async fn search_vault(root: &Path, query: &str) -> Vec<SearchHit> {
 
 async fn scan_dir(dir: &Path, rel_dir: &str, kind: &str, query: &str, hits: &mut Vec<SearchHit>) {
     let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
-        return; // Missing directory (no riffs yet, etc.) is not an error.
+        return; // Missing directory (no riffs/, etc.) is not an error.
     };
 
     while let Ok(Some(entry)) = entries.next_entry().await {
@@ -400,20 +401,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn labels_riffs_separately_from_notes() {
+    async fn finds_notes_left_in_riffs_as_notes() {
         let v = temp_vault("riffs");
         std::fs::create_dir_all(v.0.join("riffs")).unwrap();
         std::fs::write(v.0.join("riffs/Draft.md"), "a funicular draft").unwrap();
 
         let hits = search_vault(&v.0, "funicular").await;
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].kind, "riff");
+        assert_eq!(hits[0].kind, "note");
         assert_eq!(hits[0].id, "riffs/Draft.md");
     }
 
     #[tokio::test]
     async fn a_missing_directory_is_not_an_error() {
-        // A vault with no riffs/ yet must not fail the whole search.
+        // A vault with no riffs/ folder must not fail the whole search.
         let v = temp_vault("missing");
         assert!(scan(&v.0.join("riffs"), "note", "anything")
             .await

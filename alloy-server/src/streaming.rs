@@ -491,7 +491,7 @@ async fn run_stream(
         crate::providers::strip_pdfs(&mut messages);
     }
     // Only persist a freshly-generated compacted message when we own a
-    // conversation file (scheduled tasks/riffs use skip_persist and ephemeral
+    // conversation file (scheduled tasks and AI edits use skip_persist and ephemeral
     // histories).
     let new_compacted: Option<NewCompacted> = if params.skip_persist {
         None

@@ -11,8 +11,8 @@ import { getEmbeddedApiBase } from './tauri-bootstrap';
 
 export interface VaultSearchHit {
   /** Mirrors the timeline item kinds. */
-  type: 'conversation' | 'note' | 'riff';
-  /** Conversation id, or vault-relative path for a note/riff. */
+  type: 'conversation' | 'note';
+  /** Conversation id, or vault-relative path for a note. */
   id: string;
   title: string;
   snippet: string;

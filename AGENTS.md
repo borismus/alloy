@@ -11,7 +11,6 @@ Key features:
   Council adds chairman synthesis)
 - **Scheduled tasks**: Cron-based background prompts with optional delivery conditions
 - **Skills**: Markdown-defined capabilities with tool access
-- **Riff mode**: Draft-based note integration
 - **Vault storage**: All data as YAML/Markdown in user-chosen folder
 
 ## Project Context
@@ -52,11 +51,9 @@ src/
 ├── App.tsx                 # Main app - state management, routing
 ├── components/             # React components
 │   ├── ChatInterface.tsx   # Standard chat
-│   ├── RiffView.tsx        # Draft note editing
 │   ├── Sidebar.tsx         # Timeline + navigation
 ├── services/
 │   ├── vault.ts            # File I/O, conversation/note CRUD
-│   ├── riff.ts             # Draft integration logic
 │   ├── server-streaming.ts # HTTP/SSE client for model turns
 │   ├── skills/             # Skill loading and registry
 │   └── api/                # HTTP shims for Tauri plugins (web + Tauri)
@@ -74,7 +71,6 @@ alloy-server/               # Rust (axum) backend: model calls + tool execution
 - [src/services/vault.ts](src/services/vault.ts) - File operations, conversation/note persistence
 - [alloy-server/src/providers/mod.rs](alloy-server/src/providers/mod.rs) - Provider trait, registry, and stream types
 - [src/types/index.ts](src/types/index.ts) - Core type definitions
-- [src/services/riff.ts](src/services/riff.ts) - Draft/riff processing
 
 ## Common Commands
 
@@ -128,8 +124,7 @@ vault-folder/
 ├── conversations/        # Chat history (YAML)
 ├── notes/                # User notes (Markdown)
 ├── tasks/                # Scheduled tasks (YAML)
-├── skills/               # Custom skills (Markdown)
-└── riffs/                # Draft notes (Markdown)
+└── skills/               # Custom skills (Markdown)
 ```
 
 ## Git Workflow
