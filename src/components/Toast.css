@@ -38,15 +38,16 @@
 }
 
 .toast-info {
-  background: var(--color-accent);
+  background: var(--color-accent-fill);
   color: var(--color-on-accent);
 }
 
-/* Inverted text: dark on the bright dark-theme amber, light on the deeper
-   light-theme one. */
+/* Light text on the light-theme amber is only ~3:1, so warnings use the soft
+   fill with body text and an amber edge instead of a solid fill. */
 .toast-warning {
-  background: var(--color-warning);
-  color: var(--color-canvas);
+  background: var(--color-warning-soft);
+  color: var(--color-text);
+  border: 1px solid var(--color-warning);
 }
 
 .toast-error {

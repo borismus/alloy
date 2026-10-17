@@ -80,11 +80,10 @@ body {
 }
 
 /* Re-enable text selection on real content: conversation/note body text,
-   user-message text, the conversation/note title in the header, and any
-   form fields. */
+   user-message text, and any form fields. The item header title is window
+   chrome (it drags the window) and copies with its copy button. */
 .markdown-content,
 .message-content,
-.item-header-title h2,
 input,
 textarea,
 [contenteditable="true"] {

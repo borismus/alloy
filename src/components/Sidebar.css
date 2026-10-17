@@ -243,11 +243,6 @@
   white-space: nowrap;
 }
 
-/* Body padding for AlloyDialog content (the dialog shell owns the header).
-   Settings' reset dialog still uses it; new dialogs use DialogBody. */
-.dialog-body {
-  padding: var(--space-5) var(--space-6);
-}
 
 /* In the rename DialogBody: sit closer to the field than the body's gap. */
 .title-suggestions {
@@ -318,6 +313,29 @@
   width: 100%;
   max-width: none;
   border-right: none;
+}
+
+/* The phone list is a flat list with hairline separators rather than cards,
+   so about ten rows fit on screen instead of seven. */
+.sidebar.full-screen .timeline-list {
+  padding: 0;
+}
+
+.sidebar.full-screen .timeline-item {
+  padding: 10px var(--space-3);
+  margin-bottom: 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+}
+
+.sidebar.full-screen .timeline-item.active {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.sidebar.full-screen .item-preview {
+  margin-bottom: 2px;
+  font-size: var(--text-base);
 }
 
 .mobile-sidebar-header {
