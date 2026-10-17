@@ -30,6 +30,13 @@
   transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
+/* The field draws its own clear button; hide the browser's. */
+.input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
 .input:hover {
   border-color: var(--color-border-strong);
 }

@@ -31,11 +31,18 @@ if (typeof window !== 'undefined') {
     lastMouseY = e.clientY;
   });
 
-  // Also track regular mouse events for the FAB menu case
-  document.addEventListener('mousedown', (e) => {
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
-  });
+  // Also track presses for menus opened from a button (the row ⋯). Pointer
+  // events, in the capture phase: React Aria buttons cancel pointerdown, which
+  // suppresses the mousedown that follows, so the menu used to open wherever
+  // the last right-click had been.
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    },
+    { capture: true },
+  );
 
   // Touch devices never fire the mouse/contextmenu events above until release,
   // so track the touch point for tap-to-open (mobile) menus.
