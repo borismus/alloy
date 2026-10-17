@@ -428,12 +428,23 @@ test('task model and email controls persist direct changes', async ({ page }) =>
   }
 
   // Disabling has to be visible at a glance, not just recorded in the file.
+  // The fixture task starts paused so it never runs for real: turn it on, then
+  // off, waiting each time for the saved state rather than the click.
+  await expect(scheduleSwitch).not.toBeChecked();
+  await scheduleToggle.click();
+  await expect(scheduleSwitch).toBeChecked();
+  await expect(page.locator('.task-schedule-card.paused')).toHaveCount(0);
+  await expect(scheduleSwitch).toBeEnabled();
   await scheduleToggle.click();
   await expect(scheduleSwitch).not.toBeChecked();
   await expect(page.locator('.task-schedule-card.paused')).toBeVisible();
   await expect(page.locator('.task-next-run.paused')).toContainText('Paused');
 
   // Both controls write the task file rather than changing only local UI state.
+  // Each switch is disabled while its save is in flight; reloading before it
+  // finishes would cancel the write.
+  await expect(emailSwitch).toBeEnabled();
+  await expect(scheduleSwitch).toBeEnabled();
   await page.reload();
   await expect(page.locator('.task-detail-view, .timeline-item').first()).toBeVisible();
   if (await page.getByRole('button', { name: 'Run now' }).count() === 0) {
