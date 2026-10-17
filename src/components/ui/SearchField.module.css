@@ -25,7 +25,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   font-family: var(--font-ui);
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   outline: none;
   transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
@@ -36,7 +36,7 @@
 
 .input:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-focus);
+  box-shadow: var(--shadow-focus);
 }
 
 .clear {

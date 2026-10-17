@@ -83,8 +83,8 @@
   height: 48px;
   flex: 0 0 auto;
   padding: 0;
-  border-radius: 12px;
-  font-size: 1.5rem;
+  border-radius: var(--radius-panel);
+  font-size: 1.5rem; /* ds-allow: composer icon glyph */
 }
 
 .composer.secondary {
@@ -106,12 +106,12 @@
 
 .composer.primary[data-hovered] {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgb(102 126 234 / 40%);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 40%, transparent);
   filter: none;
 }
 
 .composer.danger {
-  font-size: 1rem;
+  font-size: var(--text-base);
 }
 
 .composer[data-recording] {
@@ -128,8 +128,8 @@
 }
 
 @keyframes pulse-recording {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(239 68 68 / 40%); }
-  50% { box-shadow: 0 0 0 6px rgb(239 68 68 / 0%); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-danger) 40%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-danger) 0%, transparent); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -145,8 +145,8 @@
 
 /* Variants */
 .primary {
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-end));
+  color: var(--color-on-accent);
+  background: var(--gradient-accent);
   border-color: transparent;
   box-shadow: var(--shadow-control);
 }
@@ -200,6 +200,19 @@
 }
 
 .danger {
-  color: #ffffff;
+  color: var(--color-on-accent);
   background: var(--color-danger);
+}
+
+/* A destructive action that opens a confirmation rather than confirming:
+   red text on the raised surface, filled only on hover. */
+.dangerText {
+  color: var(--color-danger);
+  background: var(--color-surface-raised);
+  border-color: var(--color-danger-soft);
+}
+
+.dangerText[data-hovered] {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger-soft);
 }

@@ -2,7 +2,7 @@
   display: flex;
   padding: 3px;
   background: var(--color-track);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .segment {
@@ -29,7 +29,7 @@
 .segment[data-selected] {
   color: var(--color-text);
   background: var(--color-surface-raised);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-overlay) 20%, transparent);
 }
 
 .segment[data-focus-visible] {

@@ -3,10 +3,10 @@
   padding: 4px 8px;
   color: var(--color-canvas);
   background: var(--color-text);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   box-shadow: var(--shadow-popover);
   font-family: var(--font-ui);
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.3;
 }
 

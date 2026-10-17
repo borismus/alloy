@@ -2,7 +2,7 @@ import { forwardRef } from 'react';
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components';
 import styles from './Button.module.css';
 
-type ButtonVariant = 'primary' | 'secondary' | 'surface' | 'muted' | 'quiet' | 'danger';
+type ButtonVariant = 'primary' | 'secondary' | 'surface' | 'muted' | 'quiet' | 'danger' | 'dangerText';
 type ButtonSize = 'small' | 'medium' | 'icon' | 'compactIcon' | 'composer';
 
 export interface ButtonProps extends Omit<AriaButtonProps, 'className'> {
