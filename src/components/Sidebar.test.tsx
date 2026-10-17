@@ -34,6 +34,7 @@ function renderSidebar(overrides: {
   fullScreen?: boolean;
   timelineItems?: TimelineItem[];
   tasks?: ScheduledTask[];
+  streamingConversationIds?: string[];
 } = {}) {
   return render(
     <TaskProvider tasks={overrides.tasks ?? []}>
@@ -44,7 +45,7 @@ function renderSidebar(overrides: {
         onFilterChange={vi.fn()}
         selectedItemId={null}
         onSelectItem={overrides.onSelectItem ?? vi.fn()}
-        streamingConversationIds={[]}
+        streamingConversationIds={overrides.streamingConversationIds ?? []}
         unreadConversationIds={[]}
         availableModels={[]}
         onRenameConversation={vi.fn()}
@@ -249,4 +250,13 @@ it("opens a row's menu without selecting the row", async () => {
 
   expect(vaultService.getConversationFilePath).toHaveBeenCalledWith(ITEM.id);
   expect(onSelectItem).not.toHaveBeenCalled();
+});
+
+it('shows a streaming reply on the date line, leaving the title its full width', () => {
+  const { container } = renderSidebar({ streamingConversationIds: [ITEM.id] });
+
+  const indicator = container.querySelector('.streaming-indicator');
+  expect(indicator?.closest('.item-meta-start')).not.toBeNull();
+  expect(indicator?.nextElementSibling?.classList.contains('item-date')).toBe(true);
+  expect(container.querySelector('.item-preview .streaming-indicator')).toBeNull();
 });

@@ -579,9 +579,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 </IconButton>
               </span>
               <div className="item-preview">
-                {streamingConversationIds.includes(item.id) && (
-                  <span className="streaming-indicator" title="Streaming...">●</span>
-                )}
                 {latestTaskError(item) && (
                   <span
                     className="task-error-indicator"
@@ -607,6 +604,11 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 {/* Badges ride on the meta line so the title always gets the
                     full row width. */}
                 <span className="item-meta-start">
+                  {/* On the meta line, not the title's, so the title doesn't
+                      shift or rewrap while a reply streams. */}
+                  {streamingConversationIds.includes(item.id) && (
+                    <span className="streaming-indicator" title="Streaming...">●</span>
+                  )}
                   <span className="item-date">{formatDate(item.lastUpdated)}</span>
                   {getTypeBadge(item)}
                 </span>

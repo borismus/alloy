@@ -278,17 +278,11 @@
 
 .streaming-indicator {
   color: var(--color-success);
-  margin-right: 0.35rem;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 .unread-indicator {
   color: var(--color-accent);
-}
-
-/* The title row spaces its children with gap. */
-.item-preview > .streaming-indicator {
-  margin-right: 0;
 }
 
 @keyframes pulse {
