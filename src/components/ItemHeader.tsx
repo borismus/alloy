@@ -1,5 +1,6 @@
 import React from 'react';
 import { HeaderActions } from './HeaderActions';
+import { CopyButton } from './CodeBlock';
 import { AlloyTooltip, Button } from './ui';
 import './ItemHeader.css';
 
@@ -25,7 +26,8 @@ export const ItemHeader: React.FC<ItemHeaderProps> = ({
   children,
 }) => {
   return (
-    <div className="item-header">
+    // Draggable in the desktop app, which has no title bar of its own.
+    <div className="item-header" data-tauri-drag-region>
       <div className="item-header-title">
         <Button
           variant="quiet"
@@ -53,9 +55,14 @@ export const ItemHeader: React.FC<ItemHeaderProps> = ({
             </svg>
           </Button>
         )}
-        <div className="item-header-heading">
-          <h2>{title}</h2>
-          {subtitle && <div className="item-header-subtitle">{subtitle}</div>}
+        {/* The title drags the window too (so it can't be selected), hence
+            the copy button beside it. */}
+        <div className="item-header-heading" data-tauri-drag-region>
+          <div className="item-header-title-row" data-tauri-drag-region>
+            <h2 data-tauri-drag-region>{title}</h2>
+            <CopyButton text={title} label="Copy title" className="item-header-copy" />
+          </div>
+          {subtitle && <div className="item-header-subtitle" data-tauri-drag-region>{subtitle}</div>}
         </div>
       </div>
       <div className="item-header-actions">

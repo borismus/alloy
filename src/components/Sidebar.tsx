@@ -512,6 +512,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 
   return (
     <div className={`sidebar ${fullScreen ? 'full-screen' : ''}`}>
+      {!fullScreen && <div className="window-drag-strip" data-tauri-drag-region />}
       {fullScreen && onMobileBack && (
         <div className="mobile-sidebar-header">
           <img src="/icon-192.png" alt="Alloy" className="mobile-app-icon" width="28" height="28" />

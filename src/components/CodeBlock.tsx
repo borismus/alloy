@@ -21,7 +21,7 @@ function CheckIcon() {
 }
 
 /** Icon copy-to-clipboard button; flips to a checkmark briefly after copying. */
-export function CopyButton({ text, className = '' }: { text: string; className?: string }) {
+export function CopyButton({ text, className = '', label = 'Copy' }: { text: string; className?: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -32,8 +32,8 @@ export function CopyButton({ text, className = '' }: { text: string; className?:
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1500);
       }}
-      title={copied ? 'Copied' : 'Copy'}
-      aria-label="Copy"
+      title={copied ? 'Copied' : label}
+      aria-label={label}
     >
       {copied ? <CheckIcon /> : <ClipboardIcon />}
     </button>

@@ -43,4 +43,14 @@ describe('ItemHeader actions', () => {
     expect(back.className.split(' ').length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText('Claude subscription')).toBeTruthy();
   });
+
+  it('offers to copy the title, since dragging the window by it blocks selection', async () => {
+    // userEvent stubs the clipboard, so the copied text can be read back.
+    const user = userEvent.setup();
+    render(<ItemHeader title="Trip planning" onBack={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Trip planning' }).hasAttribute('data-tauri-drag-region')).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Copy title' }));
+    expect(await navigator.clipboard.readText()).toBe('Trip planning');
+  });
 });

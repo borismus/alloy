@@ -37,6 +37,41 @@
   white-space: nowrap;
 }
 
+.item-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.item-header-title-row h2 {
+  min-width: 0;
+}
+
+/* Shown on hover, so it doesn't compete with the title. Plainer than the
+   code-block copy button it shares: no box, just the icon. */
+.item-header .item-header-copy {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.item-header .item-header-copy:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.item-header-heading:hover .item-header-copy,
+.item-header .item-header-copy:focus-visible,
+.item-header .item-header-copy.copied {
+  opacity: 1;
+}
+
 .item-header-subtitle {
   margin-top: 2px;
   color: var(--text-tertiary, var(--color-text-muted));
@@ -70,6 +105,11 @@
    landscape is ~874px wide, above any width-only breakpoint, but is still a
    phone. Keep in sync with MOBILE_MEDIA_QUERY in src/hooks/useIsMobile.ts. */
 @media (max-width: 768px), (max-height: 500px) and (pointer: coarse) {
+  /* No hover on a phone, and no room beside the title. */
+  .item-header .item-header-copy {
+    display: none;
+  }
+
   .item-header {
     padding: 8px 16px;
     padding-top: calc(8px + env(safe-area-inset-top, 0px));

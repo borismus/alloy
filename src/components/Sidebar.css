@@ -10,6 +10,19 @@
   overflow: hidden;
 }
 
+/* Room for the macOS traffic lights, which float over the top of the sidebar
+   in the desktop app; also lets the window be dragged from there. */
+.window-drag-strip {
+  display: none;
+}
+
+.macos-overlay-titlebar .window-drag-strip {
+  display: block;
+  height: 28px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+}
+
 .search-box {
   padding: 0.625rem 0.75rem;
   background: var(--color-surface);
