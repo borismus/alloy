@@ -1,8 +1,8 @@
 /*
  * Alloy design tokens.
  *
- * Semantic tokens consumed by the `src/components/ui/` primitives and (as the
- * migration proceeds) feature CSS. Light values live on :root; dark values
+ * Semantic tokens consumed by the `src/components/ui/` primitives and feature
+ * CSS; see docs/design-system.md. Light values live on :root; dark values
  * override the color tokens under [data-theme="dark"], which the ThemeProvider
  * sets on <html>. Add new tokens here rather than hardcoding colors in
  * component CSS so every surface adapts to the theme.
@@ -116,31 +116,6 @@
   --z-toast: 1100;
   --z-menu: 1200;
   --z-debug: 100000;
-
-  /*
-   * Compatibility aliases. Feature CSS across the app uses these ad-hoc names
-   * with hardcoded fallbacks (the names were never actually defined). Pointing
-   * them at semantic tokens tokenizes ~130 usages at once. Because each alias
-   * value is itself a var() reference, it resolves to the dark token value
-   * under [data-theme="dark"] without needing a second definition.
-   */
-  --border-color: var(--color-border);
-  --bg-primary: var(--color-canvas);
-  --bg-secondary: var(--color-surface);
-  --bg-tertiary: var(--color-surface);
-  --bg-hover: var(--color-surface-hover);
-  --text-primary: var(--color-text);
-  --text-secondary: var(--color-text-secondary);
-  --text-tertiary: var(--color-text-muted);
-  --text-muted: var(--color-text-muted);
-  --accent-color: var(--color-accent);
-  --accent-hover: var(--color-accent-strong);
-  --warning-text: var(--color-warning);
-  --warning-bg: var(--color-warning-soft);
-  --success-text: var(--color-success);
-  --success-bg: var(--color-success-soft);
-  --info-text: var(--color-accent);
-  --info-bg: var(--color-accent-soft);
 }
 
 :root[data-theme="dark"] {

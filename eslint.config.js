@@ -46,8 +46,7 @@ export default tseslint.config(
     ignores: ['src/components/ui/**', '**/*.test.tsx'],
     rules: {
       'no-restricted-syntax': [
-        // TODO(design-system): 'error' once every file is migrated.
-        'warn',
+        'error',
         {
           selector: "JSXOpeningElement[name.name='button']",
           message: 'Use Button, IconButton or CopyButton from components/ui.',

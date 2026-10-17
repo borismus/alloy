@@ -2,9 +2,6 @@ import React from 'react';
 import { CopyButton } from './ui';
 import './CodeBlock.css';
 
-// ItemHeader still imports CopyButton from here until its own migration lands.
-export { CopyButton };
-
 interface CodeBlockProps {
   /** Raw source text, used for copying. */
   code: string;
