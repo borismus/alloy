@@ -45,7 +45,7 @@ it('shows the current Alloy version in Updates', async () => {
   await screen.findByText(/Scheduled tasks run on/);
 });
 
-it('warns when no shared scheduled-task runner is assigned', async () => {
+it('explains, without alarm, that no machine runs scheduled tasks yet', async () => {
   vi.mocked(fetch).mockResolvedValueOnce({
     ok: true,
     json: async () => ({ currentHost: 'legomenon', schedulerActive: true }),
@@ -61,8 +61,10 @@ it('warns when no shared scheduled-task runner is assigned', async () => {
     </ThemeProvider>
   );
 
-  expect((await screen.findByText(/No runner is assigned/)).textContent)
-    .toContain('Every Alloy machine');
+  const explanation = await screen.findByText(/No machine is set to run scheduled tasks yet/);
+  expect(explanation.textContent).toContain('runs once');
+  // The default state is not an error.
+  expect(explanation.closest('.settings-warning')).toBeNull();
   expect(screen.getByRole('button', { name: 'Run scheduled tasks on this machine' })).toBeTruthy();
 });
 
@@ -81,10 +83,10 @@ it('shows the shared runner assignment and can assign the current server', async
   );
 
   expect((await screen.findByText(/Scheduled tasks run on/)).textContent).toContain('smusmini');
-  expect(screen.getByText(/This server is/).textContent).toContain('legomenon');
+  expect(screen.getByText(/You're connected to/).textContent).toContain('legomenon');
   await user.click(screen.getByRole('button', { name: 'Run scheduled tasks on this machine' }));
 
   await waitFor(() => expect(update).toHaveBeenCalledWith('scheduledTaskRunner', 'legomenon'));
   expect(screen.getByText(/This machine/).textContent).toContain('legomenon');
-  expect(screen.getByText(/Activation can take up to a minute/)).toBeTruthy();
+  expect(screen.getByText(/It can take up to a minute to start/)).toBeTruthy();
 });

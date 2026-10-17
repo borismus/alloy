@@ -242,20 +242,21 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                   </p>
                 ) : (
                   <p className="settings-description">
-                    Scheduled tasks run on <strong>{schedulerStatus.scheduledTaskRunner}</strong>. This server is{' '}
+                    Scheduled tasks run on <strong>{schedulerStatus.scheduledTaskRunner}</strong>. You&apos;re connected to{' '}
                     <strong>{schedulerStatus.currentHost}</strong>.
                   </p>
                 )
               ) : (
-                <p className="settings-description settings-warning">
-                  No runner is assigned. Every Alloy machine using this vault may execute the same task.
+                <p className="settings-description">
+                  No machine is set to run scheduled tasks yet. Pick one so each task runs once, rather than
+                  on every machine that uses this vault.
                 </p>
               )}
               {schedulerStatus.scheduledTaskRunner === schedulerStatus.currentHost &&
                schedulerStatus.schedulerActive === false && (
                 <p className="settings-hint">
-                  Assignment saved. Activation can take up to a minute; if this persists, another Alloy process
-                  on this machine holds the scheduler lock.
+                  Saved. It can take up to a minute to start. If it doesn&apos;t, another copy of Alloy on this
+                  machine is already running the schedule.
                 </p>
               )}
               {schedulerStatus.scheduledTaskRunner !== schedulerStatus.currentHost && (
@@ -271,7 +272,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 </div>
               )}
               <p className="settings-hint">
-                The assignment is stored in the shared vault. Run now remains available from every Alloy server.
+                Saved in your vault, so every device sees the same choice. Run now works from any device.
               </p>
             </div>
           )}
@@ -355,6 +356,11 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 </p>
               </>
             )}
+            {!isTauri() ? (
+              // The browser build is served by the Mac running Alloy; it can't
+              // check for or install updates itself.
+              <p className="settings-hint">Updates install on the machine that runs Alloy.</p>
+            ) : (
             <div className="settings-button-group">
               <button
                 onClick={handleCheckForUpdates}
@@ -376,6 +382,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 </span>
               )}
             </div>
+            )}
           </div>
 
           <div className="settings-section">
