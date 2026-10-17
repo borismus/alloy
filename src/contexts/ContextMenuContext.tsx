@@ -11,6 +11,10 @@ export interface ContextMenuItem {
   id: string;
   text: string;
   enabled?: boolean;
+  /** Destructive action: shown in red. */
+  danger?: boolean;
+  /** Draw a divider above this item. */
+  separatorBefore?: boolean;
   action?: () => void;
 }
 

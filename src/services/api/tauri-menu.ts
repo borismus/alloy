@@ -11,6 +11,8 @@ interface MenuItemOptions {
   id?: string;
   text?: string;
   enabled?: boolean;
+  danger?: boolean;
+  separatorBefore?: boolean;
   action?: () => void;
 }
 
@@ -73,6 +75,8 @@ export class Menu {
         id: item.id || '',
         text: item.text || '',
         enabled: item.enabled ?? true,
+        danger: item.danger,
+        separatorBefore: item.separatorBefore,
         action: item.action,
       }));
     }

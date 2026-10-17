@@ -32,6 +32,16 @@
   background: var(--bg-hover, #3d3d3d);
 }
 
+.context-menu-item.danger {
+  color: var(--color-danger);
+}
+
+.context-menu-item.separator-before {
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
 .context-menu-item.disabled {
   color: var(--text-muted, #888);
   cursor: not-allowed;

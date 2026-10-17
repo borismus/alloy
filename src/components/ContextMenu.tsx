@@ -104,7 +104,12 @@ export const ContextMenu: React.FC = () => {
       {menuState.items.map((item) => (
         <div
           key={item.id}
-          className={`context-menu-item ${item.enabled === false ? 'disabled' : ''}`}
+          className={[
+            'context-menu-item',
+            item.enabled === false && 'disabled',
+            item.danger && 'danger',
+            item.separatorBefore && 'separator-before',
+          ].filter(Boolean).join(' ')}
           onClick={() => handleItemClick(item)}
         >
           {item.text}

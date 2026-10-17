@@ -13,7 +13,7 @@ import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel, modelDisplayName } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
-import { AlloyDialog, SegmentedControl } from './ui';
+import { AlloyDialog, Button, SegmentedControl } from './ui';
 import { HeaderActions } from './HeaderActions';
 import { TitleSuggestions } from './TitleSuggestions';
 import './Sidebar.css';
@@ -21,6 +21,9 @@ import './Sidebar.css';
 interface SidebarSearchControlProps {
   onQueryChange: (query: string) => void;
   showLogo: boolean;
+  filtersOpen: boolean;
+  filterActive: boolean;
+  onToggleFilters: () => void;
 }
 
 /**
@@ -32,6 +35,9 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
   function SidebarSearchControl({
     onQueryChange,
     showLogo,
+    filtersOpen,
+    filterActive,
+    onToggleFilters,
   }, ref) {
     const textareaProps = useTextareaProps();
     const [value, setValue] = useState('');
@@ -77,6 +83,20 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
             </button>
           )}
         </div>
+        <span className={`filter-toggle ${filtersOpen ? 'open' : ''} ${filterActive ? 'active' : ''}`}>
+          <Button
+            variant="quiet"
+            size="icon"
+            onPress={onToggleFilters}
+            aria-label={filterActive ? 'Filter by type (filtered)' : 'Filter by type'}
+            aria-expanded={filtersOpen}
+            aria-controls="timeline-filters"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M3 6h18M7 12h10M10 18h4" />
+            </svg>
+          </Button>
+        </span>
       </div>
     );
   },
@@ -217,6 +237,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const { deliveredResults, dismissDeliveredResult } = useTaskContext();
   const deliveredTaskIds = deliveredResults.map(result => result.taskId);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const providerLocalities = useProviderLocalities();
@@ -315,13 +336,23 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         });
       }
 
-      menuItems.push({
-        id: 'delete',
-        text: 'Delete',
-        action: () => {
-          setDeletingItem({ type: item.type, id: item.id });
-        }
-      });
+      // Opening a file in Obsidian or the default app needs the Mac that holds
+      // the vault; a phone would be handed a Mac path it can't open.
+      if (!fullScreen) {
+        menuItems.push({
+          id: 'edit',
+          text: externalEditor === 'obsidian' && filePath.endsWith('.md')
+            ? 'Open in Obsidian'
+            : 'Open in default app',
+          action: async () => {
+            try {
+              await openInEditor(filePath, externalEditor);
+            } catch (error) {
+              console.error('Failed to open file in editor:', error);
+            }
+          }
+        });
+      }
 
       // Reveal acts on a path on the machine running Alloy, so it only works
       // in the desktop app; a browser or phone has no Finder to open.
@@ -340,14 +371,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       }
 
       menuItems.push({
-        id: 'edit',
-        text: 'Edit',
-        action: async () => {
-          try {
-            await openInEditor(filePath, externalEditor);
-          } catch (error) {
-            console.error('Failed to open file in editor:', error);
-          }
+        id: 'delete',
+        text: 'Delete',
+        danger: true,
+        separatorBefore: menuItems.length > 0,
+        action: () => {
+          setDeletingItem({ type: item.type, id: item.id });
         }
       });
 
@@ -494,9 +523,14 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         ref={searchInputRef}
         onQueryChange={setSearchQuery}
         showLogo={!fullScreen}
+        filtersOpen={filtersOpen}
+        filterActive={activeFilter !== 'all'}
+        onToggleFilters={() => setFiltersOpen(open => !open)}
       />
 
-      <div className="filter-tabs-container">
+      {/* Hidden until asked for, to give the list more room. The toggle turns
+          accent-coloured while a filter other than All is applied. */}
+      <div className="filter-tabs-container" id="timeline-filters" hidden={!filtersOpen}>
         <SegmentedControl
           aria-label="Filter timeline by type"
           value={activeFilter}

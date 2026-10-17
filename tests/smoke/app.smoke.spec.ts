@@ -25,7 +25,9 @@ test('every header offers new conversation and settings at the top right', async
   const actions = ['New conversation', 'Open settings'];
 
   await expect(page.getByRole('button', { name: 'More creation options' })).toHaveCount(0);
-  await expect(searchRow.getByRole('button')).toHaveCount(0);
+  for (const name of actions) {
+    await expect(searchRow.getByRole('button', { name })).toHaveCount(0);
+  }
 
   if (testInfo.project.name.startsWith('mobile')) {
     for (const name of actions) {
@@ -535,15 +537,21 @@ test('mobile: the note and task edit composers stay within two rows', async ({ p
   }
 });
 
-test('browser mode hides actions that need the desktop app', async ({ page }) => {
-  // Reveal in Finder and the editor settings act on files on the machine
-  // running Alloy; from a browser they could only fail silently. The row's
-  // Edit stays: with Obsidian it works from a browser on the vault's Mac.
+test('browser mode hides actions that need the desktop app', async ({ page }, testInfo) => {
+  // Reveal in Finder, the editor settings and the updater act on the machine
+  // running Alloy; from a browser they could only fail silently or mislead.
+  // Opening a file in an editor works from a browser on the vault's Mac, but
+  // not from a phone.
   await page.locator('.timeline-item').filter({ hasText: 'Welcome to Alloy' })
     .getByRole('button', { name: 'More actions' }).click();
-  await expect(page.getByText('Rename', { exact: true })).toBeVisible();
+  const items = page.locator('.context-menu-item');
   await expect(page.getByText('Reveal in Finder')).toHaveCount(0);
-  await expect(page.getByText('Edit', { exact: true })).toBeVisible();
+  if (testInfo.project.name.startsWith('mobile')) {
+    await expect(items).toHaveText(['Rename', 'Delete']);
+  } else {
+    await expect(items).toHaveText(['Rename', 'Open in default app', 'Delete']);
+  }
+  await expect(items.last()).toHaveClass(/danger/);
   await page.keyboard.press('Escape');
 
   await page.locator('.timeline-item').filter({ hasText: 'project-ideas' }).click();
@@ -554,6 +562,8 @@ test('browser mode hides actions that need the desktop app', async ({ page }) =>
   for (const heading of ['Vault', 'Configuration', 'External editor']) {
     await expect(page.getByRole('heading', { name: heading, exact: true })).toHaveCount(0);
   }
+  await expect(page.getByRole('button', { name: 'Check for updates' })).toHaveCount(0);
+  await expect(page.getByText('Updates install on the machine that runs Alloy.')).toBeVisible();
 });
 
 test('mobile dialogs stay above the software keyboard', async ({ page }, testInfo) => {
@@ -589,6 +599,7 @@ test('memory changed on disk refreshes the open memory view', async ({ page }, t
   // Regression: the watcher reported memory.md changes to a callback the app
   // never provided, so an accepted memory proposal (written by the server)
   // left the app's memory, which feeds every system prompt, stale.
+  await page.getByRole('button', { name: 'Filter by type' }).click();
   await page.getByRole('radio', { name: 'Notes' }).click();
   const memoryRow = page.locator('.timeline-item', { hasText: 'memory' });
   await memoryRow.first().click();

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TaskProvider } from '../contexts/TaskContext';
-import type { ScheduledTask, TimelineItem } from '../types';
+import type { ScheduledTask, TimelineFilter, TimelineItem } from '../types';
 import { Sidebar } from './Sidebar';
 import { HeaderActionsProvider } from '../contexts/HeaderActionsContext';
 import { resetComposerDraftsForTest, setComposerDraft } from '../services/composerDrafts';
@@ -28,6 +28,7 @@ const ITEM: TimelineItem = {
 
 function renderSidebar(overrides: {
   onNewConversation?: () => void;
+  activeFilter?: TimelineFilter;
   fullScreen?: boolean;
   timelineItems?: TimelineItem[];
   tasks?: ScheduledTask[];
@@ -37,7 +38,7 @@ function renderSidebar(overrides: {
       <HeaderActionsProvider value={{ newConversation: overrides.onNewConversation ?? vi.fn(), openSettings: vi.fn() }}>
       <Sidebar
         timelineItems={overrides.timelineItems ?? [ITEM]}
-        activeFilter="all"
+        activeFilter={overrides.activeFilter ?? 'all'}
         onFilterChange={vi.fn()}
         selectedItemId={null}
         onSelectItem={vi.fn()}
@@ -199,4 +200,26 @@ it('highlights the search term in result titles and snippets', async () => {
   // Original casing is kept; both the title and the server snippet are marked.
   expect(marks()).toEqual(['Funicular', 'Funicular']);
   expect(document.querySelector('.item-search-snippet')?.textContent).toBe('rode the Funicular up the hill');
+});
+
+it('keeps the type filter behind a toggle beside search', () => {
+  renderSidebar();
+  const toggle = screen.getByRole('button', { name: 'Filter by type' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(screen.queryByRole('radio', { name: 'Notes' })).toBeNull();
+
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(toggle.closest('.filter-toggle')?.classList.contains('open')).toBe(true);
+  expect(screen.getByRole('radio', { name: 'Notes' })).toBeTruthy();
+
+  fireEvent.click(toggle);
+  expect(toggle.closest('.filter-toggle')?.classList.contains('open')).toBe(false);
+  expect(screen.queryByRole('radio', { name: 'Notes' })).toBeNull();
+});
+
+it('marks the filter toggle while a filter other than All is applied', () => {
+  renderSidebar({ activeFilter: 'notes' });
+  const toggle = screen.getByRole('button', { name: 'Filter by type (filtered)' });
+  expect(toggle.closest('.filter-toggle')?.classList.contains('active')).toBe(true);
 });
