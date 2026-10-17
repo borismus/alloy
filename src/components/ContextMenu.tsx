@@ -53,6 +53,21 @@ export const ContextMenu: React.FC = () => {
     };
   }, [menuState.visible, hideMenu]);
 
+  // Take focus while open so the arrow keys work, and hand it back on close.
+  useEffect(() => {
+    if (!menuState.visible) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const menu = menuRef.current;
+    menu?.focus({ preventScroll: true });
+    return () => {
+      if (!previous?.isConnected) return;
+      const active = document.activeElement;
+      if (!active || active === document.body || menu?.contains(active)) {
+        previous.focus({ preventScroll: true });
+      }
+    };
+  }, [menuState.visible]);
+
   // Adjust position to keep menu in viewport
   useEffect(() => {
     if (!menuState.visible || !menuRef.current) return;
@@ -89,12 +104,37 @@ export const ContextMenu: React.FC = () => {
     hideMenu();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [],
+    );
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (items.length === 0) return;
+      const current = items.indexOf(document.activeElement as HTMLElement);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = current < 0
+        ? (step > 0 ? 0 : items.length - 1)
+        : (current + step + items.length) % items.length;
+      items[next].focus();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      const index = items.indexOf(document.activeElement as HTMLElement);
+      if (index < 0) return;
+      e.preventDefault();
+      const item = menuState.items.find(i => i.id === items[index].dataset.itemId);
+      if (item) handleItemClick(item);
+    }
+  };
+
   if (!menuState.visible) return null;
 
   return (
     <div
       ref={menuRef}
       className="context-menu"
+      role="menu"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
       style={{
         position: 'fixed',
         left: menuState.x,
@@ -104,6 +144,10 @@ export const ContextMenu: React.FC = () => {
       {menuState.items.map((item) => (
         <div
           key={item.id}
+          role="menuitem"
+          tabIndex={-1}
+          data-item-id={item.id}
+          aria-disabled={item.enabled === false || undefined}
           className={[
             'context-menu-item',
             item.enabled === false && 'disabled',
