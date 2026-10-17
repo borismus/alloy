@@ -4,6 +4,39 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.0
+
+- **Riffs are gone.** Riff mode, its draft view, "Integrate" and the Riffs tab
+  have been removed. Files already in your vault's `riffs/` folder are kept and
+  now show up, search and open as ordinary notes.
+- **One header everywhere.** New conversation (+) and Settings sit at the top
+  right of every screen, on desktop and on the phone. Search gets the full
+  sidebar width on desktop, with the Alloy logo beside it. On the phone, the
+  list and item headers are the same height, so nothing jumps as you move
+  between them.
+- **No more light title bar on the Mac.** The desktop app draws right up to the
+  top of the window, with the traffic lights over the sidebar, so dark mode is
+  dark all the way up. Drag the window by the header or the item's title; a
+  copy button beside the title copies it.
+- **Filter behind a button.** All / Chats / Notes / Tasks now open from the
+  filter button beside search, which shows when a filter is applied. The list
+  gets more room.
+- **Search highlights what it found.** Matches are marked in the titles and
+  snippets of sidebar results.
+- **Tasks.** "Run now" moved from the header to the run history. A switched-off
+  task says "Paused", once, instead of "Disabled" in five places.
+- **Clearer row menu.** Rename, Open in Obsidian (or your default app), then
+  Delete in red. Delete now names what it will remove. The Edit button in the
+  note header is gone; open a note in your editor from this menu instead.
+- **One name per model.** A model shows the same name in the list, the chat and
+  the picker, including models saved under another provider or no longer in
+  the catalog.
+- **Phone fixes.** The note and task composers fit in two rows again. Actions
+  that only work on the Mac (Reveal in Finder, opening files in an editor, the
+  vault and config settings, checking for updates) no longer appear where
+  they can't work.
+- **Plainer wording** in Settings, dialogs, the empty chat and the composers.
+
 ## 0.4.49
 
 - **Drafts stay with their conversation.** Text you type but don't send now
