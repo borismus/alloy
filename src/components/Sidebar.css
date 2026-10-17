@@ -295,6 +295,12 @@
   overflow-wrap: anywhere;
 }
 
+.search-match {
+  background: var(--color-search-highlight);
+  color: var(--color-search-highlight-text);
+  border-radius: 2px;
+}
+
 .item-search-snippet {
   display: -webkit-box;
   margin: -0.2rem 0 0.5rem;

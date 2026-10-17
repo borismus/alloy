@@ -8,6 +8,7 @@ import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useWindowedList } from '../hooks/useWindowedList';
 import { useComposerDraftIds } from '../services/composerDrafts';
+import { splitOnMatches } from '../utils/findMatches';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel } from '../utils/models';
@@ -517,8 +518,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   const renderSearchSnippet = (item: TimelineItem) => {
     if (!searchQuery.trim() || item.type === 'task') return null;
     const match = serverMatches.get(vaultSearchHitKey(item.type, item.id));
-    return match ? <div className="item-search-snippet">{match.snippet}</div> : null;
+    return match ? <div className="item-search-snippet">{highlightMatches(match.snippet)}</div> : null;
   };
+
+  const highlightMatches = (text: string) =>
+    splitOnMatches(text, searchQuery).map((segment, i) =>
+      segment.match ? <mark key={i} className="search-match">{segment.text}</mark> : segment.text,
+    );
 
   const getTypeBadge = (item: TimelineItem) => {
     switch (item.type) {
@@ -645,7 +651,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                   <span className="unread-indicator" title={deliveredTaskIds.includes(item.id) ? "Task result delivered" : "New response"}>●</span>
                 )}
                 {getTypeBadge(item)}
-                {item.title}
+                {highlightMatches(item.title)}
                 {item.type === 'conversation' && draftIds.has(item.id) && (
                   <span className="draft-indicator" role="img" aria-label="Unsent draft" title="Unsent draft">✎</span>
                 )}

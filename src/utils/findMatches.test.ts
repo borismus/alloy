@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findMatchRanges, nextMatchIndex, prevMatchIndex } from './findMatches';
+import { findMatchRanges, nextMatchIndex, prevMatchIndex, splitOnMatches } from './findMatches';
 
 function container(html: string): HTMLElement {
   const el = document.createElement('div');
@@ -88,5 +88,29 @@ describe('nextMatchIndex / prevMatchIndex', () => {
   it('handles a single match by staying put', () => {
     expect(nextMatchIndex(0, 1)).toBe(0);
     expect(prevMatchIndex(0, 1)).toBe(0);
+  });
+});
+
+describe('splitOnMatches', () => {
+  it('marks every case-insensitive occurrence, keeping original casing', () => {
+    expect(splitOnMatches('Cost of context, COST of tokens', 'cost')).toEqual([
+      { text: 'Cost', match: true },
+      { text: ' of context, ', match: false },
+      { text: 'COST', match: true },
+      { text: ' of tokens', match: false },
+    ]);
+  });
+
+  it('matches the trimmed phrase as a whole', () => {
+    expect(splitOnMatches('the cost of context', '  cost of ')).toEqual([
+      { text: 'the ', match: false },
+      { text: 'cost of', match: true },
+      { text: ' context', match: false },
+    ]);
+  });
+
+  it('returns the text unmarked for an empty query or no match', () => {
+    expect(splitOnMatches('anything', '  ')).toEqual([{ text: 'anything', match: false }]);
+    expect(splitOnMatches('anything', 'zebra')).toEqual([{ text: 'anything', match: false }]);
   });
 });

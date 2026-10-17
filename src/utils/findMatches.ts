@@ -45,3 +45,28 @@ export function prevMatchIndex(current: number, count: number): number {
   if (count <= 0) return 0;
   return (current - 1 + count) % count;
 }
+
+/**
+ * Split `text` into alternating plain and matching segments for every
+ * case-insensitive occurrence of `search` (trimmed) — the same matching rule as
+ * the sidebar filter and the server's vault search — so a caller can wrap the
+ * matches. An empty query yields the whole text as one plain segment.
+ */
+export function splitOnMatches(text: string, search: string): { text: string; match: boolean }[] {
+  const query = search.trim().toLowerCase();
+  const lower = text.toLowerCase();
+  // Lowercasing can change length for a few characters (e.g. "İ"); offsets
+  // would no longer line up with the original, so don't try to highlight.
+  if (!query || lower.length !== text.length) return [{ text, match: false }];
+
+  const segments: { text: string; match: boolean }[] = [];
+  let start = 0;
+  let index: number;
+  while ((index = lower.indexOf(query, start)) >= 0) {
+    if (index > start) segments.push({ text: text.slice(start, index), match: false });
+    segments.push({ text: text.slice(index, index + query.length), match: true });
+    start = index + query.length;
+  }
+  if (start < text.length) segments.push({ text: text.slice(start), match: false });
+  return segments;
+}

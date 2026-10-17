@@ -5,6 +5,10 @@ import { TaskProvider } from '../contexts/TaskContext';
 import type { ScheduledTask, TimelineItem } from '../types';
 import { Sidebar } from './Sidebar';
 import { resetComposerDraftsForTest, setComposerDraft } from '../services/composerDrafts';
+import { searchVault } from '../services/vaultSearch';
+
+// Server-side body search; tests opt in to hits, everything else sees none.
+vi.mock('../services/vaultSearch', () => ({ searchVault: vi.fn(async () => []) }));
 
 const ITEM: TimelineItem = {
   type: 'conversation',
@@ -187,4 +191,22 @@ it('marks conversations that hold unsent composer text', () => {
 
   act(() => setComposerDraft(ITEM.id, ''));
   expect(screen.queryByRole('img', { name: 'Unsent draft' })).toBeNull();
+});
+
+it('highlights the search term in result titles and snippets', async () => {
+  vi.mocked(searchVault).mockResolvedValueOnce([
+    { type: 'conversation', id: ITEM.id, title: ITEM.title, snippet: 'rode the Funicular up the hill' },
+  ]);
+  const item: TimelineItem = { ...ITEM, title: 'Funicular day trip' };
+  renderSidebar({ timelineItems: [item] });
+  const marks = () => Array.from(document.querySelectorAll('mark.search-match')).map(m => m.textContent);
+  expect(marks()).toEqual([]);
+
+  fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'funicular' } });
+  await act(async () => { vi.advanceTimersByTime(200); });
+  await act(async () => { await Promise.resolve(); });
+
+  // Original casing is kept; both the title and the server snippet are marked.
+  expect(marks()).toEqual(['Funicular', 'Funicular']);
+  expect(document.querySelector('.item-search-snippet')?.textContent).toBe('rode the Funicular up the hill');
 });
