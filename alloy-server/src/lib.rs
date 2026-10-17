@@ -94,7 +94,7 @@ pub fn build_router(state: AppState) -> Router {
         // no declared route. Using a fallback instead of a /{*path}
         // catch-all means OPTIONS preflight on /api/* paths doesn't end up
         // returning 405 (which would block the actual POST in WKWebView).
-        .fallback(routes::static_files::fallback)
+        .fallback_service(routes::static_files::service())
         .layer(axum::middleware::from_fn_with_state(
             state.share_on_network.clone(),
             auth::tailscale_share_gate,

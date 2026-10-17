@@ -20,11 +20,24 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use rust_embed::RustEmbed;
+use tower_http::compression::CompressionLayer;
 
 #[derive(RustEmbed)]
 #[folder = "../dist-web/"]
 #[allow_missing = true]
 struct SpaAssets;
+
+/// The fallback as a service, compressed for clients that accept it. Only
+/// these responses are compressed: the bundle is ~1.3MB of text (~0.4MB
+/// gzipped), while API and streaming responses stay untouched so a compressor
+/// never buffers a streamed reply.
+pub fn service() -> axum::Router {
+    compressed(axum::Router::new().fallback(fallback))
+}
+
+fn compressed(router: axum::Router) -> axum::Router {
+    router.layer(CompressionLayer::new())
+}
 
 /// Axum fallback handler. Only invoked when no declared route matches.
 pub async fn fallback(request: Request) -> Response {
@@ -81,5 +94,46 @@ fn serve_embedded(path: &str) -> Response {
             // SPA on a separate port.
             (StatusCode::NOT_FOUND, "asset not found\n").into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::routing::get;
+    use tower::util::ServiceExt;
+
+    /// The real router's shape: API routes, then the compressed fallback.
+    fn app() -> axum::Router {
+        let text = || "console.log('alloy');\n".repeat(500);
+        axum::Router::new()
+            .route("/api/stream/active", get(move || async move { text() }))
+            .fallback_service(compressed(axum::Router::new().fallback(move || async move {
+                ([(header::CONTENT_TYPE, "text/javascript")], text())
+            })))
+    }
+
+    async fn encoding(path: &str, accept: Option<&str>) -> Option<String> {
+        let mut req = Request::builder().uri(path);
+        if let Some(accept) = accept {
+            req = req.header(header::ACCEPT_ENCODING, accept);
+        }
+        let res = app().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        res.headers()
+            .get(header::CONTENT_ENCODING)
+            .map(|v| v.to_str().unwrap().to_owned())
+    }
+
+    #[tokio::test]
+    async fn compresses_app_files_for_clients_that_accept_it() {
+        assert_eq!(encoding("/assets/index.js", Some("gzip")).await.as_deref(), Some("gzip"));
+        assert_eq!(encoding("/assets/index.js", Some("br, gzip")).await.as_deref(), Some("br"));
+        assert_eq!(encoding("/assets/index.js", None).await, None);
+    }
+
+    #[tokio::test]
+    async fn leaves_api_responses_uncompressed() {
+        assert_eq!(encoding("/api/stream/active", Some("br, gzip")).await, None);
     }
 }
