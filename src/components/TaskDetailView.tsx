@@ -9,7 +9,7 @@ import { MarkdownContent } from './MarkdownContent';
 import { AiEditPanel } from './AiEditPanel';
 import { ModelSelector } from './ModelSelector';
 import { Button as AriaButton } from 'react-aria-components';
-import { Badge, Button, Switch, type BadgeTone } from './ui';
+import { Badge, Button, LockIcon, Switch, type BadgeTone } from './ui';
 import { describeTaskSchedule, parseTaskCron } from '../utils/taskSchedule';
 import { providerLabel, isLocalModel } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
@@ -73,16 +73,6 @@ interface TaskDetailViewProps {
 
 function formatCost(cost: number): string {
   return cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2);
-}
-
-// Small padlock marking an on-device (local) model, matching the picker badge.
-function LocalLockIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="10.5" width="16" height="10.5" rx="2" fill="currentColor" />
-      <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" stroke="currentColor" strokeWidth="2" fill="none" />
-    </svg>
-  );
 }
 
 // js-yaml's default schema parses ISO timestamps into Date objects, so a run's
@@ -436,8 +426,8 @@ export function TaskDetailView({
                 onSetDefault={onSetDefault}
               />
               {modelIsLocal ? (
-                <Badge tone="success" title="Runs on a local model — prompts stay on your device">
-                  <span className="task-model-tag-content"><LocalLockIcon /> Local</span>
+                <Badge tone="success" icon={<LockIcon />} title="Runs on a local model — prompts stay on your device">
+                  Local
                 </Badge>
               ) : (
                 <Badge tone="accent" title={`Runs on ${modelProvider} (cloud)`}>Cloud</Badge>

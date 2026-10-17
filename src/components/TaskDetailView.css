@@ -194,12 +194,6 @@
 }
 
 /* The lock icon beside the Local badge's text. */
-.task-model-tag-content {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-}
-
 .task-config-section {
   margin-bottom: var(--space-8);
 }

@@ -55,16 +55,6 @@
   min-width: 0;
 }
 
-.providerTagContent {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.providerTagContent svg {
-  display: block;
-}
-
 /* Popover + search */
 .popover {
   width: min(360px, calc(100vw - 24px));

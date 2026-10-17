@@ -13,7 +13,7 @@ import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel, modelDisplayName } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
-import { AlloyDialog, Badge, Button, DialogActions, DialogBody, IconButton, SearchField, SegmentedControl, TextField } from './ui';
+import { AlloyDialog, Badge, Button, DialogActions, DialogBody, IconButton, LockIcon, NoteIcon, SearchField, SegmentedControl, TaskIcon, TextField } from './ui';
 import { HeaderActions } from './HeaderActions';
 import { TitleSuggestions } from './TitleSuggestions';
 import './Sidebar.css';
@@ -483,19 +483,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     switch (item.type) {
       case 'conversation':
         return isLocalConversation(item)
-          ? <Badge title="Uses a local model">Local</Badge>
+          ? <Badge icon={<LockIcon />} title="Uses a local model">Local</Badge>
           : null;
       case 'note':
-        return <Badge tone="accent">Note</Badge>;
+        return <Badge tone="accent" icon={<NoteIcon />}>Note</Badge>;
       case 'task':
         return (
           <>
-            <Badge tone="success">Task</Badge>
+            <Badge tone="success" icon={<TaskIcon />}>Task</Badge>
             {item.task && !item.task.enabled && (
               <Badge tone="warning" title="Paused — will not run on its schedule">Paused</Badge>
             )}
             {item.task && isLocalModel(item.task.model, providerLocalities, availableModels) && (
-              <Badge title="Uses a local model">Local</Badge>
+              <Badge icon={<LockIcon />} title="Uses a local model">Local</Badge>
             )}
           </>
         );

@@ -13,19 +13,9 @@ import {
 } from 'react-aria-components';
 import { ModelInfo } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { Badge } from './ui';
+import { Badge, LockIcon } from './ui';
 import { modelDisplayName, providerLabel, providerTag } from '../utils/models';
 import styles from './ModelSelector.module.css';
-
-/** Small padlock, used to mark on-device (privacy-preserving) models. */
-function LockIcon({ size = 10 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="10.5" width="16" height="10.5" rx="2" fill="currentColor" />
-      <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" stroke="currentColor" strokeWidth="2" fill="none" />
-    </svg>
-  );
-}
 
 /**
  * Provenance chip: short provider tag ("OR", "MLX", "ANT"). Local (loopback/LAN)
@@ -38,8 +28,8 @@ function ProviderTag({ model }: { model: ModelInfo }) {
   return (
     <span className={styles.providerTag}>
       {model.local ? (
-        <Badge tone="success" title={`${full} · runs locally, not sent to the cloud`}>
-          <span className={styles.providerTagContent}><LockIcon /> {tag}</span>
+        <Badge tone="success" icon={<LockIcon />} title={`${full} · runs locally, not sent to the cloud`}>
+          {tag}
         </Badge>
       ) : (
         <Badge title={full}>{tag}</Badge>

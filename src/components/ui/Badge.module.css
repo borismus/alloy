@@ -1,6 +1,7 @@
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
   flex: none;
   max-width: 100%;
   padding: 2px 6px;
@@ -26,19 +27,28 @@
 .accent {
   color: var(--color-accent);
   background: var(--color-accent-soft);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 .success {
   color: var(--color-success);
   background: var(--color-success-soft);
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
 }
 
 .warning {
   color: var(--color-warning);
   background: var(--color-warning-soft);
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
 }
 
 .danger {
   color: var(--color-danger);
   background: var(--color-danger-soft);
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+}
+
+.badge svg {
+  display: block;
+  flex: none;
 }

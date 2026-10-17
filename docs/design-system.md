@@ -122,7 +122,7 @@ place them with a wrapping element.
 | `SelectField` | Picking one of a few options | |
 | `SegmentedControl` | Two to five mutually exclusive views or modes | e.g. the timeline filter, the theme picker |
 | `Switch` | On/off settings that apply immediately | Requires `aria-label` |
-| `Badge` | Non-interactive status labels | `tone`: `neutral`, `accent`, `success`, `warning`, `danger`. One shape and size; never wraps |
+| `Badge` | Non-interactive status labels | `tone`: `neutral`, `accent`, `success`, `warning`, `danger`; optional `icon` from `ui/icons` (`LockIcon` for local, `NoteIcon`, `TaskIcon`). One shape and size, with a tinted border; never wraps |
 | `AlloyTooltip` | Hover/focus hints on a pressable | Use instead of `title=` |
 | `AlloyDialog` + `DialogBody` + `DialogActions` | Modal dialogs | A bottom sheet on the phone. Actions: Cancel first, the confirming action last; `danger` for destructive confirms |
 | `AlloyMenu` | Dropdown menus from a trigger | |

@@ -23,3 +23,4 @@ export { Badge } from './Badge';
 export type { BadgeProps, BadgeTone } from './Badge';
 export { TextField } from './TextField';
 export type { TextFieldProps } from './TextField';
+export { LockIcon, NoteIcon, TaskIcon } from './icons';
