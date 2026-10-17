@@ -4,7 +4,7 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
-## Unreleased
+## 0.5.1
 
 - **The phone header no longer slides under the status bar.** After the
   keyboard went away, iOS could leave the page scrolled, drawing the app lower
@@ -18,7 +18,8 @@ of the corresponding GitHub release, so add a section here before bumping.
 - **One look for every control.** Buttons, icon buttons, copy buttons, badges,
   text fields and dialogs now come from one shared set, so Settings, the
   sidebar, tasks, the find bar and vault setup match each other. Badges have one
-  shape and never push a long title onto a second line.
+  bordered shape with an icon (a lock for local, a page for notes, a clock for
+  tasks) and sit beside the date, so titles keep the full row width.
 - **Readable in dark mode.** The message field and the AI edit field follow the
   theme instead of showing the browser's grey, and white text on the accent
   (Run now, your message bubbles, primary buttons) now meets contrast
