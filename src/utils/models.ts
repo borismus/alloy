@@ -52,6 +52,21 @@ export function providerTag(providerId: string | undefined, modelKey: string): s
   return PROVIDER_TAGS[id as ProviderType] || id.slice(0, 3).toUpperCase();
 }
 
+/**
+ * The name to show for a model anywhere in the UI. Prefers the catalog's
+ * display name; a key whose provider prefix differs from the catalog's (an
+ * older conversation saved under another provider) still resolves by its model
+ * id. Unknown models fall back to the bare id without the provider prefix.
+ */
+export function modelDisplayName(modelKey: string, availableModels: ModelInfo[]): string {
+  const exact = availableModels.find(m => m.key === modelKey);
+  if (exact) return exact.name;
+  const slash = modelKey.indexOf('/');
+  const id = slash === -1 ? modelKey : modelKey.slice(slash + 1);
+  const sameId = availableModels.find(m => m.key.slice(m.key.indexOf('/') + 1) === id);
+  return sameId ? sameId.name : id;
+}
+
 /** A configured provider and whether the backend trusts it as local. */
 export interface ProviderLocality {
   id: string;

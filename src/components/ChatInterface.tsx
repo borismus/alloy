@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
-import { Conversation, Message, ModelInfo, Attachment, PendingAttachment, getProviderFromModel, getModelIdFromModel } from '../types';
+import { Conversation, Message, ModelInfo, Attachment, PendingAttachment, getProviderFromModel } from '../types';
 import { toPendingAttachments } from '../utils/attachments';
 import { isMemoryProposal } from '../services/memoryProposals';
 import { MemoryProposalCard } from './MemoryProposalCard';
 import { generateMessageId } from '../utils/ids';
-import { chooseDefaultModel, PROVIDER_NAMES } from '../utils/models';
+import { chooseDefaultModel, modelDisplayName, providerLabel } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
 import { useMessageQueue } from '../hooks/useMessageQueue';
 import { useScrollToMessage } from '../hooks/useScrollToMessage';
@@ -738,9 +738,9 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
 
         {conversation.messages.length > 0 && (
           <div className="model-info">
-            <span className="model-provider">{PROVIDER_NAMES[getProviderFromModel(conversation.model)]}</span>
+            <span className="model-provider">{providerLabel(undefined, conversation.model)}</span>
             <span className="model-separator">·</span>
-            <span className="model-name">{getModelIdFromModel(conversation.model)}</span>
+            <span className="model-name" title={conversation.model}>{modelDisplayName(conversation.model, availableModels)}</span>
             {totalCost !== undefined && (
               <>
                 <span className="model-separator">·</span>

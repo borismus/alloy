@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelInfo } from '../types';
-import { chooseDefaultModel, isLocalModel, providerLabel, providerTag } from './models';
+import { chooseDefaultModel, isLocalModel, modelDisplayName, providerLabel, providerTag } from './models';
 
 const models: ModelInfo[] = [
   { key: 'provider/default', name: 'Configured default', provider: 'openai' },
@@ -72,5 +72,27 @@ describe('isLocalModel', () => {
     const catalog = [{ key: 'mlx/q', name: 'q', local: true }];
     expect(isLocalModel('mlx/q', [], catalog)).toBe(true);
     expect(isLocalModel('mlx/q', [{ id: 'mlx', local: false }], catalog)).toBe(false);
+  });
+});
+
+describe('modelDisplayName', () => {
+  const catalog: ModelInfo[] = [
+    { key: 'claude-cli/sonnet', name: 'Claude Sonnet 5.5', provider: 'claude-cli' },
+    { key: 'codex-cli/gpt-6.1-sol', name: 'GPT-6.1-Sol', provider: 'codex-cli' },
+  ];
+
+  it('uses the catalog name for a known model', () => {
+    expect(modelDisplayName('claude-cli/sonnet', catalog)).toBe('Claude Sonnet 5.5');
+  });
+
+  it('resolves a model saved under another provider by its id', () => {
+    // Older conversations kept the provider they were created with; the same
+    // model must not show as "gpt-6.1-sol" on one row and "GPT-6.1-Sol" on the next.
+    expect(modelDisplayName('openai/gpt-6.1-sol', catalog)).toBe('GPT-6.1-Sol');
+  });
+
+  it('falls back to the bare id for an unknown model', () => {
+    expect(modelDisplayName('mlx/qwen', catalog)).toBe('qwen');
+    expect(modelDisplayName('qwen', [])).toBe('qwen');
   });
 });

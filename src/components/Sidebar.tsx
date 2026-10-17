@@ -11,7 +11,7 @@ import { useComposerDraftIds } from '../services/composerDrafts';
 import { splitOnMatches } from '../utils/findMatches';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
-import { isLocalModel } from '../utils/models';
+import { isLocalModel, modelDisplayName } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import { AlloyDialog, AlloyMenu, SegmentedControl } from './ui';
 import { TitleSuggestions } from './TitleSuggestions';
@@ -449,12 +449,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const getModelDisplayName = (modelString: string) => {
-    const model = availableModels.find(m => m.key === modelString);
-    if (model) return model.name;
-    const slashIndex = modelString.indexOf('/');
-    return slashIndex !== -1 ? modelString.slice(slashIndex + 1) : modelString;
-  };
+  const getModelDisplayName = (modelString: string) => modelDisplayName(modelString, availableModels);
 
   const isLocalConversation = (item: TimelineItem) =>
     item.type === 'conversation' && !!item.conversation && isLocalModel(item.conversation.model, providerLocalities, availableModels);
