@@ -112,8 +112,7 @@ npm run build           # Build the production web bundle
 - Components receive data + callbacks as props
 - Avoid internal state when parent can manage it
 - Use refs for imperative actions (focus, scroll)
-- Reuse Alloy-owned React Aria wrappers under `src/components/ui/`
-- Use semantic tokens from `src/styles/tokens.css`; shared primitives use CSS Modules
+- Follow [docs/design-system.md](docs/design-system.md): controls come from `src/components/ui/`, and every color, type size, radius, z-index and breakpoint from `src/styles/tokens.css`. `npm run lint` enforces it
 
 ## Vault Structure
 

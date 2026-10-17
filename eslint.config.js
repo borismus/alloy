@@ -40,6 +40,30 @@ export default tseslint.config(
     },
   },
   {
+    // Design system (docs/design-system.md): controls come from
+    // src/components/ui, which is the only place allowed to render them raw.
+    files: ['src/**/*.tsx'],
+    ignores: ['src/components/ui/**', '**/*.test.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        // TODO(design-system): 'error' once every file is migrated.
+        'warn',
+        {
+          selector: "JSXOpeningElement[name.name='button']",
+          message: 'Use Button, IconButton or CopyButton from components/ui.',
+        },
+        {
+          selector: "JSXOpeningElement[name.name='select']",
+          message: 'Use SelectField from components/ui.',
+        },
+        {
+          selector: "JSXOpeningElement[name.name='input']:not(:has(JSXAttribute[name.name='type'][value.value=/^(file|hidden)$/]))",
+          message: 'Use TextField or SearchField from components/ui.',
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.test.{ts,tsx}'],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },

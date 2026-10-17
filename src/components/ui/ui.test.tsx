@@ -6,7 +6,7 @@ import {
   MenuTrigger,
   Button as AriaButton,
 } from 'react-aria-components';
-import { Button, AlloyDialog, SearchField, SelectField, AlloyMenu, Switch, AlloyTooltip } from './index';
+import { Button, AlloyDialog, SearchField, SelectField, AlloyMenu, Switch, AlloyTooltip, IconButton, CopyButton, Badge, TextField } from './index';
 
 afterEach(cleanup);
 
@@ -102,5 +102,32 @@ describe('ui primitives', () => {
     );
     expect(screen.getByRole('button', { name: 'Create new' })).toBeTruthy();
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('gives an IconButton its label as the accessible name', async () => {
+    const onPress = vi.fn();
+    render(<IconButton label="Open settings" onPress={onPress}><svg aria-hidden="true" /></IconButton>);
+    await userEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('copies with a CopyButton and confirms it', async () => {
+    const user = userEvent.setup();
+    render(<CopyButton text="hello" label="Copy title" />);
+    await user.click(screen.getByRole('button', { name: 'Copy title' }));
+    expect(await navigator.clipboard.readText()).toBe('hello');
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy();
+  });
+
+  it('renders a Badge as plain text', () => {
+    render(<Badge tone="warning">Paused</Badge>);
+    expect(screen.getByText('Paused')).toBeTruthy();
+  });
+
+  it('labels a TextField', async () => {
+    const onChange = vi.fn();
+    render(<TextField label="Title" value="" onChange={onChange} />);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), 'a');
+    expect(onChange).toHaveBeenCalledWith('a');
   });
 });
