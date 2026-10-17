@@ -114,7 +114,7 @@ place them with a wrapping element.
 
 | Primitive | Use it for | Notes |
 |---|---|---|
-| `Button` | Any button with a text label | `variant`: `primary` (one per view, the main action), `secondary` (default), `surface`, `muted`, `quiet` (toolbars, rows), `danger` (destructive confirm). `size`: `small`, `medium`, `icon`, `compactIcon`, `composer` |
+| `Button` | Any button with a text label | `variant`: `primary` (one per view, the main action), `secondary` (default), `surface`, `muted`, `quiet` (toolbars, rows), `danger` (destructive confirm), `dangerText` (a destructive action that starts a confirm step). `size`: `small`, `medium`, `icon`, `compactIcon`, `composer` |
 | `IconButton` | Icon-only buttons | `label` is required; it becomes the accessible name and the tooltip. Quiet by default |
 | `CopyButton` | Copy to clipboard | Shows a check for a moment. Its wrapper takes a `className` and carries `data-copied` |
 | `TextField` | Single-line text input | Optional visible `label`; otherwise pass `aria-label` |
