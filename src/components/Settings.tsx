@@ -196,7 +196,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               <p className="vault-path" title={vaultPath} dir="rtl">{vaultPath}</p>
             )}
             <div className="settings-button-group">
-              <Button variant="secondary" size="small" onPress={handleRevealVaultInFinder}>
+              <Button variant="secondary" onPress={handleRevealVaultInFinder}>
                 Reveal in Finder
               </Button>
             </div>
@@ -206,7 +206,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
             <h3>Configuration</h3>
             <p className="settings-description">API keys, providers, and preferences.</p>
             <div className="settings-button-group">
-              <Button variant="secondary" size="small" onPress={handleEditConfig}>
+              <Button variant="secondary" onPress={handleEditConfig}>
                 Edit config.yaml
               </Button>
             </div>
@@ -245,7 +245,6 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 <div className="settings-button-group">
                   <Button
                     variant="secondary"
-                    size="small"
                     onPress={handleAssignScheduler}
                     isDisabled={schedulerBusy}
                   >
@@ -338,7 +337,6 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
             <div className="settings-button-group">
               <Button
                 variant="secondary"
-                size="small"
                 onPress={handleCheckForUpdates}
                 isDisabled={updateStatus === 'checking'}
               >
@@ -383,7 +381,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               Clears local app state (selected vault, UI prefs) and reloads. Vault files are not deleted.
             </p>
             <div className="settings-button-group">
-              <Button variant="dangerText" size="small" onPress={() => setShowResetConfirm(true)}>
+              <Button variant="dangerText" onPress={() => setShowResetConfirm(true)}>
                 Reset local state
               </Button>
             </div>
