@@ -91,8 +91,10 @@ describe('modelDisplayName', () => {
     expect(modelDisplayName('openai/gpt-6.1-sol', catalog)).toBe('GPT-6.1-Sol');
   });
 
-  it('falls back to the bare id for an unknown model', () => {
-    expect(modelDisplayName('mlx/qwen', catalog)).toBe('qwen');
-    expect(modelDisplayName('qwen', [])).toBe('qwen');
+  it('humanizes an unknown model the same way everywhere', () => {
+    // The picker, the thread header and the list all show this one name.
+    expect(modelDisplayName('mlx/qwen', catalog)).toBe('Qwen');
+    expect(modelDisplayName('deadend/broken-model', [])).toBe('Broken Model');
+    expect(modelDisplayName('openrouter/google/gemini-3.1-pro-preview', [])).toBe('Gemini 3.1 Pro Preview');
   });
 });

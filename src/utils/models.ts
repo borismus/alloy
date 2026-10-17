@@ -64,7 +64,21 @@ export function modelDisplayName(modelKey: string, availableModels: ModelInfo[])
   const slash = modelKey.indexOf('/');
   const id = slash === -1 ? modelKey : modelKey.slice(slash + 1);
   const sameId = availableModels.find(m => m.key.slice(m.key.indexOf('/') + 1) === id);
-  return sameId ? sameId.name : id;
+  return sameId ? sameId.name : humanizeModelId(id);
+}
+
+/**
+ * Turn a model id like "gemini-3.1-pro-preview" into "Gemini 3.1 Pro Preview"
+ * when the catalog doesn't know the model (renamed, deprecated, host offline),
+ * so it still reads like the names around it.
+ */
+function humanizeModelId(id: string): string {
+  const tail = id.split('/').pop() ?? id;
+  return tail
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map(part => (/^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join(' ');
 }
 
 /** A configured provider and whether the backend trusts it as local. */

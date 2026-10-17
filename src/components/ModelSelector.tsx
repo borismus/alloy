@@ -13,7 +13,7 @@ import {
 } from 'react-aria-components';
 import { ModelInfo } from '../types';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { providerLabel, providerTag } from '../utils/models';
+import { modelDisplayName, providerLabel, providerTag } from '../utils/models';
 import styles from './ModelSelector.module.css';
 
 /** Small padlock, used to mark on-device (privacy-preserving) models. */
@@ -44,20 +44,6 @@ function ProviderTag({ model }: { model: ModelInfo }) {
   return (
     <span className={styles.providerTag} title={full}>{tag}</span>
   );
-}
-
-/**
- * Turn a model id like "gemini-3.1-pro-preview" into "Gemini 3.1 Pro Preview"
- * for the trigger label when the catalog no longer returns the conversation's
- * model (renamed, deprecated), so existing conversations still read cleanly.
- */
-function humanizeModelId(key: string): string {
-  const tail = key.split('/').pop() ?? key;
-  return tail
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map(part => (/^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
-    .join(' ');
 }
 
 /**
@@ -112,7 +98,7 @@ export function ModelSelector({
 
   const selectedModel = models.find(m => m.key === value);
   const selectedLabel = selectedModel?.name
-    || (value ? humanizeModelId(value) : '')
+    || (value ? modelDisplayName(value, models) : '')
     || 'Select Model';
 
   // Use onAction (fires on every row activation) rather than onSelectionChange
