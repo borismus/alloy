@@ -12,6 +12,10 @@
      Title ellipsis is handled by .item-header-title / h2, not by clipping here. */
   position: relative;
   z-index: 20;
+  /* Window chrome: it drags the window in the desktop app, so a press on the
+     title shouldn't start a text selection. Use the copy button instead. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .item-header-title {
