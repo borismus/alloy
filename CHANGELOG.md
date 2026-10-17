@@ -4,6 +4,18 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## Unreleased
+
+- **The phone header no longer slides under the status bar.** After the
+  keyboard went away, iOS could leave the page scrolled, drawing the app lower
+  than where taps landed until the phone was rotated twice. Alloy now scrolls
+  it back as soon as no keyboard is showing.
+- **Files in `riffs/` are no longer listed.** 0.5.0 showed them as notes; they
+  stay in your vault but Alloy no longer reads that folder. Move any you want
+  to keep into `notes/`.
+- Removed the continuous dictation mode that only riffs used. The voice button
+  and holding Space work as before.
+
 ## 0.5.0
 
 - **Riffs are gone.** Riff mode, its draft view, "Integrate" and the Riffs tab
