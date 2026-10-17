@@ -8,7 +8,8 @@ import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { AiEditPanel } from './AiEditPanel';
 import { ModelSelector } from './ModelSelector';
-import { Button, Switch } from './ui';
+import { Button as AriaButton } from 'react-aria-components';
+import { Badge, Button, Switch, type BadgeTone } from './ui';
 import { describeTaskSchedule, parseTaskCron } from '../utils/taskSchedule';
 import { providerLabel, isLocalModel } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
@@ -99,6 +100,13 @@ function formatDate(timestamp: string): string {
     minute: '2-digit',
   });
 }
+
+const RESULT_TONE: Record<string, BadgeTone> = {
+  completed: 'accent',
+  triggered: 'success',
+  skipped: 'neutral',
+  error: 'danger',
+};
 
 function resultLabel(result: string): string {
   return result === 'completed' ? 'Completed'
@@ -397,9 +405,9 @@ export function TaskDetailView({
           <div className={`task-schedule-card ${schedule.invalid ? 'invalid' : ''} ${task.enabled ? '' : 'paused'}`}>
             <div className="task-schedule-card-header">
               <div className="task-schedule-description">{schedule.description}</div>
-              <span className={`task-kind ${task.trigger ? 'conditional' : 'recurring'}`}>
+              <Badge tone={task.trigger ? 'success' : 'accent'}>
                 {task.trigger ? 'Conditional' : 'Every run'}
-              </span>
+              </Badge>
             </div>
             <div className="task-schedule-technical">
               <span>{schedule.timezone}</span>
@@ -428,15 +436,15 @@ export function TaskDetailView({
                 onSetDefault={onSetDefault}
               />
               {modelIsLocal ? (
-                <span className="task-model-tag local" title="Runs on a local model — prompts stay on your device">
-                  <LocalLockIcon /> Local
-                </span>
+                <Badge tone="success" title="Runs on a local model — prompts stay on your device">
+                  <span className="task-model-tag-content"><LocalLockIcon /> Local</span>
+                </Badge>
               ) : (
-                <span className="task-model-tag cloud" title={`Runs on ${modelProvider} (cloud)`}>Cloud</span>
+                <Badge tone="accent" title={`Runs on ${modelProvider} (cloud)`}>Cloud</Badge>
               )}
               <span className="task-model-provider">{modelProvider}</span>
               {!modelIsKnown && (
-                <span className="task-model-tag unknown" title="This model isn't in the current model list">Unavailable</span>
+                <Badge title="This model isn't in the current model list">Unavailable</Badge>
               )}
             </div>
           </div>
@@ -493,7 +501,7 @@ export function TaskDetailView({
             <div className="section-header-group">
               {totalCost !== undefined && <span className="task-total-cost">Total: ${formatCost(totalCost)}</span>}
               {hasDelivered && (
-                <button className="btn-ask-about-inline" onClick={() => onAskAbout(task)}>Ask about this</button>
+                <Button variant="secondary" size="small" onPress={() => onAskAbout(task)}>Ask about this</Button>
               )}
               {/* In the page rather than the header: on the phone the header has
                   no room for it beside + and Settings. */}
@@ -516,9 +524,12 @@ export function TaskDetailView({
                 const isExpanded = expandedKey === key;
                 return (
                   <div key={key} className={`history-entry ${attempt.result} ${isExpanded ? 'expanded' : ''}`}>
-                    <button
+                    {/* A full-width disclosure row, not a control the Button
+                        primitive's sizes fit; React Aria's Button keeps the
+                        press and focus behavior consistent. */}
+                    <AriaButton
                       className="history-entry-header"
-                      onClick={() => toggleRunExpanded(key)}
+                      onPress={() => toggleRunExpanded(key)}
                       aria-expanded={isExpanded}
                     >
                       <svg
@@ -529,9 +540,9 @@ export function TaskDetailView({
                         <path d="M9 18l6-6-6-6" />
                       </svg>
                       <span className="history-time">{formatDate(attempt.timestamp)}</span>
-                      <span className={`history-result ${attempt.result}`}>{resultLabel(attempt.result)}</span>
+                      <Badge tone={RESULT_TONE[attempt.result] ?? 'danger'}>{resultLabel(attempt.result)}</Badge>
                       <span className="history-summary">{oneLineSummary(output)}</span>
-                    </button>
+                    </AriaButton>
                     <div className="history-entry-expand">
                       <div className="history-entry-expand-inner">
                         {(attempt.runner || connectionRetries > 0) && (

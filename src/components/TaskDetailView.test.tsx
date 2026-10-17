@@ -80,9 +80,9 @@ describe('TaskDetailView failure state', () => {
     expect(alert.textContent).toContain('Latest run failed');
     expect(alert.textContent).toContain('Model host is offline');
 
-    const failedBadge = screen.getByText('Error', { selector: '.history-result' });
+    const failedBadge = screen.getByText('Error');
     expect(failedBadge.closest('button')?.getAttribute('aria-expanded')).toBe('true');
-    const completedBadge = screen.getByText('Completed', { selector: '.history-result' });
+    const completedBadge = screen.getByText('Completed');
     expect(completedBadge.closest('button')?.getAttribute('aria-expanded')).toBe('false');
 
     expect(screen.getAllByText('Runner: smusmini')).toHaveLength(2);
