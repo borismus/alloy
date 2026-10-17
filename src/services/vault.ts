@@ -789,9 +789,8 @@ providers:
 
   /**
    * Server-relative API path for a note filename, used for all /api/fs/*
-   * operations (read/write/exists/remove). memory.md and riffs/ (notes left
-   * from the removed riff feature) live at the vault root; regular notes under
-   * notes/. This is the path the server
+   * operations (read/write/exists/remove). memory.md lives at the vault root;
+   * regular notes under notes/. This is the path the server
    * resolves against its own vault root — it MUST stay relative (base
    * this.vaultPath === '/'). Passing an absolute path here makes the server
    * re-root it under the vault, producing a doubled path
@@ -800,7 +799,7 @@ providers:
    */
   private async noteApiPath(filename: string): Promise<string | null> {
     if (!this.vaultPath) return null;
-    return filename === 'memory.md' || filename.startsWith('riffs/')
+    return filename === 'memory.md'
       ? await join(this.vaultPath, filename)
       : await join(this.vaultPath, 'notes', filename);
   }
@@ -883,16 +882,6 @@ providers:
       notes.push({ filename: name, lastModified: mtime, hasSkillContent: false });
     }
 
-    // Notes left in riffs/ by the removed riff feature load as ordinary notes.
-    const riffsPath = await join(this.vaultPath, 'riffs');
-    if (await exists(riffsPath)) {
-      const riffHeaders: Record<string, { content: string; mtime: number }> =
-        await readDirHeaders(riffsPath, '.md', 0);
-      for (const [name, { mtime }] of Object.entries(riffHeaders)) {
-        notes.push({ filename: `riffs/${name}`, lastModified: mtime, hasSkillContent: false });
-      }
-    }
-
     // Sort by lastModified descending (newest first)
     return notes.sort((a, b) => b.lastModified - a.lastModified);
   }
@@ -928,7 +917,7 @@ providers:
       items.push({
         type: 'note',
         id: note.filename,
-        title: note.filename.replace(/^riffs\//, '').replace('.md', ''),
+        title: note.filename.replace('.md', ''),
         lastUpdated: note.lastModified,
         note,
       });

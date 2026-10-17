@@ -93,7 +93,6 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
   return {
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
       // Handle provenance markers (&[[...]]) - these link to conversations with optional message ID.
-      // riff_history markers were written by the removed riff feature; keep labelling them.
       // Format: &[[conversationPath^messageId]] or &[[conversationPath^messageId|Label]]
       if (href?.startsWith('provenance:')) {
         const rawTarget = decodeURIComponent(href.replace('provenance:', ''));
@@ -103,12 +102,9 @@ export function createMarkdownComponents(callbacks: WikiLinkCallbacks): Componen
         const target = pipeIndex >= 0 ? rawTarget.slice(0, pipeIndex) : rawTarget;
         // Parse conversation path and optional message ID (separated by ^)
         const [conversationPath, messageId] = target.split('^');
-        const conversationId = conversationPath === 'riff_history'
-          ? 'riff_history'
-          : extractConversationId(conversationPath);
+        const conversationId = extractConversationId(conversationPath);
         // Use embedded label first, then look up conversation title, fall back to slug-derived name
         const conversationTitle = label
-          || (conversationId === 'riff_history' ? 'Note Chat' : null)
           || lookupConversationTitle(conversationId, conversations);
         const displayText = conversationTitle || children;
 

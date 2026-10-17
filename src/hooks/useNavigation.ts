@@ -30,7 +30,7 @@ export function useNavigation() {
       const vaultPathStr = vaultService.getVaultPath();
       const notesPath = vaultService.getNotesPath();
       if (vaultPathStr && notesPath) {
-        const notePath = filename === 'memory.md' || filename.startsWith('riffs/')
+        const notePath = filename === 'memory.md'
           ? `${vaultPathStr}/${filename}`
           : `${notesPath}/${filename}`;
         try {

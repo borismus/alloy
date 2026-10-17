@@ -73,7 +73,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
 
   // Get display name from filename
   const displayName = filename
-    ? filename.replace(/^(notes\/|riffs\/)/, '').replace(/\.md$/, '')
+    ? filename.replace(/^notes\//, '').replace(/\.md$/, '')
     : 'Note';
 
   return (

@@ -137,9 +137,8 @@ export function useVaultWatcher(
         const isMemoryFile = filePath.endsWith('memory.md');
         const isConfigFile = filePath.endsWith('config.yaml');
         const isNoteFile =
-          (filePath.includes('/notes/') || filePath.includes('/riffs/')) &&
+          filePath.includes('/notes/') &&
           filePath.endsWith('.md');
-        const isRiffFile = filePath.includes('/riffs/');
         const isTaskFile =
           filePath.includes('/tasks/') &&
           filePath.endsWith('.yaml');
@@ -180,9 +179,7 @@ export function useVaultWatcher(
             callbacksRef.current.onConfigChanged();
           }
         } else if (isNoteFile) {
-          // Notes left in riffs/ (from the removed riff feature) keep their prefix
-          const baseFilename = filePath.split('/').pop() || '';
-          const filename = isRiffFile ? `riffs/${baseFilename}` : baseFilename;
+          const filename = filePath.split('/').pop() || '';
           // For rename events (macOS deletion), check if file still exists
           let effectiveEventType = eventType;
           if (eventType === 'rename') {

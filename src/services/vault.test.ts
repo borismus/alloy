@@ -568,25 +568,6 @@ messages: []
     });
   });
 
-  describe('notes left in riffs/', () => {
-    it('load and list as ordinary notes', async () => {
-      vaultService.setVaultPath('/vault');
-      vi.mocked(fs.exists).mockImplementation(async (path) => !String(path).endsWith('memory.md'));
-      vi.mocked((fs as unknown as { readDirHeaders: (...args: unknown[]) => unknown }).readDirHeaders)
-        .mockImplementation(async (dir: unknown) => String(dir).endsWith('riffs')
-          ? { 'old-draft.md': { content: '', mtime: 1 } }
-          : { 'plain.md': { content: '', mtime: 2 } });
-
-      const notes = await vaultService.loadNotes();
-      const items = vaultService.buildTimeline([], notes, []);
-
-      expect(items.map(i => [i.type, i.id, i.title])).toEqual([
-        ['note', 'plain.md', 'plain'],
-        ['note', 'riffs/old-draft.md', 'old-draft'],
-      ]);
-    });
-  });
-
   describe('renameConversation', () => {
     it('should return null if vault path is not set', async () => {
       const result = await vaultService.renameConversation('old-id', 'New Title');

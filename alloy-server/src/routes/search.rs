@@ -70,21 +70,16 @@ async fn search_vault(root: &Path, query: &str) -> Vec<SearchHit> {
     // used to prevent notes from being searched at all for broad
     // queries. The timeline is already sorted and decides what is visible, so
     // return every matching id and let it preserve the correct ordering.
-    for (dir, kind) in [
-        ("conversations", "conversation"),
-        ("notes", "note"),
-        // Notes left by the removed riff feature; the app lists them as notes.
-        ("riffs", "note"),
-    ] {
-        scan_dir(&root.join(dir), dir, kind, query, &mut hits).await;
+    for (dir, kind) in [("conversations", "conversation"), ("notes", "note")] {
+        scan_dir(&root.join(dir), kind, query, &mut hits).await;
     }
     hits.sort_by(|a, b| b.modified.cmp(&a.modified));
     hits
 }
 
-async fn scan_dir(dir: &Path, rel_dir: &str, kind: &str, query: &str, hits: &mut Vec<SearchHit>) {
+async fn scan_dir(dir: &Path, kind: &str, query: &str, hits: &mut Vec<SearchHit>) {
     let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
-        return; // Missing directory (no riffs/, etc.) is not an error.
+        return; // A missing directory is not an error.
     };
 
     while let Ok(Some(entry)) = entries.next_entry().await {
@@ -122,12 +117,7 @@ async fn scan_dir(dir: &Path, rel_dir: &str, kind: &str, query: &str, hits: &mut
                 yaml_field(&content, "title").unwrap_or(stem),
             )
         } else {
-            let path = if rel_dir == "riffs" {
-                format!("riffs/{name}")
-            } else {
-                name.clone()
-            };
-            (path, name.trim_end_matches(".md").to_string())
+            (name.clone(), name.trim_end_matches(".md").to_string())
         };
 
         let modified = entry
@@ -277,18 +267,7 @@ mod tests {
     /// rather than just the string helpers.
     async fn scan(dir: &Path, kind: &str, query: &str) -> Vec<SearchHit> {
         let mut hits = Vec::new();
-        scan_dir(
-            dir,
-            if kind == "conversation" {
-                "conversations"
-            } else {
-                "notes"
-            },
-            kind,
-            query,
-            &mut hits,
-        )
-        .await;
+        scan_dir(dir, kind, query, &mut hits).await;
         hits
     }
 
@@ -346,7 +325,7 @@ mod tests {
     async fn broad_conversation_matches_do_not_starve_notes() {
         let v = temp_vault("note-starvation");
         // Regression: a global 300-hit early exit scanned conversations first,
-        // then skipped notes and riffs entirely.
+        // then skipped notes entirely.
         for i in 0..300 {
             std::fs::write(
                 v.0.join(format!("conversations/c{i}.yaml")),
@@ -401,22 +380,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finds_notes_left_in_riffs_as_notes() {
-        let v = temp_vault("riffs");
-        std::fs::create_dir_all(v.0.join("riffs")).unwrap();
-        std::fs::write(v.0.join("riffs/Draft.md"), "a funicular draft").unwrap();
-
-        let hits = search_vault(&v.0, "funicular").await;
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].kind, "note");
-        assert_eq!(hits[0].id, "riffs/Draft.md");
-    }
-
-    #[tokio::test]
     async fn a_missing_directory_is_not_an_error() {
-        // A vault with no riffs/ folder must not fail the whole search.
+        // A vault with no notes/ folder must not fail the whole search.
         let v = temp_vault("missing");
-        assert!(scan(&v.0.join("riffs"), "note", "anything")
+        assert!(scan(&v.0.join("absent"), "note", "anything")
             .await
             .is_empty());
     }

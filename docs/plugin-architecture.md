@@ -3,9 +3,9 @@
 **Status:** Proposed — not scheduled
 **Date:** 2026-07-27
 
-> **Update (2026-10-16):** Riff mode has been removed from the app. Files left
-> in a vault's `riffs/` folder now load as ordinary notes. The Riff extension
-> sections below are kept as design history only.
+> **Update (2026-10-17):** Riff mode has been removed from the app, and files in
+> a vault's `riffs/` folder are no longer read. The Riff extension sections
+> below are kept as design history only.
 
 ## Goal
 
