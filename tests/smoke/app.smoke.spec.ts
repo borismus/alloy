@@ -533,6 +533,27 @@ test('mobile: the note and task edit composers stay within two rows', async ({ p
   }
 });
 
+test('browser mode hides actions that need the desktop app', async ({ page }) => {
+  // Reveal in Finder and the editor settings act on files on the machine
+  // running Alloy; from a browser they could only fail silently. The row's
+  // Edit stays: with Obsidian it works from a browser on the vault's Mac.
+  await page.locator('.timeline-item').filter({ hasText: 'Welcome to Alloy' })
+    .getByRole('button', { name: 'More actions' }).click();
+  await expect(page.getByText('Rename', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reveal in Finder')).toHaveCount(0);
+  await expect(page.getByText('Edit', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.locator('.timeline-item').filter({ hasText: 'project-ideas' }).click();
+  await expect(page.getByText('Project Ideas')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Open settings' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+  for (const heading of ['Vault', 'Configuration', 'External editor']) {
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toHaveCount(0);
+  }
+});
+
 test('mobile dialogs stay above the software keyboard', async ({ page }, testInfo) => {
   // Regression: the rename sheet was pinned to the bottom of the layout
   // viewport, which iOS does not shrink for the keyboard, so the field being

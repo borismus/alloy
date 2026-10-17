@@ -27,7 +27,7 @@ import { FindInConversation, FindInConversationHandle } from './components/FindI
 import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
-import { openInEditor, type ExternalEditor } from './utils/openInEditor';
+import type { ExternalEditor } from './utils/openInEditor';
 import { chooseDefaultModel, providerLabel, type ProviderLocality } from './utils/models';
 import { ProviderLocalityContext } from './contexts/ProviderLocalityContext';
 import { modelSwitchDisclosure, type DisclosureReason } from './utils/privateContext';
@@ -587,12 +587,6 @@ function AppContent() {
 
   // Where "Edit" actions open vault files (Obsidian for markdown, else system).
   const externalEditor: ExternalEditor = config?.externalEditor ?? 'obsidian';
-
-  // Open a note for editing in the configured external editor.
-  const handleEditNote = useCallback(async (filename: string) => {
-    const path = await vaultService.getNoteFilePath(filename);
-    if (path) await openInEditor(path, config?.externalEditor ?? 'obsidian');
-  }, [config?.externalEditor]);
 
   // Persist an AI-assisted note edit and refresh the in-app view. markSelfWrite
   // suppresses the watcher's own reload so we control the update.
@@ -1528,7 +1522,6 @@ function AppContent() {
                   onNavigateToNote={handleSelectNote}
                   onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
                   onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
-                  onEdit={handleEditNote}
                   onSaveNote={handleSaveNoteEdit}
                   availableModels={availableModels}
                   favoriteModels={config?.favoriteModels}
@@ -1657,7 +1650,6 @@ function AppContent() {
             onNavigateToNote={handleSelectNote}
             onNavigateToConversation={(conversationId, messageId) => handleSelectConversation(conversationId, true, messageId)}
             onIntegrate={() => handleIntegrateNote(selectedNote.filename)}
-            onEdit={handleEditNote}
             onSaveNote={handleSaveNoteEdit}
             availableModels={availableModels}
             favoriteModels={config?.favoriteModels}

@@ -8,6 +8,7 @@ import { Menu } from '@tauri-apps/api/menu';
 import { useTaskContext } from '../contexts/TaskContext';
 import { useWindowedList } from '../hooks/useWindowedList';
 import { useComposerDraftIds } from '../services/composerDrafts';
+import { isTauri } from '../services/api';
 import { splitOnMatches } from '../utils/findMatches';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
@@ -391,17 +392,21 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         }
       });
 
-      menuItems.push({
-        id: 'reveal',
-        text: 'Reveal in Finder',
-        action: async () => {
-          try {
-            await revealItemInDir(filePath);
-          } catch (error) {
-            console.error('Failed to reveal file in Finder:', error);
+      // Reveal acts on a path on the machine running Alloy, so it only works
+      // in the desktop app; a browser or phone has no Finder to open.
+      if (isTauri()) {
+        menuItems.push({
+          id: 'reveal',
+          text: 'Reveal in Finder',
+          action: async () => {
+            try {
+              await revealItemInDir(filePath);
+            } catch (error) {
+              console.error('Failed to reveal file in Finder:', error);
+            }
           }
-        }
-      });
+        });
+      }
 
       menuItems.push({
         id: 'edit',

@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useRef, useEffect } from 'react';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
 import { AiEditPanel } from './AiEditPanel';
-import { Button } from './ui';
 import type { ConversationInfo, ModelInfo } from '../types';
 import { parseFrontmatter } from '../utils/frontmatter';
 import './NoteViewer.css';
@@ -30,7 +29,6 @@ interface NoteViewerProps {
   onNavigateToNote?: (noteFilename: string) => void;
   onNavigateToConversation?: (conversationId: string, messageId?: string) => void;
   onIntegrate?: () => void; // Called when user wants to integrate a riff
-  onEdit?: (filename: string) => void; // Open the note in the external editor
   conversations?: ConversationInfo[]; // For looking up conversation titles
   onBack?: () => void;
   canGoBack?: boolean;
@@ -50,7 +48,6 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   onNavigateToNote,
   onNavigateToConversation,
   onIntegrate,
-  onEdit,
   conversations,
   onBack,
   canGoBack = false,
@@ -102,18 +99,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
         onBack={onBack}
         canGoBack={canGoBack}
         onClose={onClose}
-      >
-        {filename && onEdit && (
-          <Button
-            variant="surface"
-            size="small"
-            onPress={() => onEdit(filename)}
-            title="Open this note in your external editor"
-          >
-            Edit
-          </Button>
-        )}
-      </ItemHeader>
+      />
       {isUnintegrated && onIntegrate && (
         <div className="riff-integrate-bar">
           <span className="integrate-hint">This riff hasn't been integrated yet</span>

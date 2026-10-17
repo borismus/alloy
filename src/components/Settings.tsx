@@ -197,6 +197,10 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
             </div>
           </div>
 
+          {/* Vault location, config.yaml and the external editor all act on files
+              on the machine running Alloy, so they only work in the desktop app. */}
+          {isTauri() && (
+          <>
           <div className="settings-section">
             <h3>Vault</h3>
             <p className="settings-description">All conversations, notes, and settings are stored here.</p>
@@ -225,6 +229,8 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               </button>
             </div>
           </div>
+          </>
+          )}
 
           {schedulerStatus?.currentHost && (
             <div className="settings-section">
@@ -270,6 +276,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
             </div>
           )}
 
+          {isTauri() && (
           <div className="settings-section">
             <h3>External editor</h3>
             <p className="settings-description">
@@ -285,6 +292,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               <option value="system">System default editor</option>
             </select>
           </div>
+          )}
 
           {isTauri() && shareStatus && (
             <div className="settings-section">
