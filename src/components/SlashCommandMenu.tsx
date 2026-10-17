@@ -1,4 +1,5 @@
 import React from 'react';
+import { ListBox, ListBoxItem, type ListBoxProps } from 'react-aria-components';
 import './SlashCommandMenu.css';
 
 export interface SlashCommandItem {
@@ -13,6 +14,11 @@ interface SlashCommandMenuProps {
   onHover: (index: number) => void;
 }
 
+// Focus stays in the composer's textarea while the menu is open, so picking
+// an option must not move it (on the phone that would drop the keyboard).
+// React Aria forwards this option to useListBox, though ListBox doesn't type it.
+const VIRTUAL_FOCUS = { shouldUseVirtualFocus: true } as Partial<ListBoxProps<SlashCommandItem>>;
+
 /**
  * Autocomplete menu shown above the composer while typing a `/skill_name`
  * command. Presentational — the composer owns filtering, the active index, and
@@ -25,28 +31,32 @@ export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({
   onHover,
 }) => {
   if (items.length === 0) return null;
+  const activeName = items[activeIndex]?.name;
   return (
-    <div className="slash-command-menu" role="listbox" aria-label="Skills">
-      {items.map((item, idx) => (
-        <button
-          key={item.name}
-          type="button"
-          role="option"
-          aria-selected={idx === activeIndex}
-          className={`slash-command-item ${idx === activeIndex ? 'active' : ''}`}
-          // mousedown (not click) so selecting doesn't blur the textarea first.
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onSelect(item);
-          }}
-          onMouseEnter={() => onHover(idx)}
+    <ListBox
+      {...VIRTUAL_FOCUS}
+      className="slash-command-menu"
+      aria-label="Skills"
+      items={items}
+      dependencies={[activeName]}
+      onAction={(key) => {
+        const item = items.find((candidate) => candidate.name === key);
+        if (item) onSelect(item);
+      }}
+    >
+      {(item) => (
+        <ListBoxItem
+          id={item.name}
+          textValue={item.name}
+          className={`slash-command-item ${item.name === activeName ? 'active' : ''}`}
+          onHoverStart={() => onHover(items.indexOf(item))}
         >
           <span className="slash-command-name">/{item.name}</span>
           {item.description && (
             <span className="slash-command-desc">{item.description}</span>
           )}
-        </button>
-      ))}
-    </div>
+        </ListBoxItem>
+      )}
+    </ListBox>
   );
 };
