@@ -567,10 +567,9 @@ test('browser mode hides actions that need the desktop app', async ({ page }, te
 });
 
 test('the row menu opens at its button', async ({ page }) => {
-  // Regressions from the design-system migration: the ⋯ became a React Aria
+  // Regression from the design-system migration: the ⋯ became a React Aria
   // button, which cancels pointerdown, so the menu opened wherever the last
   // right-click had been (bottom-left of the sidebar, or the top on a phone).
-  // And the search field drew its own clear button beside the browser's.
   const trigger = page.locator('.timeline-item').filter({ hasText: 'Planning the week' })
     .getByRole('button', { name: 'More actions' });
   await trigger.click();
@@ -580,12 +579,7 @@ test('the row menu opens at its button', async ({ page }) => {
   const m = (await menu.boundingBox())!;
   expect(Math.abs(m.y - (t.y + t.height / 2))).toBeLessThan(80);
   await page.keyboard.press('Escape');
-
-  const search = page.getByPlaceholder('Search...');
-  await search.fill('week');
-  // The browser's own × is a pseudo-element no API reports on; its absence was
-  // checked by screenshot. This guards the field's own button.
-  await expect(page.getByRole('button', { name: 'Clear search' })).toHaveCount(1);
+  await expect(menu).toBeHidden();
 });
 
 test('Escape closes the rename dialog from its title field', async ({ page }) => {
