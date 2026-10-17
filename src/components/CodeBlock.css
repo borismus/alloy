@@ -1,8 +1,8 @@
 .code-block {
   position: relative;
-  margin: 1rem 0;
+  margin: var(--space-4) 0;
   border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--color-code-bg);
 }
@@ -11,10 +11,10 @@
   position: absolute;
   top: 0.85rem;
   left: 1rem;
-  z-index: 2;
+  z-index: var(--z-raised);
   color: var(--color-syntax-comment);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   font-variant-ligatures: none;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -39,47 +39,9 @@
   padding-top: 2.75rem;
 }
 
-.block-action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 6px;
-  background: var(--color-surface-raised);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.block-action-btn:hover {
-  background: var(--color-surface-pressed);
-  color: var(--text-primary, var(--color-text));
-  border-color: rgba(100, 108, 125, 0.55);
-}
-
-.block-action-btn:focus-visible {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-}
-
-.block-action-btn.copied {
-  color: var(--color-success);
-  border-color: rgba(16, 185, 129, 0.4);
-  background: var(--color-success-soft);
-}
-
-.block-action-btn:disabled {
-  opacity: 0.55;
-  cursor: wait;
-}
-
 .block-copy {
   position: absolute;
   right: 0.5rem;
   bottom: 0.5rem;
-  z-index: 2;
+  z-index: var(--z-raised);
 }

@@ -1,8 +1,8 @@
 .diagram-block {
   position: relative;
-  margin: 1rem 0;
+  margin: var(--space-4) 0;
   border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--color-surface-hover);
 }
@@ -11,77 +11,41 @@
   position: absolute;
   top: 0.85rem;
   left: 1rem;
-  z-index: 2;
-  color: var(--text-tertiary, #7e8593);
+  z-index: var(--z-raised);
+  color: var(--color-text-muted);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   font-variant-ligatures: none;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-/* One semantic button: clicking anywhere switches to the other state. */
 .diagram-view-toggle {
   position: absolute;
   top: 0.5rem;
   right: 0.55rem;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid rgba(120, 128, 145, 0.35);
-  border-radius: 7px;
-  background: rgba(218, 222, 229, 0.94);
-  color: var(--text-tertiary, #777e8c);
-  font: inherit;
-  font-size: 0.7rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.diagram-view-toggle span {
-  min-width: 3.15rem;
-  padding: 0.35rem 0.45rem;
-  border-radius: 4px;
-  text-align: center;
-}
-
-.diagram-view-toggle span.active {
-  background: #fff;
-  color: var(--text-primary, var(--color-text));
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(30, 35, 45, 0.15);
-}
-
-.diagram-view-toggle:hover {
-  border-color: rgba(100, 108, 125, 0.55);
-}
-
-.diagram-view-toggle:focus-visible {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+  z-index: var(--z-raised);
+  width: 7.5rem;
 }
 
 .diagram-actions {
   position: absolute;
   right: 0.5rem;
   bottom: 0.5rem;
-  z-index: 2;
+  z-index: var(--z-raised);
   display: flex;
   gap: 0.35rem;
 }
 
 .diagram-block .diagram-code {
   margin: 0;
-  padding: 2.75rem 2.75rem 2.75rem 1rem;
+  padding: 2.75rem 2.75rem 2.75rem var(--space-4);
   border: 0;
   border-radius: 0;
   background: transparent;
   overflow-x: auto;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre;
 }
@@ -94,9 +58,9 @@
 
 .diagram-render {
   min-height: 5rem;
-  padding: 2.75rem 1rem 2.75rem;
+  padding: 2.75rem var(--space-4) 2.75rem;
   overflow-x: auto;
-  background: var(--bg-primary, #fff);
+  background: var(--color-canvas);
 }
 
 .diagram-svg {

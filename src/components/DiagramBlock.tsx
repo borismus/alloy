@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { MermaidDiagram, renderMermaidSvg } from './MermaidDiagram';
-import { CopyButton } from './CodeBlock';
+import { CopyButton, IconButton, SegmentedControl } from './ui';
 import './DiagramBlock.css';
 
 type DiagramKind = 'mermaid' | 'svg';
+type DiagramView = 'code' | 'render';
+
+const VIEW_OPTIONS = [
+  { id: 'code', label: 'Code' },
+  { id: 'render', label: 'Render' },
+];
 
 interface DiagramBlockProps {
   kind: DiagramKind;
@@ -17,7 +23,7 @@ interface DiagramBlockProps {
  * explicit action, avoiding asynchronous layout shifts during normal reading.
  */
 export const DiagramBlock: React.FC<DiagramBlockProps> = ({ kind, code, children }) => {
-  const [view, setView] = useState<'code' | 'render'>('code');
+  const [view, setView] = useState<DiagramView>('code');
   const [downloading, setDownloading] = useState(false);
 
   const download = async () => {
@@ -36,15 +42,14 @@ export const DiagramBlock: React.FC<DiagramBlockProps> = ({ kind, code, children
   return (
     <div className="diagram-block">
       <span className="diagram-language">{kind}</span>
-      <button
-        type="button"
-        className="diagram-view-toggle"
-        onClick={() => setView((current) => current === 'code' ? 'render' : 'code')}
-        aria-label={`Switch to ${view === 'code' ? 'rendered diagram' : 'source code'}`}
-      >
-        <span className={view === 'code' ? 'active' : ''}>Code</span>
-        <span className={view === 'render' ? 'active' : ''}>Render</span>
-      </button>
+      <div className="diagram-view-toggle">
+        <SegmentedControl
+          aria-label="Diagram view"
+          options={VIEW_OPTIONS}
+          value={view}
+          onChange={(next) => setView(next as DiagramView)}
+        />
+      </div>
 
       {view === 'code' ? (
         <pre className="diagram-code">{children ?? <code>{code}</code>}</pre>
@@ -55,16 +60,9 @@ export const DiagramBlock: React.FC<DiagramBlockProps> = ({ kind, code, children
       )}
 
       <div className="diagram-actions">
-        <button
-          type="button"
-          className="block-action-btn"
-          onClick={download}
-          disabled={downloading}
-          title={downloading ? 'Preparing SVG' : 'Download SVG'}
-          aria-label="Download SVG"
-        >
+        <IconButton label="Download SVG" size="compactIcon" onPress={download} isDisabled={downloading}>
           <DownloadIcon />
-        </button>
+        </IconButton>
         <CopyButton text={code} />
       </div>
     </div>
