@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.2
+
+- **Alloy opens faster, most of all on a phone.** Startup used to make about
+  ten requests one after another before the list could appear, each a round
+  trip to the server. It now makes one. On a slow connection the list appears
+  in about a third of the time.
+- **The first load downloads a third as much.** The server now compresses the
+  app's own files (1.3MB of JavaScript becomes 0.4MB). Replies still stream
+  word by word.
+
 ## 0.5.1
 
 - **The phone header no longer slides under the status bar.** After the
