@@ -1,24 +1,24 @@
 .subagent-container {
-  margin: 0.75rem 0;
+  margin: var(--space-3) 0;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 .subagent-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   background: var(--color-surface);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text-secondary);
   border-bottom: 1px solid var(--color-border);
 }
 
 .subagent-icon {
-  font-size: 0.9rem;
+  font-size: var(--text-md);
   color: var(--color-accent);
 }
 
@@ -53,7 +53,7 @@
 .subagent-cell-header {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: var(--space-2);
   cursor: pointer;
 }
 
@@ -62,7 +62,7 @@
 }
 
 .subagent-cell-model {
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   font-weight: 400;
   color: var(--color-text-muted);
   overflow: hidden;
@@ -73,16 +73,16 @@
 /* Expandable info panel */
 .subagent-info-panel {
   margin-top: 0.4rem;
-  padding: 0.5rem;
+  padding: var(--space-2);
   background: var(--color-surface);
-  border-radius: 6px;
-  font-size: 0.75rem;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
   border: 1px solid var(--color-surface-hover);
 }
 
 .subagent-info-row {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   margin-bottom: 0.3rem;
 }
 

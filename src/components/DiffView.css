@@ -1,10 +1,10 @@
 .diff-view {
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-variant-ligatures: none;
   line-height: 1.55;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--color-surface-raised);
 }
@@ -12,8 +12,8 @@
 .diff-row {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
-  padding: 0 0.75rem;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -54,10 +54,10 @@
 }
 
 .diff-gap {
-  padding: 0.25rem 0.75rem;
+  padding: var(--space-1) var(--space-3);
   background: var(--color-surface);
   color: var(--color-text-muted);
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   text-align: center;
   border-top: 1px solid var(--color-surface-hover);
   border-bottom: 1px solid var(--color-surface-hover);

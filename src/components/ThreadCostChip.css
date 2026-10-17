@@ -1,15 +1,17 @@
+/* Matches .ctx-chip-button (ContextUsageChip.css) so the two header chips read
+   as one set; this one is static, so it has no hover or focus states. */
 .cost-chip {
   display: inline-flex;
   align-items: center;
   height: 28px;
   padding: 0 0.6rem;
-  border: 1px solid var(--border-color, #e0e0e0);
-  background: var(--bg-secondary, #f0f0f0);
-  border-radius: 14px;
-  font-size: 0.78rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary, #555);
+  color: var(--color-text-secondary);
   white-space: nowrap;
   cursor: default;
 }
