@@ -7,7 +7,7 @@ import { useTextareaProps } from '../utils/textareaProps';
 import { hasDiff } from '../utils/lineDiff';
 import { ModelSelector } from './ModelSelector';
 import { DiffView } from './DiffView';
-import { AlloyDialog, Button } from './ui';
+import { AlloyDialog, AlloyTooltip, Button } from './ui';
 import { isLocalModel, providerLabel } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import './AiEditPanel.css';
@@ -171,18 +171,13 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
           )}
           {error && <div className="ai-edit-error">{error}</div>}
           <div className="ai-edit-actions">
-            <button type="button" className="ai-edit-btn" onClick={handleDiscard} disabled={isApplying}>
+            <Button variant="secondary" onPress={handleDiscard} isDisabled={isApplying}>
               Discard
-            </button>
+            </Button>
             {changed && (
-              <button
-                type="button"
-                className="ai-edit-btn ai-edit-btn-primary"
-                onClick={handleConfirm}
-                disabled={isApplying}
-              >
+              <Button variant="primary" onPress={handleConfirm} isDisabled={isApplying}>
                 {isApplying ? 'Applying…' : 'Confirm'}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -222,21 +217,25 @@ export const AiEditPanel: React.FC<AiEditPanelProps> = ({
             onSetDefault={onSetDefault}
           />
         </div>
-        {isGenerating ? (
-          <button type="button" className="ai-edit-submit stop" onClick={handleStop} aria-label="Stop">
-            ■
-          </button>
-        ) : (
-          <button
-            type="submit"
-            className="ai-edit-submit"
-            disabled={!input.trim()}
-            aria-label="Propose edit"
-            title="Propose edit"
-          >
-            <PencilIcon />
-          </button>
-        )}
+        <div className="ai-edit-submit">
+          {isGenerating ? (
+            <Button type="button" variant="danger" size="composer" onPress={handleStop} aria-label="Stop">
+              ■
+            </Button>
+          ) : (
+            <AlloyTooltip content="Propose edit">
+              <Button
+                type="submit"
+                variant="primary"
+                size="composer"
+                isDisabled={!input.trim()}
+                aria-label="Propose edit"
+              >
+                <PencilIcon />
+              </Button>
+            </AlloyTooltip>
+          )}
+        </div>
       </div>
       {confirmingCloud && (
         <AlloyDialog

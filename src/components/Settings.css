@@ -1,35 +1,15 @@
 /* The dialog shell + header now come from the AlloyDialog primitive; only the
    settings body and its sections/controls are styled here. */
 
-.close-button {
-  background: none;
-  border: none;
-  color: var(--color-text-secondary);
-  font-size: 32px;
-  cursor: pointer;
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
-  line-height: 1;
-}
-
-.close-button:hover {
-  color: var(--color-text);
-}
-
 .settings-content {
   overflow-y: auto;
-  padding: 24px;
+  padding: var(--space-6);
   max-height: min(70vh, 640px);
 }
 
 .settings-section {
-  padding-bottom: 24px;
-  margin-bottom: 24px;
+  padding-bottom: var(--space-6);
+  margin-bottom: var(--space-6);
   border-bottom: 1px solid var(--color-surface);
 }
 
@@ -41,14 +21,14 @@
 
 .settings-section h3 {
   margin: 0 0 6px 0;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text);
 }
 
 .settings-description {
   margin: 0 0 14px 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   line-height: 1.5;
 }
@@ -60,8 +40,8 @@
 }
 
 .settings-hint {
-  margin: 8px 0 0 0;
-  font-size: 12px;
+  margin: var(--space-2) 0 0 0;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
@@ -69,7 +49,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .settings-row-text {
@@ -78,29 +58,27 @@
 }
 
 .settings-row-text h3 {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .settings-row-text .settings-description {
   margin-bottom: 0;
 }
 
-/* The share toggle now uses the ui/Switch primitive. */
-
 .share-url {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 8px 8px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
   background: var(--color-code-bg);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .share-url code {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text);
   font-family: var(--font-mono);
   font-variant-ligatures: none;
@@ -108,31 +86,13 @@
   background: transparent;
 }
 
-.share-url-copy {
-  flex: 0 0 auto;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.15s, border-color 0.15s;
-}
-
-.share-url-copy:hover {
-  background: var(--color-surface);
-  border-color: var(--color-text-muted);
-}
-
 .vault-path {
-  margin: 0 0 12px 0;
-  font-size: 13px;
+  margin: 0 0 var(--space-3) 0;
+  font-size: var(--text-sm);
   color: var(--color-text);
   background: var(--color-code-bg);
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
   font-family: var(--font-mono);
   font-variant-ligatures: none;
   white-space: nowrap;
@@ -142,99 +102,33 @@
   cursor: default;
 }
 
-/* Appearance: light/dark/system segmented control */
+/* Appearance: the light/dark/system SegmentedControl stays compact rather
+   than filling the dialog width. */
 .settings-theme-group {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  background: var(--color-surface);
-  border-radius: 8px;
-}
-
-.settings-theme-option {
-  padding: 6px 14px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
-}
-
-.settings-theme-option:hover {
-  color: var(--color-text);
-}
-
-.settings-theme-option.is-active {
-  background: var(--color-surface-raised);
-  color: var(--color-text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-
-.settings-button {
-  background: var(--color-accent-strong);
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-weight: 500;
-}
-
-.settings-button:hover {
-  background: var(--color-accent-strong);
+  max-width: 280px;
 }
 
 .settings-button-group {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   flex-wrap: wrap;
-}
-
-.settings-button-secondary {
-  background: var(--color-border);
-  color: var(--color-text);
-}
-
-.settings-button-secondary:hover {
-  background: var(--color-border);
-}
-
-.settings-select {
-  padding: 8px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface-raised);
-  color: var(--color-text);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-/* Reset-confirm content lives in an AlloyDialog + .dialog-body; align its
-   action row to the right like the other dialog footers. */
-.dialog-body .settings-button-group {
-  justify-content: flex-end;
 }
 
 .confirm-list {
   list-style: none;
   padding: 0;
-  margin: 0 0 20px 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .confirm-list li {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text);
   line-height: 1.4;
 }
@@ -247,7 +141,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1;
   margin-top: 1px;
@@ -263,34 +157,10 @@
   color: var(--color-success);
 }
 
-.settings-button-danger {
-  background: var(--color-danger);
-}
-
-.settings-button-danger:hover {
-  background: var(--color-danger);
-}
-
-.settings-button-danger-outline {
-  background: var(--color-surface-raised);
-  color: var(--color-danger);
-  border: 1px solid var(--color-danger-soft);
-}
-
-.settings-button-danger-outline:hover {
-  background: var(--color-danger-soft);
-  border-color: var(--color-danger-soft);
-}
-
-.settings-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .update-status {
-  font-size: 13px;
-  padding: 6px 12px;
-  border-radius: 6px;
+  font-size: var(--text-sm);
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-control);
 }
 
 .update-status-current {

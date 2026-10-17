@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button } from './ui';
 import './UpdateChecker.css';
 
 // 8KB limit for memory file
@@ -32,18 +33,12 @@ export function MemoryWarning({ sizeBytes, onEdit }: MemoryWarningProps) {
           </span>
         </div>
         <div className="update-actions">
-          <button
-            className="update-button update-button-primary"
-            onClick={onEdit}
-          >
+          <Button variant="secondary" size="small" onPress={onEdit}>
             Edit memory.md
-          </button>
-          <button
-            className="update-button update-button-secondary"
-            onClick={() => setDismissed(true)}
-          >
+          </Button>
+          <Button variant="muted" size="small" onPress={() => setDismissed(true)}>
             Dismiss
-          </button>
+          </Button>
         </div>
       </div>
     </div>

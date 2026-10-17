@@ -73,7 +73,7 @@ test.describe('Alloy App - Vault Setup', () => {
     const state = await getAppState(page);
     test.skip(state !== 'vault-setup', 'Vault already configured - skipping setup tests');
 
-    const selectButton = page.locator('.select-vault-button');
+    const selectButton = page.getByRole('button', { name: 'Select Vault Folder' });
     await expect(selectButton).toBeVisible();
     await expect(selectButton).toContainText('Select Vault Folder');
   });

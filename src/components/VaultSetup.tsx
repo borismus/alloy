@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { Button as AriaButton } from 'react-aria-components';
 import { vaultService } from '../services/vault';
 import { ProviderType } from '../types';
+import { Button, TextField } from './ui';
 import './VaultSetup.css';
 
 interface VaultSetupProps {
@@ -134,13 +136,9 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
               </p>
             </div>
 
-            <button
-              onClick={handleSelectFolder}
-              disabled={isSelecting}
-              className="select-vault-button"
-            >
+            <Button variant="primary" onPress={handleSelectFolder} isDisabled={isSelecting}>
               {isSelecting ? 'Selecting...' : 'Select Vault Folder'}
-            </button>
+            </Button>
 
             <div className="vault-setup-footer">
               <small>No analytics. No cloud dependency. Just your files.</small>
@@ -154,25 +152,25 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
             <p>Select an AI provider to get started</p>
 
             <div className="provider-cards">
-              <button
+              <AriaButton
                 className="provider-card"
-                onClick={() => handleProviderSelect('openrouter')}
+                onPress={() => handleProviderSelect('openrouter')}
               >
                 <div className="provider-name">OpenRouter</div>
                 <div className="provider-description">
                   One key for Claude, GPT, Gemini, Llama, and more
                 </div>
-              </button>
+              </AriaButton>
 
-              <button
+              <AriaButton
                 className="provider-card"
-                onClick={() => handleProviderSelect('mlx')}
+                onPress={() => handleProviderSelect('mlx')}
               >
                 <div className="provider-name">oMLX</div>
                 <div className="provider-description">
                   Connect to a local, on-device OpenAI-compatible model server
                 </div>
-              </button>
+              </AriaButton>
             </div>
 
             <div className="vault-setup-footer">
@@ -187,18 +185,15 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
             <p>Enter your {selectedProvider === 'mlx' ? 'oMLX server URL' : 'API key'}</p>
 
             <div className="credential-form">
-              <label htmlFor="credential">{getCredentialLabel()}</label>
-              <input
-                id="credential"
+              <TextField
+                label={getCredentialLabel()}
                 type={selectedProvider === 'mlx' ? 'text' : 'password'}
                 value={credential}
-                onChange={(e) => setCredential(e.target.value)}
+                onChange={setCredential}
                 placeholder={getPlaceholder()}
-                className="credential-input"
                 autoComplete="off"
                 autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
+                spellCheck="false"
               />
 
               {selectedProvider !== 'mlx' && (
@@ -233,19 +228,16 @@ export function VaultSetup({ onVaultSelected, onExistingVault, onError }: VaultS
             </div>
 
             <div className="setup-actions">
-              <button
-                onClick={() => setStep('provider')}
-                className="back-button"
-              >
+              <Button variant="secondary" onPress={() => setStep('provider')}>
                 Back
-              </button>
-              <button
-                onClick={handleComplete}
-                disabled={!credential.trim() || isSubmitting}
-                className="select-vault-button"
+              </Button>
+              <Button
+                variant="primary"
+                onPress={handleComplete}
+                isDisabled={!credential.trim() || isSubmitting}
               >
                 {isSubmitting ? 'Setting up...' : 'Get Started'}
-              </button>
+              </Button>
             </div>
 
             <div className="vault-setup-footer">

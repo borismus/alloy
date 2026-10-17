@@ -4,13 +4,18 @@ import { openInEditor, type ExternalEditor } from '../utils/openInEditor';
 import { vaultService } from '../services/vault';
 import { isTauri } from '../services/api';
 import { useTheme, type ThemePreference } from '../theme';
-import { AlloyDialog, Switch } from './ui';
+import { AlloyDialog, Button, CopyButton, DialogActions, DialogBody, SegmentedControl, SelectField, Switch } from './ui';
 import { CheckResult } from './UpdateChecker';
 import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { getAutoUpdate, loadAutoUpdate, setAutoUpdate } from '../services/autoUpdate';
 import { getDebugOverlay, setDebugOverlay } from '../services/debugOverlay';
 import packageInfo from '../../package.json';
 import './Settings.css';
+
+const EDITOR_OPTIONS: { id: ExternalEditor; label: string }[] = [
+  { id: 'obsidian', label: 'Obsidian' },
+  { id: 'system', label: 'System default editor' },
+];
 
 const THEME_OPTIONS: { id: ThemePreference; label: string }[] = [
   { id: 'light', label: 'Light' },
@@ -57,7 +62,6 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
     return () => { cancelled = true; };
   }, []);
   const [debugOverlay, setDebugOverlayState] = useState(getDebugOverlay);
-  const [copiedUrl, setCopiedUrl] = useState(false);
 
   const handleCheckForUpdates = async () => {
     setUpdateStatus('checking');
@@ -147,17 +151,6 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
     }
   };
 
-  const handleCopyShareUrl = async () => {
-    if (!shareStatus?.url) return;
-    try {
-      await navigator.clipboard.writeText(shareStatus.url);
-      setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 1500);
-    } catch (e) {
-      console.error('[Settings] copy url failed:', e);
-    }
-  };
-
   const handleEditConfig = async () => {
     try {
       const filePath = await vaultService.getConfigFilePath();
@@ -182,18 +175,13 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
           <div className="settings-section">
             <h3>Appearance</h3>
             <p className="settings-description">Choose how Alloy looks. System follows your device setting.</p>
-            <div className="settings-theme-group" role="group" aria-label="Theme">
-              {THEME_OPTIONS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={`settings-theme-option ${themePreference === id ? 'is-active' : ''}`}
-                  aria-pressed={themePreference === id}
-                  onClick={() => setThemePreference(id)}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="settings-theme-group">
+              <SegmentedControl
+                aria-label="Theme"
+                options={THEME_OPTIONS}
+                value={themePreference}
+                onChange={(id) => setThemePreference(id as ThemePreference)}
+              />
             </div>
           </div>
 
@@ -208,12 +196,9 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               <p className="vault-path" title={vaultPath} dir="rtl">{vaultPath}</p>
             )}
             <div className="settings-button-group">
-              <button
-                onClick={handleRevealVaultInFinder}
-                className="settings-button settings-button-secondary"
-              >
+              <Button variant="secondary" size="small" onPress={handleRevealVaultInFinder}>
                 Reveal in Finder
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -221,12 +206,9 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
             <h3>Configuration</h3>
             <p className="settings-description">API keys, providers, and preferences.</p>
             <div className="settings-button-group">
-              <button
-                onClick={handleEditConfig}
-                className="settings-button settings-button-secondary"
-              >
+              <Button variant="secondary" size="small" onPress={handleEditConfig}>
                 Edit config.yaml
-              </button>
+              </Button>
             </div>
           </div>
           </>
@@ -261,14 +243,14 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               )}
               {schedulerStatus.scheduledTaskRunner !== schedulerStatus.currentHost && (
                 <div className="settings-button-group">
-                  <button
-                    type="button"
-                    onClick={handleAssignScheduler}
-                    className="settings-button settings-button-secondary"
-                    disabled={schedulerBusy}
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onPress={handleAssignScheduler}
+                    isDisabled={schedulerBusy}
                   >
                     {schedulerBusy ? 'Assigning…' : 'Run scheduled tasks on this machine'}
-                  </button>
+                  </Button>
                 </div>
               )}
               <p className="settings-hint">
@@ -284,14 +266,12 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               Where the "Edit" buttons open notes and vault files. Obsidian opens
               markdown notes in your vault; other files always use the system default.
             </p>
-            <select
-              className="settings-select"
+            <SelectField
+              label="Open files with"
               value={externalEditor}
-              onChange={(e) => onExternalEditorChange(e.target.value as ExternalEditor)}
-            >
-              <option value="obsidian">Obsidian</option>
-              <option value="system">System default editor</option>
-            </select>
+              options={EDITOR_OPTIONS}
+              onChange={(value) => onExternalEditorChange(value as ExternalEditor)}
+            />
           </div>
           )}
 
@@ -317,13 +297,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               {shareStatus.enabled && shareStatus.url && (
                 <div className="share-url">
                   <code>{shareStatus.url}</code>
-                  <button
-                    type="button"
-                    onClick={handleCopyShareUrl}
-                    className="share-url-copy"
-                  >
-                    {copiedUrl ? 'Copied' : 'Copy'}
-                  </button>
+                  <CopyButton text={shareStatus.url} />
                 </div>
               )}
             </div>
@@ -362,13 +336,14 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               <p className="settings-hint">Updates install on the machine that runs Alloy.</p>
             ) : (
             <div className="settings-button-group">
-              <button
-                onClick={handleCheckForUpdates}
-                className="settings-button settings-button-secondary"
-                disabled={updateStatus === 'checking'}
+              <Button
+                variant="secondary"
+                size="small"
+                onPress={handleCheckForUpdates}
+                isDisabled={updateStatus === 'checking'}
               >
                 {updateStatus === 'checking' ? 'Checking…' : 'Check for updates'}
-              </button>
+              </Button>
               {updateStatus !== 'idle' && updateStatus !== 'checking' && (
                 <span className={`update-status ${
                   'error' in updateStatus ? 'update-status-error' :
@@ -408,12 +383,9 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
               Clears local app state (selected vault, UI prefs) and reloads. Vault files are not deleted.
             </p>
             <div className="settings-button-group">
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="settings-button settings-button-danger-outline"
-              >
+              <Button variant="dangerText" size="small" onPress={() => setShowResetConfirm(true)}>
                 Reset local state
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -429,7 +401,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
           title="Reset local app state?"
         >
           {() => (
-            <div className="dialog-body">
+            <DialogBody>
               <p className="settings-description">The app will reload. You'll be asked to pick a vault again.</p>
               <ul className="confirm-list">
                 <li className="confirm-list-clear">
@@ -441,21 +413,15 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                   <span>Conversations, notes, tasks, config (all vault files)</span>
                 </li>
               </ul>
-              <div className="settings-button-group">
-                <button
-                  onClick={() => setShowResetConfirm(false)}
-                  className="settings-button settings-button-secondary"
-                >
+              <DialogActions>
+                <Button variant="secondary" onPress={() => setShowResetConfirm(false)}>
                   Cancel
-                </button>
-                <button
-                  onClick={handleResetVault}
-                  className="settings-button settings-button-danger"
-                >
+                </Button>
+                <Button variant="danger" onPress={handleResetVault}>
                   Reset
-                </button>
-              </div>
-            </div>
+                </Button>
+              </DialogActions>
+            </DialogBody>
           )}
         </AlloyDialog>
       )}

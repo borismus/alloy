@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { loadAutoUpdate } from '../services/autoUpdate';
+import { Button } from './ui';
 import './UpdateChecker.css';
 
 // Export for use in Settings
@@ -111,31 +112,30 @@ export function UpdateChecker() {
             <span className="update-icon">!</span>
             <span className="update-text">
               Update to {update.version} failed
-              <button
-                className="update-details-toggle"
-                onClick={() => setShowErrorDetails(!showErrorDetails)}
+              <Button
+                variant="quiet"
+                size="small"
+                onPress={() => setShowErrorDetails(!showErrorDetails)}
                 title={showErrorDetails ? "Hide details" : "Show details"}
               >
                 {showErrorDetails ? '▼' : '▶'}
-              </button>
+              </Button>
             </span>
           </div>
           <div className="update-actions">
-            <button
-              className="update-button update-button-primary"
-              onClick={() => {
+            <Button
+              variant="secondary"
+              size="small"
+              onPress={() => {
                 setInstallError(null);
                 downloadAndInstall();
               }}
             >
               Retry
-            </button>
-            <button
-              className="update-button update-button-secondary"
-              onClick={dismiss}
-            >
+            </Button>
+            <Button variant="muted" size="small" onPress={dismiss}>
               Dismiss
-            </button>
+            </Button>
           </div>
         </div>
         {showErrorDetails && (
@@ -169,18 +169,12 @@ export function UpdateChecker() {
             </div>
           ) : (
             <>
-              <button
-                className="update-button update-button-primary"
-                onClick={() => downloadAndInstall()}
-              >
+              <Button variant="secondary" size="small" onPress={() => downloadAndInstall()}>
                 Update Now
-              </button>
-              <button
-                className="update-button update-button-secondary"
-                onClick={dismiss}
-              >
+              </Button>
+              <Button variant="muted" size="small" onPress={dismiss}>
                 Later
-              </button>
+              </Button>
             </>
           )}
         </div>

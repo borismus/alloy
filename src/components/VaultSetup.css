@@ -3,41 +3,41 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  padding: 2rem;
+  background: var(--gradient-accent);
+  padding: var(--space-8);
 }
 
 .vault-setup-content {
   background: var(--color-surface-raised);
-  border-radius: 12px;
-  padding: 3rem;
+  border-radius: var(--radius-panel);
+  padding: var(--space-12);
   max-width: 500px;
   text-align: center;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-dialog);
 }
 
 .vault-setup-content h1 {
-  margin: 0 0 0.5rem 0;
-  font-size: 2.5rem;
+  margin: 0 0 var(--space-2) 0;
+  font-size: 2.5rem; /* ds-allow: onboarding hero title, larger than any UI title */
   color: var(--color-text);
 }
 
 .vault-setup-content > p {
-  margin: 0 0 2rem 0;
+  margin: 0 0 var(--space-8) 0;
   color: var(--color-text-secondary);
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
 }
 
 .vault-setup-description {
   background: var(--color-surface);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
   text-align: left;
 }
 
 .vault-setup-description p {
-  margin: 0 0 1rem 0;
+  margin: 0 0 var(--space-4) 0;
   color: var(--color-text-secondary);
   line-height: 1.6;
 }
@@ -46,31 +46,9 @@
   margin-bottom: 0;
 }
 
-.select-vault-button {
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: white;
-  border: none;
-  padding: 1rem 2rem;
-  font-size: 1.1rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  font-weight: 600;
-}
-
-.select-vault-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.select-vault-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .vault-setup-footer {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
 }
 
@@ -78,76 +56,62 @@
   color: var(--color-text-muted);
 }
 
-/* Provider selection step */
+/* Provider selection step: each card is a React Aria Button. */
 .provider-cards {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .provider-card {
   background: var(--color-surface-raised);
   border: 2px solid var(--color-border);
-  border-radius: 12px;
-  padding: 1.25rem;
+  border-radius: var(--radius-panel);
+  padding: var(--space-5);
+  font-family: var(--font-ui);
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
 }
 
-.provider-card:hover {
+.provider-card[data-hovered] {
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
 }
 
+.provider-card[data-focus-visible] {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+}
+
 .provider-name {
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-text);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--space-1);
 }
 
 .provider-description {
-  font-size: 0.9rem;
+  font-size: var(--text-md);
   color: var(--color-text-secondary);
 }
 
 /* Credential form step */
 .credential-form {
   background: var(--color-surface);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
   text-align: left;
 }
 
-.credential-form label {
-  display: block;
-  font-weight: 600;
-  color: var(--color-text);
-  margin-bottom: 0.5rem;
-}
-
-.credential-input {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 1rem;
-  font-family: var(--font-mono);
-  font-variant-ligatures: none;
-  box-sizing: border-box;
-}
-
-.credential-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
 .credential-help {
-  margin-top: 0.75rem;
-  font-size: 0.85rem;
+  margin-top: var(--space-3);
+  font-size: var(--text-md);
 }
 
 .credential-help a {
@@ -161,22 +125,6 @@
 
 .setup-actions {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-4);
   justify-content: center;
-}
-
-.back-button {
-  background: var(--color-border);
-  color: var(--color-text);
-  border: none;
-  padding: 1rem 2rem;
-  font-size: 1.1rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s;
-  font-weight: 600;
-}
-
-.back-button:hover {
-  background: var(--color-border);
 }
