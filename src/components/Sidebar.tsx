@@ -13,7 +13,7 @@ import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel, modelDisplayName } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
-import { AlloyDialog, Button, SegmentedControl } from './ui';
+import { AlloyDialog, Badge, Button, DialogActions, DialogBody, IconButton, SearchField, SegmentedControl, TextField } from './ui';
 import { HeaderActions } from './HeaderActions';
 import { TitleSuggestions } from './TitleSuggestions';
 import './Sidebar.css';
@@ -41,6 +41,9 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
   }, ref) {
     const textareaProps = useTextareaProps();
     const [value, setValue] = useState('');
+    // SearchField doesn't forward a ref to its input; find it for focusSearch.
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    useImperativeHandle(ref, () => wrapperRef.current!.querySelector('input')!);
 
     useEffect(() => {
       if (!value.trim()) {
@@ -63,25 +66,16 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
         {showLogo && (
           <img src="/icon-192.png" alt="Alloy" className="sidebar-app-icon" width="32" height="32" />
         )}
-        <div className="search-input-wrapper">
-          <input
-            ref={ref}
-            type="text"
+        <div className="search-input-wrapper" ref={wrapperRef}>
+          <SearchField
+            aria-label="Search"
             placeholder="Search..."
             value={value}
-            onChange={(event) => setValue(event.target.value)}
-            className="search-input"
+            onChange={setValue}
+            onClear={clear}
             {...textareaProps}
+            spellCheck={String(textareaProps.spellCheck)}
           />
-          {value && (
-            <button
-              onClick={clear}
-              className="clear-search-button"
-              title="Clear search"
-            >
-              ×
-            </button>
-          )}
         </div>
         <span className={`filter-toggle ${filtersOpen ? 'open' : ''} ${filterActive ? 'active' : ''}`}>
           <Button
@@ -489,19 +483,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     switch (item.type) {
       case 'conversation':
         return isLocalConversation(item)
-          ? <span className="type-badge local" title="Uses a local model">Local</span>
+          ? <Badge title="Uses a local model">Local</Badge>
           : null;
       case 'note':
-        return <span className="type-badge note">Note</span>;
+        return <Badge tone="accent">Note</Badge>;
       case 'task':
         return (
           <>
-            <span className="type-badge task">Task</span>
+            <Badge tone="success">Task</Badge>
             {item.task && !item.task.enabled && (
-              <span className="type-badge task-disabled" title="Paused — will not run on its schedule">Paused</span>
+              <Badge tone="warning" title="Paused — will not run on its schedule">Paused</Badge>
             )}
             {item.task && isLocalModel(item.task.model, providerLocalities, availableModels) && (
-              <span className="type-badge local" title="Uses a local model">Local</span>
+              <Badge title="Uses a local model">Local</Badge>
             )}
           </>
         );
@@ -571,21 +565,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               onClick={() => handleSelectItem(item)}
               onContextMenu={(e) => handleContextMenu(e, item)}
             >
-              <button
-                type="button"
-                className="item-menu-btn"
-                aria-label="More actions"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void openItemMenu(item);
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <circle cx="5" cy="12" r="1.8" />
-                  <circle cx="12" cy="12" r="1.8" />
-                  <circle cx="19" cy="12" r="1.8" />
-                </svg>
-              </button>
+              <span className="item-menu-btn">
+                <IconButton
+                  label="More actions"
+                  size="compactIcon"
+                  onPress={() => void openItemMenu(item)}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.8" />
+                    <circle cx="12" cy="12" r="1.8" />
+                    <circle cx="19" cy="12" r="1.8" />
+                  </svg>
+                </IconButton>
+              </span>
               <div className="item-preview">
                 {streamingConversationIds.includes(item.id) && (
                   <span className="streaming-indicator" title="Streaming...">●</span>
@@ -604,10 +596,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                   <span className="unread-indicator" title={deliveredTaskIds.includes(item.id) ? "Task result delivered" : "New response"}>●</span>
                 )}
                 {getTypeBadge(item)}
-                {highlightMatches(item.title)}
-                {item.type === 'conversation' && draftIds.has(item.id) && (
-                  <span className="draft-indicator" role="img" aria-label="Unsent draft" title="Unsent draft">✎</span>
-                )}
+                <span className="item-title">
+                  {highlightMatches(item.title)}
+                  {item.type === 'conversation' && draftIds.has(item.id) && (
+                    <span className="draft-indicator" role="img" aria-label="Unsent draft" title="Unsent draft">✎</span>
+                  )}
+                </span>
               </div>
               {renderSearchSnippet(item)}
               <div className="item-meta">
@@ -638,22 +632,22 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           title="Rename conversation"
         >
           {() => (
-            <div className="dialog-body">
-              <input
-                type="text"
+            <DialogBody>
+              <TextField
+                aria-label="Conversation title"
                 value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
+                onChange={setRenameValue}
                 onKeyDown={(e) => { if (e.key === 'Enter') confirmRename(); }}
                 autoFocus
-                className="rename-input"
                 {...textareaProps}
+                spellCheck={String(textareaProps.spellCheck)}
               />
               <TitleSuggestions conversationId={renamingId} onPick={setRenameValue} />
-              <div className="rename-buttons">
-                <button onClick={cancelRename} className="cancel-button">Cancel</button>
-                <button onClick={confirmRename} className="confirm-button">Rename</button>
-              </div>
-            </div>
+              <DialogActions>
+                <Button variant="secondary" onPress={cancelRename}>Cancel</Button>
+                <Button variant="primary" onPress={confirmRename}>Rename</Button>
+              </DialogActions>
+            </DialogBody>
           )}
         </AlloyDialog>
       )}
@@ -666,15 +660,15 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           title={`Delete “${timelineItems.find(i => i.id === deletingItem.id && i.type === deletingItem.type)?.title ?? deletingItem.type}”?`}
         >
           {() => (
-            <div className="dialog-body">
+            <DialogBody>
               <p className="delete-warning">
                 This removes the {deletingItem.type === 'conversation' ? 'conversation' : deletingItem.type} from your vault. You can&apos;t undo it.
               </p>
-              <div className="rename-buttons">
-                <button onClick={cancelDelete} className="cancel-button">Cancel</button>
-                <button onClick={confirmDelete} className="delete-button">Delete</button>
-              </div>
-            </div>
+              <DialogActions>
+                <Button variant="secondary" onPress={cancelDelete}>Cancel</Button>
+                <Button variant="danger" onPress={confirmDelete}>Delete</Button>
+              </DialogActions>
+            </DialogBody>
           )}
         </AlloyDialog>
       )}

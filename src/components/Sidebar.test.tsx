@@ -7,6 +7,7 @@ import { Sidebar } from './Sidebar';
 import { HeaderActionsProvider } from '../contexts/HeaderActionsContext';
 import { resetComposerDraftsForTest, setComposerDraft } from '../services/composerDrafts';
 import { searchVault } from '../services/vaultSearch';
+import { vaultService } from '../services/vault';
 
 // Server-side body search; tests opt in to hits, everything else sees none.
 vi.mock('../services/vaultSearch', () => ({ searchVault: vi.fn(async () => []) }));
@@ -28,6 +29,7 @@ const ITEM: TimelineItem = {
 
 function renderSidebar(overrides: {
   onNewConversation?: () => void;
+  onSelectItem?: (item: TimelineItem) => void;
   activeFilter?: TimelineFilter;
   fullScreen?: boolean;
   timelineItems?: TimelineItem[];
@@ -41,7 +43,7 @@ function renderSidebar(overrides: {
         activeFilter={overrides.activeFilter ?? 'all'}
         onFilterChange={vi.fn()}
         selectedItemId={null}
-        onSelectItem={vi.fn()}
+        onSelectItem={overrides.onSelectItem ?? vi.fn()}
         streamingConversationIds={[]}
         unreadConversationIds={[]}
         availableModels={[]}
@@ -222,4 +224,29 @@ it('marks the filter toggle while a filter other than All is applied', () => {
   renderSidebar({ activeFilter: 'notes' });
   const toggle = screen.getByRole('button', { name: 'Filter by type (filtered)' });
   expect(toggle.closest('.filter-toggle')?.classList.contains('active')).toBe(true);
+});
+
+it('restores the full timeline as soon as the search is cleared', () => {
+  const other: TimelineItem = { ...ITEM, id: 'conversation-2', title: 'Unrelated', conversation: { ...ITEM.conversation!, id: 'conversation-2', title: 'Unrelated' } };
+  renderSidebar({ timelineItems: [ITEM, other] });
+
+  fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'searchable' } });
+  act(() => vi.advanceTimersByTime(200));
+  expect(screen.queryByText('Unrelated')).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+  expect((screen.getByPlaceholderText('Search...') as HTMLInputElement).value).toBe('');
+  expect(screen.getByText('Unrelated')).toBeTruthy();
+});
+
+it("opens a row's menu without selecting the row", async () => {
+  vi.spyOn(vaultService, 'getConversationFilePath').mockResolvedValue(null);
+  const onSelectItem = vi.fn();
+  renderSidebar({ onSelectItem });
+
+  fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+  await act(async () => { await Promise.resolve(); });
+
+  expect(vaultService.getConversationFilePath).toHaveBeenCalledWith(ITEM.id);
+  expect(onSelectItem).not.toHaveBeenCalled();
 });

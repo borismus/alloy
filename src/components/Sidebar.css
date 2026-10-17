@@ -24,7 +24,7 @@
 }
 
 .search-box {
-  padding: 0.625rem 0.75rem;
+  padding: 0.625rem var(--space-3);
   background: var(--color-surface);
   user-select: none;
   display: flex;
@@ -63,75 +63,16 @@
 }
 
 .search-input-wrapper {
-  flex: 1;
-  position: relative;
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  padding-right: 1.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  box-sizing: border-box;
-  background: var(--color-surface-raised);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.search-input:hover {
-  border-color: var(--color-border-strong);
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-focus);
-}
-
-.search-input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.clear-search-button {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
-  border-radius: 4px;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.clear-search-button:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-}
-
-.clear-search-button:focus-visible {
-  outline: none;
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.5);
+  flex: 1;
+  min-width: 0;
 }
 
 /* Timeline List */
 .timeline-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem;
+  padding: var(--space-2);
   scrollbar-width: thin;
   scrollbar-color: var(--color-scrollbar) transparent;
 }
@@ -146,7 +87,7 @@
 
 .timeline-list::-webkit-scrollbar-thumb {
   background: var(--color-scrollbar);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .timeline-list::-webkit-scrollbar-thumb:hover {
@@ -155,24 +96,24 @@
 
 .no-conversations {
   text-align: center;
-  padding: 3rem 1rem;
+  padding: var(--space-12) var(--space-4);
   color: var(--color-text-muted);
 }
 
 .no-conversations p {
-  margin: 0.5rem 0;
+  margin: var(--space-2) 0;
 }
 
 .no-conversations .hint {
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
 
 /* Timeline Items */
 .timeline-item {
   position: relative;
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  border-radius: 8px;
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background 0.2s;
   border: 1px solid transparent;
@@ -191,29 +132,19 @@
   position: absolute;
   top: 0.4rem;
   right: 0.4rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
+  display: flex;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  transition: opacity var(--duration-fast);
 }
 
 .timeline-item:hover .item-menu-btn,
-.item-menu-btn:focus-visible {
+.item-menu-btn:focus-within {
   opacity: 1;
 }
 
-.item-menu-btn:hover {
+/* The hovered row is already --color-surface-hover; lift the button above it. */
+.item-menu-btn > button[data-hovered] {
   background: var(--color-surface-raised);
-  color: var(--color-text);
 }
 
 /* Touch devices have no hover: keep the affordance permanently visible. */
@@ -246,24 +177,34 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 16px;
   height: 16px;
-  margin-right: 0.35rem;
-  color: #ffffff;
+  color: var(--color-on-accent);
   background: var(--color-danger);
   border-radius: 50%;
-  font-size: 0.6875rem;
+  font-size: var(--text-xs);
   font-weight: 800;
   line-height: 1;
 }
 
+/* Indicators and badges, then the title in its own column, so a long title
+   wraps beside its badges rather than under them. */
 .item-preview {
-  font-size: 0.9rem;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-md);
   color: var(--color-text);
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
   line-height: 1.4;
   /* Leave room for the absolutely-positioned actions button. */
   padding-right: 1.75rem;
+}
+
+.item-title {
+  flex: 1;
+  min-width: 0;
   /* A conversation's fallback title is its first message, which is often a bare
      URL — one unbreakable token that would otherwise run past the card's right
      edge and sit under the actions button. Matches `.item-search-snippet`. */
@@ -273,15 +214,15 @@
 .search-match {
   background: var(--color-search-highlight);
   color: var(--color-search-highlight-text);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .item-search-snippet {
   display: -webkit-box;
-  margin: -0.2rem 0 0.5rem;
+  margin: -0.2rem 0 var(--space-2);
   overflow: hidden;
   color: var(--color-text-secondary);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   line-height: 1.35;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
@@ -291,7 +232,7 @@
 .item-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
@@ -302,78 +243,29 @@
   white-space: nowrap;
 }
 
-/* Type Badges */
-.type-badge {
-  display: inline-block;
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  margin-right: 0.5rem;
-  vertical-align: middle;
-}
-
-.type-badge.task {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-  color: white;
-}
-
-.type-badge.task-disabled {
-  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
-  color: var(--color-warning);
-  border: 1px solid color-mix(in srgb, var(--color-warning) 38%, transparent);
-}
-
-.type-badge.local {
-  background: var(--color-success-soft);
-  color: var(--color-success);
-  border: 1px solid rgba(16, 185, 129, 0.28);
-}
-
-.type-badge.note {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: white;
-}
-
-/* Body padding for AlloyDialog content (the dialog shell owns the header). */
+/* Body padding for AlloyDialog content (the dialog shell owns the header).
+   Settings' reset dialog still uses it; new dialogs use DialogBody. */
 .dialog-body {
-  padding: 1.25rem 1.5rem;
+  padding: var(--space-5) var(--space-6);
 }
 
-.rename-input {
-  width: 100%;
-  padding: 0.625rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-family: inherit;
-  margin-bottom: 1rem;
-  background: var(--color-surface-raised);
-  color: var(--color-text);
-}
-
-.rename-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
+/* In the rename DialogBody: sit closer to the field than the body's gap. */
 .title-suggestions {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
-  margin: -0.5rem 0 1rem;
+  margin-top: calc(-1 * var(--space-2));
 }
 
 .title-suggestion {
   text-align: left;
-  padding: 0.5rem 0.625rem;
+  padding: var(--space-2) 0.625rem;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-text);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 
@@ -384,70 +276,31 @@
 }
 
 .title-suggestions-status {
-  margin: -0.5rem 0 1rem;
+  margin-top: calc(-1 * var(--space-2));
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
-.rename-buttons {
-  display: flex;
-  gap: 0.75rem;
-  justify-content: flex-end;
-}
-
-.rename-buttons button {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: inherit;
-}
-
-.cancel-button {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-}
-
-.cancel-button:hover {
-  background: var(--color-border);
-}
-
-.confirm-button {
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: #ffffff;
-}
-
-.confirm-button:hover {
-  opacity: 0.9;
-}
-
-.delete-button {
-  background: var(--color-danger);
-  color: #ffffff;
-}
-
-.delete-button:hover {
-  filter: brightness(0.92);
-}
-
 .delete-warning {
-  margin: 0 0 1rem 0;
+  margin: 0;
   color: var(--color-text-secondary);
-  font-size: 0.9rem;
+  font-size: var(--text-md);
   line-height: 1.4;
 }
 
 .streaming-indicator {
-  color: #4caf50;
+  color: var(--color-success);
   margin-right: 0.35rem;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 .unread-indicator {
-  color: #2196f3;
-  margin-right: 0.35rem;
+  color: var(--color-accent);
+}
+
+/* The title row spaces its children with gap. */
+.item-preview > .streaming-indicator {
+  margin-right: 0;
 }
 
 @keyframes pulse {
@@ -455,103 +308,9 @@
   50% { opacity: 0.4; }
 }
 
-.confirm-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 /* Filter tabs (segmented control) */
 .filter-tabs-container {
-  padding: 0 0.75rem 0.5rem;
-}
-
-/* Notes List */
-.notes-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-scrollbar) transparent;
-}
-
-.notes-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.notes-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.notes-list::-webkit-scrollbar-thumb {
-  background: var(--color-scrollbar);
-  border-radius: 3px;
-}
-
-.notes-list::-webkit-scrollbar-thumb:hover {
-  background: var(--color-border-strong);
-}
-
-.note-item {
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.2s;
-  border: 1px solid transparent;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.note-item:hover {
-  background: var(--color-surface-hover);
-}
-
-.note-item.active {
-  background: var(--color-accent);
-  color: #ffffff;
-}
-
-.note-item.active .note-title {
-  color: #ffffff;
-}
-
-.note-item.active .skill-indicator {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.note-item.chat-item {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-  border-color: rgba(102, 126, 234, 0.3);
-}
-
-.note-item.chat-item:hover {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
-}
-
-.note-title {
-  font-size: 0.9rem;
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-indicator {
-  color: #10b981;
-  font-size: 0.6rem;
-  flex-shrink: 0;
-}
-
-.notes-section-header {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 1rem 0.75rem 0.5rem;
-  margin-top: 0.5rem;
-  border-top: 1px solid var(--color-border);
+  padding: 0 var(--space-3) var(--space-2);
 }
 
 /* Mobile full-screen mode */
@@ -564,9 +323,9 @@
 .mobile-sidebar-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  padding-top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
   background: var(--color-surface-raised);
   border-bottom: 1px solid var(--color-border);
   /* Same height as the phone .item-header, so moving between the list and an
@@ -580,45 +339,19 @@
 
 .mobile-sidebar-header h2 {
   min-width: 0;
-  font-size: 18px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-text);
   margin: 0;
   flex: 1;
 }
 
-.mobile-back-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--color-text-secondary);
+.mobile-app-icon {
+  flex-shrink: 0;
+  border-radius: var(--radius-control);
 }
 
-.mobile-back-button:hover {
-  background: var(--color-surface-hover);
-}
-
-.mobile-back-button:active {
-  background: var(--color-border);
-}
-
-.mobile-app-icon,
 .sidebar-app-icon {
   flex-shrink: 0;
-  border-radius: 6px;
-}
-
-.sidebar-app-icon {
-  border-radius: 7px;
-}
-
-/* Hide desktop back button in full-screen mode */
-.sidebar.full-screen .back-button {
-  display: none;
+  border-radius: var(--radius-md);
 }

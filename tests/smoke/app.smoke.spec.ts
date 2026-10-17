@@ -576,7 +576,7 @@ test('mobile dialogs stay above the software keyboard', async ({ page }, testInf
   const row = page.locator('.timeline-item').filter({ hasText: 'Welcome to Alloy' });
   await row.getByRole('button', { name: 'More actions' }).click();
   await page.getByText('Rename', { exact: true }).click();
-  const input = page.locator('.rename-input');
+  const input = page.getByRole('textbox', { name: 'Conversation title' });
   await expect(input).toBeVisible();
 
   const keyboardTop = 360;
@@ -620,7 +620,7 @@ test('a local model keeps its Local tag while its host is unreachable', async ({
   // whether it is local.
   const row = page.locator('.timeline-item', { hasText: 'Private local chat' });
   await expect(row).toBeVisible();
-  await expect(row.locator('.type-badge.local')).toHaveText('Local');
+  await expect(row.getByText('Local', { exact: true })).toBeVisible();
   const cloudRow = page.locator('.timeline-item', { hasText: 'Welcome to Alloy' });
-  await expect(cloudRow.locator('.type-badge.local')).toHaveCount(0);
+  await expect(cloudRow.getByText('Local', { exact: true })).toHaveCount(0);
 });
