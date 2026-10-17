@@ -13,13 +13,27 @@ export interface TextFieldProps extends Omit<AriaTextFieldProps, 'className' | '
   placeholder?: string;
 }
 
-/** Single-line text input with an optional visible label. */
+/**
+ * Single-line text input with an optional visible label.
+ *
+ * React Aria stops every key from propagating once an onKeyDown is given, which
+ * swallowed Escape before an enclosing dialog could close and kept app
+ * shortcuts from firing. Keys the handler doesn't preventDefault() keep
+ * propagating, as they would from a plain input.
+ */
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextField(
-  { label, placeholder, ...props },
+  { label, placeholder, onKeyDown, ...props },
   ref,
 ) {
   return (
-    <AriaTextField {...props} className={styles.field}>
+    <AriaTextField
+      {...props}
+      onKeyDown={onKeyDown && ((e) => {
+        onKeyDown(e);
+        if (!e.isDefaultPrevented()) e.continuePropagation();
+      })}
+      className={styles.field}
+    >
       {label && <Label className={styles.label}>{label}</Label>}
       <Input ref={ref} className={styles.input} placeholder={placeholder} />
     </AriaTextField>

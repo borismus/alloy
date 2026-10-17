@@ -130,4 +130,22 @@ describe('ui primitives', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), 'a');
     expect(onChange).toHaveBeenCalledWith('a');
   });
+
+  it('lets keys a TextField handler ignores reach its container', async () => {
+    // Escape must still close an enclosing dialog when the field handles Enter.
+    const onContainerKey = vi.fn();
+    const onEnter = vi.fn();
+    render(
+      <div onKeyDown={(e) => onContainerKey(e.key)}>
+        <TextField
+          aria-label="Title"
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onEnter(); } }}
+        />
+      </div>,
+    );
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), '{Enter}{Escape}');
+    expect(onEnter).toHaveBeenCalledTimes(1);
+    expect(onContainerKey).toHaveBeenCalledWith('Escape');
+    expect(onContainerKey).not.toHaveBeenCalledWith('Enter');
+  });
 });
