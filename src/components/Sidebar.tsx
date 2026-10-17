@@ -485,7 +485,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     <div className={`sidebar ${fullScreen ? 'full-screen' : ''}`}>
       {fullScreen && onMobileBack && (
         <div className="mobile-sidebar-header">
-          <img src="/icon-192.png" alt="Alloy" className="mobile-app-icon" width="40" height="40" />
+          <img src="/icon-192.png" alt="Alloy" className="mobile-app-icon" width="28" height="28" />
           <h2>Alloy</h2>
           <HeaderActions />
         </div>

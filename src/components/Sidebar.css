@@ -568,7 +568,7 @@
 .mobile-app-icon,
 .sidebar-app-icon {
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .sidebar-app-icon {
