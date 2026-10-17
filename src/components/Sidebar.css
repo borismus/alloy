@@ -10,74 +10,6 @@
   overflow: hidden;
 }
 
-.creation-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.new-button {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  border: none;
-  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-end) 100%);
-  color: #ffffff;
-  font-size: 1.5rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-  padding-bottom: 2px;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-}
-
-.new-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-.new-button:active {
-  transform: scale(0.95);
-}
-
-.new-button:focus-visible,
-.creation-menu-button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--color-focus);
-}
-
-.creation-menu-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard);
-}
-
-.creation-menu-button:hover,
-.creation-menu-button[data-hovered] {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-}
-
-.creation-menu-button:active,
-.creation-menu-button[data-pressed] {
-  background: var(--color-surface-pressed);
-}
-
 .search-box {
   padding: 1rem;
   background: var(--color-surface);
@@ -604,11 +536,14 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  padding: 8px 16px;
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
   background: var(--color-surface-raised);
   border-bottom: 1px solid var(--color-border);
-  min-height: 56px;
+  /* Same height as the phone .item-header, so moving between the list and an
+     item doesn't shift the bar. */
+  box-sizing: border-box;
+  height: calc(57px + env(safe-area-inset-top, 0px));
   flex-shrink: 0;
   touch-action: manipulation;
   user-select: none;
@@ -621,17 +556,6 @@
   color: var(--color-text);
   margin: 0;
   flex: 1;
-}
-
-.mobile-sidebar-header .creation-actions {
-  margin-left: auto;
-}
-
-.mobile-sidebar-header .new-button,
-.mobile-sidebar-header .creation-menu-button {
-  width: 40px;
-  height: 40px;
-  touch-action: manipulation;
 }
 
 .mobile-back-button {
@@ -656,7 +580,8 @@
 }
 
 .mobile-app-icon {
-  border-radius: 8px;
+  flex-shrink: 0;
+  color: var(--color-text);
 }
 
 /* Hide desktop back button in full-screen mode */

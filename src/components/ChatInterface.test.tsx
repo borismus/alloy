@@ -24,7 +24,6 @@ function renderChat(overrides: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSendMessage?: (...args: any[]) => Promise<void>;
   conversation?: Conversation;
-  onNewConversation?: () => void;
   onMobileBack?: () => void;
 }) {
   const onSendMessage = overrides.onSendMessage ?? vi.fn(async () => {});
@@ -39,7 +38,6 @@ function renderChat(overrides: {
           hasProvider
           onModelChange={vi.fn()}
           availableModels={[]}
-          onNewConversation={overrides.onNewConversation}
           onMobileBack={overrides.onMobileBack}
         />
       </MessageQueueProvider>
@@ -216,41 +214,6 @@ describe('ChatInterface image preparation feedback', () => {
 
     deferreds[0].resolve({ type: 'image', path: 'attachments/one.png', mimeType: 'image/png' });
     await waitFor(() => expect(onSendMessage).toHaveBeenCalled());
-  });
-
-  it('starts a new conversation from inside an existing one', () => {
-    const onNewConversation = vi.fn();
-    renderChat({
-      onSaveAttachment: vi.fn(),
-      conversation: withMessages('hello', 'hi there'),
-      onNewConversation,
-      onMobileBack: vi.fn(),
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
-
-    expect(onNewConversation).toHaveBeenCalledTimes(1);
-  });
-
-  // An empty thread already is the new one — offering to create another just
-  // swaps one unsaved draft for another.
-  it('does not offer to create another conversation from an empty one', () => {
-    const onNewConversation = vi.fn();
-    renderChat({ onSaveAttachment: vi.fn(), onNewConversation, onMobileBack: vi.fn() });
-
-    const action = screen.getByRole('button', { name: 'New conversation' });
-    fireEvent.click(action);
-
-    expect(action.hasAttribute('disabled') || action.getAttribute('aria-disabled') === 'true').toBe(true);
-    expect(onNewConversation).not.toHaveBeenCalled();
-  });
-
-  // Desktop keeps the sidebar on screen, so it never passes the callback and
-  // must not grow a second creation affordance.
-  it('omits the action when the layout does not ask for it', () => {
-    renderChat({ onSaveAttachment: vi.fn(), conversation: withMessages('hello', 'hi there') });
-
-    expect(screen.queryByRole('button', { name: 'New conversation' })).toBeNull();
   });
 
   it('clears the indicator when an image save fails', async () => {

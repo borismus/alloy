@@ -14,7 +14,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useStreamingContext, StreamingProvider } from './contexts/StreamingContext';
 import { MessageQueueProvider } from './contexts/MessageQueueContext';
 import { TaskProvider } from './contexts/TaskContext';
-import { SettingsLauncherProvider } from './contexts/SettingsLauncherContext';
+import { HeaderActionsProvider } from './contexts/HeaderActionsContext';
 import { Conversation, Config, Message, ProviderType, ModelInfo, Attachment, NoteInfo, TimelineFilter, TimelineItem, ScheduledTask } from './types';
 import { useSendMessage } from './hooks/useSendMessage';
 import { VaultSetup } from './components/VaultSetup';
@@ -338,14 +338,6 @@ function AppContent() {
       }
     }
   }, [isMobile, isViewingDraft, selectedNote, riffContext]);
-
-  // New riff handler (for sidebar)
-  const handleNewRiff = useCallback(async () => {
-    setSelectedItem(null);
-    setNoteContent(null);
-    await riffContext.enterRiffMode();
-    if (isMobile) setMobileView('conversation');
-  }, [riffContext, isMobile]);
 
   // Integrate handler (for NoteViewer)
   const handleIntegrateNote = useCallback(async (filename: string) => {
@@ -1373,11 +1365,18 @@ function AppContent() {
     navigateTo({ type: 'conversation', id: newConversation.id });
   };
 
+  const headerActions = {
+    newConversation: () => {
+      handleNewConversation();
+      if (isMobile) setMobileView('conversation');
+    },
+    openSettings: () => setShowSettings(true),
+  };
 
   return (
     <TaskProvider tasks={tasks}>
       <ProviderLocalityContext.Provider value={providerLocalities}>
-      <SettingsLauncherProvider open={() => setShowSettings(true)}>
+      <HeaderActionsProvider value={headerActions}>
         <UpdateChecker />
         {pendingModelSwitch && (
           <AlloyDialog
@@ -1444,7 +1443,6 @@ function AppContent() {
               ref={sidebarRef}
               fullScreen
               onMobileBack={() => setMobileView('conversation')}
-              onNewRiff={handleNewRiff}
               timelineItems={timelineItems}
               activeFilter={timelineFilter}
               onFilterChange={setTimelineFilter}
@@ -1457,10 +1455,6 @@ function AppContent() {
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
               externalEditor={externalEditor}
-              onNewConversation={() => {
-                handleNewConversation();
-                setMobileView('conversation');
-              }}
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
@@ -1572,7 +1566,6 @@ function AppContent() {
                 scrollToMessageId={pendingScrollToMessageId}
                 onScrollComplete={() => setPendingScrollToMessageId(null)}
                 onMobileBack={() => setMobileView('list')}
-                onNewConversation={handleNewConversation}
               />
             )}
           </div>
@@ -1582,7 +1575,6 @@ function AppContent() {
           <>
             <Sidebar
               ref={sidebarRef}
-              onNewRiff={handleNewRiff}
               timelineItems={timelineItems}
               activeFilter={timelineFilter}
               onFilterChange={setTimelineFilter}
@@ -1592,7 +1584,6 @@ function AppContent() {
               unreadConversationIds={getUnreadConversationIds()}
               availableModels={availableModels}
               externalEditor={externalEditor}
-              onNewConversation={handleNewConversation}
               onRenameConversation={handleRenameConversation}
               onRenameRiff={handleRenameRiff}
               onDeleteConversation={handleDeleteConversation}
@@ -1698,7 +1689,7 @@ function AppContent() {
       <ToastContainer messages={toasts} onDismiss={dismissToast} />
       <DebugOverlay />
       </div>
-      </SettingsLauncherProvider>
+      </HeaderActionsProvider>
       </ProviderLocalityContext.Provider>
     </TaskProvider>
   );

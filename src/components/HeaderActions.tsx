@@ -1,0 +1,48 @@
+import { useHeaderActions } from '../contexts/HeaderActionsContext';
+import { AlloyTooltip, Button } from './ui';
+import './HeaderActions.css';
+
+/**
+ * [+] [⚙] at the top right of every header, on desktop and phone alike.
+ * Renders nothing outside a HeaderActionsProvider.
+ */
+export function HeaderActions() {
+  const actions = useHeaderActions();
+  if (!actions) return null;
+  return (
+    <div className="header-actions">
+      <AlloyTooltip content="New conversation">
+        <Button
+          variant="quiet"
+          size="icon"
+          onPress={actions.newConversation}
+          aria-label="New conversation"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M8 12h8M12 8v8" />
+          </svg>
+        </Button>
+      </AlloyTooltip>
+      <AlloyTooltip content="Settings">
+        <Button
+          variant="quiet"
+          size="icon"
+          onPress={actions.openSettings}
+          aria-label="Open settings"
+        >
+          <SettingsIcon />
+        </Button>
+      </AlloyTooltip>
+    </div>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}

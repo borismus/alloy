@@ -18,7 +18,6 @@ import { ThreadCostChip } from './ThreadCostChip';
 import { MarkdownContent } from './MarkdownContent';
 import { ChatInputForm, ChatInputFormHandle } from './ChatInputForm';
 import { QueuedMessagesList } from './QueuedMessagesList';
-import { Button } from './ui';
 import './ChatInterface.css';
 
 interface UserMessageProps {
@@ -153,7 +152,6 @@ interface ChatInterfaceProps {
    *  layout: on desktop the sidebar is always on screen, so its `+` is already
    *  one click away and a second affordance here would be redundant. Without
    *  it, leaving a restored thread on mobile means a trip back to the list. */
-  onNewConversation?: () => void;
   onBack?: () => void;
   canGoBack?: boolean;
 }
@@ -196,7 +194,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
   scrollToMessageId,
   onScrollComplete,
   onMobileBack,
-  onNewConversation,
   onBack,
   canGoBack = false,
 }, ref) => {
@@ -704,24 +701,6 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
               compaction={compaction}
             />
           </>
-        )}
-        {onNewConversation && (
-          <Button
-            variant="quiet"
-            size="icon"
-            onPress={onNewConversation}
-            // An empty conversation already is the new one; creating another
-            // would just swap one unsaved draft for a fresh unsaved draft.
-            isDisabled={conversation.messages.length === 0}
-            aria-label="New conversation"
-            title={conversation.messages.length === 0
-              ? 'This conversation is already new'
-              : 'New conversation'}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </Button>
         )}
       </ItemHeader>
       <div className="messages-container" ref={messagesContainerRef} {...scrollProps}>

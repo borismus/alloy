@@ -18,32 +18,34 @@ test('renders the seeded vault instead of the setup screen', async ({ page }) =>
   expect(await page.locator('.timeline-item').count()).toBeGreaterThanOrEqual(4);
 });
 
-test('positions creation actions responsively and keeps the riff command reachable', async ({ page }, testInfo) => {
-  const header = page.locator('.mobile-sidebar-header');
+test('every header offers new conversation and settings at the top right', async ({ page }, testInfo) => {
+  const listHeader = page.locator('.mobile-sidebar-header');
+  const itemHeader = page.locator('.item-header');
   const searchRow = page.locator('.search-box');
-  const newConversation = page.getByRole('button', { name: 'New conversation' });
-  const creationOverflow = page.getByRole('button', { name: 'More creation options' });
+  const actions = ['New conversation', 'Open settings'];
 
-  if (testInfo.project.name === 'mobile') {
-    await expect(header).toBeVisible();
-    await expect(header.getByRole('button', { name: 'New conversation' })).toBeVisible();
-    await expect(header.getByRole('button', { name: 'More creation options' })).toBeVisible();
-    await expect(searchRow.getByRole('button', { name: 'New conversation' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'More creation options' })).toHaveCount(0);
+  await expect(searchRow.getByRole('button')).toHaveCount(0);
 
-    const plusBox = await newConversation.boundingBox();
-    const overflowBox = await creationOverflow.boundingBox();
-    expect(plusBox?.width).toBeGreaterThanOrEqual(40);
-    expect(plusBox?.height).toBeGreaterThanOrEqual(40);
-    expect(overflowBox?.width).toBeGreaterThanOrEqual(40);
-    expect(overflowBox?.height).toBeGreaterThanOrEqual(40);
+  if (testInfo.project.name.startsWith('mobile')) {
+    for (const name of actions) {
+      const box = await listHeader.getByRole('button', { name }).boundingBox();
+      expect(box?.width).toBeGreaterThanOrEqual(40);
+      expect(box?.height).toBeGreaterThanOrEqual(40);
+    }
+    const listHeight = (await listHeader.boundingBox())?.height;
+
+    await page.locator('.timeline-item').filter({ hasText: 'Welcome to Alloy' }).click();
+    for (const name of actions) {
+      await expect(itemHeader.getByRole('button', { name })).toHaveCount(1);
+    }
+    expect((await itemHeader.boundingBox())?.height).toBe(listHeight);
   } else {
-    await expect(header).toHaveCount(0);
-    await expect(searchRow.getByRole('button', { name: 'New conversation' })).toBeVisible();
-    await expect(searchRow.getByRole('button', { name: 'More creation options' })).toBeVisible();
+    await expect(listHeader).toHaveCount(0);
+    for (const name of actions) {
+      await expect(itemHeader.getByRole('button', { name })).toHaveCount(1);
+    }
   }
-
-  await creationOverflow.click();
-  await expect(page.getByRole('menuitem', { name: 'New riff' })).toBeVisible();
 });
 
 test('opens a conversation and shows the composer and model picker', async ({ page }, testInfo) => {

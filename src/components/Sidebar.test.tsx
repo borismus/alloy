@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TaskProvider } from '../contexts/TaskContext';
 import type { ScheduledTask, TimelineItem } from '../types';
 import { Sidebar } from './Sidebar';
+import { HeaderActionsProvider } from '../contexts/HeaderActionsContext';
 import { resetComposerDraftsForTest, setComposerDraft } from '../services/composerDrafts';
 import { searchVault } from '../services/vaultSearch';
 
@@ -27,13 +28,13 @@ const ITEM: TimelineItem = {
 
 function renderSidebar(overrides: {
   onNewConversation?: () => void;
-  onNewRiff?: () => void;
   fullScreen?: boolean;
   timelineItems?: TimelineItem[];
   tasks?: ScheduledTask[];
 } = {}) {
   return render(
     <TaskProvider tasks={overrides.tasks ?? []}>
+      <HeaderActionsProvider value={{ newConversation: overrides.onNewConversation ?? vi.fn(), openSettings: vi.fn() }}>
       <Sidebar
         timelineItems={overrides.timelineItems ?? [ITEM]}
         activeFilter="all"
@@ -43,8 +44,6 @@ function renderSidebar(overrides: {
         streamingConversationIds={[]}
         unreadConversationIds={[]}
         availableModels={[]}
-        onNewConversation={overrides.onNewConversation ?? vi.fn()}
-        onNewRiff={overrides.onNewRiff ?? vi.fn()}
         onRenameConversation={vi.fn()}
         onRenameRiff={vi.fn()}
         onDeleteConversation={vi.fn()}
@@ -54,6 +53,7 @@ function renderSidebar(overrides: {
         fullScreen={overrides.fullScreen}
         onMobileBack={overrides.fullScreen ? vi.fn() : undefined}
       />
+      </HeaderActionsProvider>
     </TaskProvider>,
   );
 }
@@ -129,15 +129,13 @@ it('shows a persistent red state when the latest task run failed', () => {
   expect(indicator.closest('.timeline-item')?.classList.contains('task-failed')).toBe(true);
 });
 
-it('creates one conversation directly from the plus button', () => {
+it('creates one conversation from the phone header plus button', () => {
   const onNewConversation = vi.fn();
-  const onNewRiff = vi.fn();
-  renderSidebar({ onNewConversation, onNewRiff });
+  renderSidebar({ onNewConversation, fullScreen: true });
 
   fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
 
   expect(onNewConversation).toHaveBeenCalledTimes(1);
-  expect(onNewRiff).not.toHaveBeenCalled();
   expect(screen.queryByRole('menu')).toBeNull();
 });
 
@@ -145,7 +143,7 @@ it('creates one conversation when the plus button is keyboard-activated', async 
   vi.useRealTimers();
   const onNewConversation = vi.fn();
   const user = userEvent.setup();
-  renderSidebar({ onNewConversation });
+  renderSidebar({ onNewConversation, fullScreen: true });
 
   const newConversation = screen.getByRole('button', { name: 'New conversation' });
   newConversation.focus();
@@ -154,30 +152,23 @@ it('creates one conversation when the plus button is keyboard-activated', async 
   expect(onNewConversation).toHaveBeenCalledTimes(1);
 });
 
-it('keeps new riff available from the creation overflow menu', () => {
-  const onNewConversation = vi.fn();
-  const onNewRiff = vi.fn();
-  renderSidebar({ onNewConversation, onNewRiff });
-
-  fireEvent.click(screen.getByRole('button', { name: 'More creation options' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: 'New riff' }));
-
-  expect(onNewRiff).toHaveBeenCalledTimes(1);
-  expect(onNewConversation).not.toHaveBeenCalled();
-});
-
-it('moves creation actions into the header in mobile full-screen mode', () => {
+it('puts new conversation and settings in the phone list header, not the search row', () => {
   renderSidebar({ fullScreen: true });
 
   const header = screen.getByRole('heading', { name: 'Alloy' }).parentElement;
   const searchRow = screen.getByPlaceholderText('Search...').closest('.search-box');
-  const newConversation = screen.getByRole('button', { name: 'New conversation' });
-  const creationOverflow = screen.getByRole('button', { name: 'More creation options' });
+  for (const name of ['New conversation', 'Open settings']) {
+    const button = screen.getByRole('button', { name });
+    expect(header?.contains(button)).toBe(true);
+    expect(searchRow?.contains(button)).toBe(false);
+  }
+  expect(screen.queryByRole('button', { name: 'More creation options' })).toBeNull();
+});
 
-  expect(header?.contains(newConversation)).toBe(true);
-  expect(header?.contains(creationOverflow)).toBe(true);
-  expect(searchRow?.contains(newConversation)).toBe(false);
-  expect(searchRow?.contains(creationOverflow)).toBe(false);
+it('leaves the header actions to the item toolbar on desktop', () => {
+  renderSidebar();
+  expect(screen.queryByRole('button', { name: 'New conversation' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open settings' })).toBeNull();
 });
 
 it('marks conversations that hold unsent composer text', () => {

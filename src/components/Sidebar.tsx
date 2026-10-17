@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
-import { Button as AriaButton, MenuTrigger } from 'react-aria-components';
 import { ModelInfo, TimelineItem, TimelineFilter } from '../types';
 import { vaultService } from '../services/vault';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
@@ -14,53 +13,13 @@ import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel, modelDisplayName } from '../utils/models';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
-import { AlloyDialog, AlloyMenu, SegmentedControl } from './ui';
+import { AlloyDialog, SegmentedControl } from './ui';
+import { HeaderActions } from './HeaderActions';
 import { TitleSuggestions } from './TitleSuggestions';
 import './Sidebar.css';
 
-interface CreationActionsProps {
-  onNewConversation: () => void;
-  onNewRiff: () => void;
-}
-
-function CreationActions({ onNewConversation, onNewRiff }: CreationActionsProps) {
-  return (
-    <div className="creation-actions">
-      <button
-        type="button"
-        onClick={onNewConversation}
-        className="new-button"
-        title="New conversation"
-        aria-label="New conversation"
-      >
-        +
-      </button>
-      <MenuTrigger>
-        <AriaButton
-          className="creation-menu-button"
-          aria-label="More creation options"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <circle cx="5" cy="12" r="1.8" />
-            <circle cx="12" cy="12" r="1.8" />
-            <circle cx="19" cy="12" r="1.8" />
-          </svg>
-        </AriaButton>
-        <AlloyMenu
-          placement="bottom end"
-          items={[{ id: 'new-riff', label: 'New riff' }]}
-          onAction={(key) => {
-            if (key === 'new-riff') onNewRiff();
-          }}
-        />
-      </MenuTrigger>
-    </div>
-  );
-}
-
-interface SidebarSearchControlProps extends CreationActionsProps {
+interface SidebarSearchControlProps {
   onQueryChange: (query: string) => void;
-  showCreationActions: boolean;
 }
 
 /**
@@ -71,9 +30,6 @@ interface SidebarSearchControlProps extends CreationActionsProps {
 const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlProps>(
   function SidebarSearchControl({
     onQueryChange,
-    onNewConversation,
-    onNewRiff,
-    showCreationActions,
   }, ref) {
     const textareaProps = useTextareaProps();
     const [value, setValue] = useState('');
@@ -116,12 +72,6 @@ const SidebarSearchControl = forwardRef<HTMLInputElement, SidebarSearchControlPr
             </button>
           )}
         </div>
-        {showCreationActions && (
-          <CreationActions
-            onNewConversation={onNewConversation}
-            onNewRiff={onNewRiff}
-          />
-        )}
       </div>
     );
   },
@@ -227,8 +177,6 @@ interface SidebarProps {
   streamingConversationIds: string[];
   unreadConversationIds: string[];
   availableModels: ModelInfo[];
-  onNewConversation: () => void;
-  onNewRiff: () => void;
   onRenameConversation: (oldId: string, newTitle: string) => void;
   onRenameRiff: (oldFilename: string, newName: string) => void;
   onDeleteConversation: (id: string) => void;
@@ -253,8 +201,6 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
   streamingConversationIds,
   unreadConversationIds,
   availableModels,
-  onNewConversation,
-  onNewRiff,
   onRenameConversation,
   onRenameRiff,
   onDeleteConversation,
@@ -561,20 +507,17 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     <div className={`sidebar ${fullScreen ? 'full-screen' : ''}`}>
       {fullScreen && onMobileBack && (
         <div className="mobile-sidebar-header">
-          <img src="/icon-192.png" alt="Alloy" className="mobile-app-icon" width="44" height="44" />
+          <svg className="mobile-app-icon" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 2.5 22 20.5H2z" />
+            <path d="M12 9.5 16.4 17.2H7.6z" />
+          </svg>
           <h2>Alloy</h2>
-          <CreationActions
-            onNewConversation={onNewConversation}
-            onNewRiff={onNewRiff}
-          />
+          <HeaderActions />
         </div>
       )}
       <SidebarSearchControl
         ref={searchInputRef}
         onQueryChange={setSearchQuery}
-        onNewConversation={onNewConversation}
-        onNewRiff={onNewRiff}
-        showCreationActions={!fullScreen}
       />
 
       <div className="filter-tabs-container">
