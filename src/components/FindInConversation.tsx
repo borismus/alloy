@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
 import { useTextareaProps } from '../utils/textareaProps';
 import { findMatchRanges, nextMatchIndex, prevMatchIndex } from '../utils/findMatches';
+import { IconButton, TextField } from './ui';
 import './FindInConversation.css';
 
 interface FindInConversationProps {
@@ -134,10 +135,10 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
     onClose();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: { key: string; preventDefault: () => void }) => {
     if (e.key === 'Escape') {
+      // React Aria stops keyboard events from propagating by default.
       e.preventDefault();
-      e.stopPropagation();
       handleClose();
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -147,40 +148,44 @@ export const FindInConversation = forwardRef<FindInConversationHandle, FindInCon
 
   return (
     <div className="find-in-conversation" style={{ top: topOffset }}>
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder="Find in conversation..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        onKeyDown={handleKeyDown}
-        className="find-input"
-        {...textareaProps}
-      />
+      <div className="find-input">
+        <TextField
+          ref={inputRef}
+          aria-label="Find in conversation"
+          placeholder="Find in conversation..."
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onKeyDown={handleKeyDown}
+          {...textareaProps}
+          spellCheck={String(textareaProps.spellCheck)}
+        />
+      </div>
       {searchQuery && (
         <span className="match-count">
           {matchCount > 0 ? `${currentIndex + 1} of ${matchCount}` : 'No matches'}
         </span>
       )}
-      <button
-        onClick={goToPreviousMatch}
-        className="find-nav-button"
-        title="Previous match"
-        disabled={matchCount === 0}
+      <IconButton
+        label="Previous match"
+        variant="muted"
+        size="compactIcon"
+        onPress={goToPreviousMatch}
+        isDisabled={matchCount === 0}
       >
-        ▲
-      </button>
-      <button
-        onClick={goToNextMatch}
-        className="find-nav-button"
-        title="Next match"
-        disabled={matchCount === 0}
+        <span className="find-nav-glyph" aria-hidden="true">▲</span>
+      </IconButton>
+      <IconButton
+        label="Next match"
+        variant="muted"
+        size="compactIcon"
+        onPress={goToNextMatch}
+        isDisabled={matchCount === 0}
       >
-        ▼
-      </button>
-      <button onClick={handleClose} className="find-close-button" title="Close (Esc)">
-        ×
-      </button>
+        <span className="find-nav-glyph" aria-hidden="true">▼</span>
+      </IconButton>
+      <IconButton label="Close (Esc)" size="compactIcon" onPress={handleClose}>
+        <span className="find-close-glyph" aria-hidden="true">×</span>
+      </IconButton>
     </div>
   );
 });
