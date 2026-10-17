@@ -29,14 +29,19 @@ test('startup reads the vault in one request and shows what the per-file path sh
     return { requests, rows: await page.locator('.timeline-item').allInnerTexts() };
   };
 
+  // Requests only the per-file startup makes. Others can race the list (on
+  // desktop the restored conversation looks up its file as it opens), so
+  // don't require the absence of every /api/fs call.
+  const perFileStartup = ['/api/config', '/api/fs/readDirHeaders', '/api/fs/stat'];
+
   const oneRequest = await reloadAndRecord();
   expect(oneRequest.requests).toContain('/api/startup');
-  expect(oneRequest.requests.filter(path => path.startsWith('/api/fs/'))).toEqual([]);
+  expect(oneRequest.requests.filter(path => perFileStartup.includes(path))).toEqual([]);
 
   // An older server has no startup route; the app reads file by file instead.
   await page.route('**/api/startup', route => route.fulfill({ status: 404, body: 'endpoint not found\n' }));
   const perFile = await reloadAndRecord();
-  expect(perFile.requests).toContain('/api/fs/readDirHeaders');
+  expect(perFile.requests).toEqual(expect.arrayContaining(perFileStartup));
 
   expect(oneRequest.rows.length).toBeGreaterThanOrEqual(4);
   expect(oneRequest.rows).toEqual(perFile.rows);
