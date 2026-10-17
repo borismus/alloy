@@ -444,7 +444,7 @@ export function TaskDetailView({
               )}
               <span className="task-model-provider">{modelProvider}</span>
               {!modelIsKnown && (
-                <Badge title="This model isn't in the current model list">Unavailable</Badge>
+                <Badge tone="danger" title="This model isn't in the current model list">Unavailable</Badge>
               )}
             </div>
           </div>

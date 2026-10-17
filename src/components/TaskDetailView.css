@@ -20,6 +20,12 @@
   user-select: text;
 }
 
+/* The same reading column as chats and notes. */
+.task-detail-content > * {
+  max-width: 800px;
+  margin-inline: auto;
+}
+
 .task-detail-content button,
 .task-detail-content [role="switch"] {
   -webkit-user-select: none;

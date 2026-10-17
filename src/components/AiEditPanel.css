@@ -9,6 +9,11 @@
 }
 
 .ai-edit-row {
+  /* Lines up with the 800px content column above it; the panel's top border
+     still spans the full width. */
+  width: 100%;
+  max-width: 800px;
+  margin-inline: auto;
   display: flex;
   gap: var(--space-2);
   align-items: flex-end;
