@@ -7,6 +7,8 @@ interface ThinkingDisclosureProps {
   initialElapsedMs: number;
   durationMs?: number;
   active: boolean;
+  /** Replaces the elapsed-time label. */
+  label?: string;
 }
 
 export function ThinkingDisclosure({
@@ -15,6 +17,7 @@ export function ThinkingDisclosure({
   initialElapsedMs,
   durationMs,
   active,
+  label: labelOverride,
 }: ThinkingDisclosureProps) {
   const [now, setNow] = useState(startedAt + initialElapsedMs);
   const body = thinking.trimStart();
@@ -28,7 +31,7 @@ export function ThinkingDisclosure({
 
   const elapsedMs = durationMs ?? Math.max(0, now - startedAt);
   const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
-  const label = active ? `Thinking… ${seconds}s` : `Thought for ${seconds}s`;
+  const label = labelOverride ?? (active ? `Thinking… ${seconds}s` : `Thought for ${seconds}s`);
 
   return (
     <Disclosure

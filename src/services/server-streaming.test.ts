@@ -37,6 +37,7 @@ describe('history sent with a turn', () => {
         timestamp: '2026-10-01T10:00:05Z',
         content: 'You wrote that the trip was restful.',
         model: 'mlx/qwen',
+        partialReasoning: `The journal says ${secret}`,
         toolUse: [{ type: 'read_file', input: { path: 'private/journal/trip.md' }, result: secret }],
         subagentResponses: [{
           name: 'Research',

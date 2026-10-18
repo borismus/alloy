@@ -53,6 +53,10 @@ pub struct AssistantWrite {
     /// Present when the turn failed. Persisting this on the same assistant
     /// record as partial content and tool history keeps the failure atomic.
     pub error: Option<String>,
+    /// Provider-supplied reasoning streamed before a failure, kept as
+    /// diagnostic salvage. Only failed turns carry it; it is never sent back
+    /// to a model.
+    pub partial_reasoning: Option<String>,
     /// Present when the turn produced a real answer but had to stop short (for
     /// example because it filled its context budget). Stored as a stable code so
     /// the UI owns the wording; absence means an ordinary complete answer.
@@ -94,6 +98,12 @@ pub async fn append_assistant_message(vault: &Vault, w: AssistantWrite) -> anyho
     msg.insert(Value::String("content".into()), Value::String(w.content));
     if let Some(error) = w.error {
         msg.insert(Value::String("error".into()), Value::String(error));
+    }
+    if let Some(reasoning) = w.partial_reasoning {
+        msg.insert(
+            Value::String("partialReasoning".into()),
+            Value::String(reasoning),
+        );
     }
     if let Some(reason) = w.incomplete_reason {
         msg.insert(Value::String("incompleteReason".into()), Value::String(reason));
@@ -424,6 +434,23 @@ fn render_markdown_preview(c: &Conversation) -> String {
                 Some(error) => format!("{}\n\n**Error:** {}", content, error),
                 None => content.to_string(),
             };
+            // A collapsed Obsidian callout, so the salvage stays out of the way.
+            if let Some(reasoning) = m
+                .get(Value::String("partialReasoning".into()))
+                .and_then(Value::as_str)
+                .filter(|r| !r.trim().is_empty())
+            {
+                let quoted = reasoning
+                    .trim()
+                    .lines()
+                    .map(|line| format!("> {}", line).trim_end().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                rendered = format!(
+                    "{}\n\n> [!note]- Incomplete reasoning\n{}",
+                    rendered, quoted
+                );
+            }
             // The preview is read in Obsidian, where there is no UI to carry the
             // badge — so an answer built on partial work has to say so here.
             if let Some(note) = m
@@ -514,6 +541,7 @@ mod tests {
             assistant_message_id: format!("m-{content}"),
             content: content.into(),
             error: None,
+            partial_reasoning: None,
             incomplete_reason: None,
             usage: None,
             compacted: None,
@@ -561,6 +589,7 @@ mod tests {
                 assistant_message_id: "assistant-error".into(),
                 content: "Partial research.".into(),
                 error: Some("model returned no final text".into()),
+                partial_reasoning: None,
                 incomplete_reason: None,
                 usage: None,
                 compacted: None,
@@ -632,6 +661,7 @@ mod tests {
                 assistant_message_id: "assistant-partial".into(),
                 content: "Here is what I found.".into(),
                 error: None,
+                partial_reasoning: None,
                 incomplete_reason: Some("context_budget".into()),
                 usage: None,
                 compacted: None,

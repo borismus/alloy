@@ -104,6 +104,30 @@ describe('ChatInterface persisted errors', () => {
     expect(document.querySelector('.response-summary.status-error')).toBeTruthy();
     expect(document.querySelector('.tool-use-indicator')).toBeTruthy();
   });
+
+  it('keeps the reasoning a failed turn streamed, collapsed until opened', () => {
+    renderChat({
+      onSaveAttachment: vi.fn(),
+      conversation: {
+        ...conversation,
+        messages: [{
+          id: 'assistant-error',
+          role: 'assistant',
+          timestamp: '2024-01-01T10:01:00Z',
+          content: 'Partial answer',
+          error: 'upstream connection reset',
+          partialReasoning: 'Comparing the two fares first.',
+        }],
+      },
+    });
+
+    const toggle = screen.getByRole('button', { name: /Incomplete reasoning/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Comparing the two fares first.')).toBeTruthy();
+    expect(screen.getByText('upstream connection reset')).toBeTruthy();
+  });
 });
 
 describe('ChatInterface incomplete answers', () => {

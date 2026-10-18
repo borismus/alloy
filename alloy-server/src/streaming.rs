@@ -589,6 +589,7 @@ async fn run_stream(
                     assistant_message_id,
                     content: stream_result.content.clone(),
                     error: None,
+                    partial_reasoning: None,
                     incomplete_reason: incomplete_reason(&stream_result.stop_reason),
                     usage: stream_result.usage.clone(),
                     compacted: new_compacted,
@@ -873,15 +874,19 @@ async fn persist_conversation_error(
         return false;
     }
 
-    let (content, assistant_message_id, tool_use, contains_private) = {
+    let (content, partial_reasoning, assistant_message_id, tool_use, contains_private) = {
         let inner = session.inner.lock().unwrap();
         let content = if inner.full_content.trim().is_empty() {
             String::new()
         } else {
             inner.full_content.clone()
         };
+        // Read before `mark_error` clears the buffer. Already bounded, with
+        // its truncation marker, by `append_bounded_thinking`.
+        let partial_reasoning = Some(inner.full_thinking.clone()).filter(|t| !t.trim().is_empty());
         (
             content,
+            partial_reasoning,
             inner.assistant_message_id.clone(),
             collect_tool_uses(&inner.tool_history),
             inner.private_read.load(std::sync::atomic::Ordering::Relaxed),
@@ -892,6 +897,7 @@ async fn persist_conversation_error(
         assistant_message_id,
         content,
         error: Some(message.to_string()),
+        partial_reasoning,
         // A failed turn is already labelled by its error; the two markers are
         // mutually exclusive by construction.
         incomplete_reason: None,
@@ -1273,6 +1279,34 @@ mod tests {
         }
     }
 
+    /// Streams reasoning and part of an answer, then fails.
+    struct FailingThinkingProvider {
+        thinking: &'static str,
+    }
+
+    #[async_trait]
+    impl Provider for FailingThinkingProvider {
+        async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
+            if !self.thinking.is_empty() {
+                let _ = req
+                    .delta_tx
+                    .send(ProviderStreamEvent::Thinking(self.thinking.into()));
+            }
+            let _ = req
+                .delta_tx
+                .send(ProviderStreamEvent::Content("partial answer".into()));
+            anyhow::bail!("upstream connection reset")
+        }
+
+        async fn generate_title(&self, _user: &str, _assistant: &str, _model: &str) -> String {
+            String::new()
+        }
+
+        fn supports_tools(&self, _model: &str) -> bool {
+            false
+        }
+    }
+
     struct TitleProvider {
         received_model: Arc<Mutex<Option<String>>>,
     }
@@ -1517,6 +1551,95 @@ mod tests {
         assert!(!yaml.contains("thinking:"), "got:\n{yaml}");
         let session = sessions.get("session").unwrap();
         assert!(session.inner.lock().unwrap().full_thinking.is_empty());
+    }
+
+    /// Run one turn against `provider` in a fresh vault; returns the outcome
+    /// and the conversation's YAML and Markdown preview afterwards.
+    async fn run_failing_turn(provider: FailingThinkingProvider) -> (bool, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let conversations = dir.path().join("conversations");
+        std::fs::create_dir(&conversations).unwrap();
+        let conversation_path = conversations.join("conv.yaml");
+        std::fs::write(
+            &conversation_path,
+            "id: conv\nmodel: test/model\ncreated: now\nupdated: now\nmessages: []\n",
+        )
+        .unwrap();
+
+        let vault = Arc::new(Vault::new(dir.path().to_path_buf()).unwrap());
+        let providers = ProviderRegistry::from_test_provider("test", Arc::new(provider));
+        let tools = Arc::new(ToolRegistry::new(
+            Arc::new(Config::default()),
+            vault.clone(),
+            providers.clone(),
+            Arc::new(SkillRegistry::new()),
+        ));
+        let outcome = run_to_completion(
+            &SessionRegistry::new(),
+            providers,
+            vault,
+            tools,
+            Arc::new(ModelCache::new()),
+            CompactionSettings::default(),
+            None,
+            StartParams {
+                session_id: "session".into(),
+                conversation_id: "conv".into(),
+                assistant_message_id: Some("assistant".into()),
+                model: "test/model".into(),
+                messages: vec![user_msg("hello")],
+                system_prompt: None,
+                is_first_message: false,
+                user_message_content: "hello".into(),
+                invoke_skill: None,
+                skip_persist: false,
+                retry_connect: false,
+                execution_policy: ExecutionPolicy::interactive(),
+            },
+        )
+        .await;
+        let yaml = std::fs::read_to_string(&conversation_path).unwrap();
+        let md = std::fs::read_to_string(conversation_path.with_extension("md")).unwrap();
+        (outcome.is_err(), yaml, md)
+    }
+
+    #[tokio::test]
+    async fn a_failed_turn_keeps_the_reasoning_it_streamed() {
+        let (failed, yaml, md) = run_failing_turn(FailingThinkingProvider {
+            thinking: "checking the schedule\nthen the budget",
+        })
+        .await;
+
+        assert!(failed);
+        // Saved on the one failed assistant record, beside the partial answer
+        // and the error.
+        let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let message = &doc["messages"][0];
+        assert_eq!(message["content"], "partial answer");
+        assert!(message["error"]
+            .as_str()
+            .unwrap()
+            .contains("connection reset"));
+        assert_eq!(
+            message["partialReasoning"],
+            "checking the schedule\nthen the budget"
+        );
+        assert!(
+            md.contains(
+                "> [!note]- Incomplete reasoning\n> checking the schedule\n> then the budget"
+            ),
+            "got:\n{md}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_turn_without_reasoning_records_none() {
+        let (failed, yaml, md) = run_failing_turn(FailingThinkingProvider { thinking: "" }).await;
+
+        assert!(failed);
+        assert!(yaml.contains("partial answer"));
+        assert!(!yaml.contains("partialReasoning"), "got:\n{yaml}");
+        assert!(!md.contains("Incomplete reasoning"), "got:\n{md}");
     }
 
     #[test]

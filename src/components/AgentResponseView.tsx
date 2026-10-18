@@ -54,6 +54,8 @@ interface AgentResponseViewProps {
    * to stop short of finishing its work. Rendered as a notice above the footer
    * so a partial answer is never mistaken for a complete one.
    */
+  /** Reasoning a failed turn streamed before it failed; shown collapsed. */
+  partialReasoning?: string;
   incompleteReason?: string;
 }
 
@@ -97,6 +99,7 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
   thinkingDurationMs,
   usage,
   incompleteReason,
+  partialReasoning,
 }) => {
   // Use provided skillUses, or derive from use_skill tool calls
   const skillUses: SkillUse[] = skillUsesProp ?? toolUses
@@ -138,6 +141,15 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
             initialElapsedMs={thinkingElapsedMs ?? 0}
             durationMs={thinkingDurationMs}
             active={thinkingDurationMs == null}
+          />
+        )}
+        {status === 'error' && partialReasoning?.trim() && (
+          <ThinkingDisclosure
+            thinking={partialReasoning}
+            startedAt={0}
+            initialElapsedMs={0}
+            active={false}
+            label="Incomplete reasoning"
           />
         )}
         {content && (

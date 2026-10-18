@@ -113,6 +113,11 @@ export interface Message {
   /** Persisted backend failure for an assistant turn. May accompany partial content/tools. */
   error?: string;
   /**
+   * Provider-supplied reasoning streamed before the turn failed, kept for the
+   * record. Only failed turns carry it, and it is never sent back to a model.
+   */
+  partialReasoning?: string;
+  /**
    * Stable code set by the backend when the turn answered but had to stop short
    * of finishing its work (currently only `context_budget`). Distinct from
    * `error`: the content is a real answer, just built on partial evidence.

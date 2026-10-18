@@ -337,6 +337,7 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             headerContent={message.subagentResponses?.length ? undefined : assistantName}
             usage={message.usage}
             incompleteReason={message.incompleteReason}
+            partialReasoning={message.partialReasoning}
           />
           {message.id && message.toolUse?.map((tool, toolIndex) => isMemoryProposal(tool) && (
             <MemoryProposalCard
