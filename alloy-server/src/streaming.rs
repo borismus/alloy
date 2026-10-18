@@ -576,12 +576,18 @@ async fn run_stream(
             }
 
             if !params.skip_persist {
-                let (assistant_message_id, tool_use, contains_private) = {
+                let (assistant_message_id, tool_use, contains_private, partial_reasoning) = {
                     let inner = session.inner.lock().unwrap();
+                    // A stopped turn is unfinished work like a failed one, so it
+                    // keeps its reasoning too. Read the session's own stop flag:
+                    // providers don't agree on a stop reason for it.
+                    let stopped = *cancel.borrow();
                     (
                         inner.assistant_message_id.clone(),
                         collect_tool_uses(&inner.tool_history),
                         inner.private_read.load(std::sync::atomic::Ordering::Relaxed),
+                        Some(inner.full_thinking.clone())
+                            .filter(|t| stopped && !t.trim().is_empty()),
                     )
                 };
                 let write = AssistantWrite {
@@ -589,7 +595,7 @@ async fn run_stream(
                     assistant_message_id,
                     content: stream_result.content.clone(),
                     error: None,
-                    partial_reasoning: None,
+                    partial_reasoning,
                     incomplete_reason: incomplete_reason(&stream_result.stop_reason),
                     usage: stream_result.usage.clone(),
                     compacted: new_compacted,
@@ -1279,14 +1285,17 @@ mod tests {
         }
     }
 
-    /// Streams reasoning and part of an answer, then fails.
+    /// Streams reasoning and part of an answer, then fails — or, with
+    /// `until_stopped`, waits for Stop and ends the way most providers end a
+    /// stopped turn: successfully, with what it had.
     struct FailingThinkingProvider {
         thinking: &'static str,
+        until_stopped: bool,
     }
 
     #[async_trait]
     impl Provider for FailingThinkingProvider {
-        async fn stream(&self, req: StreamRequest) -> anyhow::Result<StreamResult> {
+        async fn stream(&self, mut req: StreamRequest) -> anyhow::Result<StreamResult> {
             if !self.thinking.is_empty() {
                 let _ = req
                     .delta_tx
@@ -1295,7 +1304,18 @@ mod tests {
             let _ = req
                 .delta_tx
                 .send(ProviderStreamEvent::Content("partial answer".into()));
-            anyhow::bail!("upstream connection reset")
+            if !self.until_stopped {
+                anyhow::bail!("upstream connection reset")
+            }
+            while !*req.cancel.borrow() {
+                req.cancel.changed().await?;
+            }
+            Ok(StreamResult {
+                content: "partial answer".into(),
+                usage: None,
+                stop_reason: "end_turn".into(),
+                tool_calls: vec![],
+            })
         }
 
         async fn generate_title(&self, _user: &str, _assistant: &str, _model: &str) -> String {
@@ -1553,9 +1573,11 @@ mod tests {
         assert!(session.inner.lock().unwrap().full_thinking.is_empty());
     }
 
-    /// Run one turn against `provider` in a fresh vault; returns the outcome
-    /// and the conversation's YAML and Markdown preview afterwards.
+    /// Run one turn against `provider` in a fresh vault, pressing Stop once
+    /// its reasoning has arrived if it waits for that. Returns whether the turn
+    /// failed, and the conversation's YAML and Markdown preview afterwards.
     async fn run_failing_turn(provider: FailingThinkingProvider) -> (bool, String, String) {
+        let press_stop = provider.until_stopped;
         let dir = tempfile::tempdir().unwrap();
         let conversations = dir.path().join("conversations");
         std::fs::create_dir(&conversations).unwrap();
@@ -1574,8 +1596,9 @@ mod tests {
             providers.clone(),
             Arc::new(SkillRegistry::new()),
         ));
-        let outcome = run_to_completion(
-            &SessionRegistry::new(),
+        let sessions = SessionRegistry::new();
+        let session = start_session(
+            &sessions,
             providers,
             vault,
             tools,
@@ -1597,16 +1620,36 @@ mod tests {
                 execution_policy: ExecutionPolicy::interactive(),
             },
         )
-        .await;
+        .unwrap();
+        let status = || session.inner.lock().unwrap().status.clone();
+        // Content follows the reasoning, so once it lands both have arrived.
+        let streamed = || !session.inner.lock().unwrap().full_content.is_empty();
+        for _ in 0..400 {
+            if status() != SessionStatus::Streaming || (press_stop && streamed()) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        if press_stop {
+            stop_session(&sessions, "session");
+        }
+        for _ in 0..400 {
+            if status() != SessionStatus::Streaming {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let failed = status() == SessionStatus::Error;
         let yaml = std::fs::read_to_string(&conversation_path).unwrap();
         let md = std::fs::read_to_string(conversation_path.with_extension("md")).unwrap();
-        (outcome.is_err(), yaml, md)
+        (failed, yaml, md)
     }
 
     #[tokio::test]
     async fn a_failed_turn_keeps_the_reasoning_it_streamed() {
         let (failed, yaml, md) = run_failing_turn(FailingThinkingProvider {
             thinking: "checking the schedule\nthen the budget",
+            until_stopped: false,
         })
         .await;
 
@@ -1634,12 +1677,34 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_turn_without_reasoning_records_none() {
-        let (failed, yaml, md) = run_failing_turn(FailingThinkingProvider { thinking: "" }).await;
+        let (failed, yaml, md) = run_failing_turn(FailingThinkingProvider {
+            thinking: "",
+            until_stopped: false,
+        })
+        .await;
 
         assert!(failed);
         assert!(yaml.contains("partial answer"));
         assert!(!yaml.contains("partialReasoning"), "got:\n{yaml}");
         assert!(!md.contains("Incomplete reasoning"), "got:\n{md}");
+    }
+
+    #[tokio::test]
+    async fn a_stopped_turn_keeps_the_reasoning_it_streamed() {
+        // A long local-model run stopped early: what it had worked out so far
+        // is the point of keeping it.
+        let (failed, yaml, _md) = run_failing_turn(FailingThinkingProvider {
+            thinking: "weighing the three options",
+            until_stopped: true,
+        })
+        .await;
+
+        assert!(!failed);
+        let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+        let message = &doc["messages"][0];
+        assert_eq!(message["content"], "partial answer");
+        assert!(message.get("error").is_none(), "got:\n{yaml}");
+        assert_eq!(message["partialReasoning"], "weighing the three options");
     }
 
     #[test]

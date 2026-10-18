@@ -128,6 +128,25 @@ describe('ChatInterface persisted errors', () => {
     expect(screen.getByText('Comparing the two fares first.')).toBeTruthy();
     expect(screen.getByText('upstream connection reset')).toBeTruthy();
   });
+
+  it('keeps the reasoning of a stopped turn the same way', () => {
+    renderChat({
+      onSaveAttachment: vi.fn(),
+      conversation: {
+        ...conversation,
+        messages: [{
+          id: 'assistant-stopped',
+          role: 'assistant',
+          timestamp: '2024-01-01T10:01:00Z',
+          content: '',
+          partialReasoning: 'Still weighing the three options.',
+        }],
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Incomplete reasoning/ }));
+    expect(screen.getByText('Still weighing the three options.')).toBeTruthy();
+  });
 });
 
 describe('ChatInterface incomplete answers', () => {

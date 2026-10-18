@@ -53,9 +53,8 @@ pub struct AssistantWrite {
     /// Present when the turn failed. Persisting this on the same assistant
     /// record as partial content and tool history keeps the failure atomic.
     pub error: Option<String>,
-    /// Provider-supplied reasoning streamed before a failure, kept as
-    /// diagnostic salvage. Only failed turns carry it; it is never sent back
-    /// to a model.
+    /// Provider-supplied reasoning streamed before a failure or a Stop, kept as
+    /// salvage. Only those turns carry it; it is never sent back to a model.
     pub partial_reasoning: Option<String>,
     /// Present when the turn produced a real answer but had to stop short (for
     /// example because it filled its context budget). Stored as a stable code so

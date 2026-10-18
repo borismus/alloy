@@ -113,8 +113,9 @@ export interface Message {
   /** Persisted backend failure for an assistant turn. May accompany partial content/tools. */
   error?: string;
   /**
-   * Provider-supplied reasoning streamed before the turn failed, kept for the
-   * record. Only failed turns carry it, and it is never sent back to a model.
+   * Provider-supplied reasoning streamed before the turn failed or was stopped,
+   * kept for the record. Only those turns carry it, and it is never sent back
+   * to a model.
    */
   partialReasoning?: string;
   /**

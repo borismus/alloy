@@ -54,7 +54,7 @@ interface AgentResponseViewProps {
    * to stop short of finishing its work. Rendered as a notice above the footer
    * so a partial answer is never mistaken for a complete one.
    */
-  /** Reasoning a failed turn streamed before it failed; shown collapsed. */
+  /** Reasoning a failed or stopped turn streamed before it ended; shown collapsed. */
   partialReasoning?: string;
   incompleteReason?: string;
 }
@@ -143,7 +143,7 @@ export const AgentResponseView: React.FC<AgentResponseViewProps> = ({
             active={thinkingDurationMs == null}
           />
         )}
-        {status === 'error' && partialReasoning?.trim() && (
+        {status !== 'streaming' && partialReasoning?.trim() && (
           <ThinkingDisclosure
             thinking={partialReasoning}
             startedAt={0}
