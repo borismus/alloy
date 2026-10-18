@@ -19,6 +19,9 @@ const RESETTLE_DELAYS_MS = [50, 150, 350, 600];
  *
  * --app-height: visual viewport height
  * --app-top: visual viewport offset (how far the page has scrolled)
+ * --safe-bottom: 0px while the software keyboard is up (unset otherwise, so the
+ *   CSS default, the home-indicator inset, applies). The keyboard covers the
+ *   home indicator, so reserving its inset above the keyboard is dead space.
  *
  * These drive `html, body, #root { position: fixed; height: var(--app-height) }`
  * and every scroll container beneath them, so a stale value doesn't just look
@@ -33,6 +36,7 @@ export function useVisualViewport() {
     // doesn't churn inline styles and force redundant layout.
     let lastHeight = '';
     let lastTop = '';
+    let lastKeyboardUp = false;
 
     const update = () => {
       // The page itself never scrolls (html, body and #root are fixed), so an
@@ -56,6 +60,11 @@ export function useVisualViewport() {
       if (top !== lastTop) {
         style.setProperty('--app-top', top);
         lastTop = top;
+      }
+      if (keyboardUp !== lastKeyboardUp) {
+        if (keyboardUp) style.setProperty('--safe-bottom', '0px');
+        else style.removeProperty('--safe-bottom');
+        lastKeyboardUp = keyboardUp;
       }
     };
 

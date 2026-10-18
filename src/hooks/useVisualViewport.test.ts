@@ -159,6 +159,24 @@ describe('useVisualViewport', () => {
     expect(document.documentElement.style.getPropertyValue('--app-top')).toBe('300px');
   });
 
+  it('drops the home-indicator inset while the keyboard is up', () => {
+    // The keyboard covers the home indicator, so the composer reserving its
+    // inset above the keyboard left a ~34px gap under the controls.
+    Object.defineProperty(window, 'innerHeight', { value: 812, configurable: true });
+    const vv = installViewport(812);
+    renderHook(() => useVisualViewport());
+    const safeBottom = () => document.documentElement.style.getPropertyValue('--safe-bottom');
+    expect(safeBottom()).toBe('');
+
+    vv.height = 450;
+    vv.emit('resize');
+    expect(safeBottom()).toBe('0px');
+
+    vv.height = 812;
+    vv.emit('resize');
+    expect(safeBottom()).toBe('');
+  });
+
   it('still tracks plain visualViewport resizes (software keyboard)', () => {
     const vv = installViewport(800);
     renderHook(() => useVisualViewport());

@@ -720,7 +720,9 @@
 
   .input-form {
     padding: var(--space-3) var(--space-4);
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    /* The home-indicator inset already leaves room below the controls, so add
+       padding only where it's smaller (no inset, or the keyboard is up). */
+    padding-bottom: max(12px, var(--safe-bottom));
   }
 
   .input-form .input-row {
