@@ -4,6 +4,16 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.3
+
+- **Less empty space under the phone composer.** The buttons sat 46px above
+  the bottom edge, keyboard or not. With the keyboard up they now sit 12px
+  above it, and without it 22px above the bottom, still clear of the home bar.
+- **Sidebar titles stay one size on iPhone.** After a rotation, Safari could
+  enlarge some titles and not others; Alloy now turns that resizing off.
+- **The streaming dot sits on the date line,** so a long title keeps its full
+  width while a reply comes in.
+
 ## 0.5.2
 
 - **Alloy opens faster, most of all on a phone.** Startup used to make about
