@@ -720,9 +720,10 @@
 
   .input-form {
     padding: var(--space-3) var(--space-4);
-    /* The home-indicator inset already leaves room below the controls, so add
-       padding only where it's smaller (no inset, or the keyboard is up). */
-    padding-bottom: max(12px, var(--safe-bottom));
+    /* The home-indicator inset (34px) is more than the 5px bar needs; sitting
+       12px into it still clears the bar, and keeps taps out of its swipe. With
+       no inset, or the keyboard up, keep a plain 12px. */
+    padding-bottom: max(12px, calc(var(--safe-bottom) - 12px));
   }
 
   .input-form .input-row {
