@@ -10,6 +10,12 @@
   font-size: var(--text-sm);
 }
 
+/* The banner spans the window's top edge, where macOS draws the traffic lights
+   in the desktop app (see .window-drag-strip); start its content after them. */
+.macos-overlay-titlebar .update-banner {
+  padding-left: 80px;
+}
+
 .update-content {
   display: flex;
   align-items: center;
