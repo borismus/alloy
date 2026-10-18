@@ -61,6 +61,14 @@ html, body, #root {
   --sar: env(safe-area-inset-right, 0px);
 }
 
+/* iOS Safari "text autosizing" enlarges text it judges too small, block by
+   block — after a rotation, some sidebar titles came back half again larger
+   than their neighbours. The app sets its own sizes, so opt out. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
