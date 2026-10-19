@@ -455,11 +455,6 @@ impl Provider for CliClaudeProvider {
         // Enable extended thinking so the reasoning disclosure has content. Only
         // on the streaming path (chat/tasks/subagents), not title/one-shot calls.
         cmd.env("MAX_THINKING_TOKENS", CLAUDE_THINKING_BUDGET);
-        // Newer models (Opus 5.5) stream thinking with its text omitted unless
-        // summaries are requested: the deltas arrive empty, so the disclosure
-        // would show a timer with nothing to expand. The `showThinkingSummaries`
-        // setting does not reach `-p` runs; this flag does.
-        cmd.arg("--thinking-display").arg("summarized");
         cmd.arg("--input-format")
             .arg("stream-json")
             .arg("--output-format")
