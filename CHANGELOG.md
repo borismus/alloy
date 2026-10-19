@@ -4,6 +4,17 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.4
+
+- **One status dot per sidebar row, beside the date.** The unread dot and the
+  failed-task mark no longer sit before the title, so titles stop shifting as
+  they come and go. Only the most urgent shows: failed, streaming, unread, or
+  a hollow circle for text left in the composer.
+- **Reasoning survives a failed or stopped turn.** What the model streamed
+  before the error or Stop is kept under a collapsed "Incomplete reasoning".
+  It is never sent back to a model.
+- **The update banner clears the macOS window buttons.**
+
 ## 0.5.3
 
 - **Less empty space under the phone composer.** The buttons sat 46px above
