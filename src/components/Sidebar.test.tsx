@@ -35,6 +35,7 @@ function renderSidebar(overrides: {
   timelineItems?: TimelineItem[];
   tasks?: ScheduledTask[];
   streamingConversationIds?: string[];
+  unreadConversationIds?: string[];
 } = {}) {
   return render(
     <TaskProvider tasks={overrides.tasks ?? []}>
@@ -46,7 +47,7 @@ function renderSidebar(overrides: {
         selectedItemId={null}
         onSelectItem={overrides.onSelectItem ?? vi.fn()}
         streamingConversationIds={overrides.streamingConversationIds ?? []}
-        unreadConversationIds={[]}
+        unreadConversationIds={overrides.unreadConversationIds ?? []}
         availableModels={[]}
         onRenameConversation={vi.fn()}
         onDeleteConversation={vi.fn()}
@@ -130,6 +131,7 @@ it('shows a persistent red state when the latest task run failed', () => {
   const indicator = screen.getByRole('img', { name: 'Latest task run failed' });
   expect(indicator.getAttribute('title')).toBe('Model host is offline');
   expect(indicator.closest('.timeline-item')?.classList.contains('task-failed')).toBe(true);
+  expect(indicator.closest('.item-meta-start')).not.toBeNull();
 });
 
 it('creates one conversation from the phone header plus button', () => {
@@ -181,10 +183,33 @@ it('marks conversations that hold unsent composer text', () => {
   expect(screen.queryByRole('img', { name: 'Unsent draft' })).toBeNull();
 
   act(() => setComposerDraft(ITEM.id, 'not sent yet'));
-  expect(screen.getByRole('img', { name: 'Unsent draft' })).toBeTruthy();
+  const marker = screen.getByRole('img', { name: 'Unsent draft' });
+  expect(marker.closest('.item-meta-start')).not.toBeNull();
+  expect(marker.closest('.item-title')).toBeNull();
 
   act(() => setComposerDraft(ITEM.id, ''));
   expect(screen.queryByRole('img', { name: 'Unsent draft' })).toBeNull();
+});
+
+it('shows one status dot at a time: streaming, then unread, then draft', () => {
+  localStorage.clear();
+  resetComposerDraftsForTest();
+  act(() => setComposerDraft(ITEM.id, 'typed while it streams'));
+  const dots = (container: HTMLElement) =>
+    [...container.querySelectorAll('.item-meta-start > span:not(.item-date)')]
+      .map((el) => el.className)
+      .filter((c) => c.endsWith('-indicator'));
+
+  const streaming = renderSidebar({ streamingConversationIds: [ITEM.id], unreadConversationIds: [ITEM.id] });
+  expect(dots(streaming.container)).toEqual(['streaming-indicator']);
+  streaming.unmount();
+
+  const unread = renderSidebar({ unreadConversationIds: [ITEM.id] });
+  expect(dots(unread.container)).toEqual(['unread-indicator']);
+  unread.unmount();
+
+  const read = renderSidebar();
+  expect(dots(read.container)).toEqual(['draft-indicator']);
 });
 
 it('highlights the search term in result titles and snippets', async () => {
@@ -259,4 +284,13 @@ it('shows a streaming reply on the date line, leaving the title its full width',
   expect(indicator?.closest('.item-meta-start')).not.toBeNull();
   expect(indicator?.nextElementSibling?.classList.contains('item-date')).toBe(true);
   expect(container.querySelector('.item-preview .streaming-indicator')).toBeNull();
+});
+
+it('shows an unread reply on the date line too', () => {
+  const { container } = renderSidebar({ unreadConversationIds: [ITEM.id] });
+
+  const indicator = container.querySelector('.unread-indicator');
+  expect(indicator?.closest('.item-meta-start')).not.toBeNull();
+  expect(indicator?.nextElementSibling?.classList.contains('item-date')).toBe(true);
+  expect(container.querySelector('.item-preview .unread-indicator')).toBeNull();
 });

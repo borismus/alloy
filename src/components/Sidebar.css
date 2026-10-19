@@ -124,7 +124,6 @@
 }
 
 .draft-indicator {
-  margin-left: 0.35rem;
   color: var(--color-text-secondary);
 }
 
@@ -188,7 +187,7 @@
   line-height: 1;
 }
 
-/* Status indicators, then the title. Badges live on the meta line below. */
+/* Status indicators and badges live on the meta line below. */
 .item-preview {
   display: flex;
   align-items: baseline;

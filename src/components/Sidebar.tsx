@@ -579,24 +579,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 </IconButton>
               </span>
               <div className="item-preview">
-                {latestTaskError(item) && (
-                  <span
-                    className="task-error-indicator"
-                    role="img"
-                    aria-label="Latest task run failed"
-                    title={latestTaskError(item) ?? undefined}
-                  >!</span>
-                )}
-                {!streamingConversationIds.includes(item.id) &&
-                 !latestTaskError(item) &&
-                 (unreadConversationIds.includes(item.id) || deliveredTaskIds.includes(item.id)) && (
-                  <span className="unread-indicator" title={deliveredTaskIds.includes(item.id) ? "Task result delivered" : "New response"}>●</span>
-                )}
                 <span className="item-title">
                   {highlightMatches(item.title)}
-                  {item.type === 'conversation' && draftIds.has(item.id) && (
-                    <span className="draft-indicator" role="img" aria-label="Unsent draft" title="Unsent draft">✎</span>
-                  )}
                 </span>
               </div>
               {renderSearchSnippet(item)}
@@ -605,10 +589,22 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                     full row width. */}
                 <span className="item-meta-start">
                   {/* On the meta line, not the title's, so the title doesn't
-                      shift or rewrap while a reply streams. */}
-                  {streamingConversationIds.includes(item.id) && (
+                      shift or rewrap as these come and go. */}
+                  {/* One status at a time, most urgent first. */}
+                  {latestTaskError(item) ? (
+                    <span
+                      className="task-error-indicator"
+                      role="img"
+                      aria-label="Latest task run failed"
+                      title={latestTaskError(item) ?? undefined}
+                    >!</span>
+                  ) : streamingConversationIds.includes(item.id) ? (
                     <span className="streaming-indicator" title="Streaming...">●</span>
-                  )}
+                  ) : unreadConversationIds.includes(item.id) || deliveredTaskIds.includes(item.id) ? (
+                    <span className="unread-indicator" title={deliveredTaskIds.includes(item.id) ? "Task result delivered" : "New response"}>●</span>
+                  ) : item.type === 'conversation' && draftIds.has(item.id) ? (
+                    <span className="draft-indicator" role="img" aria-label="Unsent draft" title="Unsent draft">○</span>
+                  ) : null}
                   <span className="item-date">{formatDate(item.lastUpdated)}</span>
                   {getTypeBadge(item)}
                 </span>
