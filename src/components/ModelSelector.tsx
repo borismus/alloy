@@ -28,7 +28,7 @@ function ProviderTag({ model }: { model: ModelInfo }) {
   return (
     <span className={styles.providerTag}>
       {model.local ? (
-        <Badge tone="success" icon={<LockIcon />} title={`${full} · runs locally, not sent to the cloud`}>
+        <Badge tone="local" icon={<LockIcon />} title={`${full} · runs locally, not sent to the cloud`}>
           {tag}
         </Badge>
       ) : (

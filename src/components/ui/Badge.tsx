@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import styles from './Badge.module.css';
 
-export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
+/** `local` is the solid green that marks a model running on-device; it is
+ * filled rather than tinted so it stands out from the other tones. */
+export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'local';
 
 export interface BadgeProps {
   tone?: BadgeTone;

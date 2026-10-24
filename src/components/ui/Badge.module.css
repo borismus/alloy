@@ -48,6 +48,12 @@
   border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
 }
 
+.local {
+  color: var(--color-on-success);
+  background: var(--color-success-fill);
+  border-color: var(--color-success-fill);
+}
+
 .badge svg {
   display: block;
   flex: none;

@@ -31,6 +31,10 @@
   --color-danger-soft: #fef2f2;
   --color-success: #087a58;
   --color-success-soft: #dff8ee;
+  /* Success as a fill behind --color-on-success (the Local badge): text on it
+     clears 4.5:1 in both themes. */
+  --color-success-fill: #047857;
+  --color-on-success: #ffffff;
   --color-warning: #d97706;
   --color-warning-soft: #fff7ed;
   --color-overlay: rgb(0 0 0 / 40%);
@@ -140,6 +144,8 @@
   --color-danger-soft: rgb(240 82 82 / 16%);
   --color-success: #34d399;
   --color-success-soft: rgb(16 185 129 / 16%);
+  --color-success-fill: #34d399;
+  --color-on-success: #052e1f;
   --color-warning: #fbbf24;
   --color-warning-soft: rgb(251 191 36 / 14%);
   --color-overlay: rgb(0 0 0 / 60%);

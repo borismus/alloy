@@ -436,7 +436,7 @@ export function TaskDetailView({
                 onSetDefault={onSetDefault}
               />
               {modelIsLocal ? (
-                <Badge tone="success" icon={<LockIcon />} title="Runs on a local model — prompts stay on your device">
+                <Badge tone="local" icon={<LockIcon />} title="Runs on a local model — prompts stay on your device">
                   Local
                 </Badge>
               ) : (
