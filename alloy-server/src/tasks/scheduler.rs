@@ -16,11 +16,17 @@ use tokio::time::interval;
 
 use crate::tasks::{
     executor,
-    model::{self, ScheduledTask, TaskRunOutcome, TaskSchedule},
+    model::{self, ScheduledTask, TaskAttempt, TaskRun, TaskRunOutcome, TaskSchedule, TaskVerdict},
 };
 use crate::AppState;
 
 const TICK_INTERVAL: Duration = Duration::from_secs(60);
+/// How often a running task refreshes `running.heartbeatAt` in its file.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2 * 60);
+/// A `running` marker whose heartbeat is older than this belongs to a run
+/// whose server died. Mirrored in `src/utils/taskRun.ts`.
+pub const HEARTBEAT_STALE_AFTER: Duration = Duration::from_secs(5 * 60);
+pub const INTERRUPTED_ERROR: &str = "Interrupted: Alloy stopped before the run finished.";
 const MAX_CATCHUP_OCCURRENCES: usize = 100_000;
 
 #[derive(Clone, Default)]
@@ -43,6 +49,10 @@ impl InflightSet {
 
     /// Tasks executing right now, from cron or a manual **Run now**. Read by
     /// `/api/activity` so an unattended update can't restart mid-task.
+    pub fn contains(&self, id: &str) -> bool {
+        self.inner.lock().unwrap().contains(id)
+    }
+
     pub fn len(&self) -> usize {
         self.inner.lock().unwrap().len()
     }
@@ -91,6 +101,11 @@ pub fn spawn(state: AppState) -> tokio::task::JoinHandle<()> {
         let mut tick = interval(TICK_INTERVAL);
         loop {
             tick.tick().await;
+            // On every host, not only the scheduled-task runner: Run now
+            // works anywhere, so any host may have left a run behind.
+            if let Err(e) = recover_interrupted(&state).await {
+                tracing::warn!("interrupted-run recovery error: {}", e);
+            }
             if let Err(e) = run_tick(&state).await {
                 tracing::warn!("scheduled-task scheduler tick error: {}", e);
             }
@@ -256,11 +271,17 @@ pub async fn run_once(
 ) -> anyhow::Result<TaskRunOutcome> {
     let started_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     model::update(path, |current| {
-        apply_claim(current, &started_at, scheduled_for);
+        apply_claim(current, &started_at, scheduled_for, state.runner_host.as_str());
     })
     .await?;
 
-    let outcome = executor::run(&task, state).await;
+    let outcome = with_heartbeat(
+        path,
+        &started_at,
+        HEARTBEAT_INTERVAL,
+        executor::run(&task, state),
+    )
+    .await;
     model::update(path, |current| {
         executor::apply_outcome(current, &outcome, state.runner_host.as_str());
     })
@@ -370,10 +391,125 @@ fn email_kind(
     }
 }
 
-fn apply_claim(task: &mut ScheduledTask, started_at: &str, scheduled_for: Option<DateTime<Utc>>) {
+fn apply_claim(
+    task: &mut ScheduledTask,
+    started_at: &str,
+    scheduled_for: Option<DateTime<Utc>>,
+    host: &str,
+) {
     task.last_run_at = Some(started_at.to_string());
+    task.running = Some(TaskRun {
+        host: host.to_string(),
+        started_at: started_at.to_string(),
+        heartbeat_at: started_at.to_string(),
+    });
     if let Some(slot) = scheduled_for {
         task.last_scheduled_at = Some(slot.to_rfc3339_opts(SecondsFormat::Secs, true));
+    }
+}
+
+/// Run `work` while refreshing the task's `running.heartbeatAt` every
+/// `every`. The heartbeat is fully stopped before this returns, so the
+/// caller's final write can't be overwritten by a late heartbeat; if `work`
+/// panics, the guard aborts it and the marker goes stale instead.
+async fn with_heartbeat<F: std::future::Future>(
+    path: &Path,
+    started_at: &str,
+    every: Duration,
+    work: F,
+) -> F::Output {
+    struct AbortOnDrop(tokio::task::JoinHandle<()>);
+    impl Drop for AbortOnDrop {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+
+    let beat_path = path.to_path_buf();
+    let beat_started_at = started_at.to_string();
+    let mut beat = AbortOnDrop(tokio::spawn(async move {
+        let mut tick = interval(every);
+        tick.tick().await; // the first tick is immediate; the claim just wrote one
+        loop {
+            tick.tick().await;
+            let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+            let result = model::update(&beat_path, |task| {
+                // Only this run's marker: never resurrect a cleared one.
+                if let Some(run) = task.running.as_mut().filter(|run| run.started_at == beat_started_at) {
+                    run.heartbeat_at = now;
+                }
+            })
+            .await;
+            if let Err(e) = result {
+                tracing::warn!("task heartbeat {} failed: {}", beat_path.display(), e);
+            }
+        }
+    }));
+
+    let output = work.await;
+    beat.0.abort();
+    let _ = (&mut beat.0).await;
+    output
+}
+
+/// Record runs this host left behind (crash, quit, restart mid-run) as
+/// interrupted. Only this host's markers, only stale ones, and never one this
+/// process is still running: another Alloy on the same Mac (say, a dev
+/// server on the same vault) keeps its own live run's heartbeat fresh.
+async fn recover_interrupted(state: &AppState) -> anyhow::Result<()> {
+    let tasks_dir = state.vault.resolve("tasks")?;
+    recover_interrupted_in(&tasks_dir, state.runner_host.as_str(), &state.tasks.inflight, Utc::now()).await
+}
+
+async fn recover_interrupted_in(
+    tasks_dir: &Path,
+    host: &str,
+    inflight: &InflightSet,
+    now: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    let is_abandoned = |task: &ScheduledTask| {
+        task.running.as_ref().is_some_and(|run| {
+            crate::host::is_current_host(&run.host, host)
+                && !inflight.contains(&task.id)
+                && heartbeat_is_stale(&run.heartbeat_at, now)
+        })
+    };
+    for (path, task) in model::load_all(tasks_dir).await? {
+        if !is_abandoned(&task) {
+            continue;
+        }
+        tracing::warn!("task {} run was interrupted; recording it", task.id);
+        let now_iso = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+        model::update(&path, |current| {
+            // Re-check against the fresh read: the run may have finished.
+            if !is_abandoned(current) {
+                return;
+            }
+            current.running = None;
+            current.last_run_at = Some(now_iso.clone());
+            model::push_history(
+                current,
+                TaskAttempt {
+                    timestamp: now_iso.clone(),
+                    result: TaskVerdict::Error,
+                    reasoning: String::new(),
+                    runner: Some(host.to_string()),
+                    error: Some(INTERRUPTED_ERROR.to_string()),
+                    usage: None,
+                },
+            );
+        })
+        .await?;
+    }
+    Ok(())
+}
+
+fn heartbeat_is_stale(heartbeat_at: &str, now: DateTime<Utc>) -> bool {
+    match DateTime::parse_from_rfc3339(heartbeat_at) {
+        Ok(at) => now.signed_duration_since(at.with_timezone(&Utc))
+            > ChronoDuration::from_std(HEARTBEAT_STALE_AFTER).unwrap(),
+        // Unparseable means nobody can be keeping it fresh.
+        Err(_) => true,
     }
 }
 
@@ -502,6 +638,7 @@ mod tests {
             last_run_at: None,
             last_delivered_at: None,
             history: None,
+            running: None,
             messages: vec![],
             extra: Mapping::new(),
         }
@@ -623,7 +760,7 @@ mod tests {
             Some("2026-07-20T08:00:00Z"),
             "0 8 * * *",
         );
-        apply_claim(&mut value, "2026-07-20T09:00:00Z", None);
+        apply_claim(&mut value, "2026-07-20T09:00:00Z", None, "smusmini");
         assert_eq!(value.last_run_at.as_deref(), Some("2026-07-20T09:00:00Z"));
         assert_eq!(
             value.last_scheduled_at.as_deref(),
@@ -637,12 +774,122 @@ mod tests {
         let slot = DateTime::parse_from_rfc3339("2026-07-20T08:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        apply_claim(&mut value, "2026-07-20T08:07:00Z", Some(slot));
+        apply_claim(&mut value, "2026-07-20T08:07:00Z", Some(slot), "smusmini");
         assert_eq!(value.last_run_at.as_deref(), Some("2026-07-20T08:07:00Z"));
         assert_eq!(
             value.last_scheduled_at.as_deref(),
             Some("2026-07-20T08:00:00Z")
         );
+    }
+
+    #[test]
+    fn claim_marks_the_task_running_until_its_outcome_lands() {
+        let mut value = task("2026-07-20T00:00:00Z", None, "0 8 * * *");
+        apply_claim(&mut value, "2026-07-20T09:00:00Z", None, "smusmini");
+        assert_eq!(
+            value.running,
+            Some(TaskRun {
+                host: "smusmini".into(),
+                started_at: "2026-07-20T09:00:00Z".into(),
+                heartbeat_at: "2026-07-20T09:00:00Z".into(),
+            })
+        );
+
+        let failed = TaskRunOutcome {
+            result: TaskVerdict::Error,
+            response: String::new(),
+            error: Some("boom".into()),
+            usage: None,
+        };
+        executor::apply_outcome(&mut value, &failed, "smusmini");
+        assert_eq!(value.running, None);
+    }
+
+    fn running_task(id: &str, host: &str, heartbeat_at: &str) -> ScheduledTask {
+        let mut value = task("2026-07-20T00:00:00Z", None, "0 8 * * *");
+        value.id = id.into();
+        value.running = Some(TaskRun {
+            host: host.into(),
+            started_at: "2026-07-20T09:00:00.000Z".into(),
+            heartbeat_at: heartbeat_at.into(),
+        });
+        value
+    }
+
+    #[tokio::test]
+    async fn heartbeat_refreshes_while_running_and_never_writes_after() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.yaml");
+        let started = "2026-07-20T09:00:00.000Z";
+        model::write_atomic(&path, &running_task("t", "smusmini", started)).await.unwrap();
+
+        let every = Duration::from_millis(20);
+        with_heartbeat(&path, started, every, tokio::time::sleep(every * 5)).await;
+        let beat = model::load_one(&path).await.unwrap().running.unwrap().heartbeat_at;
+        assert_ne!(beat, started, "heartbeat should have advanced");
+
+        // The caller's final write clears the marker; nothing may restore it.
+        model::update(&path, |t| t.running = None).await.unwrap();
+        tokio::time::sleep(every * 4).await;
+        assert_eq!(model::load_one(&path).await.unwrap().running, None);
+    }
+
+    #[tokio::test]
+    async fn heartbeat_stops_when_the_run_panics() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.yaml");
+        let started = "2026-07-20T09:00:00.000Z";
+        model::write_atomic(&path, &running_task("t", "smusmini", started)).await.unwrap();
+
+        let every = Duration::from_millis(20);
+        let run_path = path.clone();
+        let run = tokio::spawn(async move {
+            with_heartbeat(&run_path, started, every, async move {
+                tokio::time::sleep(every * 3).await;
+                panic!("boom");
+            })
+            .await
+        });
+        assert!(run.await.is_err());
+
+        let after_panic = model::load_one(&path).await.unwrap().running.unwrap().heartbeat_at;
+        tokio::time::sleep(every * 4).await;
+        let later = model::load_one(&path).await.unwrap().running.unwrap().heartbeat_at;
+        assert_eq!(after_panic, later, "heartbeat must stop with the run");
+    }
+
+    #[tokio::test]
+    async fn recovery_records_only_this_hosts_abandoned_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = DateTime::parse_from_rfc3339("2026-07-20T10:00:00Z").unwrap().with_timezone(&Utc);
+        let stale = "2026-07-20T09:50:00.000Z";
+        let fresh = "2026-07-20T09:58:00.000Z";
+        for value in [
+            running_task("abandoned", "smusmini", stale),
+            running_task("live", "smusmini", fresh),
+            running_task("other-host", "legomenon", stale),
+            running_task("in-process", "smusmini", stale),
+        ] {
+            model::write_atomic(&dir.path().join(format!("{}.yaml", value.id)), &value).await.unwrap();
+        }
+        let inflight = InflightSet::new();
+        assert!(inflight.try_claim("in-process"));
+
+        recover_interrupted_in(dir.path(), "smusmini", &inflight, now).await.unwrap();
+
+        let path_of = |id: &str| dir.path().join(format!("{id}.yaml"));
+        let abandoned = model::load_one(&path_of("abandoned")).await.unwrap();
+        assert_eq!(abandoned.running, None);
+        let attempt = &abandoned.history.unwrap()[0];
+        assert_eq!(attempt.result, TaskVerdict::Error);
+        assert_eq!(attempt.error.as_deref(), Some(INTERRUPTED_ERROR));
+        assert_eq!(attempt.runner.as_deref(), Some("smusmini"));
+
+        for id in ["live", "other-host", "in-process"] {
+            let value = model::load_one(&path_of(id)).await.unwrap();
+            assert!(value.running.is_some(), "{id} must keep its marker");
+            assert!(value.history.is_none(), "{id} must not gain history");
+        }
     }
 
     #[test]

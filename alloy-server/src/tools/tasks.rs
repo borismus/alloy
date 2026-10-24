@@ -88,6 +88,7 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
         last_run_at: None,
         last_delivered_at: None,
         history: None,
+        running: None,
         messages: Vec::new(),
         extra: Mapping::new(),
     };
@@ -429,6 +430,7 @@ mod tests {
                 condition: "Something changed".into(),
             }),
             execution: None,
+            running: None,
             last_scheduled_at: Some("2026-01-02T16:00:00.000Z".into()),
             last_run_at: Some("2026-01-02T16:00:01.000Z".into()),
             last_delivered_at: Some("2026-01-02T16:00:02.000Z".into()),

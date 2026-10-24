@@ -252,6 +252,7 @@ pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome, runner:
     // `last_run_at` / `last_delivered_at` / `history`.
     let now = now_iso();
     task.last_run_at = Some(now.clone());
+    task.running = None;
 
     match outcome.result {
         TaskVerdict::Completed | TaskVerdict::Triggered => {
@@ -334,6 +335,7 @@ mod tests {
             last_run_at: None,
             last_delivered_at: None,
             history: None,
+            running: None,
             messages: vec![],
             extra: Mapping::new(),
         }

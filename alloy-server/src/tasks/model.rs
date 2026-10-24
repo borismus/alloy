@@ -45,6 +45,11 @@ pub struct ScheduledTask {
     pub last_delivered_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history: Option<Vec<TaskAttempt>>,
+    /// Present while a run is in progress. Lives in the vault so every device
+    /// sees it; `heartbeatAt` lets readers tell a live run from one whose
+    /// server died (see `scheduler::HEARTBEAT_STALE_AFTER`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub running: Option<TaskRun>,
     #[serde(default)]
     pub messages: Vec<Value>,
     /// Preserve fields added by newer Alloy versions.
@@ -61,6 +66,15 @@ pub struct TaskSchedule {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskTrigger {
     pub condition: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRun {
+    /// Alloy server hostname executing the run.
+    pub host: String,
+    pub started_at: String,
+    pub heartbeat_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
