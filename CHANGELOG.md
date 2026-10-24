@@ -4,6 +4,18 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.5
+
+- **Run now finishes even if the connection drops.** A long task started from
+  the phone used to be lost when the request timed out or the phone slept,
+  and the task then refused every later run as "already running" until Alloy
+  restarted. The run now continues on the server and its result lands in the
+  history. If a run is refused or the connection drops, the task view says so.
+- **Dictation errors clear themselves** after eight seconds instead of staying
+  under the composer until the next dictation.
+- **The Local badge is a solid green pill** in the model picker and task view,
+  so local models stand out.
+
 ## 0.5.4
 
 - **One status dot per sidebar row, beside the date.** The unread dot and the
