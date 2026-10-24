@@ -12,6 +12,7 @@ import { Button as AriaButton } from 'react-aria-components';
 import { Badge, Button, LockIcon, Switch, type BadgeTone } from './ui';
 import { describeTaskSchedule, parseTaskCron } from '../utils/taskSchedule';
 import { providerLabel, isLocalModel } from '../utils/models';
+import { useRunningTaskIds } from '../hooks/useRunningTaskIds';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import './TaskDetailView.css';
 
@@ -154,7 +155,10 @@ export function TaskDetailView({
   const [configUpdateError, setConfigUpdateError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const schedule = useMemo(() => describeTaskSchedule(task), [task]);
-  const isChecking = activeRuns.includes(task.id) || isRunning;
+  // The vault marker covers runs started elsewhere (another device, the
+  // schedule); `activeRuns` covers the moment before this tap's marker syncs.
+  const markedRunning = useRunningTaskIds(useMemo(() => [task], [task])).has(task.id);
+  const isChecking = activeRuns.includes(task.id) || isRunning || markedRunning;
 
   const deliveredByTimestamp = useMemo(() => deliveredMap(task), [task]);
   const history = task.history ?? [];

@@ -239,6 +239,24 @@ describe('TaskDetailView run now', () => {
     return screen.findByText(message, { exact: false });
   };
 
+  it('shows a run started elsewhere as running', () => {
+    const heartbeatAt = new Date(Date.now() - 60 * 1000).toISOString();
+    render(
+      <TaskProvider tasks={[task]}>
+        <TaskDetailView
+          task={{ ...task, running: { host: 'smusmini', startedAt: heartbeatAt, heartbeatAt } }}
+          availableModels={models}
+          onRunComplete={vi.fn()}
+          onAskAbout={vi.fn()}
+          onTaskUpdated={vi.fn()}
+        />
+      </TaskProvider>,
+    );
+
+    const button = screen.getByRole('button', { name: 'Running…' });
+    expect(button.hasAttribute('disabled') || button.getAttribute('aria-disabled') === 'true' || button.hasAttribute('data-disabled')).toBe(true);
+  });
+
   it('shows why the server refused the run', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(
       JSON.stringify({ result: 'error', response: '', error: 'task task-1 is already running' }),

@@ -134,6 +134,36 @@ it('shows a persistent red state when the latest task run failed', () => {
   expect(indicator.closest('.item-meta-start')).not.toBeNull();
 });
 
+it('shows a run in progress instead of the previous failure', () => {
+  const heartbeatAt = new Date(Date.now() - 60 * 1000).toISOString();
+  const runningTask: ScheduledTask = {
+    id: 'task-running',
+    created: '2026-08-01T08:00:00Z',
+    updated: '2026-08-02T08:00:00Z',
+    title: 'Morning report',
+    model: 'mlx-local/Qwen',
+    enabled: true,
+    prompt: 'Prepare report',
+    schedule: { cron: '0 8 * * *', timezone: 'UTC' },
+    history: [{ timestamp: '2026-08-02T08:00:00Z', result: 'error', reasoning: '', error: 'Model host is offline' }],
+    running: { host: 'smusmini', startedAt: heartbeatAt, heartbeatAt },
+    messages: [],
+  };
+  const item: TimelineItem = {
+    type: 'task',
+    id: runningTask.id,
+    title: runningTask.title,
+    lastUpdated: new Date(runningTask.updated).getTime(),
+    task: runningTask,
+  };
+
+  renderSidebar({ timelineItems: [item], tasks: [runningTask] });
+
+  const indicator = screen.getByRole('img', { name: 'Task running' });
+  expect(indicator.closest('.timeline-item')?.classList.contains('task-failed')).toBe(false);
+  expect(screen.queryByRole('img', { name: 'Latest task run failed' })).toBeNull();
+});
+
 it('creates one conversation from the phone header plus button', () => {
   const onNewConversation = vi.fn();
   renderSidebar({ onNewConversation, fullScreen: true });

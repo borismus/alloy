@@ -12,6 +12,7 @@ import { splitOnMatches } from '../utils/findMatches';
 import { useVaultSearch, vaultSearchHitKey } from '../hooks/useVaultSearch';
 import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel, modelDisplayName } from '../utils/models';
+import { useRunningTaskIds } from '../hooks/useRunningTaskIds';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
 import { AlloyDialog, Badge, Button, DialogActions, DialogBody, IconButton, LockIcon, NoteIcon, SearchField, SegmentedControl, TaskIcon, TextField } from './ui';
 import { HeaderActions } from './HeaderActions';
@@ -414,6 +415,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
     item.type === 'conversation' && !!item.conversation && isLocalModel(item.conversation.model, providerLocalities, availableModels);
 
   // Filter items by type and search query
+  const timelineTasks = useMemo(
+    () => timelineItems.flatMap(item => (item.type === 'task' && item.task ? [item.task] : [])),
+    [timelineItems],
+  );
+  const runningTaskIds = useRunningTaskIds(timelineTasks);
+
   const filteredItems = useMemo(() => {
     return timelineItems.filter(item => {
       // Apply type filter
@@ -560,7 +567,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
               className={`timeline-item ${item.type} ${
                 item.id === selectedItemId ? 'active' : ''
               }${streamingConversationIds.includes(item.id) ? ' streaming' : ''}${
-                latestTaskError(item) ? ' task-failed' : ''
+                latestTaskError(item) && !runningTaskIds.has(item.id) ? ' task-failed' : ''
               }`}
               onClick={() => handleSelectItem(item)}
               onContextMenu={(e) => handleContextMenu(e, item)}
@@ -590,8 +597,11 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
                 <span className="item-meta-start">
                   {/* On the meta line, not the title's, so the title doesn't
                       shift or rewrap as these come and go. */}
-                  {/* One status at a time, most urgent first. */}
-                  {latestTaskError(item) ? (
+                  {/* One status at a time, most urgent first. A run in
+                      progress outranks the previous run's failure. */}
+                  {runningTaskIds.has(item.id) ? (
+                    <span className="streaming-indicator" role="img" aria-label="Task running" title="Running…">●</span>
+                  ) : latestTaskError(item) ? (
                     <span
                       className="task-error-indicator"
                       role="img"

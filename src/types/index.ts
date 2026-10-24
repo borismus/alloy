@@ -188,6 +188,13 @@ export interface TaskAttempt {
   usage?: Usage;
 }
 
+/** Marks a run in progress; the server refreshes `heartbeatAt` while it runs. */
+export interface TaskRun {
+  host: string;
+  startedAt: string;
+  heartbeatAt: string;
+}
+
 // Scheduled task stored in tasks/. `trigger` is the optional delivery gate:
 // without it every successful run is delivered; with it the result is surfaced
 // only when the condition is met.
@@ -209,6 +216,7 @@ export interface ScheduledTask {
   lastRunAt?: string;
   lastDeliveredAt?: string;
   history?: TaskAttempt[];
+  running?: TaskRun;
   messages: Message[];
 }
 
