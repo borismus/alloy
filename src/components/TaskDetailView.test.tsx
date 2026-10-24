@@ -222,4 +222,39 @@ describe('TaskDetailView run now', () => {
     expect(runNow.closest('.item-header')).toBeNull();
     expect(runNow.closest('.task-history-section')).not.toBeNull();
   });
+
+  const renderAndRun = async (message: string) => {
+    render(
+      <TaskProvider tasks={[task]}>
+        <TaskDetailView
+          task={task}
+          availableModels={models}
+          onRunComplete={vi.fn()}
+          onAskAbout={vi.fn()}
+          onTaskUpdated={vi.fn()}
+        />
+      </TaskProvider>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Run now' }));
+    return screen.findByText(message, { exact: false });
+  };
+
+  it('shows why the server refused the run', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(
+      JSON.stringify({ result: 'error', response: '', error: 'task task-1 is already running' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect((await renderAndRun('Couldn’t run the task: task task-1 is already running')).getAttribute('role')).toBe('alert');
+    vi.restoreAllMocks();
+  });
+
+  it('says the run continues when the connection drops', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Load failed'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect((await renderAndRun('The run continues there')).getAttribute('role')).toBe('alert');
+    vi.restoreAllMocks();
+  });
 });

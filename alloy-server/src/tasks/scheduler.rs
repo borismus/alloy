@@ -50,6 +50,35 @@ impl InflightSet {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Claim `id` and run `work` on its own tokio task, releasing the claim
+    /// when it ends, even by panic. Detached so a run outlives whoever started
+    /// it: a manual **Run now** whose HTTP request drops (proxy timeout, phone
+    /// asleep) still finishes, records its outcome, and frees the task. `None`
+    /// when `id` is already running.
+    pub fn spawn_claimed<F>(&self, id: &str, work: F) -> Option<tokio::task::JoinHandle<F::Output>>
+    where
+        F: std::future::Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        if !self.try_claim(id) {
+            return None;
+        }
+        let claim = Claim(self.clone(), id.to_string());
+        Some(tokio::spawn(async move {
+            let _claim = claim;
+            work.await
+        }))
+    }
+}
+
+/// Releases its task's inflight claim when dropped.
+struct Claim(InflightSet, String);
+
+impl Drop for Claim {
+    fn drop(&mut self) {
+        self.0.release(&self.1);
+    }
 }
 
 pub fn spawn(state: AppState) -> tokio::task::JoinHandle<()> {
@@ -149,20 +178,14 @@ async fn run_tick(state: &AppState) -> anyhow::Result<()> {
                 continue;
             }
         };
-        if !inflight.try_claim(&task.id) {
-            continue;
-        }
-
         let state = state.clone();
-        let inflight = inflight.clone();
         let tasks_dir = tasks_dir.clone();
         let id = task.id.clone();
-        tokio::spawn(async move {
+        inflight.spawn_claimed(&id.clone(), async move {
             let result = run_once(&state, &tasks_dir, &path, task, Some(scheduled_for)).await;
             if let Err(e) = result {
                 tracing::warn!("task {} run failed: {}", id, e);
             }
-            inflight.release(&id);
         });
     }
     Ok(())
@@ -365,12 +388,11 @@ pub async fn run_by_id(
         .ok_or_else(|| anyhow::anyhow!("task not found: {}", id))?;
     let task = model::load_one(&path).await?;
 
-    if !inflight.try_claim(id) {
-        anyhow::bail!("task {} is already running", id);
-    }
-    let result = run_once(state, &tasks_dir, &path, task, None).await;
-    inflight.release(id);
-    result
+    let state = state.clone();
+    let run = inflight
+        .spawn_claimed(id, async move { run_once(&state, &tasks_dir, &path, task, None).await })
+        .ok_or_else(|| anyhow::anyhow!("task {} is already running", id))?;
+    run.await?
 }
 
 #[derive(Clone)]
@@ -483,6 +505,46 @@ mod tests {
             messages: vec![],
             extra: Mapping::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn claimed_run_finishes_and_releases_after_caller_drops() {
+        let inflight = InflightSet::new();
+        let (start_tx, start_rx) = tokio::sync::oneshot::channel::<()>();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+
+        // The caller awaits the run like the Run now handler does; aborting it
+        // stands in for axum dropping the handler when the request goes away.
+        let caller = tokio::spawn({
+            let inflight = inflight.clone();
+            async move {
+                let run = inflight
+                    .spawn_claimed("t", async move {
+                        start_rx.await.unwrap();
+                        done_tx.send(()).unwrap();
+                    })
+                    .unwrap();
+                run.await.unwrap();
+            }
+        });
+        tokio::task::yield_now().await;
+        assert!(inflight.spawn_claimed("t", async {}).is_none());
+        caller.abort();
+        let _ = caller.await;
+
+        start_tx.send(()).unwrap();
+        done_rx.await.expect("run should finish after its caller is gone");
+        tokio::task::yield_now().await;
+        assert!(inflight.is_empty());
+        assert!(inflight.spawn_claimed("t", async {}).is_some());
+    }
+
+    #[tokio::test]
+    async fn claimed_run_releases_when_it_panics() {
+        let inflight = InflightSet::new();
+        let run = inflight.spawn_claimed("t", async { panic!("boom") }).unwrap();
+        assert!(run.await.is_err());
+        assert!(inflight.is_empty());
     }
 
     #[test]

@@ -230,7 +230,8 @@
   justify-content: center;
 }
 
-.task-config-update-error {
+.task-config-update-error,
+.task-run-error {
   margin: -0.25rem 0 var(--space-3);
   color: var(--color-danger);
   font-size: var(--text-sm);

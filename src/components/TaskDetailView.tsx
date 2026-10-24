@@ -152,6 +152,7 @@ export function TaskDetailView({
   const [isToggling, setIsToggling] = useState(false);
   const [updatingField, setUpdatingField] = useState<'model' | 'email' | null>(null);
   const [configUpdateError, setConfigUpdateError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const schedule = useMemo(() => describeTaskSchedule(task), [task]);
   const isChecking = activeRuns.includes(task.id) || isRunning;
 
@@ -205,16 +206,25 @@ export function TaskDetailView({
 
   const handleRunNow = async () => {
     setIsRunning(true);
+    setRunError(null);
     markRunning(task.id);
+    // The server finishes the run even if this request drops (a proxy timeout,
+    // a phone going to sleep), and its result reaches the history via the vault.
+    const lostConnection = 'Lost the connection to the server. The run continues there, and its result will appear in the history.';
     try {
       const response = await fetch(`${getApiBase()}/api/tasks/${task.id}/run`, {
         method: 'POST',
         headers: getAuthHeadersForApi(),
       });
-      if (!response.ok) console.error(`Task run failed: HTTP ${response.status}`);
+      if (!response.ok) {
+        console.error(`Task run failed: HTTP ${response.status}`);
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        setRunError(body?.error ? `Couldn’t run the task: ${body.error}` : lostConnection);
+      }
       onRunComplete();
     } catch (error) {
       console.error('Failed to run task:', error);
+      setRunError(lostConnection);
     } finally {
       markDone(task.id);
       setIsRunning(false);
@@ -500,6 +510,7 @@ export function TaskDetailView({
               </Button>
             </div>
           </div>
+          {runError && <div className="task-run-error" role="alert">{runError}</div>}
 
           {history.length > 0 ? (
             <div className="task-history-list">
