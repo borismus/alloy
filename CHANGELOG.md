@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.6
+
+- **Running tasks show as running on every device.** A run started from the
+  phone or by its schedule now shows a running dot in the sidebar and
+  "Running…" in the task view, on any device, until it finishes.
+- **Interrupted runs are recorded.** If Alloy stops partway through a run, the
+  history gets an "Interrupted" error instead of the run silently vanishing,
+  and the task stops showing as running within five minutes.
+
 ## 0.5.5
 
 - **Run now finishes even if the connection drops.** A long task started from
