@@ -61,6 +61,8 @@ function mapState(state: RecorderState): DictationState {
   }
 }
 
+export const ERROR_DISPLAY_MS = 8000;
+
 export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationOptions): UseDictationReturn {
   const [dictationState, setDictationState] = useState<DictationState>('idle');
   const [dictationMode, setDictationMode] = useState<DictationMode | null>(null);
@@ -72,6 +74,14 @@ export function useDictation({ apiKey, onTranscript, onEndpoint }: UseDictationO
   const latestTextRef = useRef('');
   const onTranscriptRef = useRef(onTranscript);
   const onEndpointRef = useRef(onEndpoint);
+
+  // Errors are reports, not states: clear each one after a while so a
+  // one-off failure doesn't sit under the composer until the next dictation.
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), ERROR_DISPLAY_MS);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   useEffect(() => {
     onTranscriptRef.current = onTranscript;

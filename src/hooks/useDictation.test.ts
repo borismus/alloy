@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useDictation } from './useDictation';
+import { ERROR_DISPLAY_MS, useDictation } from './useDictation';
 
 const sonioxMock = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -206,5 +206,22 @@ describe('useDictation modes', () => {
     expect(result.current.error).toMatch(/microphone/);
     expect(result.current.dictationState).toBe('idle');
     expect(sonioxMock.instances[0].start).not.toHaveBeenCalled();
+  });
+
+  it('clears an error after a few seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      mic.deny = true;
+      const { result } = renderHook(() => useDictation({ apiKey: 'key', onTranscript: vi.fn(), onEndpoint: vi.fn() }));
+      await act(async () => { result.current.startDictation('manual'); });
+      expect(result.current.error).toMatch(/microphone/);
+
+      act(() => { vi.advanceTimersByTime(ERROR_DISPLAY_MS - 1); });
+      expect(result.current.error).not.toBeNull();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
