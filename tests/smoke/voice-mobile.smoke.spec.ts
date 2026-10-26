@@ -200,7 +200,7 @@ test('conversation voice: send during dictation sends the full transcript once',
   expect(startRequests).toEqual([transcript]);
 });
 
-test('conversation voice: holding Space records and release sends', async ({ page }) => {
+test('conversation voice: holding Space records and release leaves the text to send', async ({ page }) => {
   const transcript = 'Space push to talk turn';
   const session = await installMockMicrophone(page, transcript, false);
   await rejectModelRequest(page);
@@ -218,12 +218,18 @@ test('conversation voice: holding Space records and release sends', async ({ pag
   await page.keyboard.up(' ');
   await expect.poll(() => session.stopSignals.length).toBe(1);
 
-  const startRequest = page.waitForRequest(request => request.url().endsWith('/api/stream/start'));
+  let sent = false;
+  page.on('request', request => { if (request.url().endsWith('/api/stream/start')) sent = true; });
   session.finish();
-  const request = await startRequest;
-
-  expect(request.postDataJSON().userMessageContent).toBe(`Existing context ${transcript}`);
+  await expect(textarea).toBeEnabled();
   await expect(textarea).toHaveValue(`Existing context ${transcript}`);
+  expect(sent).toBe(false);
+
+  // Sending is a separate step, with what dictation left in the box.
+  const startRequest = page.waitForRequest(request => request.url().endsWith('/api/stream/start'));
+  await page.getByRole('button', { name: 'Send message' }).click();
+  const request = await startRequest;
+  expect(request.postDataJSON().userMessageContent).toBe(`Existing context ${transcript}`);
 });
 
 test('conversation voice: the recording button shows a level meter', async ({ page }) => {

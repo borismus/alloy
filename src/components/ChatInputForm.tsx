@@ -258,8 +258,9 @@ export const ChatInputForm = React.memo(forwardRef<ChatInputFormHandle, ChatInpu
     const textBeforeSpace = spaceHoldTextRef.current;
     preDictationTextRef.current = textBeforeSpace;
     setInput(textBeforeSpace);
-    // Releasing a held Space is a deliberate "done": push-to-talk sends.
-    sendOnFinishRef.current = true;
+    // Releasing Space leaves the transcript to edit, send with Enter, or extend
+    // with another hold, which starts from the text already in the box.
+    sendOnFinishRef.current = false;
     startDictation('push-to-talk');
   }, [startDictation]);
 

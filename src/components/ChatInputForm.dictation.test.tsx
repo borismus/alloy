@@ -98,17 +98,29 @@ describe('ChatInputForm voice input', () => {
     expect(dictationMock.finish).toHaveBeenCalledTimes(1);
   });
 
-  it('sends when push-to-talk finishes', () => {
+  it('leaves the push-to-talk transcript in the box, and a second hold appends', () => {
     const { onSubmit } = renderForm();
-    const textarea = screen.getByPlaceholderText('Send a message...');
+    const textarea = screen.getByPlaceholderText('Send a message...') as HTMLTextAreaElement;
+    const holdSpace = (spoken: string) => {
+      const before = textarea.value;
+      fireEvent.keyDown(textarea, { key: ' ', code: 'Space' });
+      fireEvent.change(textarea, { target: { value: `${before} ` } });
+      act(() => vi.advanceTimersByTime(450));
+      fireEvent.keyUp(window, { key: ' ', code: 'Space' });
+      act(() => dictationMock.options.onEndpoint(spoken));
+    };
     fireEvent.change(textarea, { target: { value: 'Existing context' } });
-    fireEvent.keyDown(textarea, { key: ' ', code: 'Space' });
-    fireEvent.change(textarea, { target: { value: 'Existing context ' } });
-    act(() => vi.advanceTimersByTime(450));
-    fireEvent.keyUp(window, { key: ' ', code: 'Space' });
 
-    act(() => dictationMock.options.onEndpoint('spoken'));
-    expect(onSubmit).toHaveBeenCalledWith('Existing context spoken', []);
+    holdSpace('spoken');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(textarea.value).toBe('Existing context spoken');
+
+    holdSpace('and more');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(textarea.value).toBe('Existing context spoken and more');
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSubmit).toHaveBeenCalledWith('Existing context spoken and more', []);
   });
 
   it('send during dictation finishes recording instead of sending the partial text', () => {
