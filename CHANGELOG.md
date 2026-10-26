@@ -4,6 +4,14 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.7
+
+- **Push-to-talk no longer sends on release.** Letting go of a held Space
+  leaves the transcript in the box to edit or send. Holding Space again adds
+  to it.
+- **Hold the settings button to toggle the debug overlay.** It works even when
+  a layout bug stops Settings from opening.
+
 ## 0.5.6
 
 - **Running tasks show as running on every device.** A run started from the
