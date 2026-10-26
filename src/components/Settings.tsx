@@ -374,7 +374,7 @@ export function Settings({ onClose, vaultPath, externalEditor, onExternalEditorC
                 onChange={(v) => { setDebugOverlayState(v); setDebugOverlay(v); }}
               />
             </div>
-            <p className="settings-hint">Applies to this device only.</p>
+            <p className="settings-hint">Applies to this device only. Holding the settings button also turns it on or off.</p>
           </div>
 
           <div className="settings-section settings-section-danger">

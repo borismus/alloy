@@ -1,6 +1,11 @@
+import { useRef } from 'react';
 import { useHeaderActions } from '../contexts/HeaderActionsContext';
+import { getDebugOverlay, setDebugOverlay } from '../services/debugOverlay';
 import { AlloyTooltip, Button } from './ui';
 import './HeaderActions.css';
+
+/** How long to hold the settings button to toggle the debug overlay, in ms. */
+export const OVERLAY_LONG_PRESS_MS = 600;
 
 /**
  * [+] [⚙] at the top right of every header, on desktop and phone alike.
@@ -8,7 +13,27 @@ import './HeaderActions.css';
  */
 export function HeaderActions() {
   const actions = useHeaderActions();
+  // Holding the settings button toggles the viewport debug overlay. The bugs it
+  // chases can stop Settings from opening, so its switch there isn't enough.
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const heldLong = useRef(false);
   if (!actions) return null;
+  const startHold = () => {
+    heldLong.current = false;
+    clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      heldLong.current = true;
+      setDebugOverlay(!getDebugOverlay());
+    }, OVERLAY_LONG_PRESS_MS);
+  };
+  const endHold = () => clearTimeout(holdTimer.current);
+  const pressSettings = () => {
+    if (heldLong.current) {
+      heldLong.current = false;
+      return;
+    }
+    actions.openSettings();
+  };
   return (
     <div className="header-actions">
       <AlloyTooltip content="New conversation">
@@ -28,7 +53,9 @@ export function HeaderActions() {
         <Button
           variant="quiet"
           size="icon"
-          onPress={actions.openSettings}
+          onPress={pressSettings}
+          onPressStart={startHold}
+          onPressEnd={endHold}
           aria-label="Open settings"
         >
           <SettingsIcon />
