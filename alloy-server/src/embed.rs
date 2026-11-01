@@ -340,6 +340,11 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
 
     let skills = Arc::new(SkillRegistry::new());
     skills.load(vault.root());
+    crate::skill_registry::reload_on_change(
+        skills.clone(),
+        vault.root().to_path_buf(),
+        watcher.0.subscribe(),
+    );
 
     let tools = Arc::new(ToolRegistry::new(
         config.clone(),

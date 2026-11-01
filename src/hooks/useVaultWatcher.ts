@@ -19,6 +19,8 @@ export interface VaultWatcherCallbacks {
   onTaskAdded?: (id: string) => void;
   onTaskRemoved?: (id: string) => void;
   onTaskModified?: (id: string) => void;
+  /** Anything under skills/ was added, changed or removed. */
+  onSkillsChanged?: () => void;
   /**
    * Re-read the vault because live events may have been missed. The watcher
    * only receives events while connected, and nothing is replayed for the gap,
@@ -142,6 +144,7 @@ export function useVaultWatcher(
         const isTaskFile =
           filePath.includes('/tasks/') &&
           filePath.endsWith('.yaml');
+        const isSkillFile = filePath.includes('/skills/');
 
         // Skip .md files in conversations (auto-generated previews)
         if (filePath.includes('/conversations/') && filePath.endsWith('.md')) {
@@ -220,6 +223,10 @@ export function useVaultWatcher(
               callbacksRef.current.onTaskModified?.(taskId);
               break;
           }
+        } else if (isSkillFile) {
+          // Any event: an edited, added or deleted skill all mean re-reading
+          // the set, so the rename-vs-delete distinction doesn't matter here.
+          callbacksRef.current.onSkillsChanged?.();
         }
       }
     };

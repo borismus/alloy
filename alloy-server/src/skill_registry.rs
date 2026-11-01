@@ -1,6 +1,7 @@
 //! Minimal server-side skill registry. Seeds the skills shipped with the app,
 //! then scans `<vault>/skills/*/SKILL.md` and the older flat
-//! `<vault>/skills/*.md` layout once at startup, parses frontmatter via
+//! `<vault>/skills/*.md` layout at startup and again whenever the vault watcher
+//! reports a change under `skills/` (see `reload_on_change`), parses frontmatter via
 //! `serde_yaml`, exposes `getSkillInstructions(name)`.
 //!
 //! Mirrors the SPA's [src/services/skills/registry.ts](src/services/skills/registry.ts)
@@ -10,9 +11,20 @@
 //! copy while this registry is what actually executes `use_skill`. When the two
 //! disagree the model is offered skills that cannot run.
 
-use std::{collections::HashMap, sync::RwLock};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use serde::Deserialize;
+use serde_json::Value;
+use tokio::sync::broadcast;
+
+/// How long to let a save's burst of events (temp file, rename, metadata)
+/// settle before re-reading the skills.
+const RELOAD_SETTLE: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone)]
 pub struct Skill {
@@ -183,6 +195,46 @@ fn parse_skill(text: &str) -> Option<Skill> {
     })
 }
 
+/// Keep `skills` current while the server runs: re-read the vault's skills
+/// whenever a watcher event (from `routes::watch`) touches `skills/`, so a hand
+/// edit in Obsidian, a sync, or the note editor takes effect without a restart.
+pub fn reload_on_change(
+    skills: Arc<SkillRegistry>,
+    vault_root: PathBuf,
+    mut events: broadcast::Receiver<Value>,
+) {
+    tokio::spawn(async move {
+        loop {
+            match events.recv().await {
+                Ok(event) if touches_skills(&event) => {}
+                Ok(_) => continue,
+                // Events were dropped; one of them may have been a skill change.
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+            tokio::time::sleep(RELOAD_SETTLE).await;
+            // Whatever queued up meanwhile is covered by the reload below.
+            while events.try_recv().is_ok() {}
+            let skills = skills.clone();
+            let root = vault_root.clone();
+            let _ = tokio::task::spawn_blocking(move || skills.load(&root)).await;
+        }
+    });
+}
+
+/// A watcher event whose path is under the vault's `skills/` directory.
+fn touches_skills(event: &Value) -> bool {
+    event
+        .get("paths")
+        .and_then(Value::as_array)
+        .is_some_and(|paths| {
+            paths.iter().filter_map(Value::as_str).any(|p| {
+                let p = p.replace('\\', "/");
+                p == "skills" || p.starts_with("skills/")
+            })
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +327,38 @@ mod tests {
         assert!(reg.instructions("save-memory").is_some());
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn only_events_under_skills_trigger_a_reload() {
+        let event = |p: &str| serde_json::json!({ "type": {}, "paths": [p] });
+        assert!(touches_skills(&event("skills/flux/SKILL.md")));
+        assert!(touches_skills(&event("skills")));
+        assert!(!touches_skills(&event("notes/skills/idea.md")));
+        assert!(!touches_skills(&event("skills.md")));
+        assert!(!touches_skills(&event("memory.md")));
+    }
+
+    #[tokio::test]
+    async fn a_skill_edited_on_disk_is_reloaded_without_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill = dir.path().join("skills/flux/SKILL.md");
+        std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+        std::fs::write(&skill, "---\nname: flux\ndescription: d\n---\nOld steps.\n").unwrap();
+        let reg = Arc::new(SkillRegistry::new());
+        reg.load(dir.path());
+
+        let (tx, rx) = broadcast::channel(16);
+        reload_on_change(reg.clone(), dir.path().to_path_buf(), rx);
+
+        std::fs::write(&skill, "---\nname: flux\ndescription: d\n---\nNew steps.\n").unwrap();
+        tx.send(serde_json::json!({ "type": {}, "paths": ["notes/unrelated.md"] })).unwrap();
+        tx.send(serde_json::json!({ "type": {}, "paths": ["skills/flux/SKILL.md"] })).unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while !reg.instructions("flux").unwrap().contains("New steps.") {
+            assert!(tokio::time::Instant::now() < deadline, "skill was never reloaded");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 }

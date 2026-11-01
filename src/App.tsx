@@ -491,6 +491,19 @@ function AppContent() {
     void handleNoteModified('memory.md');
   }, [handleNoteModified]);
 
+  // A skill edited anywhere (Obsidian, a sync, an accepted proposal) must
+  // refresh the copy the skill list in the system prompt and the slash menu
+  // come from; the server reloads its own. One save fires several events, so
+  // coalesce them into one re-read.
+  const skillsReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSkillsChanged = useCallback(() => {
+    if (skillsReloadTimer.current) clearTimeout(skillsReloadTimer.current);
+    skillsReloadTimer.current = setTimeout(() => {
+      skillsReloadTimer.current = null;
+      void skillRegistry.loadSkills();
+    }, 300);
+  }, []);
+
   const { markSelfWrite } = useVaultWatcher(
     {
       vaultPath,
@@ -509,6 +522,7 @@ function AppContent() {
       onTaskAdded: handleTaskAdded,
       onTaskRemoved: handleTaskRemoved,
       onTaskModified: handleTaskModified,
+      onSkillsChanged: handleSkillsChanged,
     }
   );
 

@@ -121,6 +121,11 @@ async fn main() -> anyhow::Result<()> {
 
     let skills = Arc::new(SkillRegistry::new());
     skills.load(vault.root());
+    alloy_server::skill_registry::reload_on_change(
+        skills.clone(),
+        vault.root().to_path_buf(),
+        watcher.0.subscribe(),
+    );
 
     let tools = Arc::new(ToolRegistry::new(
         config.clone(),
