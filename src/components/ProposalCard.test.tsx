@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { vaultService } from '../services/vault';
 import { proposedPath } from '../services/proposals';
-import { skillRegistry } from '../services/skills';
 import { ProposalCard } from './ProposalCard';
 
 const fetchMock = vi.fn();
@@ -10,7 +9,6 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   vi.spyOn(vaultService, 'readVaultFile').mockImplementation(async path =>
     path === 'memory.md' ? '# Memory\n- likes tea\n' : path === 'skills/flux/SKILL.md' ? 'Old steps.\n' : null);
-  vi.spyOn(skillRegistry, 'loadSkills').mockResolvedValue();
   vi.stubGlobal('fetch', fetchMock);
 });
 
@@ -45,7 +43,6 @@ it('shows the change as a diff and writes only when accepted', async () => {
   await screen.findByText('Memory change accepted.');
   const [url, init] = fetchMock.mock.calls[0];
   expect(url).toContain('/api/proposal');
-  expect(skillRegistry.loadSkills).not.toHaveBeenCalled();
   expect(JSON.parse(init.body)).toEqual({ conversationId: 'c1', messageId: 'm1', toolIndex: 2, accept: true });
 });
 
@@ -98,7 +95,7 @@ it('says so instead of offering an empty change', async () => {
   expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
 });
 
-it('proposes skill changes against the current skill file and reloads skills on accept', async () => {
+it('proposes skill changes against the current skill file', async () => {
   fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ decision: 'accepted' }) });
   renderCard({ path: 'skills/flux/SKILL.md', proposed: 'New steps.\n' });
 
@@ -106,7 +103,6 @@ it('proposes skill changes against the current skill file and reloads skills on 
   expect(await screen.findByText(/New steps/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
   await screen.findByText('Skill change accepted.');
-  expect(skillRegistry.loadSkills).toHaveBeenCalled();
 });
 
 it('recognizes skill proposals but not note writes', () => {

@@ -32,3 +32,12 @@ export function TaskIcon() {
     </svg>
   );
 }
+
+/** Spark: a skill, instructions a model can pick up. */
+export function SkillIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 2.5l2.4 6.1 6.1 2.4-6.1 2.4-2.4 6.1-2.4-6.1-6.1-2.4 6.1-2.4z" />
+    </svg>
+  );
+}

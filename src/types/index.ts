@@ -310,11 +310,11 @@ export interface ConversationStreamingState {
 }
 
 // Timeline filter type (replaces old SidebarTab)
-export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'tasks';
+export type TimelineFilter = 'all' | 'conversations' | 'notes' | 'tasks' | 'skills';
 
 // Note metadata for sidebar display
 export interface NoteInfo {
-  filename: string;        // e.g., "my-note.md"
+  filename: string;        // e.g., "my-note.md"; memory.md and skills/<folder>/SKILL.md keep their vault path
   lastModified: number;    // Unix timestamp for sorting
   hasSkillContent: boolean; // true if contains &[[...]] markers
   content?: string;        // note body text, loaded for full-text search

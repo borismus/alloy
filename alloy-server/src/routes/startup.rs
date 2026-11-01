@@ -18,7 +18,16 @@ use crate::routes::{config::client_config, fs::read_headers};
 use crate::{error::AppError, AppState};
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/startup", get(get_startup))
+    Router::new()
+        .route("/api/startup", get(get_startup))
+        .route("/api/skills", get(get_skills))
+}
+
+/// `GET /api/skills`: the startup payload's `skills` on its own, so the SPA can
+/// refresh its skill list and their timeline entries in one request when
+/// `skills/` changes.
+async fn get_skills(State(state): State<AppState>) -> Json<Value> {
+    Json(Value::Object(read_skills(&state.vault.root().join("skills")).await))
 }
 
 /// Paths `vaultService.initializeVault` creates. When any is missing the SPA
@@ -56,7 +65,7 @@ async fn read_startup_files(root: &Path) -> Map<String, Value> {
         read_headers(&notes_dir, ".md", Some(0)),
         read_headers(&tasks_dir, ".yaml", None),
         read_skills(&skills_dir),
-        read_memory(&memory_path),
+        read_header(&memory_path),
     );
 
     let mut out = Map::new();
@@ -72,7 +81,7 @@ async fn read_startup_files(root: &Path) -> Map<String, Value> {
     out
 }
 
-/// `{ folder name: SKILL.md text }` for each skill folder that has one.
+/// `{ folder name: { content, mtime } }` for each skill folder with a SKILL.md.
 async fn read_skills(dir: &Path) -> Map<String, Value> {
     let mut skills = Map::new();
     let Ok(mut entries) = fs::read_dir(dir).await else {
@@ -82,16 +91,16 @@ async fn read_skills(dir: &Path) -> Map<String, Value> {
         if !entry.file_type().await.is_ok_and(|ft| ft.is_dir()) {
             continue;
         }
-        if let Ok(content) = fs::read_to_string(entry.path().join("SKILL.md")).await {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            skills.insert(name, json!(content));
+        let header = read_header(&entry.path().join("SKILL.md")).await;
+        if !header.is_null() {
+            skills.insert(entry.file_name().to_string_lossy().into_owned(), header);
         }
     }
     skills
 }
 
-/// `{ content, mtime }` for memory.md, or null when it's absent.
-async fn read_memory(path: &Path) -> Value {
+/// `{ content, mtime }` for a file, or null when it's absent or unreadable.
+async fn read_header(path: &Path) -> Value {
     let (Ok(content), Ok(metadata)) = (fs::read_to_string(path).await, fs::metadata(path).await)
     else {
         return Value::Null;
@@ -166,7 +175,8 @@ mod tests {
 
         let skills = files["skills"].as_object().unwrap();
         assert_eq!(skills.keys().collect::<Vec<_>>(), ["writer"]);
-        assert_eq!(skills["writer"], json!("---\nname: writer\n---\nbody"));
+        assert_eq!(skills["writer"]["content"], json!("---\nname: writer\n---\nbody"));
+        assert!(skills["writer"]["mtime"].as_f64().unwrap() > 0.0);
     }
 
     #[tokio::test]

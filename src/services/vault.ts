@@ -4,6 +4,7 @@ import { join } from '@tauri-apps/api/path';
 import * as yaml from 'js-yaml';
 import { Conversation, Config, Attachment, ProviderType, formatModelId, NoteInfo, ScheduledTask, TimelineItem } from '../types';
 import { getApiBase, getAuthHeadersForApi } from './server-streaming';
+import { isSkillFile, noteDisplayName, skillFilename } from '../utils/noteNames';
 
 /**
  * Extract the core ID (YYYY-MM-DD-HHMM-hash) from a conversation/task filename.
@@ -32,7 +33,15 @@ interface StartupResponse {
   conversations: Record<string, FileHeader>;
   notes: Record<string, FileHeader>;
   tasks: Record<string, FileHeader>;
-  skills: Record<string, string>;
+  skills: Record<string, FileHeader>;
+}
+
+/** The vault's skill folders, read in one request (`/api/skills`, or startup's `skills`). */
+export interface VaultSkills {
+  /** SKILL.md texts by folder name, for skillRegistry.loadSkillFiles. */
+  files: Record<string, string>;
+  /** Their timeline entries, opened in the note viewer. */
+  notes: NoteInfo[];
 }
 
 export interface StartupData {
@@ -41,8 +50,7 @@ export interface StartupData {
   tasks: ScheduledTask[];
   notes: NoteInfo[];
   memory: { content: string; sizeBytes: number } | null;
-  /** SKILL.md texts by folder name, for skillRegistry.loadSkillFiles. */
-  skillFiles: Record<string, string>;
+  skills: VaultSkills;
 }
 
 export class VaultService {
@@ -835,8 +843,26 @@ providers:
       tasks: this.parseTasks(Object.entries(files.tasks).map(([name, { content }]) => [name, content] as const)),
       notes: this.parseNotes(files.memory, files.notes),
       memory: files.memory ? this.parseMemory(files.memory.content) : null,
-      skillFiles: files.skills,
+      skills: this.parseSkills(files.skills),
     };
+  }
+
+  /** Every vault skill's SKILL.md text and timeline entry, in one request. */
+  async loadSkills(): Promise<VaultSkills> {
+    if (!this.vaultPath) return { files: {}, notes: [] };
+    const res = await fetch(`${getApiBase()}/api/skills`, { headers: getAuthHeadersForApi() });
+    if (!res.ok) throw new Error(`Loading skills failed: HTTP ${res.status}`);
+    return this.parseSkills(await res.json() as Record<string, FileHeader>);
+  }
+
+  private parseSkills(headers: Record<string, FileHeader>): VaultSkills {
+    const files: Record<string, string> = {};
+    const notes: NoteInfo[] = [];
+    for (const [folder, { content, mtime }] of Object.entries(headers)) {
+      files[folder] = content;
+      notes.push({ filename: skillFilename(folder), lastModified: mtime, hasSkillContent: false });
+    }
+    return { files, notes };
   }
 
   async getConfigFilePath(): Promise<string | null> {
@@ -855,15 +881,10 @@ providers:
 
   // Note handling methods
 
-  getNotesPath(): string | null {
-    if (!this.vaultPath) return null;
-    return `${this.vaultPath}/notes`;
-  }
-
   /**
    * Server-relative API path for a note filename, used for all /api/fs/*
-   * operations (read/write/exists/remove). memory.md lives at the vault root;
-   * regular notes under notes/. This is the path the server
+   * operations (read/write/exists/remove). memory.md and skills/ keep their
+   * vault path; regular notes live under notes/. This is the path the server
    * resolves against its own vault root — it MUST stay relative (base
    * this.vaultPath === '/'). Passing an absolute path here makes the server
    * re-root it under the vault, producing a doubled path
@@ -872,7 +893,7 @@ providers:
    */
   private async noteApiPath(filename: string): Promise<string | null> {
     if (!this.vaultPath) return null;
-    return filename === 'memory.md'
+    return filename === 'memory.md' || isSkillFile(filename)
       ? await join(this.vaultPath, filename)
       : await join(this.vaultPath, 'notes', filename);
   }
@@ -996,7 +1017,7 @@ providers:
       items.push({
         type: 'note',
         id: note.filename,
-        title: note.filename.replace('.md', ''),
+        title: noteDisplayName(note.filename),
         lastUpdated: note.lastModified,
         note,
       });

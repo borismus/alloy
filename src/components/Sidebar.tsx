@@ -14,7 +14,8 @@ import { useTextareaProps } from '../utils/textareaProps';
 import { isLocalModel, modelDisplayName } from '../utils/models';
 import { useRunningTaskIds } from '../hooks/useRunningTaskIds';
 import { useProviderLocalities } from '../contexts/ProviderLocalityContext';
-import { AlloyDialog, Badge, Button, DialogActions, DialogBody, IconButton, LockIcon, NoteIcon, SearchField, SegmentedControl, TaskIcon, TextField } from './ui';
+import { AlloyDialog, Badge, Button, DialogActions, DialogBody, IconButton, LockIcon, NoteIcon, SearchField, SegmentedControl, SkillIcon, TaskIcon, TextField } from './ui';
+import { isSkillFile } from '../utils/noteNames';
 import { HeaderActions } from './HeaderActions';
 import { TitleSuggestions } from './TitleSuggestions';
 import './Sidebar.css';
@@ -365,15 +366,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
         });
       }
 
-      menuItems.push({
-        id: 'delete',
-        text: 'Delete',
-        danger: true,
-        separatorBefore: menuItems.length > 0,
-        action: () => {
-          setDeletingItem({ type: item.type, id: item.id });
-        }
-      });
+      // Deleting a skill's SKILL.md would leave its folder behind; skills are
+      // removed in the vault for now.
+      if (!(item.type === 'note' && isSkillFile(item.id))) {
+        menuItems.push({
+          id: 'delete',
+          text: 'Delete',
+          danger: true,
+          separatorBefore: menuItems.length > 0,
+          action: () => {
+            setDeletingItem({ type: item.type, id: item.id });
+          }
+        });
+      }
 
       const menu = await Menu.new({ items: menuItems });
       await menu.popup();
@@ -426,7 +431,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
       // Apply type filter
       if (activeFilter !== 'all') {
         if (activeFilter === 'conversations' && item.type !== 'conversation') return false;
-        if (activeFilter === 'notes' && item.type !== 'note') return false;
+        const isSkill = item.type === 'note' && isSkillFile(item.id);
+        if (activeFilter === 'notes' && (item.type !== 'note' || isSkill)) return false;
+        if (activeFilter === 'skills' && !isSkill) return false;
         if (activeFilter === 'tasks' && item.type !== 'task') return false;
       }
 
@@ -493,7 +500,9 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
           ? <Badge icon={<LockIcon />} title="Uses a local model">Local</Badge>
           : null;
       case 'note':
-        return <Badge tone="accent" icon={<NoteIcon />}>Note</Badge>;
+        return isSkillFile(item.id)
+          ? <Badge tone="neutral" icon={<SkillIcon />}>Skill</Badge>
+          : <Badge tone="accent" icon={<NoteIcon />}>Note</Badge>;
       case 'task':
         return (
           <>
@@ -542,6 +551,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
             { id: 'conversations', label: 'Chats' },
             { id: 'notes', label: 'Notes' },
             { id: 'tasks', label: 'Tasks' },
+            { id: 'skills', label: 'Skills' },
           ]}
         />
       </div>

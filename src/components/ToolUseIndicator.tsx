@@ -187,10 +187,11 @@ export const ToolUseIndicator: React.FC<ToolUseIndicatorProps> = ({
             <span className="tool-use-label">{label}</span>
             {typeof tool.input?.path === 'string' && (() => {
               const path = tool.input.path as string;
-              // Make notes/ files and memory.md clickable for navigation
+              // Make notes/ files, memory.md and skills clickable for navigation
               const isNavigable = onNavigateToNote && (
                 (path.startsWith('notes/') && path.endsWith('.md')) ||
-                path === 'memory.md'
+                path === 'memory.md' ||
+                /^skills\/[^/]+\/SKILL\.md$/.test(path)
               );
 
               if (isNavigable) {

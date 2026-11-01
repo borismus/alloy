@@ -27,6 +27,7 @@ import { UpdateChecker } from './components/UpdateChecker';
 import { MemoryWarning } from './components/MemoryWarning';
 import { isTauri } from './services/api';
 import type { ExternalEditor } from './utils/openInEditor';
+import { isSkillFile } from './utils/noteNames';
 import { chooseDefaultModel, providerLabel, type ProviderLocality } from './utils/models';
 import { ProviderLocalityContext } from './contexts/ProviderLocalityContext';
 import { modelSwitchDisclosure, type DisclosureReason } from './utils/privateContext';
@@ -234,6 +235,7 @@ function AppContent() {
     { model: string; reason: DisclosureReason } | null
   >(null);
   const [notes, setNotes] = useState<NoteInfo[]>([]);
+  const [skillNotes, setSkillNotes] = useState<NoteInfo[]>([]);
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all');
   const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
 
@@ -444,6 +446,20 @@ function AppContent() {
   // Re-read the vault after a watcher gap. Live events are not replayed, so a
   // dropped socket (routine on mobile: screen lock, app switch) silently loses
   // every change made while it was down until a manual reload.
+  // Skills come from one request: the registry the system prompt and slash
+  // menu are built from, their timeline entries, and the open skill if one is
+  // showing. The server keeps its own registry current from the same watcher.
+  const refreshSkills = useCallback(async () => {
+    const skills = await vaultService.loadSkills();
+    await skillRegistry.loadSkillFiles(skills.files);
+    setSkillNotes(prev => keepIfUnchanged(prev, skills.notes, noteSignature));
+    const open = selectedItemRef.current;
+    if (open?.type === 'note' && isSkillFile(open.id)) {
+      const content = await vaultService.readNote(open.id);
+      if (content !== null) setNoteContent(content);
+    }
+  }, []);
+
   const handleResync = useCallback(async () => {
     // The loaders already no-op when no vault path is set, so no guard needed.
     try {
@@ -451,6 +467,7 @@ function AppContent() {
         vaultService.loadConversationSummaries(),
         vaultService.loadTasks(),
         vaultService.loadNotes(),
+        refreshSkills(),
       ]);
 
       const openId = selectedItemRef.current?.type === 'conversation'
@@ -482,7 +499,7 @@ function AppContent() {
     } catch (error) {
       console.warn('[App] vault resync failed (non-fatal):', error);
     }
-  }, [handleConversationModified]);
+  }, [handleConversationModified, refreshSkills]);
 
   // memory.md changes outside the app (an accepted memory proposal, an edit in
   // Obsidian, a sync) must refresh the in-memory copy the system prompt uses,
@@ -491,18 +508,16 @@ function AppContent() {
     void handleNoteModified('memory.md');
   }, [handleNoteModified]);
 
-  // A skill edited anywhere (Obsidian, a sync, an accepted proposal) must
-  // refresh the copy the skill list in the system prompt and the slash menu
-  // come from; the server reloads its own. One save fires several events, so
-  // coalesce them into one re-read.
+  // A skill edited anywhere (Obsidian, a sync, an accepted proposal). One save
+  // fires several events, so coalesce them into one re-read.
   const skillsReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSkillsChanged = useCallback(() => {
     if (skillsReloadTimer.current) clearTimeout(skillsReloadTimer.current);
     skillsReloadTimer.current = setTimeout(() => {
       skillsReloadTimer.current = null;
-      void skillRegistry.loadSkills();
+      refreshSkills().catch(error => console.warn('[App] skill reload failed (non-fatal):', error));
     }, 300);
-  }, []);
+  }, [refreshSkills]);
 
   const { markSelfWrite } = useVaultWatcher(
     {
@@ -542,7 +557,9 @@ function AppContent() {
       const loadedMemory = await vaultService.loadMemory();
       setMemory(loadedMemory);
     }
-  }, [markSelfWrite]);
+    // markSelfWrite hides this save from the watcher, so reload skills here.
+    if (isSkillFile(filename)) await refreshSkills();
+  }, [markSelfWrite, refreshSkills]);
 
   // Persist the external-editor preference (comment-preserving), optimistic.
   const handleSetExternalEditor = useCallback(async (value: ExternalEditor) => {
@@ -679,8 +696,8 @@ function AppContent() {
 
   // Build unified timeline whenever data changes
   useEffect(() => {
-    setTimelineItems(vaultService.buildTimeline(conversations, notes, tasks));
-  }, [conversations, notes, tasks]);
+    setTimelineItems(vaultService.buildTimeline(conversations, [...notes, ...skillNotes], tasks));
+  }, [conversations, notes, skillNotes, tasks]);
 
   // Compute selected item ID for sidebar highlighting
   const selectedItemId = selectedItem?.id ?? null;
@@ -818,7 +835,7 @@ function AppContent() {
             startup.conversations,
             startup.tasks,
             startup.notes,
-            skillRegistry.loadSkillFiles(startup.skillFiles),
+            skillRegistry.loadSkillFiles(startup.skills.files),
             startup.memory,
           ])
           : await Promise.all([
@@ -827,13 +844,14 @@ function AppContent() {
             vaultService.loadConversationSummaries(),
             vaultService.loadTasks(),
             vaultService.loadNotes(),
-            skillRegistry.loadSkills(),
+            refreshSkills().catch(error => console.warn('[App] skill load failed (non-fatal):', error)),
             vaultService.loadMemory(),
           ]);
 
         setConversations(loadedConversations);
         setTasks(loadedTasks);
         setNotes(loadedNotes);
+        if (startup) setSkillNotes(startup.skills.notes);
         setMemory(loadedMemory);
 
         // Empty conversations do not have vault files yet. If iOS terminated

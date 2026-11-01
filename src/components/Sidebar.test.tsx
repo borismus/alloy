@@ -324,3 +324,17 @@ it('shows an unread reply on the date line too', () => {
   expect(indicator?.nextElementSibling?.classList.contains('item-date')).toBe(true);
   expect(container.querySelector('.item-preview .unread-indicator')).toBeNull();
 });
+
+it('lists skills apart from notes under their own filter', () => {
+  const note: TimelineItem = { type: 'note', id: 'Skills to learn.md', title: 'Skills to learn', lastUpdated: 2 };
+  const skill: TimelineItem = { type: 'note', id: 'skills/flux-highlights/SKILL.md', title: 'flux-highlights', lastUpdated: 1 };
+  const titles = () => screen.queryAllByText(/Skills to learn|flux-highlights/).map(el => el.textContent);
+
+  const { unmount } = renderSidebar({ timelineItems: [ITEM, note, skill], activeFilter: 'skills' });
+  expect(titles()).toEqual(['flux-highlights']);
+  expect(screen.getByText('Skill')).toBeTruthy();
+  unmount();
+
+  renderSidebar({ timelineItems: [ITEM, note, skill], activeFilter: 'notes' });
+  expect(titles()).toEqual(['Skills to learn']);
+});

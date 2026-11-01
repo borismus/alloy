@@ -5,6 +5,7 @@ import { AiEditPanel } from './AiEditPanel';
 import type { ConversationInfo, ModelInfo } from '../types';
 import { parseFrontmatter } from '../utils/frontmatter';
 import './NoteViewer.css';
+import { isSkillFile, noteDisplayName } from '../utils/noteNames';
 
 // One-shot rewrite prompt: the model gets the current note body and returns the
 // full revised body. Passing the current content is essential — without it the
@@ -72,9 +73,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
   const canAiEdit = !!(filename && onSaveNote && defaultModel && availableModels && availableModels.length > 0);
 
   // Get display name from filename
-  const displayName = filename
-    ? filename.replace(/^notes\//, '').replace(/\.md$/, '')
-    : 'Note';
+  const displayName = filename ? noteDisplayName(filename) : 'Note';
 
   return (
     <div className="note-viewer">
@@ -95,7 +94,7 @@ export const NoteViewer: React.FC<NoteViewerProps> = ({
       </div>
       {canAiEdit && (
         <AiEditPanel
-          placeholder="Ask for a change to this note…"
+          placeholder={`Ask for a change to this ${filename && isSkillFile(filename) ? 'skill' : 'note'}…`}
           getCurrentContent={getCurrentContent}
           buildSystemPrompt={noteEditPrompt}
           applyNewContent={applyNoteEdit}

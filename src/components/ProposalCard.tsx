@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { vaultService } from '../services/vault';
 import { decideProposal } from '../services/proposals';
-import { skillRegistry } from '../services/skills';
 import { DiffView } from './DiffView';
 import { Button } from './ui';
 import './ProposalCard.css';
@@ -52,11 +51,8 @@ export function ProposalCard({
     setBusy(true);
     setError(null);
     try {
-      const result = await decideProposal({ conversationId, messageId, toolIndex, accept });
-      setDecision(result);
-      // The server reloads its own registry; this one feeds the skill list in
-      // the system prompt and the slash-command menu.
-      if (result === 'accepted' && !isMemory) await skillRegistry.loadSkills();
+      // An accepted skill reaches the skill lists through the vault watcher.
+      setDecision(await decideProposal({ conversationId, messageId, toolIndex, accept }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

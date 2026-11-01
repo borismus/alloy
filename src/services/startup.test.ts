@@ -92,7 +92,7 @@ function startupResponse(overrides: Record<string, unknown> = {}) {
   const skills = Object.fromEntries(
     Object.entries(VAULT)
       .filter(([path]) => /^skills\/[^/]+\/SKILL\.md$/.test(path))
-      .map(([path, file]) => [path.split('/')[1], file.content]),
+      .map(([path, file]) => [path.split('/')[1], file]),
   );
   return {
     complete: true,
@@ -112,6 +112,7 @@ function startupResponse(overrides: Record<string, unknown> = {}) {
 function stubServer(startup: () => Response | Promise<Response>) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/api/startup')) return startup();
+    if (url.endsWith('/api/skills')) return Response.json(startupResponse().skills);
     if (url.endsWith('/api/fs/readDirHeaders')) {
       return Response.json({ files: readDirHeaders(JSON.parse(String(init!.body))) });
     }
@@ -157,7 +158,7 @@ describe('startup in one request', () => {
     const startup = await vault.loadStartup();
     const startupSkills = new SkillRegistry();
     startupSkills.setVaultPath('/');
-    await startupSkills.loadSkillFiles(startup!.skillFiles);
+    await startupSkills.loadSkillFiles(startup!.skills.files);
 
     expect(startupCalls(fetchMock)).toEqual(['/api/startup']);
     expect(fs.readTextFile).not.toHaveBeenCalled();
@@ -176,6 +177,15 @@ describe('startup in one request', () => {
     expect(memory?.sizeBytes).toBe(new TextEncoder().encode(VAULT['memory.md'].content).length);
     expect(perFileSkills.getSkill('writer')?.instructions).toBe('Be concise.');
     expect(perFileSkills.getSkill('bad')).toBeUndefined();
+  });
+
+  it('lists each skill folder as a note-like entry, from startup or on its own', async () => {
+    stubServer(() => Response.json(startupResponse()));
+    const startup = await vault.loadStartup();
+    const filenames = (notes: { filename: string }[]) => notes.map(n => n.filename).sort();
+    // A malformed skill is still listed, so it can be opened and fixed.
+    expect(filenames(startup!.skills.notes)).toEqual(['skills/bad/SKILL.md', 'skills/writer/SKILL.md']);
+    expect(await vault.loadSkills()).toEqual(startup!.skills);
   });
 
   it('passes the config through', async () => {

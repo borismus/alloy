@@ -7,7 +7,7 @@ export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger' 
 
 export interface BadgeProps {
   tone?: BadgeTone;
-  /** A glyph before the label, from ./icons (LockIcon, NoteIcon, TaskIcon). */
+  /** A glyph before the label, from ./icons (LockIcon, NoteIcon, SkillIcon, TaskIcon). */
   icon?: ReactNode;
   children: ReactNode;
   /** Hover hint for an abbreviated badge (e.g. the full model id). */

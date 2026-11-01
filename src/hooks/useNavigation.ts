@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { readTextFile } from '@tauri-apps/plugin-fs';
 import { vaultService } from '../services/vault';
 import { loadSelectedItem, saveSelectedItem } from '../services/selectionStorage';
 import { SelectedItem } from '../types';
@@ -26,19 +25,11 @@ export function useNavigation() {
     if (!previousItem) return;
 
     if (previousItem.type === 'note') {
-      const filename = previousItem.id;
-      const vaultPathStr = vaultService.getVaultPath();
-      const notesPath = vaultService.getNotesPath();
-      if (vaultPathStr && notesPath) {
-        const notePath = filename === 'memory.md'
-          ? `${vaultPathStr}/${filename}`
-          : `${notesPath}/${filename}`;
-        try {
-          const content = await readTextFile(notePath);
-          noteContentSetter(content);
-        } catch (error) {
-          console.error('[Navigation] Failed to load note on back:', error);
-        }
+      try {
+        const content = await vaultService.readNote(previousItem.id);
+        if (content !== null) noteContentSetter(content);
+      } catch (error) {
+        console.error('[Navigation] Failed to load note on back:', error);
       }
     } else {
       noteContentSetter(null);
