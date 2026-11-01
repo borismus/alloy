@@ -4,6 +4,18 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.8
+
+- **Approve skill changes from any device.** When a model edits a skill, you
+  get the same Accept/Reject card with a diff that memory changes use, on the
+  desktop app, web and phone. Before, every skill write failed with an error
+  that wrongly suggested switching to the desktop app.
+- **Skill edits take effect right away.** Editing a skill in Obsidian, syncing
+  one from another machine, or accepting a change no longer needs a restart.
+- **Skills are in the sidebar.** Your vault's skills are listed with a Skill
+  badge and their own Skills filter, and open in the note viewer for reading,
+  AI edits ("Ask for a change to this skill…") or opening in Obsidian.
+
 ## 0.5.7
 
 - **Push-to-talk no longer sends on release.** Letting go of a held Space
