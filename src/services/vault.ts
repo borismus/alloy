@@ -795,12 +795,16 @@ providers:
    * Returns null if no vault or memory file doesn't exist.
    */
   async loadMemory(): Promise<{ content: string; sizeBytes: number } | null> {
+    const content = await this.readVaultFile('memory.md');
+    return content === null ? null : this.parseMemory(content);
+  }
+
+  /** A vault file's text by vault-relative path (e.g. `skills/x/SKILL.md`), or null if absent. */
+  async readVaultFile(relativePath: string): Promise<string | null> {
     if (!this.vaultPath) return null;
-
-    const memoryPath = await join(this.vaultPath, 'memory.md');
-    if (!(await exists(memoryPath))) return null;
-
-    return this.parseMemory(await readTextFile(memoryPath));
+    const path = await join(this.vaultPath, relativePath);
+    if (!(await exists(path))) return null;
+    return await readTextFile(path);
   }
 
   private parseMemory(content: string): { content: string; sizeBytes: number } {

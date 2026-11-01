@@ -133,7 +133,7 @@ pub fn builtin_tools_with_subagent_limit(max_subagents: u32) -> Vec<ToolDefiniti
         ),
         def(
             "write_file",
-            "Write content to a file in allowed vault directories (notes/, skills/) or root files like memory.md. Cannot access conversations/.",
+            "Write content to a file in allowed vault directories (notes/, skills/) or root files like memory.md. Cannot access conversations/. Writes to memory.md and skills/ are proposals: nothing is saved until the user accepts the change in the conversation, so send the complete updated file.",
             &[
                 ("path", "string", r#"Relative path within vault. Note filenames must be human-readable with spaces, not kebab-case (e.g., "notes/Investment strategy.md", not "notes/investment-strategy.md")"#),
                 ("content", "string", "Content to write"),

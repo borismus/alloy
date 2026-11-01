@@ -1,4 +1,4 @@
-.memory-proposal {
+.proposal {
   margin: var(--space-3) 0;
   padding: 0.875rem var(--space-4);
   border: 1px solid var(--color-border);
@@ -6,30 +6,30 @@
   background: var(--color-surface);
 }
 
-.memory-proposal.decided {
+.proposal.decided {
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
-.memory-proposal-title {
+.proposal-title {
   font-weight: 600;
   margin-bottom: var(--space-1);
 }
 
-.memory-proposal-note {
+.proposal-note {
   margin: 0 0 var(--space-3);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 
-.memory-proposal-error {
+.proposal-error {
   margin: var(--space-2) 0 0;
   font-size: var(--text-sm);
   color: var(--color-danger);
 }
 
-.memory-proposal-actions {
+.proposal-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);

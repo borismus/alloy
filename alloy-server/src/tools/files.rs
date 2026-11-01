@@ -119,6 +119,21 @@ const MEMORY_FILE: &str = "memory.md";
 /// proposals existed (applied directly) and no-op calls don't start with it,
 /// so they never offer Accept. Mirrored in src/services/memoryProposals.ts.
 pub const MEMORY_PROPOSAL_RESULT: &str = "Proposed a change to memory.md.";
+/// Skills are prompts that run in later conversations, so a model's change to
+/// one is a proposal too, decided the same way as memory.md.
+const SKILLS_DIR: &str = "skills/";
+
+/// The start of a proposal's tool result for `path`; `MEMORY_PROPOSAL_RESULT`
+/// is this for memory.md. Mirrored in src/services/proposals.ts.
+pub fn proposal_result(path: &str) -> String {
+    format!("Proposed a change to {path}.")
+}
+
+/// A vault path whose writes need the user's approval: memory.md and skills/.
+pub fn needs_approval(path: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    normalized == MEMORY_FILE || normalized.starts_with(SKILLS_DIR)
+}
 /// The only vault-root files a model may read. An allowlist on purpose: the
 /// root holds `config.yaml` (API keys, OAuth tokens) and migration backups like
 /// `config.yaml.pre-0.4.bak` that carry the same secrets, and a denylist of
@@ -152,9 +167,10 @@ fn check_permission(path: &str, op: Op) -> Option<String> {
     let dir_segments: &[(&str, bool, bool)] = &[
         // (prefix, read, write_in_server_mode)
         ("notes/", true, true),
-        ("skills/", true, false), // writes would need approval → blocked
+        // Writes become proposals the user approves (see `propose_change`).
+        ("skills/", true, true),
         ("conversations/", true, false), // read-only
-        ("tasks/", true, false), // writes would need approval → blocked
+        ("tasks/", true, false), // changed only through the scheduled-task tools
     ];
 
     if normalized.contains('/') {
@@ -170,7 +186,7 @@ fn check_permission(path: &str, op: Op) -> Option<String> {
                 return Some(match op {
                     Op::Read => format!("Access denied: read permission not allowed for path \"{}\"", path),
                     Op::Write => format!(
-                        "Access denied: write to \"{}\" requires user approval, which isn't supported in server mode (Phase 1). Use the desktop app, or write to notes/ or memory.md.",
+                        "Access denied: \"{}\" can't be written with this tool. Writable: notes/, skills/ and memory.md (tasks change through the scheduled-task tools).",
                         path
                     ),
                 });
@@ -203,7 +219,7 @@ fn check_permission(path: &str, op: Op) -> Option<String> {
                 None
             } else {
                 Some(format!(
-                    "Access denied: write to root file \"{}\" requires user approval, which isn't supported in server mode (Phase 1). Allowed: memory.md.",
+                    "Access denied: root file \"{}\" can't be written. At the vault root only memory.md is writable.",
                     path
                 ))
             }
@@ -365,7 +381,7 @@ async fn back_up_memory(registry: &ToolRegistry, current: &str) -> std::io::Resu
 /// What a model's `write_file` to memory.md does: nothing on disk. memory.md
 /// goes into every system prompt, for every provider, so each change is a
 /// proposal the user accepts or rejects in the conversation (see
-/// `routes::memory`). The full proposed text travels in the persisted tool
+/// `routes::proposal`). The full proposed text travels in the persisted tool
 /// call, which is what the user is shown and what acceptance writes. A
 /// scheduled task or sub-agent has no one to ask, so it is refused outright.
 /// The destructive-rewrite review still applies, so a careless proposal is
@@ -391,11 +407,61 @@ async fn propose_memory(
     if current.as_deref() == Some(next) {
         return Ok(format!("{MEMORY_FILE} already says exactly this; nothing to change."));
     }
-    Ok(format!(
-        "{MEMORY_PROPOSAL_RESULT} It has NOT been saved: the user will review \
-         it in the conversation and accept or reject it. Tell them it's waiting for their \
-         approval rather than saying it was saved."
-    ))
+    Ok(awaiting_approval(MEMORY_FILE))
+}
+
+fn awaiting_approval(path: &str) -> String {
+    format!(
+        "{} It has NOT been saved: the user will review it in the conversation and \
+         accept or reject it. Tell them it's waiting for their approval rather than saying \
+         it was saved.",
+        proposal_result(path)
+    )
+}
+
+/// What a model's `write_file` under skills/ does: nothing on disk, like
+/// memory.md. A skill's text is a prompt that later conversations follow, so
+/// the user approves each change in the conversation (see `routes::proposal`).
+async fn propose_skill(
+    ctx: &ToolContext,
+    resolved: &std::path::Path,
+    path: &str,
+    next: &str,
+) -> Result<String, String> {
+    if ctx.execution_policy.is_task || ctx.inside_subagent {
+        return Err(format!(
+            "Refused: changes to {path} need the user's approval, which a scheduled task or \
+             sub-agent can't ask for. Leave it unchanged."
+        ));
+    }
+    if fs::read_to_string(resolved).await.ok().as_deref() == Some(next) {
+        return Ok(format!("{path} already says exactly this; nothing to change."));
+    }
+    Ok(awaiting_approval(path))
+}
+
+/// Write an accepted skill change and reload the skill registry, so the next
+/// `use_skill` runs the new text. Only reachable through the user's approval.
+pub async fn apply_skill(registry: &ToolRegistry, path: &str, next: &str) -> Result<String, String> {
+    let normalized = path.replace('\\', "/");
+    if !normalized.starts_with(SKILLS_DIR) {
+        return Err(format!("{path} is not under {SKILLS_DIR}"));
+    }
+    if let Some(msg) = check_permission(&normalized, Op::Write) {
+        return Err(msg);
+    }
+    let resolved = registry.vault.resolve(&normalized).map_err(|e| e.to_string())?;
+    if let Some(parent) = resolved.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Error creating {}: {}", parent.display(), e))?;
+    }
+    write_atomic(&resolved, next.as_bytes())
+        .await
+        .map_err(|e| format!("Error writing file: {}", e))?;
+    registry.skills.load(registry.vault.root());
+    tracing::info!(new_bytes = next.len(), "skill file replaced");
+    Ok(format!("Saved {normalized}"))
 }
 
 /// Write an accepted memory change: back up the outgoing version, then
@@ -459,6 +525,9 @@ pub async fn execute_write(
     if path.replace('\\', "/") == MEMORY_FILE {
         return propose_memory(ctx, &resolved, content).await;
     }
+    if needs_approval(path) {
+        return propose_skill(ctx, &resolved, path, content).await;
+    }
     let content = if note_needs_marker(path, &resolved, ctx)? {
         crate::tools::conversation_privacy::mark_note(content)
     } else {
@@ -486,9 +555,9 @@ pub async fn execute_append_to_note(
     if let Some(msg) = check_permission(path, Op::Write) {
         return Err(msg);
     }
-    if path.replace('\\', "/") == MEMORY_FILE {
+    if needs_approval(path) {
         return Err(format!(
-            "Refused: propose changes to {MEMORY_FILE} with write_file and its complete updated \
+            "Refused: propose changes to {path} with write_file and its complete updated \
              text, so the user can review the whole change."
         ));
     }
@@ -991,10 +1060,18 @@ mod tests {
     }
 
     #[test]
-    fn permission_skills_write_blocked() {
-        let r = check_permission("skills/my-skill/SKILL.md", Op::Write);
-        assert!(r.is_some());
-        assert!(r.unwrap().contains("requires user approval"));
+    fn permission_skills_writable_through_approval() {
+        assert!(check_permission("skills/my-skill/SKILL.md", Op::Write).is_none());
+        assert!(needs_approval("skills/my-skill/SKILL.md"));
+        assert!(needs_approval("memory.md"));
+        assert!(!needs_approval("notes/skills/foo.md"));
+    }
+
+    #[test]
+    fn permission_tasks_write_points_at_the_task_tools() {
+        let r = check_permission("tasks/daily.yaml", Op::Write).unwrap();
+        assert!(r.contains("scheduled-task tools"), "{r}");
+        assert!(!r.contains("desktop app"), "{r}");
     }
 
     #[test]
@@ -1887,6 +1964,51 @@ mod tests {
             std::fs::read_to_string(vault.0.join("memory.md")).unwrap(),
             "# Memory\n- likes tea\n"
         );
+    }
+
+    #[tokio::test]
+    async fn a_model_skill_write_is_a_proposal_until_applied() {
+        let vault = TempDir::new("vault-skill-propose");
+        let reg = memory_registry(&vault.0, "");
+        let skill = vault.0.join("skills/flux/SKILL.md");
+        std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+        let old = "---\nname: flux\ndescription: old\n---\nOld steps.\n";
+        let new = "---\nname: flux\ndescription: new\n---\nNew steps.\n";
+        std::fs::write(&skill, old).unwrap();
+        reg.skills.load(&vault.0);
+
+        let input = json!({ "path": "skills/flux/SKILL.md", "content": new });
+        let out = execute_write(&reg, &ctx(false), &input).await.unwrap();
+        assert!(out.starts_with(&proposal_result("skills/flux/SKILL.md")), "{out}");
+        assert!(out.contains("NOT been saved"), "{out}");
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), old);
+
+        let append = execute_append_to_note(
+            &reg,
+            &ctx(false),
+            &json!({ "path": "skills/flux/SKILL.md", "content": "- sneaky" }),
+        )
+        .await
+        .unwrap_err();
+        assert!(append.contains("write_file"), "{append}");
+
+        let mut task = ctx(false);
+        task.execution_policy.is_task = true;
+        assert!(execute_write(&reg, &task, &input).await.unwrap_err().contains("Refused"));
+
+        // Accepting writes it and the next use_skill runs the new text.
+        apply_skill(&reg, "skills/flux/SKILL.md", new).await.unwrap();
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), new);
+        assert!(reg.skills.instructions("flux").unwrap().contains("New steps."));
+
+        // A brand-new skill gets its folder created.
+        apply_skill(&reg, "skills/fresh/SKILL.md", "---\nname: fresh\ndescription: d\n---\nHi.\n")
+            .await
+            .unwrap();
+        assert!(reg.skills.instructions("fresh").is_some());
+
+        assert!(apply_skill(&reg, "notes/x.md", "x").await.is_err());
+        assert!(apply_skill(&reg, "skills/../config.yaml", "x").await.is_err());
     }
 
     #[tokio::test]

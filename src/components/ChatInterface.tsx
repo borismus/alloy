@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react';
 import { Conversation, Message, ModelInfo, Attachment, PendingAttachment, getProviderFromModel } from '../types';
 import { toPendingAttachments } from '../utils/attachments';
-import { isMemoryProposal } from '../services/memoryProposals';
-import { MemoryProposalCard } from './MemoryProposalCard';
+import { proposedPath } from '../services/proposals';
+import { ProposalCard } from './ProposalCard';
 import { generateMessageId } from '../utils/ids';
 import { chooseDefaultModel, modelDisplayName, providerLabel } from '../utils/models';
 import { useConversationStreaming } from '../hooks/useConversationStreaming';
@@ -339,17 +339,21 @@ export const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>
             incompleteReason={message.incompleteReason}
             partialReasoning={message.partialReasoning}
           />
-          {message.id && message.toolUse?.map((tool, toolIndex) => isMemoryProposal(tool) && (
-            <MemoryProposalCard
-              key={`memory-${toolIndex}`}
-              conversationId={conversation.id}
-              messageId={message.id!}
-              toolIndex={toolIndex}
-              proposed={tool.input!.content as string}
-              decision={tool.proposal}
-              isPrivateConversation={conversation.private === true}
-            />
-          ))}
+          {message.id && message.toolUse?.map((tool, toolIndex) => {
+            const path = proposedPath(tool);
+            return path && (
+              <ProposalCard
+                key={`proposal-${toolIndex}`}
+                conversationId={conversation.id}
+                messageId={message.id!}
+                toolIndex={toolIndex}
+                path={path}
+                proposed={tool.input!.content as string}
+                decision={tool.proposal}
+                isPrivateConversation={conversation.private === true}
+              />
+            );
+          })}
         </div>
       );
     });

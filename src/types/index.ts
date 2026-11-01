@@ -41,7 +41,7 @@ export interface ToolUse {
   input?: Record<string, unknown>;  // tool inputs (for debugging)
   result?: string;        // truncated result (for display)
   isError?: boolean;
-  /** User's decision on a proposed memory.md change (see MemoryProposalCard). */
+  /** User's decision on a proposed memory.md or skill change (see ProposalCard). */
   proposal?: 'accepted' | 'rejected';
 }
 
