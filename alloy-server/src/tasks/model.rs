@@ -89,6 +89,14 @@ pub struct TaskAttempt {
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Value>,
+    /// Thinking the model streamed before a failed run, kept so the failure
+    /// can be diagnosed. Only the newest attempt keeps it (see `push_history`).
+    #[serde(
+        rename = "partialReasoning",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub partial_reasoning: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -108,6 +116,8 @@ pub struct TaskRunOutcome {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Value>,
+    #[serde(rename = "partialReasoning", skip_serializing_if = "Option::is_none")]
+    pub partial_reasoning: Option<String>,
 }
 
 pub async fn load_all(tasks_dir: &Path) -> anyhow::Result<Vec<(PathBuf, ScheduledTask)>> {
@@ -217,6 +227,11 @@ pub fn push_delivery_messages(
 pub fn push_history(task: &mut ScheduledTask, attempt: TaskAttempt) {
     const MAX_HISTORY: usize = 50;
     let mut history = task.history.take().unwrap_or_default();
+    // Thinking can run to 128 KB per run, so only the newest attempt keeps it:
+    // that is the one being diagnosed, and the synced task file stays small.
+    for older in &mut history {
+        older.partial_reasoning = None;
+    }
     history.insert(0, attempt);
     history.truncate(MAX_HISTORY);
     task.history = Some(history);

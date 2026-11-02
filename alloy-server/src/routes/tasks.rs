@@ -26,6 +26,7 @@ async fn run_handler(State(state): State<AppState>, Path(id): Path<String>) -> R
                     response: String::new(),
                     error: Some(error.to_string()),
                     usage: None,
+                    partial_reasoning: None,
                 }),
             )
                 .into_response()

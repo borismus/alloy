@@ -496,6 +496,7 @@ async fn recover_interrupted_in(
                     runner: Some(host.to_string()),
                     error: Some(INTERRUPTED_ERROR.to_string()),
                     usage: None,
+                    partial_reasoning: None,
                 },
             );
         })
@@ -800,6 +801,7 @@ mod tests {
             response: String::new(),
             error: Some("boom".into()),
             usage: None,
+            partial_reasoning: None,
         };
         executor::apply_outcome(&mut value, &failed, "smusmini");
         assert_eq!(value.running, None);
@@ -900,6 +902,7 @@ mod tests {
             response: response.into(),
             error: error.map(str::to_string),
             usage: None,
+            partial_reasoning: None,
         };
 
         assert_eq!(
@@ -929,6 +932,7 @@ mod tests {
             runner: Some("legomenon".into()),
             error: Some("still unavailable".into()),
             usage: None,
+            partial_reasoning: None,
         }]);
         assert_eq!(
             email_kind(

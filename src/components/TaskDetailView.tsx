@@ -6,6 +6,7 @@ import { useTaskContext } from '../contexts/TaskContext';
 import { getApiBase, getAuthHeadersForApi } from '../services/server-streaming';
 import { ItemHeader } from './ItemHeader';
 import { MarkdownContent } from './MarkdownContent';
+import { ThinkingDisclosure } from './ThinkingDisclosure';
 import { AiEditPanel } from './AiEditPanel';
 import { ModelSelector } from './ModelSelector';
 import { Button as AriaButton } from 'react-aria-components';
@@ -557,6 +558,15 @@ export function TaskDetailView({
                               <span>Recovered after {connectionRetries} connection {connectionRetries === 1 ? 'retry' : 'retries'}</span>
                             )}
                           </div>
+                        )}
+                        {attempt.partialReasoning?.trim() && (
+                          <ThinkingDisclosure
+                            thinking={attempt.partialReasoning}
+                            startedAt={0}
+                            initialElapsedMs={0}
+                            active={false}
+                            label="Incomplete reasoning"
+                          />
                         )}
                         <MarkdownContent content={output} className="history-delivered-content" />
                       </div>

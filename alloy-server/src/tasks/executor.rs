@@ -6,7 +6,7 @@ use serde_yaml::Value;
 
 use crate::execution_policy::ExecutionPolicy;
 use crate::providers::WireMessage;
-use crate::streaming::{run_to_completion, StartParams};
+use crate::streaming::{run_to_completion, StartParams, TurnFailed};
 use crate::tasks::model::{ScheduledTask, TaskRunOutcome, TaskVerdict};
 use crate::AppState;
 
@@ -155,12 +155,16 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
                     response: session_outcome.content.trim().to_string(),
                     error: None,
                     usage,
+                    partial_reasoning: None,
                 }
             }
         }
         Err(error) => TaskRunOutcome {
             result: TaskVerdict::Error,
             response: String::new(),
+            partial_reasoning: error
+                .downcast_ref::<TurnFailed>()
+                .and_then(|failed| failed.partial_reasoning.clone()),
             error: Some(error.to_string()),
             usage: None,
         },
@@ -192,6 +196,7 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
             response: truncate_chars(content.trim(), 4_000),
             error: Some("Model response did not end with the required JSON verdict.".into()),
             usage,
+            partial_reasoning: None,
         };
     };
 
@@ -203,6 +208,7 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
                 response: truncate_chars(content.trim(), 4_000),
                 error: Some(format!("Model returned an invalid JSON verdict: {}", error)),
                 usage,
+                partial_reasoning: None,
             };
         }
     };
@@ -214,6 +220,7 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
                 response: truncate_chars(content.trim(), 4_000),
                 error: Some("Model verdict field `triggered` must be true or false.".into()),
                 usage,
+                partial_reasoning: None,
             };
         }
     };
@@ -229,6 +236,7 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
             },
             error: None,
             usage,
+            partial_reasoning: None,
         }
     } else {
         TaskRunOutcome {
@@ -240,6 +248,7 @@ pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRu
                 .to_string(),
             error: None,
             usage,
+            partial_reasoning: None,
         }
     }
 }
@@ -267,6 +276,7 @@ pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome, runner:
                     runner: Some(runner.to_string()),
                     error: None,
                     usage: outcome.usage.clone(),
+                    partial_reasoning: None,
                 },
             );
         }
@@ -279,6 +289,7 @@ pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome, runner:
                 runner: Some(runner.to_string()),
                 error: None,
                 usage: outcome.usage.clone(),
+                partial_reasoning: None,
             },
         ),
         TaskVerdict::Error => push_history(
@@ -290,6 +301,7 @@ pub fn apply_outcome(task: &mut ScheduledTask, outcome: &TaskRunOutcome, runner:
                 runner: Some(runner.to_string()),
                 error: outcome.error.clone(),
                 usage: outcome.usage.clone(),
+                partial_reasoning: outcome.partial_reasoning.clone(),
             },
         ),
     }
@@ -432,6 +444,7 @@ mod tests {
             response: "Daily report".into(),
             error: None,
             usage: None,
+            partial_reasoning: None,
         };
         assert_eq!(outcome.result, TaskVerdict::Completed);
     }
@@ -447,6 +460,7 @@ mod tests {
                     response: "Useful result".into(),
                     error: None,
                     usage: None,
+                    partial_reasoning: None,
                 },
                 "legomenon",
             );
@@ -461,6 +475,29 @@ mod tests {
     }
 
     #[test]
+    fn failed_outcome_keeps_reasoning_on_the_newest_attempt_only() {
+        let failed = |thinking: &str| TaskRunOutcome {
+            result: TaskVerdict::Error,
+            response: String::new(),
+            error: Some("model used tools but returned no final text".into()),
+            usage: None,
+            partial_reasoning: Some(thinking.into()),
+        };
+        let mut value = task(false);
+        apply_outcome(&mut value, &failed("first run thinking"), "smusmini");
+        apply_outcome(&mut value, &failed("second run thinking"), "smusmini");
+
+        let history = value.history.as_ref().unwrap();
+        assert_eq!(
+            history[0].partial_reasoning.as_deref(),
+            Some("second run thinking")
+        );
+        assert_eq!(history[1].partial_reasoning, None);
+        let yaml = serde_yaml::to_string(&value).unwrap();
+        assert!(yaml.contains("partialReasoning: second run thinking"), "{yaml}");
+    }
+
+    #[test]
     fn skipped_outcome_records_history_without_delivery() {
         let mut value = task(true);
         apply_outcome(
@@ -470,6 +507,7 @@ mod tests {
                 response: "Condition not met".into(),
                 error: None,
                 usage: None,
+                partial_reasoning: None,
             },
             "smusmini",
         );

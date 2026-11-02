@@ -64,6 +64,10 @@ pub struct SessionInner {
     /// It is replayable while the session lives but never enters StreamResult
     /// or vault persistence.
     pub full_thinking: String,
+    /// The thinking a failed turn produced, moved out of `full_thinking` when
+    /// the session errors so programmatic callers (scheduled tasks, which
+    /// persist nothing themselves) can keep it as salvage. Never replayed.
+    pub failed_reasoning: Option<String>,
     pub started_at_ms: i64,
     pub thinking_duration_ms: Option<u64>,
     pub final_result: Option<StreamResult>,
@@ -232,6 +236,7 @@ impl SessionRegistry {
                 status: SessionStatus::Streaming,
                 full_content: String::new(),
                 full_thinking: String::new(),
+                failed_reasoning: None,
                 started_at_ms: chrono::Utc::now().timestamp_millis(),
                 thinking_duration_ms: None,
                 final_result: None,
@@ -334,6 +339,7 @@ pub fn start_session(
             status: SessionStatus::Streaming,
             full_content: String::new(),
             full_thinking: String::new(),
+            failed_reasoning: None,
             started_at_ms: chrono::Utc::now().timestamp_millis(),
             thinking_duration_ms: None,
             final_result: None,
@@ -942,7 +948,8 @@ fn mark_error(session: &Session, msg: String, persisted: bool) {
     {
         let mut inner = session.inner.lock().unwrap();
         inner.status = SessionStatus::Error;
-        inner.full_thinking.clear();
+        let thinking = std::mem::take(&mut inner.full_thinking);
+        inner.failed_reasoning = Some(thinking).filter(|t| !t.trim().is_empty());
         inner.error_message = Some(msg.clone());
         inner.error_persisted = persisted;
     }
@@ -1048,6 +1055,32 @@ pub struct SessionOutcome {
     pub stop_reason: String,
 }
 
+/// A failed `run_to_completion` turn. Displays as the familiar
+/// `session error: …` text; callers that want the salvage downcast to it.
+#[derive(Debug)]
+pub struct TurnFailed {
+    pub message: String,
+    /// Bounded tail of the thinking streamed before the failure, if any.
+    pub partial_reasoning: Option<String>,
+}
+
+impl std::fmt::Display for TurnFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "session error: {}", self.message)
+    }
+}
+
+impl std::error::Error for TurnFailed {}
+
+fn turn_failed(session: &Session, message: String) -> anyhow::Error {
+    let partial_reasoning = session.inner.lock().unwrap().failed_reasoning.clone();
+    TurnFailed {
+        message,
+        partial_reasoning,
+    }
+    .into()
+}
+
 /// Run a streaming session and await its terminal event. Used by
 /// programmatic callers (scheduled tasks, internal jobs) that want the final
 /// result rather than an SSE stream.
@@ -1089,10 +1122,9 @@ pub async fn run_to_completion(
                 }
             }
             SessionStatus::Error => {
-                anyhow::bail!(
-                    "session error: {}",
-                    inner.error_message.clone().unwrap_or_default()
-                );
+                let message = inner.error_message.clone().unwrap_or_default();
+                drop(inner);
+                return Err(turn_failed(&session, message));
             }
             SessionStatus::Streaming => {}
         }
@@ -1112,7 +1144,7 @@ pub async fn run_to_completion(
                 });
             }
             Ok(SessionEvent::Error { message, .. }) => {
-                anyhow::bail!("session error: {}", message)
+                return Err(turn_failed(&session, message));
             }
             // Ignore chunks, tool events, title.
             Ok(_) => continue,
@@ -1129,7 +1161,8 @@ pub async fn run_to_completion(
                     });
                 }
                 if let Some(err) = inner.error_message.clone() {
-                    anyhow::bail!("session error: {}", err);
+                    drop(inner);
+                    return Err(turn_failed(&session, err));
                 }
                 anyhow::bail!("session channel closed without a final event");
             }
@@ -1672,6 +1705,60 @@ mod tests {
                 "> [!note]- Incomplete reasoning\n> checking the schedule\n> then the budget"
             ),
             "got:\n{md}"
+        );
+    }
+
+    /// Scheduled tasks persist nothing themselves (`skip_persist`), so the
+    /// reasoning has to reach them through `run_to_completion`'s error.
+    #[tokio::test]
+    async fn run_to_completion_failure_carries_the_reasoning() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Arc::new(Vault::new(dir.path().to_path_buf()).unwrap());
+        let providers = ProviderRegistry::from_test_provider(
+            "test",
+            Arc::new(FailingThinkingProvider {
+                thinking: "summing the week's rows",
+                until_stopped: false,
+            }),
+        );
+        let tools = Arc::new(ToolRegistry::new(
+            Arc::new(Config::default()),
+            vault.clone(),
+            providers.clone(),
+            Arc::new(SkillRegistry::new()),
+        ));
+        let error = run_to_completion(
+            &SessionRegistry::new(),
+            providers,
+            vault,
+            tools,
+            Arc::new(ModelCache::new()),
+            CompactionSettings::default(),
+            None,
+            StartParams {
+                session_id: "task-session".into(),
+                conversation_id: "task".into(),
+                assistant_message_id: None,
+                model: "test/model".into(),
+                messages: vec![user_msg("weekly review")],
+                system_prompt: None,
+                is_first_message: false,
+                user_message_content: "weekly review".into(),
+                invoke_skill: None,
+                skip_persist: true,
+                retry_connect: false,
+                execution_policy: ExecutionPolicy::interactive(),
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().starts_with("session error: "), "{error}");
+        assert!(error.to_string().contains("connection reset"), "{error}");
+        let failed = error.downcast_ref::<TurnFailed>().expect("typed failure");
+        assert_eq!(
+            failed.partial_reasoning.as_deref(),
+            Some("summing the week's rows")
         );
     }
 

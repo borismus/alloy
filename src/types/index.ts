@@ -186,6 +186,8 @@ export interface TaskAttempt {
   runner?: string;
   error?: string;
   usage?: Usage;
+  /** Thinking the model streamed before a failed run; only the newest attempt keeps it. */
+  partialReasoning?: string;
 }
 
 /** Marks a run in progress; the server refreshes `heartbeatAt` while it runs. */

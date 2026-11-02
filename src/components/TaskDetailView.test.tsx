@@ -90,6 +90,33 @@ describe('TaskDetailView failure state', () => {
     expect(screen.getByTitle('Delivered results and first-failure alerts are emailed via Resend'))
       .toBeTruthy();
   });
+
+  it('lets a failed run show the reasoning the model streamed before failing', async () => {
+    const failed: ScheduledTask = {
+      ...task,
+      history: [
+        { ...task.history![0], partialReasoning: 'Summing the week of transactions…' },
+        task.history![1],
+      ],
+    };
+    render(
+      <TaskProvider tasks={[failed]}>
+        <TaskDetailView
+          task={failed}
+          availableModels={[]}
+          onRunComplete={vi.fn()}
+          onAskAbout={vi.fn()}
+          onTaskUpdated={vi.fn()}
+        />
+      </TaskProvider>,
+    );
+
+    const toggle = screen.getByRole('button', { name: /Incomplete reasoning/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Summing the week of transactions…')).toBeTruthy();
+  });
 });
 
 describe('TaskDetailView configuration controls', () => {

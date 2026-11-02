@@ -441,6 +441,7 @@ mod tests {
                 runner: Some("legomenon".into()),
                 error: None,
                 usage: None,
+                partial_reasoning: None,
             }]),
             messages: vec![serde_yaml::Value::String("preserve me".into())],
             extra: Mapping::new(),
