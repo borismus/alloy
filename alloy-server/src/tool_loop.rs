@@ -415,6 +415,14 @@ pub async fn execute_with_tools(
             )
         })?;
         if wrap.content.trim().is_empty() {
+            // Without this, a blank wrap-up can't be told apart: thinking that
+            // filled the output cap ("max_tokens") vs. a model that just stopped.
+            tracing::warn!(
+                reason = wrap_up_reason,
+                stop_reason = %wrap.stop_reason,
+                output_tokens = wrap.usage.as_ref().map(|u| u.output_tokens),
+                "forced conclusion returned no text"
+            );
             if budget_exhausted {
                 anyhow::bail!(
                     "This turn reached its context limit, and the model produced no final \
