@@ -4,6 +4,15 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.9
+
+- **See why a scheduled task failed.** When a task run fails, the model's
+  reasoning up to that point is kept on the run and shown under "Incomplete
+  reasoning" in the task's history, as failed conversations already do.
+- **Clearer logs for empty answers.** When a model still writes nothing after
+  being asked to wrap up, the server log records why it stopped (for example,
+  hitting its output limit).
+
 ## 0.5.8
 
 - **Approve skill changes from any device.** When a model edits a skill, you
