@@ -778,7 +778,7 @@ mod tests {
         let mut steps: Vec<StreamResult> = (0..rounds).map(|_| tool_turn("", 10)).collect();
         steps.push(final_turn("Full task report.", 20));
         let (result, provider) = LoopCase {
-            execution_policy: ExecutionPolicy::task(&Default::default(), None),
+            execution_policy: ExecutionPolicy::task(&Default::default(), None, false),
             ..LoopCase::new(steps)
         }
         .run()

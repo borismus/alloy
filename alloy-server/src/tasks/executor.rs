@@ -176,7 +176,11 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
 /// `scheduler::run_once` -> `executor::run`, and nothing about *why* the run
 /// started is an input, so the two entry points cannot diverge.
 fn resolve_policy(config: &crate::config::Config, task: &ScheduledTask) -> ExecutionPolicy {
-    ExecutionPolicy::task(&config.task_execution, task.execution.as_ref())
+    ExecutionPolicy::task(
+        &config.task_execution,
+        task.execution.as_ref(),
+        crate::local::model_is_local(config, &task.model),
+    )
 }
 
 pub fn parse_conditional_response(content: &str, usage: Option<Value>) -> TaskRunOutcome {
@@ -387,6 +391,39 @@ mod tests {
 
         // An interactive conversation is untouched by either override.
         assert_eq!(ExecutionPolicy::interactive(), interactive);
+    }
+
+    /// A local thinking model can spend 16k tokens thinking before it writes a
+    /// word, so a task on one gets the local reply budget chat already has.
+    #[test]
+    fn tasks_on_a_local_model_get_the_local_output_budget() {
+        use crate::config::{ProviderConfig, ProviderKind};
+        use crate::execution_policy::{LOCAL_MAX_OUTPUT_TOKENS, TASK_MAX_OUTPUT_TOKENS};
+
+        let provider = |id: &str, base_url: &str, local| ProviderConfig {
+            id: id.into(),
+            kind: ProviderKind::OpenaiCompatible,
+            adapter: None,
+            base_url: Some(base_url.into()),
+            api_key: String::new(),
+            command: None,
+            oauth_token: None,
+            local,
+        };
+        let config = crate::config::Config {
+            providers: vec![
+                provider("mlx", "http://omlx.lan:8000/v1", Some(true)),
+                provider("cloud", "https://example.com/v1", None),
+            ],
+            ..crate::config::Config::default()
+        };
+        let mut value = task(false);
+
+        value.model = "mlx/test".into();
+        assert_eq!(resolve_policy(&config, &value).max_output_tokens, LOCAL_MAX_OUTPUT_TOKENS);
+
+        value.model = "cloud/test".into();
+        assert_eq!(resolve_policy(&config, &value).max_output_tokens, TASK_MAX_OUTPUT_TOKENS);
     }
 
     /// Manual **Run now** and cron share `run_once`, so the only inputs to the

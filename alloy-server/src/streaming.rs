@@ -1507,7 +1507,7 @@ mod tests {
         let config = Arc::new(Config::load(&config_path).unwrap());
 
         for (provider_id, expected) in [
-            ("mlx", crate::execution_policy::LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS),
+            ("mlx", crate::execution_policy::LOCAL_MAX_OUTPUT_TOKENS),
             ("cloud", crate::execution_policy::INTERACTIVE_MAX_OUTPUT_TOKENS),
         ] {
             let received = Arc::new(Mutex::new(Vec::new()));

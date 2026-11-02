@@ -919,7 +919,7 @@ mod tests {
         let (delta_tx, _rx) = tokio::sync::mpsc::unbounded_channel();
         let mut req = test_stream_request(cancel, delta_tx);
         req.execution_policy =
-            crate::execution_policy::ExecutionPolicy::task(&Default::default(), None);
+            crate::execution_policy::ExecutionPolicy::task(&Default::default(), None, false);
         provider.stream(req).await.unwrap();
 
         assert_eq!(

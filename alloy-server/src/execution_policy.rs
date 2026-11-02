@@ -17,11 +17,13 @@ pub const INTERACTIVE_MAX_ITERATIONS: u32 = 20;
 pub const INTERACTIVE_MAX_WEB_SEARCHES: u32 = 3;
 pub const INTERACTIVE_MAX_SUBAGENTS: u32 = 3;
 pub const INTERACTIVE_MAX_OUTPUT_TOKENS: u32 = 8_192;
-/// Local models get the largest reply budget even in chat. Their tokens cost
-/// nothing, and a reasoning model's hidden thinking counts against the same
-/// cap: a Qwen synthesis stopped mid-sentence at 8,192 after spending ~6k on
-/// thinking. The per-turn context budget reserves this, so it can't overflow.
-pub const LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS: u32 = HARD_MAX_OUTPUT_TOKENS;
+/// Local models get the largest reply budget, in chat and in tasks. Their
+/// tokens cost nothing, and a reasoning model's hidden thinking counts against
+/// the same cap: a Qwen synthesis stopped mid-sentence at 8,192 after spending
+/// ~6k on thinking, and a Qwen weekly-review task spent all 16,384 of a
+/// tool-free wrap-up on thinking and returned no text. The per-turn context
+/// budget reserves this, so it can't overflow.
+pub const LOCAL_MAX_OUTPUT_TOKENS: u32 = HARD_MAX_OUTPUT_TOKENS;
 /// Claude Code owns its agent loop; interactive Alloy gives it 20 turns, the
 /// same budget as Alloy's own loop.
 pub const INTERACTIVE_CLI_AGENT_TURNS: u32 = 20;
@@ -93,12 +95,13 @@ impl ExecutionPolicy {
     }
 
     /// The policy for a turn on a local or cloud model. Interactive turns on a
-    /// local model get `LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS`; tasks keep their
-    /// resolved (possibly configured) values.
+    /// local model get `LOCAL_MAX_OUTPUT_TOKENS`; tasks keep their resolved
+    /// (possibly configured) values, whose default already accounts for
+    /// locality in [`Self::task`].
     pub fn for_locality(self, model_is_local: bool) -> Self {
         if model_is_local && !self.is_task {
             Self {
-                max_output_tokens: LOCAL_INTERACTIVE_MAX_OUTPUT_TOKENS,
+                max_output_tokens: LOCAL_MAX_OUTPUT_TOKENS,
                 ..self
             }
         } else {
@@ -110,7 +113,13 @@ impl ExecutionPolicy {
     /// Values are clamped rather than trusted so no config can remove the
     /// runaway-loop/cost backstops. The effective values are logged by the task
     /// executor, making a clamped override diagnosable without logging content.
-    pub fn task(global: &ExecutionOverrides, task: Option<&ExecutionOverrides>) -> Self {
+    /// A task on a local model defaults to `LOCAL_MAX_OUTPUT_TOKENS`, like chat
+    /// on one; a configured `maxOutputTokens` still wins.
+    pub fn task(
+        global: &ExecutionOverrides,
+        task: Option<&ExecutionOverrides>,
+        model_is_local: bool,
+    ) -> Self {
         let task = task.copied().unwrap_or_default();
         let pick = |local: Option<u32>, shared: Option<u32>, default| {
             local.or(shared).unwrap_or(default)
@@ -136,7 +145,11 @@ impl ExecutionPolicy {
         let max_output_tokens = pick(
             task.max_output_tokens,
             global.max_output_tokens,
-            TASK_MAX_OUTPUT_TOKENS,
+            if model_is_local {
+                LOCAL_MAX_OUTPUT_TOKENS
+            } else {
+                TASK_MAX_OUTPUT_TOKENS
+            },
         )
         .clamp(MIN_OUTPUT_TOKENS, HARD_MAX_OUTPUT_TOKENS);
 
@@ -174,7 +187,7 @@ mod tests {
 
     #[test]
     fn task_policy_is_generous_and_per_task_values_win() {
-        let defaults = ExecutionPolicy::task(&ExecutionOverrides::default(), None);
+        let defaults = ExecutionPolicy::task(&ExecutionOverrides::default(), None, false);
         assert_eq!(defaults.max_iterations, 30);
         assert_eq!(defaults.max_web_searches, 10);
         assert_eq!(defaults.max_subagents, 6);
@@ -193,7 +206,7 @@ mod tests {
             max_subagents: Some(8),
             max_output_tokens: None,
         };
-        let resolved = ExecutionPolicy::task(&global, Some(&local));
+        let resolved = ExecutionPolicy::task(&global, Some(&local), false);
         assert_eq!(resolved.max_iterations, 50);
         assert_eq!(resolved.cli_agent_turns, 50);
         assert_eq!(resolved.max_web_searches, 12);
@@ -209,10 +222,38 @@ mod tests {
             max_subagents: Some(u32::MAX),
             max_output_tokens: Some(u32::MAX),
         };
-        let resolved = ExecutionPolicy::task(&extreme, None);
+        let resolved = ExecutionPolicy::task(&extreme, None, false);
         assert_eq!(resolved.max_iterations, HARD_MAX_ITERATIONS);
         assert_eq!(resolved.max_web_searches, 1);
         assert_eq!(resolved.max_subagents, HARD_MAX_SUBAGENTS);
         assert_eq!(resolved.max_output_tokens, HARD_MAX_OUTPUT_TOKENS);
+    }
+
+    #[test]
+    fn local_tasks_get_the_local_output_budget_unless_configured() {
+        let none = ExecutionOverrides::default();
+        assert_eq!(
+            ExecutionPolicy::task(&none, None, true).max_output_tokens,
+            LOCAL_MAX_OUTPUT_TOKENS
+        );
+        assert_eq!(
+            ExecutionPolicy::task(&none, None, false).max_output_tokens,
+            TASK_MAX_OUTPUT_TOKENS
+        );
+
+        let configured = ExecutionOverrides {
+            max_output_tokens: Some(12_000),
+            ..Default::default()
+        };
+        assert_eq!(
+            ExecutionPolicy::task(&configured, None, true).max_output_tokens,
+            12_000,
+            "global config wins over the local default"
+        );
+        assert_eq!(
+            ExecutionPolicy::task(&none, Some(&configured), true).max_output_tokens,
+            12_000,
+            "per-task config wins over the local default"
+        );
     }
 }
