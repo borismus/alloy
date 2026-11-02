@@ -4,6 +4,13 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.10
+
+- **Scheduled tasks on local models no longer run out of room.** A task on a
+  local thinking model could spend its whole reply allowance thinking and fail
+  with no answer. Tasks on local models now get the same larger allowance
+  (32,768 tokens) that chats on them already had.
+
 ## 0.5.9
 
 - **See why a scheduled task failed.** When a task run fails, the model's
