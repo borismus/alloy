@@ -4,6 +4,18 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.11
+
+- **`config.yaml` changes apply without a restart.** Rotate a key, add a
+  provider or change a setting and it takes effect from the next turn, whether
+  you edited the file or it arrived through sync. A turn already running
+  finishes on the old config. `shareOnNetwork` and `sharePort` still need a
+  restart, because they set what the machine exposes to its network.
+- **A broken `config.yaml` no longer costs you the vault.** A typo or half-synced
+  file is ignored, with the reason in the log, and Alloy keeps running on the
+  last good config. Before, saving one while the app was open could make the
+  next launch forget the vault and show the setup screen.
+
 ## 0.5.10
 
 - **Scheduled tasks on local models no longer run out of room.** A task on a
