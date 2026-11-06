@@ -680,6 +680,35 @@ test('memory changed on disk refreshes the open memory view', async ({ page }, t
   await expect(page.getByText(marker)).toBeVisible({ timeout: 10_000 });
 });
 
+test('a config.yaml that stops parsing does not forget the vault', async ({ page, request }) => {
+  const read = await request.post('/api/fs/readTextFile', { data: { path: 'config.yaml' } });
+  const original = (await read.json()).content as string;
+  const write = (content: string) =>
+    request.post('/api/fs/writeTextFile', { data: { path: 'config.yaml', content } });
+  const savedVault = () => page.evaluate(() => localStorage.getItem('vaultPath'));
+  expect(await savedVault()).toBeTruthy();
+
+  try {
+    // The watcher's reload re-reads the config, so this is the moment it can go wrong.
+    const reloaded = page.waitForResponse(response =>
+      /\/api\/(config|startup)$/.test(new URL(response.url()).pathname));
+    await write('version: [half-synced');
+    await reloaded;
+    await page.waitForTimeout(500);
+
+    expect(await savedVault()).toBeTruthy();
+    await expect(page.locator('.vault-setup')).toHaveCount(0);
+    await expect(page.locator('.timeline-item').first()).toBeVisible();
+  } finally {
+    await write(original);
+  }
+
+  // The vault must still open next launch, and a good config applies as usual.
+  await page.reload();
+  await expect(page.locator('.vault-setup')).toHaveCount(0);
+  await expect(page.locator('.timeline-item').first()).toBeVisible();
+});
+
 test('a local model keeps its Local tag while its host is unreachable', async ({ page }) => {
   // offline-mlx is configured local but refuses connections, so discovery
   // finds none of its models. Whether a model is reachable has no bearing on

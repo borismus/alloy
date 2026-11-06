@@ -375,9 +375,12 @@ function AppContent() {
 
   const handleConfigChanged = useCallback(async () => {
     const vaultPath = vaultService.getVaultPath();
-    if (vaultPath && loadVaultRef.current) {
-      await loadVaultRef.current(vaultPath);
-    }
+    if (!vaultPath || !loadVaultRef.current) return;
+    // A file that can't be read yet (a typo, a sync mid-write) is not a reason
+    // to act: the server stays on its last good config, and loadVault would take
+    // the null as "no vault here" and forget the saved path.
+    if (!(await vaultService.loadConfig())) return;
+    await loadVaultRef.current(vaultPath);
   }, []);
 
   const vaultPath = vaultService.getVaultPath();
