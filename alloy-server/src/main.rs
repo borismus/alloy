@@ -4,9 +4,10 @@ use std::{
 };
 
 use alloy_server::{
-    AppState, build_router, cli::Args, config::Config, providers::ProviderRegistry,
+    AppState, build_router, cli::Args,
+    live_config::{ConfigSnapshot, LiveConfig, load_config, spawn_reloader},
     routes::models::ModelCache, routes::watch::spawn_watcher, skill_registry::SkillRegistry,
-    streaming::SessionRegistry, tools::ToolRegistry,
+    streaming::SessionRegistry,
     tasks::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
     vault::Vault,
 };
@@ -91,31 +92,7 @@ async fn main() -> anyhow::Result<()> {
         return mark_private_conversations(vault.root(), args.write);
     }
 
-    let config_path = vault.root().join("config.yaml");
-    let mut config = if config_path.exists() {
-        Config::load(&config_path)?
-    } else {
-        tracing::warn!(
-            "no config.yaml at {} — running with no providers",
-            config_path.display()
-        );
-        Config::default()
-    };
-    // Enforce the external-only invariant on private read-only dirs now that the
-    // vault root is known (drops misconfigured entries with a warning).
-    config.validate_private_dirs(vault.root());
-    let config = Arc::new(config);
-
-    let providers = ProviderRegistry::from_configs(&config.providers);
-
-    // Surface a stale `defaultModel` at startup so the operator sees it before
-    // the first stream attempt fails. We only warn — the SPA can still pick a
-    // different model from /api/models.
-    if let Some(model) = &config.default_model {
-        if let Err(msg) = providers.resolve(model) {
-            tracing::warn!("defaultModel won't resolve: {}", msg);
-        }
-    }
+    let config = load_config(vault.root())?;
     let watcher = spawn_watcher(vault.clone())?;
     let sessions = SessionRegistry::new();
 
@@ -127,26 +104,28 @@ async fn main() -> anyhow::Result<()> {
         watcher.0.subscribe(),
     );
 
-    let tools = Arc::new(ToolRegistry::new(
-        config.clone(),
-        vault.clone(),
-        providers.clone(),
-        skills.clone(),
-    ));
+    let snapshot = ConfigSnapshot::build(config, vault.clone(), skills);
+
+    // Surface a stale `defaultModel` at startup so the operator sees it before
+    // the first stream attempt fails. We only warn — the SPA can still pick a
+    // different model from /api/models.
+    if let Some(model) = &snapshot.config.default_model {
+        if let Err(msg) = snapshot.providers.resolve(model) {
+            tracing::warn!("defaultModel won't resolve: {}", msg);
+        }
+    }
 
     let model_cache = Arc::new(ModelCache::new());
     let tasks = Arc::new(SchedulerHandle::new());
     let runner_host = Arc::new(alloy_server::host::current_hostname());
 
-    let share_on_network = Arc::new(AtomicBool::new(config.share_on_network));
+    let share_on_network = Arc::new(AtomicBool::new(snapshot.config.share_on_network));
 
     let state = AppState {
         vault,
         watcher,
-        providers,
         sessions,
-        tools,
-        config,
+        live: Arc::new(LiveConfig::new(snapshot)),
         share_on_network,
         model_cache,
         tasks: tasks.clone(),
@@ -159,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Scheduled tasks run regardless of client presence.
     let _scheduler_task = spawn_scheduler(state.clone());
+    let _config_reloader = spawn_reloader(state.clone());
 
     let app = build_router(state);
 

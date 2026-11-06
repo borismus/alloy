@@ -309,7 +309,8 @@ async fn maybe_email_result(
     if !task.email {
         return;
     }
-    let Some(email_cfg) = state.config.email.as_ref() else {
+    let live = state.live.snapshot();
+    let Some(email_cfg) = live.config.email.as_ref() else {
         tracing::warn!(
             "task {} has email: true but services.email is not configured",
             task.id

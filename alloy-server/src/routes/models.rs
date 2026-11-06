@@ -129,7 +129,7 @@ fn provider_localities(config: &Config) -> Vec<ProviderLocality> {
 }
 
 async fn list_providers(State(state): State<AppState>) -> Json<Vec<ProviderLocality>> {
-    Json(provider_localities(&state.config))
+    Json(provider_localities(&state.live.snapshot().config))
 }
 
 struct CachedProviderModels {
@@ -161,13 +161,13 @@ impl ModelCache {
         Self::default()
     }
 
-    fn get_provider(&self, provider_id: &str) -> Option<Vec<ModelInfo>> {
+    pub(crate) fn get_provider(&self, provider_id: &str) -> Option<Vec<ModelInfo>> {
         let guard = self.providers.lock().unwrap();
         let cached = guard.get(provider_id)?;
         (cached.stored_at.elapsed() < cached.ttl).then(|| cached.models.clone())
     }
 
-    fn set_provider(&self, provider_id: &str, models: Vec<ModelInfo>, ttl: Duration) {
+    pub(crate) fn set_provider(&self, provider_id: &str, models: Vec<ModelInfo>, ttl: Duration) {
         self.providers.lock().unwrap().insert(
             provider_id.to_string(),
             CachedProviderModels {
@@ -176,6 +176,11 @@ impl ModelCache {
                 models,
             },
         );
+    }
+
+    /// Forget a provider's catalog, for when its config changed or it's gone.
+    pub(crate) fn invalidate_provider(&self, provider_id: &str) {
+        self.providers.lock().unwrap().remove(provider_id);
     }
 
     fn cached_models(&self) -> Vec<ModelInfo> {
@@ -331,7 +336,8 @@ fn codex_default_model(provider_id: &str, resolved: Option<&DiscoveredModel>) ->
 }
 
 async fn list_models(State(state): State<AppState>) -> Json<Vec<ModelInfo>> {
-    let models = state.model_cache.models(&state.config).await;
+    let live = state.live.snapshot();
+    let models = state.model_cache.models(&live.config).await;
     if models.is_empty() {
         tracing::warn!("model discovery returned no models");
     }

@@ -61,7 +61,7 @@ codex login
 
 If Alloy cannot discover the binary, set the provider's `command` to its
 absolute path. Interactive Codex turns require a current CLI with app-server
-support. Restart Alloy after changing CLI installation or `config.yaml`.
+support. Restart Alloy after changing a CLI installation.
 
 If a Claude turn fails saying the login expired, log in again with `claude` on
 that machine, or use a long-lived token from `claude setup-token` as the
@@ -169,7 +169,7 @@ whether the host is reachable.
 
 ### Built-in web search says the key is missing
 
-Add a top-level Serper key and restart Alloy:
+Add a top-level Serper key. It applies from the next turn, with no restart:
 
 ```yaml
 serperApiKey: your-serper-key
@@ -298,7 +298,20 @@ Avoid deleting Cargo targets unless necessary; rebuilding them is expensive.
 
 Vite hot-reloads TypeScript/CSS. Rust backend changes trigger an automatic
 rebuild under the development scripts, but an already-running release binary
-must be restarted. Config and CLI capability changes also require a restart.
+must be restarted. CLI capability changes also require a restart.
+
+### A `config.yaml` change did not apply
+
+The server reloads `config.yaml` when it changes, including through sync, and
+applies it from the next turn; a turn already running finishes on the old
+config. A file that can't be parsed is ignored and the last good config keeps
+running. Look for `config.yaml not applied` in the logs, which gives the reason,
+or `config.yaml reloaded` for success.
+
+`shareOnNetwork` and `sharePort` are the exception. They set what the machine
+exposes to its network, so an edit, which may have synced from another machine,
+logs a warning and takes effect at the next restart. The Share on Network toggle
+in the app still applies immediately.
 
 ## Diagnostics and support
 

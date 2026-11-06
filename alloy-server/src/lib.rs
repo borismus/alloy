@@ -14,6 +14,7 @@ pub mod execution_policy;
 pub mod logging;
 pub mod update_policy;
 pub mod host;
+pub mod live_config;
 pub mod local;
 pub mod notify;
 pub mod providers;
@@ -33,13 +34,11 @@ use std::sync::{Arc, RwLock, atomic::AtomicBool};
 use axum::{Router, extract::DefaultBodyLimit};
 use tower_http::cors::CorsLayer;
 
-use crate::config::Config;
-use crate::providers::ProviderRegistry;
+use crate::live_config::LiveConfig;
 use crate::routes::models::ModelCache;
 use crate::routes::watch::WatcherChannel;
 use crate::streaming::SessionRegistry;
 use crate::tasks::scheduler::SchedulerHandle;
-use crate::tools::ToolRegistry;
 use crate::vault::Vault;
 
 /// Shared application state available to every handler.
@@ -47,10 +46,9 @@ use crate::vault::Vault;
 pub struct AppState {
     pub vault: Arc<Vault>,
     pub watcher: WatcherChannel,
-    pub providers: ProviderRegistry,
     pub sessions: SessionRegistry,
-    pub tools: Arc<ToolRegistry>,
-    pub config: Arc<Config>,
+    /// The config and everything built from it; follows `config.yaml`.
+    pub live: Arc<LiveConfig>,
     /// Live mirror of `config.shareOnNetwork`. Read by the share-gate
     /// middleware on every request so toggling the share UI takes effect
     /// without rebuilding state. `embed::set_share` flips this in lockstep

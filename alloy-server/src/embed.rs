@@ -21,11 +21,10 @@ use tokio::task::JoinHandle;
 use crate::{
     AppState, build_router,
     config::{Config, write_share_on_network},
-    providers::ProviderRegistry,
+    live_config::{ConfigSnapshot, LiveConfig},
     routes::{models::ModelCache, watch::spawn_watcher},
     skill_registry::SkillRegistry,
     streaming::SessionRegistry,
-    tools::ToolRegistry,
     tasks::scheduler::{spawn as spawn_scheduler, SchedulerHandle},
     vault::Vault,
 };
@@ -53,7 +52,11 @@ struct EmbeddedInner {
     /// Most recent AppState (kept around so we can rebuild a router on
     /// rebind without rebuilding all the registries).
     state: Option<AppState>,
-    /// Cached effective config, kept in sync with config.yaml.
+    /// Config-reload loop for the currently bound vault. Aborted on vault
+    /// switches alongside the scheduler.
+    config_reload_task: Option<JoinHandle<()>>,
+    /// The listener's settings as loaded at bind, plus `set_share` toggles. Not
+    /// the live config: `live_config` leaves these unapplied until restart.
     config: Option<Arc<Config>>,
 }
 
@@ -136,7 +139,7 @@ impl EmbeddedServer {
         }
 
         let state = build_app_state(&vault_path).await?;
-        let config = state.config.clone();
+        let config = state.live.snapshot().config.clone();
 
         // Stash state+config first so `bind_listener` can read share state
         // out of the cached config.
@@ -148,13 +151,21 @@ impl EmbeddedServer {
             if let Some(prev) = inner.scheduler_task.take() {
                 prev.abort();
             }
+            if let Some(prev) = inner.config_reload_task.take() {
+                prev.abort();
+            }
             inner.vault_path = Some(vault_path);
             inner.state = Some(state.clone());
             inner.config = Some(config);
         }
 
+        let config_reload_task = crate::live_config::spawn_reloader(state.clone());
         let scheduler_task = spawn_scheduler(state);
-        self.inner.lock().unwrap().scheduler_task = Some(scheduler_task);
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.scheduler_task = Some(scheduler_task);
+            inner.config_reload_task = Some(config_reload_task);
+        }
 
         let url = self.bind_listener().await?;
         Ok(url)
@@ -317,24 +328,10 @@ impl EmbeddedServer {
 /// Construct the full AppState (vault, watcher, providers, tools, sessions,
 /// model cache) for a given vault path. Mirrors the wiring in
 /// `alloy-server/src/main.rs` for the standalone CLI.
-async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
+pub(crate) async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
     let vault = Arc::new(Vault::new(vault_path.to_path_buf())?);
 
-    let config_path = vault.root().join("config.yaml");
-    let mut config = if config_path.exists() {
-        Config::load(&config_path)?
-    } else {
-        tracing::warn!(
-            "no config.yaml at {} — running with no providers",
-            config_path.display()
-        );
-        Config::default()
-    };
-    // Enforce the external-only invariant on private read-only dirs (see main.rs).
-    config.validate_private_dirs(vault.root());
-    let config = Arc::new(config);
-
-    let providers = ProviderRegistry::from_configs(&config.providers);
+    let config = crate::live_config::load_config(vault.root())?;
     let watcher = spawn_watcher(vault.clone())?;
     let sessions = SessionRegistry::new();
 
@@ -346,24 +343,17 @@ async fn build_app_state(vault_path: &Path) -> Result<AppState, EmbedError> {
         watcher.0.subscribe(),
     );
 
-    let tools = Arc::new(ToolRegistry::new(
-        config.clone(),
-        vault.clone(),
-        providers.clone(),
-        skills.clone(),
-    ));
+    let snapshot = ConfigSnapshot::build(config, vault.clone(), skills);
     let model_cache = Arc::new(ModelCache::new());
     let tasks = Arc::new(SchedulerHandle::new());
     let runner_host = Arc::new(crate::host::current_hostname());
-    let share_on_network = Arc::new(std::sync::atomic::AtomicBool::new(config.share_on_network));
+    let share_on_network = Arc::new(std::sync::atomic::AtomicBool::new(snapshot.config.share_on_network));
 
     Ok(AppState {
         vault,
         watcher,
-        providers,
         sessions,
-        tools,
-        config,
+        live: Arc::new(LiveConfig::new(snapshot)),
         share_on_network,
         model_cache,
         tasks,

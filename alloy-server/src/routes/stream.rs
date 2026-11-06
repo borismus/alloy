@@ -38,13 +38,14 @@ pub fn router() -> Router<AppState> {
 async fn start(State(state): State<AppState>, Json(params): Json<StartParams>) -> Response {
     let session_id = params.session_id.clone();
     let self_base_url = state.self_base_url.read().ok().and_then(|u| u.clone());
+    let live = state.live.snapshot();
     let session = streaming::start_session(
         &state.sessions,
-        state.providers.clone(),
+        live.providers.clone(),
         state.vault.clone(),
-        state.tools.clone(),
+        live.tools.clone(),
         state.model_cache.clone(),
-        state.config.compaction,
+        live.config.compaction,
         self_base_url,
         params,
     );

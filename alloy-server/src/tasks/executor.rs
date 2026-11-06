@@ -101,7 +101,8 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
         None => unconditional_system_prompt(),
     };
     let session_id = format!("task-{}-{}", task.id, Utc::now().timestamp_millis());
-    let execution_policy = resolve_policy(&state.config, task);
+    let live = state.live.snapshot();
+    let execution_policy = resolve_policy(&live.config, task);
     tracing::info!(
         task_id = %task.id,
         max_iterations = execution_policy.max_iterations,
@@ -132,11 +133,11 @@ pub async fn run(task: &ScheduledTask, state: &AppState) -> TaskRunOutcome {
 
     match run_to_completion(
         &state.sessions,
-        state.providers.clone(),
+        live.providers.clone(),
         state.vault.clone(),
-        state.tools.clone(),
+        live.tools.clone(),
         state.model_cache.clone(),
-        state.config.compaction,
+        live.config.compaction,
         self_base_url,
         params,
     )

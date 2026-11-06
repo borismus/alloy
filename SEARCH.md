@@ -17,8 +17,6 @@ version: 2
 serperApiKey: your-serper-key
 ```
 
-3. Restart Alloy after changing `config.yaml`.
-
 The key remains in the vault and is sent only to Serper when a model calls
 `web_search`.
 
@@ -34,7 +32,7 @@ them as tool pills.
 ## Troubleshooting
 
 - **`SERPER_API_KEY not configured`** — add `serperApiKey` exactly as shown
-  above and restart the backend.
+  above. It applies from the next turn.
 - **401/403 from Serper** — verify the key and account status.
 - **No search pill** — explicit `/skill-name` invocation is deterministic;
   autonomous tool selection remains model-dependent.

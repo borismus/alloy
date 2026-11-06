@@ -74,7 +74,7 @@ One-off design decisions are recorded in [docs/design-decisions.md](docs/design-
 
 1. **Frontend changes**: Hot-reloaded automatically by Vite
 2. **Rust changes**: Requires rebuild (Tauri watches and rebuilds)
-3. **Config changes**: May require restart
+3. **Config changes**: `config.yaml` reloads automatically, except `shareOnNetwork` and `sharePort`
 
 ## Testing
 

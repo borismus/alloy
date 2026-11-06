@@ -136,7 +136,7 @@ impl Audience {
 // be ignored, leaving the mount local-only while the user believed they had
 // shared it. Silence is the safe direction, but it's a confusing one, and this
 // block is small and security-relevant enough to be strict about.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrivateDir {
     pub alias: String,
@@ -164,7 +164,7 @@ pub struct RawCompaction {
     pub trigger_tokens: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderConfig {
     pub id: String,
@@ -211,14 +211,14 @@ pub enum CliAdapter {
 
 /// Resolved email-notification settings. `Some` only when `services.email` is
 /// fully specified for a supported provider (Resend).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EmailConfig {
     pub api_key: String,
     pub from: String,
     pub to: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     pub default_model: Option<String>,
     pub providers: Vec<ProviderConfig>,

@@ -60,7 +60,8 @@ async fn suggest(state: &AppState, id: &str) -> Result<Vec<String>, (StatusCode,
 
     let model = last_used_model(&doc);
     let private = doc.get("private").and_then(Value::as_bool).unwrap_or(false);
-    if private && !crate::local::model_is_local(&state.config, &model) {
+    let live = state.live.snapshot();
+    if private && !crate::local::model_is_local(&live.config, &model) {
         return Err((
             StatusCode::CONFLICT,
             "This conversation holds private material, so titles can only be suggested by a local model. Switch it to a local model first.".into(),
@@ -71,7 +72,7 @@ async fn suggest(state: &AppState, id: &str) -> Result<Vec<String>, (StatusCode,
     if excerpt.is_empty() {
         return Err((StatusCode::UNPROCESSABLE_ENTITY, "Nothing to title yet.".into()));
     }
-    let (provider, upstream) = state
+    let (provider, upstream) = live
         .providers
         .resolve(&model)
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;

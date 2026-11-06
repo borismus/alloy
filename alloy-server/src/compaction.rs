@@ -35,7 +35,7 @@ points. Do NOT add commentary, preamble, or a title — output only the summary.
 is provided, merge the newer messages into it while keeping the result within the length budget.";
 
 /// Runtime settings (sourced from `config.yaml`).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CompactionSettings {
     pub enabled: bool,
     pub trigger_tokens: u64,

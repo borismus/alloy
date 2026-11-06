@@ -42,9 +42,9 @@ async fn decide(State(state): State<AppState>, Json(d): Json<Decision>) -> impl 
     }
     let decision = if d.accept {
         let applied = if proposal.path == "memory.md" {
-            files::apply_memory(&state.tools, &proposal.content).await
+            files::apply_memory(&state.live.snapshot().tools, &proposal.content).await
         } else {
-            files::apply_skill(&state.tools, &proposal.path, &proposal.content).await
+            files::apply_skill(&state.live.snapshot().tools, &proposal.path, &proposal.content).await
         };
         if let Err(e) = applied {
             return error(StatusCode::INTERNAL_SERVER_ERROR, e);

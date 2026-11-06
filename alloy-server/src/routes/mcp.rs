@@ -81,7 +81,8 @@ async fn handle(
                 "mcp tool call: {}",
                 params.get("name").and_then(|n| n.as_str()).unwrap_or("<unnamed>")
             );
-            rpc_ok(id, execute_tool_call(&state.tools, &params, &ctx).await)
+            let live = state.live.snapshot();
+            rpc_ok(id, execute_tool_call(&live.tools, &params, &ctx).await)
         }
         _ => rpc_error(id, -32601, "method not found"),
     }

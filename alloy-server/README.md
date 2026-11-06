@@ -102,6 +102,10 @@ execution:
   maxIterations: 50
 ```
 
+Edits to `config.yaml` apply without a restart, from the next turn. A file that
+can't be parsed leaves the last good config running. `shareOnNetwork` and
+`sharePort` are the exception and need a restart.
+
 There is no legacy flat-key format: 0.4 dropped the pre-0.4 schema (per-vendor
 `*_API_KEY` keys, snake_case), and config v2 replaces the old `cli_claude` /
 `cli_codex` kinds with `kind: cli` plus `adapter: claude | codex`. Obsolete
