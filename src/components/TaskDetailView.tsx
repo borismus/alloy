@@ -474,7 +474,7 @@ export function TaskDetailView({
               <span className="task-field-label">Email</span>
               <div
                 className="task-model-value task-switch-control"
-                title={task.email ? 'Delivered results and first-failure alerts are emailed via Resend' : 'This task does not send email'}
+                title={task.email ? 'Delivered results and failure alerts are emailed via Resend' : 'This task does not send email'}
               >
                 <Switch
                   aria-label="Email task results"

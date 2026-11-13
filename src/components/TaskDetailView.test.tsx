@@ -87,7 +87,7 @@ describe('TaskDetailView failure state', () => {
 
     expect(screen.getAllByText('Runner: smusmini')).toHaveLength(2);
     expect(screen.getByText('Recovered after 1 connection retry')).toBeTruthy();
-    expect(screen.getByTitle('Delivered results and first-failure alerts are emailed via Resend'))
+    expect(screen.getByTitle('Delivered results and failure alerts are emailed via Resend'))
       .toBeTruthy();
   });
 

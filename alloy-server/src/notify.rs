@@ -1,7 +1,7 @@
 //! Outbound notifications for scheduled tasks.
 //!
 //! Today this is email via [Resend](https://resend.com). A task with
-//! `email: true` gets delivered results and first-failure alerts emailed *after*
+//! `email: true` gets delivered results and failure alerts emailed *after*
 //! the run is persisted to `tasks/*.yaml` — email is a best-effort fan-out
 //! channel, never part of the task's own success/failure. A send failure is
 //! logged and swallowed so it can't change the recorded run outcome.
@@ -22,9 +22,20 @@ pub enum TaskEmailKind {
     Error,
 }
 
+/// A failure that continues an error streak, for a "still failing" reminder.
+#[derive(Debug, Clone, Copy)]
+pub struct FailureStreak<'a> {
+    /// Failed runs in a row, counting this one.
+    pub runs: usize,
+    /// ISO timestamp of the streak's first failure.
+    pub since: &'a str,
+}
+
 /// One task notification to email. Borrowed so the caller doesn't clone the body.
 pub struct TaskEmail<'a> {
     pub kind: TaskEmailKind,
+    /// Set on an error that continues a streak; `None` for a first failure.
+    pub still_failing: Option<FailureStreak<'a>>,
     pub task_id: &'a str,
     pub task_title: &'a str,
     pub model: &'a str,
@@ -77,13 +88,23 @@ pub async fn send_task_email(cfg: &EmailConfig, email: TaskEmail<'_>) -> anyhow:
 }
 
 fn failure_report(email: &TaskEmail<'_>) -> String {
+    let streak = email
+        .still_failing
+        .map(|streak| {
+            format!(
+                "Failing since: {} ({} runs in a row)\n",
+                streak.since, streak.runs
+            )
+        })
+        .unwrap_or_default();
     format!(
-        "ALLOY SCHEDULED TASK FAILURE\n\nTask: {}\nTask ID: {}\nModel: {}\nRunner: {}\nTime: {}\n\n{}",
+        "ALLOY SCHEDULED TASK FAILURE\n\nTask: {}\nTask ID: {}\nModel: {}\nRunner: {}\nTime: {}\n{}\n{}",
         email.task_title,
         email.task_id,
         email.model,
         email.runner,
         email.occurred_at,
+        streak,
         email.content_markdown.trim(),
     )
 }
@@ -125,10 +146,16 @@ fn render_html(email: &TaskEmail<'_>) -> String {
         ),
         TaskEmailKind::Error => {
             let report = escape_html(&failure_report(email));
+            let banner = match email.still_failing {
+                Some(streak) => format!("Scheduled task still failing ({} runs in a row)", streak.runs),
+                None => "Scheduled task failed".to_string(),
+            };
             (
-                "<div style=\"padding:10px 12px;margin-bottom:16px;border-radius:6px;\
-                 background:#fef2f2;color:#b91c1c;font-weight:700;\">Scheduled task failed</div>"
-                    .to_string(),
+                format!(
+                    "<div style=\"padding:10px 12px;margin-bottom:16px;border-radius:6px;\
+                     background:#fef2f2;color:#b91c1c;font-weight:700;\">{}</div>",
+                    banner
+                ),
                 format!(
                     "<p>Copy this report when sending feedback:</p>\
                      <pre style=\"margin:0;padding:14px;border:1px solid #d0d7de;border-radius:6px;\
@@ -172,7 +199,13 @@ fn render_text(email: &TaskEmail<'_>) -> String {
 fn subject(email: &TaskEmail<'_>) -> String {
     match email.kind {
         TaskEmailKind::Result => format!("[Alloy] {}", email.task_title),
-        TaskEmailKind::Error => format!("[Alloy] Task failed: {}", email.task_title),
+        TaskEmailKind::Error => match email.still_failing {
+            Some(streak) => format!(
+                "[Alloy] Task still failing ({} runs): {}",
+                streak.runs, email.task_title
+            ),
+            None => format!("[Alloy] Task failed: {}", email.task_title),
+        },
     }
 }
 
@@ -189,6 +222,7 @@ mod tests {
     fn sample() -> TaskEmail<'static> {
         TaskEmail {
             kind: TaskEmailKind::Result,
+            still_failing: None,
             task_id: "task-nightly-digest",
             task_title: "Nightly Digest",
             model: "mlx/Qwen",
@@ -253,6 +287,25 @@ mod tests {
         assert!(text.contains("Task ID: task-nightly-digest"));
         assert!(text.contains("Runner: smusmini"));
         assert!(text.contains(ALLOY_ISSUES_URL));
+    }
+
+    #[test]
+    fn repeat_failure_says_how_long_it_has_been_failing() {
+        let mut email = sample();
+        email.kind = TaskEmailKind::Error;
+        email.content_markdown = "Error:\nconnection closed";
+        email.still_failing = Some(FailureStreak {
+            runs: 3,
+            since: "2026-11-10T11:00:21Z",
+        });
+        assert_eq!(
+            subject(&email),
+            "[Alloy] Task still failing (3 runs): Nightly Digest"
+        );
+        assert!(render_html(&email).contains("Scheduled task still failing (3 runs in a row)"));
+        let text = render_text(&email);
+        assert!(text.contains("Failing since: 2026-11-10T11:00:21Z (3 runs in a row)"));
+        assert!(text.contains("connection closed"));
     }
 
     #[test]

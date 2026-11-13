@@ -294,10 +294,11 @@ pub async fn run_once(
     Ok(outcome)
 }
 
-/// Email a task result or first failure when the task opts in (`email: true`)
-/// and `services.email` is configured. Deliberate skips remain silent. An
-/// ongoing error streak sends only its first alert so an offline host cannot
-/// produce one email per cron occurrence.
+/// Email a task result or failure when the task opts in (`email: true`) and
+/// `services.email` is configured. Deliberate skips remain silent. An error
+/// streak alerts only on the runs in [`FAILURE_ALERT_RUNS`], so a broken task
+/// is not forgotten after one email, but an offline host cannot produce one
+/// email per cron occurrence.
 async fn maybe_email_result(
     state: &AppState,
     task: &ScheduledTask,
@@ -354,8 +355,18 @@ async fn maybe_email_result(
     };
     let idempotency_key = format!("task-{}-{}-{}", kind_key, task.id, occurrence);
 
+    let streak = failure_streak(task);
+    let still_failing = match (kind, &streak) {
+        (TaskEmailKind::Error, Some(streak)) => Some(crate::notify::FailureStreak {
+            runs: streak.runs,
+            since: &streak.since,
+        }),
+        _ => None,
+    };
+
     let email = crate::notify::TaskEmail {
         kind,
+        still_failing,
         task_id: &task.id,
         task_title: &task.title,
         model: &task.model,
@@ -381,15 +392,44 @@ fn email_kind(
             Some(TaskEmailKind::Result)
         }
         TaskVerdict::Error => {
-            let previous_was_error = task
-                .history
-                .as_ref()
-                .and_then(|history| history.first())
-                .is_some_and(|attempt| attempt.result == TaskVerdict::Error);
-            (!previous_was_error).then_some(TaskEmailKind::Error)
+            let runs = failure_streak(task).map_or(1, |streak| streak.runs);
+            FAILURE_ALERT_RUNS
+                .contains(&runs)
+                .then_some(TaskEmailKind::Error)
         }
         TaskVerdict::Completed | TaskVerdict::Triggered | TaskVerdict::Skipped => None,
     }
+}
+
+/// Consecutive failed runs (counting the current one) that send an email:
+/// the first failure, then two reminders, then silence until the task
+/// succeeds or is skipped and a new streak starts.
+const FAILURE_ALERT_RUNS: [usize; 3] = [1, 3, 7];
+
+/// An error streak that began before the current run.
+#[derive(Debug, PartialEq, Eq)]
+struct PriorFailures {
+    /// Failed runs in a row, counting the current one.
+    runs: usize,
+    /// When the first failure of the streak happened.
+    since: String,
+}
+
+/// The error streak the current (failed) run continues, read from `task`'s
+/// history as it was before this run. `None` when the previous run did not
+/// fail, so the current failure starts a new streak.
+fn failure_streak(task: &ScheduledTask) -> Option<PriorFailures> {
+    use crate::tasks::model::TaskVerdict;
+
+    let history = task.history.as_deref().unwrap_or_default();
+    let prior = history
+        .iter()
+        .take_while(|attempt| attempt.result == TaskVerdict::Error)
+        .count();
+    (prior > 0).then(|| PriorFailures {
+        runs: prior + 1,
+        since: history[prior - 1].timestamp.clone(),
+    })
 }
 
 fn apply_claim(
@@ -896,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn email_semantics_distinguish_delivery_skip_and_first_failure() {
+    fn email_semantics_distinguish_delivery_skip_and_failure_streaks() {
         let mut value = task("2026-07-20T00:00:00Z", None, "0 8 * * *");
         let outcome = |result, response: &str, error: Option<&str>| TaskRunOutcome {
             result,
@@ -942,6 +982,49 @@ mod tests {
             ),
             None,
             "continuing error streak must not spam"
+        );
+
+        // Reminders on the 3rd and 7th failure in a row, then silence.
+        let error_at = |timestamp: &str| TaskAttempt {
+            timestamp: timestamp.into(),
+            result: TaskVerdict::Error,
+            reasoning: String::new(),
+            runner: Some("smusmini".into()),
+            error: Some("connection closed".into()),
+            usage: None,
+            partial_reasoning: None,
+        };
+        let alerts: Vec<usize> = (1..=10)
+            .filter(|runs| {
+                let mut streaking = value.clone();
+                streaking.history = Some(
+                    (0..runs - 1)
+                        .map(|i| error_at(&format!("2026-07-{:02}T11:00:00Z", 19 - i)))
+                        .collect(),
+                );
+                email_kind(&streaking, &outcome(TaskVerdict::Error, "", Some("down")))
+                    == Some(TaskEmailKind::Error)
+            })
+            .collect();
+        assert_eq!(alerts, vec![1, 3, 7]);
+
+        let mut streaking = value.clone();
+        streaking.history = Some(vec![
+            error_at("2026-07-19T11:00:00Z"),
+            error_at("2026-07-18T11:00:00Z"),
+            TaskAttempt {
+                result: TaskVerdict::Triggered,
+                ..error_at("2026-07-17T11:00:00Z")
+            },
+            error_at("2026-07-16T11:00:00Z"),
+        ]);
+        assert_eq!(
+            failure_streak(&streaking),
+            Some(PriorFailures {
+                runs: 3,
+                since: "2026-07-18T11:00:00Z".into()
+            }),
+            "the streak starts after the last non-error run"
         );
 
         value.history.as_mut().unwrap()[0].result = TaskVerdict::Skipped;

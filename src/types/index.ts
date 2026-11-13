@@ -207,7 +207,7 @@ export interface ScheduledTask {
   title: string;
   model: string;
   enabled: boolean;
-  /** When true, delivered results and first-failure alerts are emailed via services.email (Resend). */
+  /** When true, delivered results and failure alerts (1st, 3rd, 7th failure in a row) are emailed via services.email (Resend). */
   email?: boolean;
   prompt: string;
   schedule: TaskSchedule;
