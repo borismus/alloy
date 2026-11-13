@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 use crate::config::ProviderConfig;
+use crate::error::error_chain;
 use crate::providers::{
     attachment_content_blocks, chat_messages_to_openai, fallback_title, sanitize_title,
     ChatMessage, Provider, ProviderStreamEvent, StreamRequest, StreamResult, Usage,
@@ -580,26 +581,6 @@ fn bracketed_stream_error(text: &str) -> Option<String> {
     let trimmed = text.trim();
     let message = trimmed.strip_prefix("[Error:")?.strip_suffix(']')?.trim();
     (!message.is_empty()).then(|| message.to_string())
-}
-
-/// Flatten an error and its `source()` chain into one line. `reqwest` hides the
-/// real failure (connection refused, timed out, DNS, TLS) behind a generic
-/// "error sending request for url (...)" Display — the useful cause lives in the
-/// source chain, so surface it for actionable errors in the chat transcript.
-fn error_chain(err: &dyn std::error::Error) -> String {
-    let mut out = err.to_string();
-    let mut source = err.source();
-    while let Some(e) = source {
-        let msg = e.to_string();
-        // Skip links that just repeat the previous message (reqwest/hyper often
-        // nest near-identical wrappers).
-        if !out.ends_with(&msg) {
-            out.push_str(": ");
-            out.push_str(&msg);
-        }
-        source = e.source();
-    }
-    out
 }
 
 /// True if the model id routes to an Anthropic upstream (so prompt-caching

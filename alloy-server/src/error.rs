@@ -55,3 +55,23 @@ impl From<anyhow::Error> for AppError {
         AppError::Internal(e.to_string())
     }
 }
+
+/// Flatten an error and its `source()` chain into one line. `reqwest` hides the
+/// real failure (connection refused, timed out, DNS, TLS) behind a generic
+/// "error sending request for url (...)" Display — the useful cause lives in the
+/// source chain, so surface it in errors shown to the user or the model.
+pub fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(e) = source {
+        let msg = e.to_string();
+        // Skip links that just repeat the previous message (reqwest/hyper often
+        // nest near-identical wrappers).
+        if !out.ends_with(&msg) {
+            out.push_str(": ");
+            out.push_str(&msg);
+        }
+        source = e.source();
+    }
+    out
+}

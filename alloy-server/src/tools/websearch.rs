@@ -74,7 +74,7 @@ pub async fn execute(registry: &ToolRegistry, input: &Value) -> Result<String, S
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Serper request failed: {}", e))?;
+        .map_err(|e| format!("Serper request failed: {}", crate::error::error_chain(&e)))?;
 
     if !response.status().is_success() {
         let status = response.status();

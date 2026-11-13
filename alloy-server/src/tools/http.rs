@@ -145,7 +145,7 @@ async fn download(mut url: Url, allow_private_network: bool) -> Result<Downloade
             )
             .send()
             .await
-            .map_err(|e| format!("web_fetch request failed: {e}"))?;
+            .map_err(|e| format!("web_fetch request failed: {}", crate::error::error_chain(&e)))?;
 
         if response.status().is_redirection() {
             if redirect_count == MAX_REDIRECTS {
@@ -733,6 +733,23 @@ mod tests {
         assert_eq!(result.is_error, None);
         assert!(result.content.contains("Useful legacy content"));
         assert!(!result.content.contains("<html>"));
+    }
+
+    #[tokio::test]
+    async fn connection_failures_name_the_underlying_cause() {
+        // reqwest's own message is only "error sending request for url (...)";
+        // the cause (refused, timed out, TLS, reset) lives in its source chain.
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+
+        let error = execute_fetch(&ctx(true), &json!({ "url": format!("http://127.0.0.1:{port}/") }))
+            .await
+            .unwrap_err();
+
+        assert!(error.starts_with("web_fetch request failed: "), "{error}");
+        assert!(error.to_lowercase().contains("connection refused"), "{error}");
     }
 
     #[tokio::test]
