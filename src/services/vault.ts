@@ -1023,17 +1023,23 @@ providers:
       });
     }
 
-    // Add scheduled tasks. Activity is either a delivery or a user edit; a
-    // run that delivered nothing (skipped check, error) must not reorder the
-    // timeline. `updated` is the edit timestamp, except on tasks last written
-    // by a run — older runs stamped `updated` with the same instant as
-    // `lastRunAt`, so that pairing is treated as bookkeeping, not an edit.
+    // Add scheduled tasks. Activity is a delivery, a user edit, or a failed
+    // latest run, so a broken task surfaces instead of staying buried. A
+    // skipped check must not reorder the timeline. The failure time comes
+    // from history rather than `updated`, which stays the true edit time.
+    // `updated` is the edit timestamp, except on tasks last written by a run:
+    // older runs stamped `updated` with the same instant as `lastRunAt`, so
+    // that pairing is treated as bookkeeping, not an edit.
     for (const task of tasks) {
       const deliveredAt = task.lastDeliveredAt
         ? new Date(task.lastDeliveredAt).getTime()
         : 0;
       const editedAt = task.updated && task.updated !== task.lastRunAt
         ? new Date(task.updated).getTime()
+        : 0;
+      const latestAttempt = task.history?.[0];
+      const failedAt = latestAttempt?.result === 'error'
+        ? new Date(latestAttempt.timestamp).getTime() || 0
         : 0;
       const preview = task.enabled
         ? (deliveredAt ? `Last delivered: ${new Date(deliveredAt).toLocaleDateString()}` : 'Awaiting first result')
@@ -1043,7 +1049,7 @@ providers:
         type: 'task',
         id: task.id,
         title: task.title,
-        lastUpdated: Math.max(deliveredAt, editedAt) || new Date(task.created).getTime(),
+        lastUpdated: Math.max(deliveredAt, editedAt, failedAt) || new Date(task.created).getTime(),
         preview,
         task,
       });

@@ -559,6 +559,48 @@ messages: []
       expect(items.map(i => i.id)).toEqual(['delivered', 'ran']);
     });
 
+    it('bubbles a task whose latest run failed to the failure time', () => {
+      const failing = makeTask({
+        id: 'failing',
+        lastRunAt: '2024-06-01T00:00:00Z',
+        lastDeliveredAt: '2024-01-10T00:00:00Z',
+        history: [
+          { timestamp: '2024-06-01T00:00:00Z', result: 'error', reasoning: '', error: 'connection closed' },
+          { timestamp: '2024-05-31T00:00:00Z', result: 'error', reasoning: '', error: 'connection closed' },
+        ],
+      });
+      const delivered = makeTask({
+        id: 'delivered',
+        lastDeliveredAt: '2024-05-15T00:00:00Z',
+      });
+
+      const items = vaultService.buildTimeline([], [], [delivered, failing]);
+
+      expect(items.map(i => i.id)).toEqual(['failing', 'delivered']);
+      expect(items[0].lastUpdated).toBe(new Date('2024-06-01T00:00:00Z').getTime());
+    });
+
+    it('does not bubble a task for an older failure or a skipped run', () => {
+      // Only the latest attempt counts: once a run succeeds or is skipped,
+      // the earlier failure no longer reorders the task.
+      const recovered = makeTask({
+        id: 'recovered',
+        lastDeliveredAt: '2024-01-10T00:00:00Z',
+        history: [
+          { timestamp: '2024-06-02T00:00:00Z', result: 'skipped', reasoning: 'nothing new' },
+          { timestamp: '2024-06-01T00:00:00Z', result: 'error', reasoning: '', error: 'boom' },
+        ],
+      });
+      const delivered = makeTask({
+        id: 'delivered',
+        lastDeliveredAt: '2024-05-15T00:00:00Z',
+      });
+
+      const items = vaultService.buildTimeline([], [], [recovered, delivered]);
+
+      expect(items.map(i => i.id)).toEqual(['delivered', 'recovered']);
+    });
+
     it('falls back to created when a task has never run or been edited', () => {
       const fresh = makeTask({ id: 'fresh', created: '2024-04-01T00:00:00Z', updated: '' });
 
