@@ -4,6 +4,24 @@ All notable changes to Alloy are documented here. The release workflow
 publishes the section matching each version tag (e.g. `## 0.3.2`) as the body
 of the corresponding GitHub release, so add a section here before bumping.
 
+## 0.5.12
+
+- **Failing scheduled tasks rise to the top.** A task whose latest run failed
+  now moves to the top of the sidebar, where its red failure badge is easy to
+  spot. Before, a failed run left the task where it was, so a nightly failure
+  stayed buried. Skipped runs still don't move it, and edit dates stay
+  accurate.
+- **Email reminders while a task keeps failing.** Tasks with email on were
+  emailed only on the first failure in a row, then went quiet. Now an email also
+  goes out on the 3rd and 7th failure in a row, titled "still failing (N runs)",
+  with the date the failures began.
+- **Models can search your scheduled tasks.** `search_directory` refused
+  `tasks/` even though models could read those files, so finding a task by name
+  meant opening task files one by one.
+- **Web errors say why.** When `web_fetch` or `web_search` can't reach a site,
+  the error now names the cause (connection refused, timeout, TLS) instead of
+  only "error sending request".
+
 ## 0.5.11
 
 - **`config.yaml` changes apply without a restart.** Rotate a key, add a
