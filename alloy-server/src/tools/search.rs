@@ -22,7 +22,6 @@ const SNIPPET_CONTEXT: usize = 60;
 /// appears 400 times turn one search result into a wall of snippets.
 const MAX_LOCATED_MATCHES: usize = 3;
 
-const READABLE_DIRS: &[&str] = &["notes/", "skills/", "conversations/"];
 const TEXT_EXTENSIONS: &[&str] = &["md", "txt", "yaml", "yml", "json", "js", "ts", "css", "html"];
 
 /// One matching file in the result page: path + recency + a few located
@@ -79,16 +78,10 @@ pub async fn execute(
         return Err("Invalid directory: must be relative and cannot contain \"..\"".into());
     }
 
+    // The same directories `read_file` can read, so a model can find what it
+    // is allowed to open.
     if !mount {
-        let dir_normalized = if directory.ends_with('/') {
-            directory.to_string()
-        } else {
-            format!("{}/", directory)
-        };
-        let allowed = READABLE_DIRS
-            .iter()
-            .any(|p| dir_normalized == *p || dir_normalized.starts_with(p));
-        if !allowed {
+        if !crate::tools::files::is_readable_dir(directory) {
             return Err(format!(
                 "Access denied: search not allowed for directory \"{}\"",
                 directory
@@ -455,6 +448,36 @@ mod tests {
         assert!(m[0].snippet.starts_with("..."));
         assert!(m[0].snippet.ends_with("..."));
         assert!(m[0].snippet.contains("needle"));
+    }
+
+    /// Search allows exactly the directories `read_file` can read. It once kept
+    /// its own list without `tasks/`, so a model looking for a task by name
+    /// was denied and fell back to opening task files one by one.
+    #[tokio::test]
+    async fn searches_every_directory_read_file_can_read() {
+        let vault = TempDir::new("vault-dirs");
+        let external = TempDir::new("ext-dirs");
+        std::fs::create_dir_all(vault.0.join("tasks")).unwrap();
+        std::fs::write(
+            vault.0.join("tasks/daily.yaml"),
+            "title: Local daily briefing\n",
+        )
+        .unwrap();
+        std::fs::write(vault.0.join("config.yaml"), "apiKey: daily-secret\n").unwrap();
+        let reg = registry_with_private(&vault.0, &external.0);
+
+        let out = execute(&reg, &ctx(true), &json!({ "directory": "tasks", "query": "daily" }))
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["returned"], 1, "{out}");
+        assert!(out.contains("tasks/daily.yaml"), "{out}");
+
+        // The vault root (config.yaml) stays out of reach.
+        for root in [".", "", "/", "config.yaml"] {
+            let denied = execute(&reg, &ctx(true), &json!({ "directory": root, "query": "daily" })).await;
+            assert!(denied.is_err(), "{root:?} must be denied: {denied:?}");
+        }
     }
 
     #[tokio::test]

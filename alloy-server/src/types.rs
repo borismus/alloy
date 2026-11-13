@@ -174,7 +174,7 @@ pub fn builtin_tools_with_subagent_limit(max_subagents: u32) -> Vec<ToolDefiniti
             "search_directory",
             "Search a directory for a query in file names and content. Returns a page of matching files (most-recent-first by default), each with its path, modified time, total match count, and up to three located matches giving the line number and a short snippet. Pass a match's line number as read_file's offset to read around it rather than reading the file from the top. The response also gives totalMatches and the oldestModified/newestModified dates across all matches: when the page shows only part of them, use sort, modified_before/modified_after, or limit/offset to reach the rest — e.g. sort=\"oldest\" for the earliest notes on a topic. Dates are modified times: editing an old note makes it look new, and creation dates aren't available.",
             &[
-                ("directory", "string", r#"Directory to search (e.g., "notes", "conversations", "skills")"#),
+                ("directory", "string", r#"Directory to search: "notes", "conversations", "skills", "tasks", a subfolder of one, or a mounted folder under "private/" or "shared/""#),
                 ("query", "string", "Text to find in file names or content (case-insensitive)"),
                 ("fuzzy", "boolean", r#"Match files containing ALL query words anywhere, in any order (not necessarily adjacent). Default false = exact substring. Set true for topic questions like "data center water consumption" where the words may be spread across the note."#),
                 ("limit", "integer", "Max matching files to return (default 20, max 50)"),

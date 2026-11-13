@@ -149,6 +149,26 @@ const ROOT_READABLE: &[&str] = &[MEMORY_FILE];
 const MEMORY_BACKUP_DIR: &str = ".memory-backups";
 const MEMORY_BACKUPS_KEPT: usize = 10;
 
+/// The vault directories a model may use: (prefix, read, write_in_server_mode).
+/// `search_directory` searches exactly the readable ones.
+const VAULT_DIRS: &[(&str, bool, bool)] = &[
+    ("notes/", true, true),
+    // Writes become proposals the user approves (see `propose_change`).
+    ("skills/", true, true),
+    ("conversations/", true, false), // read-only
+    ("tasks/", true, false), // changed only through the scheduled-task tools
+];
+
+/// True when `dir` (with or without a trailing slash) is a readable vault
+/// directory or inside one. The vault root is not: it holds `config.yaml`.
+pub(crate) fn is_readable_dir(dir: &str) -> bool {
+    let normalized = format!("{}/", dir.replace('\\', "/").trim_end_matches('/'));
+    !normalized.contains("..")
+        && VAULT_DIRS
+            .iter()
+            .any(|(prefix, can_read, _)| *can_read && normalized.starts_with(prefix))
+}
+
 #[derive(Copy, Clone, PartialEq)]
 enum Op {
     Read,
@@ -164,14 +184,7 @@ fn check_permission(path: &str, op: Op) -> Option<String> {
         return Some("Invalid path: must be relative and cannot contain \"..\"".into());
     }
 
-    let dir_segments: &[(&str, bool, bool)] = &[
-        // (prefix, read, write_in_server_mode)
-        ("notes/", true, true),
-        // Writes become proposals the user approves (see `propose_change`).
-        ("skills/", true, true),
-        ("conversations/", true, false), // read-only
-        ("tasks/", true, false), // changed only through the scheduled-task tools
-    ];
+    let dir_segments = VAULT_DIRS;
 
     if normalized.contains('/') {
         for (prefix, can_read, can_write) in dir_segments {
